@@ -156,17 +156,49 @@ export class CommandError extends EapiError {
   }
 }
 
+/**
+ * Additions M2 (#4) makes to M1's `TransportError`, all optional and additive — the wire-level facts
+ * a UI needs to decide what to render: which endpoint failed, which HTTP status came back, and
+ * whether re-sending is safe. pyeapi has nothing comparable: it folds every wire failure into one
+ * `ConnectionError(connection_type, message)` and stashes the last one on the connection
+ * (`eapilib.py:145-167`, `:425-427`) — MIGRATION.md §5 row 21.
+ */
+export interface TransportErrorOptions extends EapiErrorOptions {
+  /** HTTP status, when the failure came from a real response line (401/403/405/5xx…). */
+  readonly status?: number | undefined
+  /** Where the request went: `https://sw1:443/command-api`, `unix:/var/run/command-api.sock`. */
+  readonly endpoint?: string | undefined
+  /**
+   * Hint from DR-019's failure taxonomy: `true` means the request never reached the device, so
+   * re-sending is safe *and* the client may do it itself when `readOnly: true`. `false` means the
+   * device may already have executed the commands (a timeout, or a reset after the body was written),
+   * which for a configuration write is the answer that matters. `undefined` = we cannot tell.
+   */
+  readonly retryable?: boolean | undefined
+}
+
 /** Everything below the JSON-RPC layer: DNS, TCP, TLS, HTTP status, timeouts. Subtypes in M2 (#4). */
 export class TransportError extends EapiError {
-  constructor(message: string, options: EapiErrorOptions = {}) {
+  readonly status: number | undefined
+  readonly endpoint: string | undefined
+  readonly retryable: boolean | undefined
+
+  constructor(message: string, options: TransportErrorOptions = {}) {
     super(message, options)
     this.name = 'TransportError'
+    this.status = options.status
+    this.endpoint = options.endpoint
+    this.retryable = options.retryable
+  }
+
+  override toJSON(): Record<string, unknown> {
+    return { ...super.toJSON(), status: this.status, endpoint: this.endpoint, retryable: this.retryable }
   }
 }
 
 /** HTTP 401/403 from eAPI (and a bad `/login` for the cookie transports) — pyeapi raises `ConnectionError`. */
 export class AuthError extends TransportError {
-  constructor(message: string, options: EapiErrorOptions = {}) {
+  constructor(message: string, options: TransportErrorOptions = {}) {
     super(message, options)
     this.name = 'AuthError'
   }
@@ -174,7 +206,7 @@ export class AuthError extends TransportError {
 
 /** Handshake / certificate failure. Trust decisions are DR-013, never a silent default. */
 export class TlsError extends TransportError {
-  constructor(message: string, options: EapiErrorOptions = {}) {
+  constructor(message: string, options: TransportErrorOptions = {}) {
     super(message, options)
     this.name = 'TlsError'
   }
@@ -182,7 +214,7 @@ export class TlsError extends TransportError {
 
 /** Refused / unreachable / DNS. The only class M2 may retry once, and only for `readOnly` (DR-019). */
 export class ConnectError extends TransportError {
-  constructor(message: string, options: EapiErrorOptions = {}) {
+  constructor(message: string, options: TransportErrorOptions = {}) {
     super(message, options)
     this.name = 'ConnectError'
   }
@@ -190,7 +222,7 @@ export class ConnectError extends TransportError {
 
 /** The request deadline fired (`AbortController` in M2, `requestTimeout` server-side in runCmds). */
 export class TimeoutError extends TransportError {
-  constructor(message: string, options: EapiErrorOptions = {}) {
+  constructor(message: string, options: TransportErrorOptions = {}) {
     super(message, options)
     this.name = 'TimeoutError'
   }
