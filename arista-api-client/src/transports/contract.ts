@@ -192,6 +192,23 @@ export interface InsecureTransportGate {
 }
 
 /**
+ * The keys of {@link TlsMaterialOptions}, written once. Three places need exactly this list and must
+ * not drift: the option allow-list gate in `create.ts` (DR-013), `wantsNodeTls` picking the Node TLS
+ * sender for `kind: 'https'` (row 28), and `node-tls.ts` deciding whether the caller supplied trust
+ * material at all. That last one matters: scanning `Object.keys(options)` instead of these keys counts
+ * `kind`/`host`/`username` as TLS options, which turned every cleartext `session` transport into a
+ * `NotSupportedError` (caught by `node-cookie.test.ts`, M2 #4).
+ */
+export const TLS_MATERIAL_KEYS: readonly (keyof TlsMaterialOptions)[] = [
+  'ca',
+  'cert',
+  'key',
+  'serverName',
+  'fingerprint',
+  'dangerouslyDisableTlsVerification',
+]
+
+/**
  * Local listeners (`unix`, `http-local`) are switch-local **and** unauthenticated priv-15 on 4.28 —
  * EOS marks them `DISABLE_AAA` (`HttpServicePlugin/Capi.py:83-124`). The flag is a required literal
  * `true`, so omitting it is a compile error, not a runtime surprise (DR-008).

@@ -17,6 +17,7 @@
 import { NotSupportedError } from '../errors'
 import {
   assertTransportKindsExhaustive,
+  TLS_MATERIAL_KEYS,
   type NodeOnlyTransportKind,
   type Transport,
   type TransportOptions,
@@ -34,16 +35,6 @@ const OPTION_KEYS: Readonly<Record<string, readonly string[]>> = Object.freeze({
   'http-local': ['port', 'path', 'allowLocalUnauthenticated'],
   mock: [],
 })
-
-/** DR-013 TLS trust material: Node entry only, and only for the kinds that speak TLS. */
-const TLS_MATERIAL_KEYS: readonly string[] = [
-  'ca',
-  'cert',
-  'key',
-  'serverName',
-  'fingerprint',
-  'dangerouslyDisableTlsVerification',
-]
 
 /** Kinds whose Node-side option record carries {@link TLS_MATERIAL_KEYS}. */
 const TLS_CAPABLE_KINDS: readonly string[] = ['https', 'session', 'https-client-cert']
@@ -86,19 +77,13 @@ export function nodeOnlyRefusal(kind: NodeOnlyTransportKind): never {
   )
 }
 
-/** Keys whose presence means the caller wants Node's TLS-capable `https` sender rather than `fetch`. */
-export const TLS_OPTION_KEYS: readonly string[] = [
-  'ca',
-  'cert',
-  'key',
-  'serverName',
-  'fingerprint',
-  'dangerouslyDisableTlsVerification',
-]
-
-/** True when any DR-013 TLS option is set on an `https` options record. */
+/**
+ * Keys whose presence means the caller wants Node's TLS-capable `https` sender rather than `fetch`
+ * (row 28). This is {@link TLS_MATERIAL_KEYS} itself — one list, owned by `contract.ts`, because the
+ * question "did the caller set DR-013 trust material?" has exactly one answer.
+ */
 export function wantsNodeTls(options: object): boolean {
-  return TLS_OPTION_KEYS.some((key) => (options as Record<string, unknown>)[key] !== undefined)
+  return TLS_MATERIAL_KEYS.some((key) => (options as Record<string, unknown>)[key] !== undefined)
 }
 
 /**
