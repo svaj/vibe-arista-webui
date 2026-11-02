@@ -131,17 +131,27 @@ describe('a successful round trip keeps M1 codec behaviour intact', () => {
   })
 
   it('echoes a device error envelope as a typed failure instead of throwing it (M1 rule, kept)', async () => {
-    device = await listenHttp(() => ({
-      status: 200,
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ jsonrpc: '2.0', error: { code: 1002, message: 'CLI ERROR', data: [{ errors: ['bad'] }] }, id: 'x' }),
-    }))
+    // The id here is the id the transport actually sent. It used to be the literal `"x"`, which was
+    // harmless while nothing compared ids; M2 (#4) correlation (`src/transports/correlate.ts`,
+    // MIGRATION.md §5 row 29) rejects a reply that answers a *different* request, and this case is
+    // about the envelope, not about pairing. The correlation contract has its own spec file.
+    device = await listenHttp((request) => {
+      const { id } = JSON.parse(request.body) as { id: string }
+      return {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ jsonrpc: '2.0', error: { code: 1002, message: 'CLI ERROR', data: [{ errors: ['bad'] }] }, id }),
+      }
+    })
     const transport = createTransport({ kind: 'http', baseUrl: device.origin, allowInsecureTransport: true })
     const outcome = await transport.execute('bad command')
     expect(outcome.ok).toBe(false)
     if (outcome.ok) return
     expect(outcome.error.name).toBe('CommandError')
     expect(outcome.error.message).toContain('CLI ERROR')
+    // DR-017: the envelope's own id is the error's `requestId`, so a device log line and this error
+    // object can be grepped against each other.
+    expect(outcome.error.requestId).toBe(outcome.request.id)
   })
 })
 
