@@ -90,7 +90,7 @@ graph LR
 - [x] `vitest.config.ts` with `projects`: `unit` (node env, excludes `*.live.test.ts`) and `live` (include only `*.live.test.ts`, `pool: forks`, run only via `test:live`). Coverage provider `v8` with thresholds (see TESTING.md).
 - [x] `.oxlintrc.json` at repo root (shared by both packages) with the `typescript` + `import` plugin rules; per-package overrides. If `oxfmt` is available in the pinned `oxlint` major, adopt it and disable Prettier.
 - [x] Source skeleton: `src/index.ts`, `src/node.ts`, `src/internal/`, `src/resources/`, `src/types/`, `src/testing/` (public test helpers), `.gitignore`, `LICENSE` (**BSD-3-Clause, retaining Arista's copyright — DR-001**), `NOTICE` attributing the pyeapi port.
-- [x] CI: GitHub Actions workflow (Node 20/22 matrix, `typecheck` → `lint` → `test` → `build`; reserve real-EOS jobs for explicit trusted `workflow_dispatch`, per M12 and the cEOS runbook).
+- [x] CI: GitHub Actions workflow (Node 20/22 matrix, `typecheck` → `lint` → `test` → `build`; reserve real-EOS jobs for explicit trusted `workflow_dispatch`, per M12 and the cEOS runbook). *(matrix is **22/24**, not 20/22 — see note below)*
 - [x] Verify the webui resolves the workspace package (`import { createNode } from '@devhax-heavy-industries/arista-eapi'` type-checks; Vite dev server serves it unbuilt during development).
 
 > **M0 notes (2026-11-01, PR for #2 — what deviated and why):**
@@ -116,6 +116,12 @@ graph LR
 >   `../arista-api-client/tsconfig.build.json` so a standalone webui typecheck has declarations
 >   available (resolution is still by package name — no path alias).
 > * The workspace lockfile moved from `arista-webui/package-lock.json` to the repo root.
+> * **CI matrix is Node 22/24, not 20/22.** The first Actions run proved Node 20 cannot run this
+>   repo's pinned toolchain: `vitest@5.0.5` declares `engines.node ^22.12.0 || ^24.0.0 || >=26.0.0`
+>   and the webui's `jsdom@30.1.3` (via `undici@8`, needs node >= 22.19) crashes inside
+>   `vitest run` on 20. This package stays `engines.node >= 20` per DR-021 — that is a *runtime*
+>   floor for library consumers, not a claim about dev tooling. **M12 (#14) should prove the floor
+>   properly**: run the built `dist/` under Node 20 with a dependency-free smoke script in CI.
 
 **Exit gate:** `npm run build && npm run typecheck && npm run lint && npm test` green from the repo root; webui imports the package with no path hacks. ✅ met (2026-11-01).
 

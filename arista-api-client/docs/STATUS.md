@@ -22,7 +22,7 @@ eAPI readiness, and harness execution are **not yet validated**. Hardware remain
 
 | ID | Milestone | Status | Started | Done | Issue | Blockers / notes |
 |---|---|---|---|---|---|---|
-| M0 | Workspace & package scaffolding | `done` | 2026-11-01 | 2026-11-01 | [#2](https://github.com/svaj/vibe-arista-webui/issues/2) | exit gate green from the repo root (typecheck/lint/test/build + webui imports by name, no path hacks). Package name still undecided (**DR-020**); `docs` script deferred (no generator chosen — M13 #15); placeholders only in `src/index.ts` / `src/node.ts` |
+| M0 | Workspace & package scaffolding | `done` | 2026-11-01 | 2026-11-01 | [#2](https://github.com/svaj/vibe-arista-webui/issues/2) | exit gate green from the repo root (typecheck/lint/test/build + webui imports by name, no path hacks); CI matrix is **22/24** because Vitest 5/jsdom 30 exclude Node 20. Package name still undecided (**DR-020**); `docs` script deferred (no generator chosen — M13 #15); placeholders only in `src/index.ts` / `src/node.ts` |
 | M1 | Wire protocol core | `not-started` | — | — | | needs `test/fixtures/wire/*.json` authored |
 | M2 | Transports | `not-started` | — | — | | depends on M1; cert pinning needs device fingerprint capture |
 | M3 | Connection profiles | `not-started` | — | — | | |
