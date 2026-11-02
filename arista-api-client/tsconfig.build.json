@@ -1,0 +1,36 @@
+{
+  "compilerOptions": {
+    /* Deliberately inside outDir (the composite default): deleting dist must also delete the
+       build info, otherwise `tsc -b` believes the declarations are current, skips emitting,
+       and dependent projects fail with TS6305/TS2307. */
+    "tsBuildInfoFile": "./dist/.tsbuildinfo",
+    "composite": true,
+    "target": "es2022",
+    "lib": ["ES2023", "DOM"],
+    "types": ["node"],
+    "skipLibCheck": true,
+
+    /* Library build: types only — Vite/Rolldown emits the JS (see vite.config.ts). */
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "moduleDetection": "force",
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+    "rootDir": "src",
+    "outDir": "dist",
+    "declaration": true,
+    "declarationMap": true,
+    "emitDeclarationOnly": true,
+
+    /* Strictness (PLAN.md M0) */
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "erasableSyntaxOnly": true,
+    "noFallthroughCasesInSwitch": true
+  },
+  "include": ["src"],
+  "exclude": ["src/**/*.test.ts", "src/**/*.live.test.ts", "src/testing/**"]
+}

@@ -1,0 +1,35 @@
+NOTICE — attribution for `@devhax-heavy-industries/arista-eapi`
+================================================================
+
+This product includes software derived from:
+
+  pyeapi — Python Client for eAPI
+  Copyright (c) 2016, Arista Networks EOS+
+  https://github.com/arista-eosplus/pyeapi
+  License: BSD-3-Clause (see LICENSE)
+
+Upstream baseline used for the port
+-----------------------------------
+  Version : pyeapi 1.0.4-rc0 (the `develop` branch)
+  Commit  : 6816d9e
+  Clone   : /home/svaj/development/arista/pyeapi (local, authorized copy)
+
+What that means in practice (docs/DECISIONS.md DR-001, DR-003)
+--------------------------------------------------------------
+* The wire protocol *behaviour* is mirrored from pyeapi; the *shape of the API* is
+  original TypeScript, so most modules are redesigns rather than translations.
+* Every file that is a direct translation of a pyeapi function carries a short
+  upstream attribution header in the source and is covered by Arista's copyright.
+* Upstream documentation and test bodies were not copied verbatim. pyeapi's unit and
+  system tests were ported by *behaviour* (same commands generated, same error raised)
+  so the two suites stay comparable — see docs/MIGRATION.md for the symbol-by-symbol map.
+* Deliberate divergences (dropped `response` key, no `Node.api('name')` autoload,
+  unconditional secret redaction, named config sessions, TLS verification on by
+  default, and the rest) are recorded as DR-005…DR-043 and in docs/MIGRATION.md §5.
+
+Not affiliated with Arista Networks
+-----------------------------------
+This is an unofficial, community port for one operator's DCS-7050TX-64 running EOS
+4.28.13.1M. It is not an Arista product and is not endorsed by Arista Networks
+("Arista" is a trademark of Arista Networks, Inc.). The package name scope is tracked
+in DR-020 and is intentionally *not* an `arista/*` scope.
