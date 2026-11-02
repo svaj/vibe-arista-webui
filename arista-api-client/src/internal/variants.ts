@@ -4,8 +4,8 @@
  * "keep as `tryVariants()` utility, not a type-level magic".
  *
  * Upstream, a `CliVariants` object is a *marker* that `Node.config()` hunts for inside the command
- * list (`client.py:628-632` finds it with a `[type(v) for v in cmds].index(CliVariants)` scan) and
- * then splices into the sequence (`client.py:641-654`), trying each alternative until one succeeds
+ * list (`client.py:628-633` finds it with a `[type(v) for v in cmds].index(CliVariants)` scan) and
+ * then splices into the sequence (`client.py:645-652`), trying each alternative until one succeeds
  * and re-raising the last `CommandError` if all fail. In TypeScript that marker has no honest type:
  * a command list is `CommandSpec[]`, so a foreign object in it would either be `any` or be rejected
  * by `buildRequest`'s command-object check. So the variants are passed **beside** the command list
@@ -13,7 +13,7 @@
  *
  * What is deliberately **not** ported: `CliVariants.expand` (`utils.py:245-269`), which computes the
  * full cross-product of several `CliVariants` markers in one list. pyeapi's own `config()` never uses
- * it — `client.py:641-654` reads only the *first* marker and its `.variants`, and its docstring says
+ * it — `client.py:645-652` reads only the *first* marker and its `.variants`, and its docstring says
  * "only a single occurrence of CliVariants type in commands is supported" (`client.py:605-606`).
  * Nesting `tryVariants` calls expresses the same thing with visible control flow.
  * MIGRATION.md §5 row 37.
@@ -36,7 +36,7 @@ export type VariantSender<TResult> = (commands: readonly CommandSpec[]) => Promi
 
 /**
  * Try each variant in order, return the first success, re-raise the **last** `CommandError` when all
- * of them fail (pyeapi `client.py:641-654`, including its `raise err`).
+ * of them fail (pyeapi `client.py:645-652`, including its `raise err` at `:652`).
  *
  * pyeapi asserts the same thing twice (`utils.py:260`, `:272`: "must be initialized with 2 or more
  * arguments"): a single variant is a caller who meant something else, so `TypeError` rather than a

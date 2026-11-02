@@ -1,6 +1,6 @@
 /**
  * `Node` — the command layer, M4 (#6). Port of `pyeapi/client.py`'s `Node` class
- * (`client.py:464-1036`, BSD-3-Clause, Arista Networks — DR-001), keeping the **behaviour** and
+ * (`client.py:464-1037`, BSD-3-Clause, Arista Networks — DR-001), keeping the **behaviour** and
  * renaming the **shape** per DR-003.
  *
  * Deliberately absent here, because other milestones own them:
@@ -84,14 +84,14 @@ export interface ExecResult {
 /** Which stored configuration to read (pyeapi `get_config`'s first positional, `client.py:952`). */
 export type ConfigTarget = 'running-config' | 'startup-config'
 
-/** `'string'` = pyeapi `as_string=True`; `'lines'` = its default list return (`client.py:987-989`). */
+/** `'string'` = pyeapi `as_string=True`; `'lines'` = its default list return (`client.py:986-989`). */
 export type ConfigOutput = 'string' | 'lines'
 
 /** Options for {@link Node.getConfig}. pyeapi's positional `(config, params, as_string)` — row 31 renames them. */
 export interface GetConfigOptions extends NodeRequestOptions {
   /** Which config to read. Default `running-config`, as in pyeapi. A union, so a bad name is a compile error (row 36). */
   readonly config?: ConfigTarget | undefined
-  /** Keywords appended to the show command — pyeapi `params` (`client.py:982-984`), e.g. `'all'` or `'filtered'`. */
+  /** Keywords appended to the show command — pyeapi `params` (`client.py:982-983`), e.g. `'all'` or `'filtered'`. */
   readonly params?: string | undefined
   /** Return shape. Default `'lines'`, which is pyeapi's default too. */
   readonly as?: ConfigOutput | undefined
@@ -292,7 +292,7 @@ export class Node {
   /**
    * The settings this instance was built with (pyeapi keeps the raw `**kwargs` in `settings`,
    * `client.py:507`). Closed type — an unrecognised key is a compile error instead of a kwarg that
-   * silently reaches `runCmds` and is dropped by pyeapi's allow-list (`eapilib.py:358-361`, row 31).
+   * silently reaches `runCmds` and is dropped by pyeapi's allow-list (`eapilib.py:360-361`, row 31).
    */
   readonly settings: Readonly<NodeSettings>
 
@@ -359,7 +359,7 @@ export class Node {
   }
 
   /**
-   * pyeapi `run_commands` (`client.py:876-926`): send exactly these commands and return the raw
+   * pyeapi `run_commands` (`client.py:876-925`): send exactly these commands and return the raw
    * per-command replies, minus the enable reply when one was prepended.
    *
    * The `MULTILINE:` pseudo-syntax is **not** ported (DR-015, MIGRATION.md §5 row 16): a multiline
@@ -373,7 +373,7 @@ export class Node {
   }
 
   /**
-   * pyeapi `enable()` (`client.py:800-875`), renamed because `exec` is what a reader expects next to
+   * pyeapi `enable()` (`client.py:800-874`), renamed because `exec` is what a reader expects next to
    * `show` (MIGRATION.md §2). One entry per command, each carrying the encoding that actually answered.
    *
    * * `tolerateErrors` (default `true`, pyeapi's `strict=False`): **one request per command**, each
@@ -381,7 +381,7 @@ export class Node {
    *     `test_enable_with_multiple_commands` asserts. A `1003` answer is repaired by the codec
    *     (`internal/wire.ts` → `format:'text'`, DR-012) and the entry reports `encoding:'text'` +
    *     `fellBack:true`; any other failure throws.
-   * * `tolerateErrors: false` (pyeapi's `strict=True`, `client.py:849-857`): **one request with every
+   * * `tolerateErrors: false` (pyeapi's `strict=True`, `client.py:849-856`): **one request with every
    *   command**, `stopOnError` left at the device default, and the first failure throws a
    *   `CommandError` whose `results`/`trace()` say how far it got.
    */
@@ -451,7 +451,7 @@ export class Node {
     const command = params ? `show ${config} ${params}` : `show ${config}`
     const trip = await this.roundTrip([command], { format: 'text', readOnly: true, ...request })
     const text = outputText(singleResult(trip.result, command), command)
-    // pyeapi strips for `as_string` and does not strip for the list form (`client.py:987-989`).
+    // pyeapi strips for `as_string` (`client.py:986-987`) and does not strip for the list form (`:989`).
     const answer: string | readonly string[] = as === 'string' ? text.trim() : text.split('\n')
     return answer as TAs extends 'string' ? string : readonly string[]
   }
@@ -499,9 +499,9 @@ export class Node {
   }
 
   /**
-   * pyeapi `config()` → `_configure_terminal()` (`client.py:590-675`) with the
+   * pyeapi `config()` → `_configure_terminal()` (`client.py:590-674`) with the
    * `configure_session` half left to M5 (#7): `configure terminal` is prepended (pyeapi
-   * `client.py:661`), the enable reply is popped by the command layer, and this command's own reply is
+   * `client.py:663`), the enable reply is popped by the command layer, and this command's own reply is
    * popped before returning (pyeapi `client.py:672`) — the caller gets exactly the replies to the
    * commands it wrote.
    *
@@ -522,7 +522,7 @@ export class Node {
 
   /**
    * {@link configure} tried once per command variant, first success wins, last `CommandError`
-   * re-raised — the port of pyeapi's `CliVariants` splice (`client.py:641-654`) without the marker
+   * re-raised — the port of pyeapi's `CliVariants` splice (`client.py:645-652`) without the marker
    * object inside the command list (DR-006, MIGRATION.md §5 row 37).
    *
    * ```ts

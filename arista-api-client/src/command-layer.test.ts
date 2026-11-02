@@ -8,20 +8,24 @@
  * Ported here by **behaviour**, not by copy (DR-003): the same commands in the same order, the same
  * failure class for the same condition, with the renamed shape MIGRATION.md §5 records.
  *
- * * `TestNode` (21 methods) → 19 ported: every `test_enable_*`, `test_no_enable_*`, `test_config_*`,
- *   `test_get_config*`, `test_get_version_properties_*`, `test_version_properties_populate`,
- *   `test_enable_authentication`, `test_enable_with_config_statement`.
- *   **Not ported:** `test_api_autoloader` (DR-006 drops `Node.api()` — MIGRATION.md §7) and the two
- *   `test_chunkify_*` cases (M6, #8 — the config-text engine, owned by a sibling milestone).
+ * * `TestNode` (21 methods, `test/unit/test_client.py:48-244`) → **18 ported**: every `test_enable_*`
+ *   (7), `test_no_enable_*` (1), `test_config_*` (4), `test_get_config*` (3) and the three
+ *   version-property cases (2 `test_get_version_properties_*` + `test_version_properties_populate`),
+ *   counted as classes — the two unicode cases collapse to one, so 17 of our cases cover the 18.
+ *   **Not ported:** `test_api_autoloader` (`test_client.py:210` — DR-006 drops `Node.api()`,
+ *   MIGRATION.md §7) and the two `test_chunkify_*` cases (`test_client.py:224`, `:231` — M6, #8, the
+ *   config-text engine, owned by a sibling milestone).
  * * `TestClient`'s `Node` half (14 methods: `test_node_str_returns`, `test_node_repr_returns`,
  *   `test_node_hasattr_connection`, `test_node_calls_running_config_*` ×2, `test_node_returns_running_config`,
  *   `test_node_returns_startup_config`, `test_node_returns_cached_startup_config`,
  *   `test_node_returns_version`, `test_node_returns_cached_version`, `test_node_returns_version_number`,
  *   `test_node_returns_cached_version_number`, `test_node_returns_model`, `test_node_returns_cached_model`)
  *   → all 14 ported.
- * * `TestClient`'s config/profile half (20 methods: `test_load_config*`, `test_config_*`,
- *   `test_missing_connection_raises_attribute_error`, `test_hosts_for_tag_*`, `test_connect_*`,
- *   `test_make_connection_raises_typeerror`) → M3 (#5). `test_connect_types`,
+ * * `TestClient`'s config/profile half (18 of its 32 methods: 12 profile-store — `test_load_config*`
+ *   (6), `test_config_always_has_default_connection`, `test_connections_property`,
+ *   `test_missing_connection_raises_attribute_error`, `test_config_for_replaces_host_w_name`,
+ *   `test_hosts_for_tag_*` (2) — plus the 6 `test_connect_*` / `test_make_connection_raises_typeerror`
+ *   cases) → M3 (#5). `test_connect_types` (`test_client.py:330`),
  *   `test_connect_default_type`, `test_connect_return_node`, `test_connect_return_node_enablepwd`,
  *   `test_connect_to_with_config` and `test_make_connection_raises_typeerror` were already absorbed by
  *   M2's transport suite (#4) — the profile-store half is still open.
@@ -88,7 +92,7 @@ function nodeWith(scripted: MockTransport, settings: NodeSettings = {}): Node {
   return new Node(scripted, settings)
 }
 
-describe('runCommands — pyeapi run_commands (client.py:876-926)', () => {
+describe('runCommands — pyeapi run_commands (client.py:876-925)', () => {
   it('sends one batched request with enable prepended and pops the enable reply', async () => {
     const t = mockTransport().replies('enable\nshow version', withEnable({ hostname: 'sw1' }))
     const results = await nodeWith(t).runCommands('show version')
@@ -189,7 +193,7 @@ describe('runCommands — pyeapi run_commands (client.py:876-926)', () => {
   })
 })
 
-describe('exec — pyeapi enable (client.py:800-875)', () => {
+describe('exec — pyeapi enable (client.py:800-874)', () => {
   it('returns one entry per command with the DR-007 shape and nothing else', async () => {
     const t = mockTransport().replies('enable\nshow version', withEnable({ version: '4.28.13.1M' }))
     const entries = await nodeWith(t).exec('show version')
@@ -234,7 +238,7 @@ describe('exec — pyeapi enable (client.py:800-875)', () => {
     expect(entries.map((entry) => entry.result)).toEqual([{ a: 1 }, { b: 2 }])
   })
 
-  it('tolerateErrors: false sends one batched request, pyeapi strict=True (client.py:849-857)', async () => {
+  it('tolerateErrors: false sends one batched request, pyeapi strict=True (client.py:849-856)', async () => {
     const t = mockTransport().replies('enable\nshow a\nshow b', [{}, { a: 1 }, { b: 2 }])
     const entries = await nodeWith(t).exec(['show a', 'show b'], { tolerateErrors: false })
     expect(t.sent()).toEqual([['enable', 'show a', 'show b']])
@@ -309,7 +313,7 @@ describe('exec — pyeapi enable (client.py:800-875)', () => {
   })
 })
 
-describe('configure — pyeapi config/_configure_terminal (client.py:590-675)', () => {
+describe('configure — pyeapi config/_configure_terminal (client.py:590-674)', () => {
   it('prepends configure terminal and strips its reply off the answer [pyeapi test_config_with_single_command]', async () => {
     const t = mockTransport().replies('enable\nconfigure terminal\nvlan 20', [{}, {}, { c: 1 }])
     const results = await nodeWith(t).configure('vlan 20')
@@ -336,6 +340,14 @@ describe('configure — pyeapi config/_configure_terminal (client.py:590-675)', 
       'configure terminal',
       { cmd: 'banner login', input: 'This is a new banner\nwith different lines!!!\nEOF\n' },
     ])
+  })
+
+  it('keeps a multiline write in the middle of a list and pops both prepended replies [pyeapi test_config_with_multiple_multilines]', async () => {
+    const banner = { cmd: 'banner motd', input: 'line one\nline two\nEOF\n' }
+    const t = mockTransport().replies('enable\nconfigure terminal\nhostname a\nbanner motd\ndefault banner motd', [{}, {}, {}, {}, {}])
+    const results = await nodeWith(t).configure(['hostname a', banner, 'default banner motd'])
+    expect(results).toHaveLength(3)
+    expect(t.bodies()[0]?.params.cmds).toEqual(['enable', 'configure terminal', 'hostname a', banner, 'default banner motd'])
   })
 
   it('a config write does reach the device with a session-less enable, unlike exec', async () => {
@@ -397,7 +409,7 @@ describe('configure — pyeapi config/_configure_terminal (client.py:590-675)', 
     ])
   })
 
-  it('configureVariants re-raises the LAST CommandError when every variant fails (client.py:654)', async () => {
+  it('configureVariants re-raises the LAST CommandError when every variant fails (client.py:652)', async () => {
     const t = mockTransport()
       .replies('enable\nconfigure terminal\nvrf instance mgmt', {
         error: { code: EapiErrorCode.COMMAND_INVALID, message: 'first failure' },
@@ -438,7 +450,7 @@ describe('getConfig and the config accessors — pyeapi get_config/running_confi
     expect(lines.at(-1)).toBe('end')
   })
 
-  it('as: string trims, as: lines does not — pyeapi strip/no-strip parity (client.py:987-989) [pyeapi test_get_config_as_string]', async () => {
+  it('as: string trims, as: lines does not — pyeapi strip/no-strip parity (client.py:986-989) [pyeapi test_get_config_as_string]', async () => {
     const t = mockTransport().replies(
       'enable\nshow startup-config',
       withEnable({ output: '  hostname sw1\n!\n  ' }),
@@ -449,7 +461,7 @@ describe('getConfig and the config accessors — pyeapi get_config/running_confi
     expect(await nodeWith(t2).getConfig({ config: 'startup-config' })).toEqual(['  hostname sw1', '!', '  '])
   })
 
-  it('appends params to the show command [pyeapi params behaviour, client.py:982-984]', async () => {
+  it('appends params to the show command [pyeapi params behaviour, client.py:982-983]', async () => {
     const t = mockTransport().replies('enable\nshow startup-config all', withEnable(RUNNING_CONFIG_FIXTURE))
     await nodeWith(t).getConfig({ config: 'startup-config', params: 'all' })
     expect(t.sent()).toEqual([['enable', 'show startup-config all']])
