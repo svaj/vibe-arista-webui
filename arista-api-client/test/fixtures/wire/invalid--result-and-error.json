@@ -1,0 +1,9 @@
+{
+  "jsonrpc": "2.0",
+  "id": "ui-7f3a2b9c1d-22",
+  "result": [{}],
+  "error": {
+    "code": 1002,
+    "message": "a device must never send both members, but a proxy bug might"
+  }
+}

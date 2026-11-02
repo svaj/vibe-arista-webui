@@ -1,0 +1,8 @@
+{
+  "jsonrpc": "2.0",
+  "id": "ui-7f3a2b9c1d-16",
+  "error": {
+    "code": -32601,
+    "message": "method not found: runCmd"
+  }
+}

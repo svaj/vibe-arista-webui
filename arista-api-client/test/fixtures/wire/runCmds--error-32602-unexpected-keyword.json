@@ -1,0 +1,8 @@
+{
+  "jsonrpc": "2.0",
+  "id": "ui-7f3a2b9c1d-17",
+  "error": {
+    "code": -32602,
+    "message": "runCmds() got an unexpected keyword argument 'streaming'"
+  }
+}

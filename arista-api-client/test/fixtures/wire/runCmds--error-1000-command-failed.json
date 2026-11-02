@@ -1,0 +1,12 @@
+{
+  "jsonrpc": "2.0",
+  "id": "ui-7f3a2b9c1d-5",
+  "error": {
+    "code": 1000,
+    "message": "CLI command 2 of 3 'copy running-config startup-config' failed: Failed to write startup-config (no space left on device)",
+    "data": [
+      {},
+      { "errors": ["Failed to write startup-config (no space left on device)"] }
+    ]
+  }
+}

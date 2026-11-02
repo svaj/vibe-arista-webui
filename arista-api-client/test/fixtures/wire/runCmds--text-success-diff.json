@@ -1,0 +1,9 @@
+{
+  "jsonrpc": "2.0",
+  "id": "ui-7f3a2b9c1d-4",
+  "result": [
+    {
+      "output": "-- -- -- session-config diff for session arista-ui-sw1-9f2c1a7b\n! \n+vlan 4000\n+   name probe-vlan\n! \n"
+    }
+  ]
+}

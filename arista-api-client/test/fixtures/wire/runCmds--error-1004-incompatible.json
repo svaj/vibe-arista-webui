@@ -1,0 +1,12 @@
+{
+  "jsonrpc": "2.0",
+  "id": "ui-7f3a2b9c1d-10",
+  "error": {
+    "code": 1004,
+    "message": "CLI command 2 of 3 'reload' failed: command is incompatible with the eAPI context",
+    "data": [
+      {},
+      { "errors": ["command is incompatible with the eAPI context"] }
+    ]
+  }
+}

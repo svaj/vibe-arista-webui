@@ -1,0 +1,10 @@
+{
+  "jsonrpc": "2.0",
+  "method": "runCmds",
+  "id": "ui-7f3a2b9c1d-1",
+  "params": {
+    "version": 1,
+    "cmds": ["enable", "show version"],
+    "format": "json"
+  }
+}

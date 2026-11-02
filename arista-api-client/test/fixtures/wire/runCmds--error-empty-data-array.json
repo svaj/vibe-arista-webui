@@ -1,0 +1,9 @@
+{
+  "jsonrpc": "2.0",
+  "id": "ui-7f3a2b9c1d-20",
+  "error": {
+    "code": 1002,
+    "message": "CLI command 1 of 1 'show bogus' failed: invalid command",
+    "data": []
+  }
+}

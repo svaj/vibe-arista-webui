@@ -1,0 +1,8 @@
+{
+  "jsonrpc": "2.0",
+  "id": "ui-7f3a2b9c1d-9",
+  "error": {
+    "code": 1003,
+    "message": "CLI command 1 of 1 'show session-config diffs' failed: Command did not produce a JSON convertible output (no cliModel for this command)"
+  }
+}

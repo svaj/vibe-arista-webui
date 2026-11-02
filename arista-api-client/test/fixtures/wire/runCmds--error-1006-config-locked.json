@@ -1,0 +1,12 @@
+{
+  "jsonrpc": "2.0",
+  "id": "ui-7f3a2b9c1d-13",
+  "error": {
+    "code": 1006,
+    "message": "CLI command 2 of 4 'configure session maintenance-2026-11-01' failed: The configuration is locked by session arista-ui-sw1-9f2c1a7b",
+    "data": [
+      {},
+      { "errors": ["The configuration is locked by session arista-ui-sw1-9f2c1a7b"] }
+    ]
+  }
+}

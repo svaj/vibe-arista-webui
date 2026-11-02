@@ -1,0 +1,18 @@
+{
+  "jsonrpc": "2.0",
+  "id": "ui-7f3a2b9c1d-8",
+  "error": {
+    "code": 1002,
+    "message": "CLI command 3 of 4 'vlan 4095' failed: invalid command",
+    "data": {
+      "result": [
+        {},
+        { "name": "probe" },
+        { "errors": ["invalid command"] }
+      ],
+      "errorDetail": [
+        { "index": 2, "code": 1002, "message": "invalid command", "cmd": "vlan 4095" }
+      ]
+    }
+  }
+}

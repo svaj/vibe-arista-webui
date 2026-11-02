@@ -1,0 +1,8 @@
+{
+  "jsonrpc": "2.0",
+  "id": "ui-7f3a2b9c1d-15",
+  "error": {
+    "code": -32600,
+    "message": "invalid request: jsonrpc must be 2.0"
+  }
+}

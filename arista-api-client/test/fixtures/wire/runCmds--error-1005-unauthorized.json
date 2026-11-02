@@ -1,0 +1,8 @@
+{
+  "jsonrpc": "2.0",
+  "id": "ui-7f3a2b9c1d-11",
+  "error": {
+    "code": 1005,
+    "message": "CLI command 1 of 3 'enable' failed: Command unauthorized: user has insufficient permissions to run the command"
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "jsonrpc": "2.0",
+  "id": "ui-7f3a2b9c1d-12",
+  "error": {
+    "code": 1005,
+    "message": "CLI command 1 of 3 'enable' failed: Command unauthorized: user has insufficient permissions to run the command input='pw-from-fixture-probe'",
+    "data": [
+      { "errors": ["Command unauthorized"], "cmd": "enable", "input": "pw-from-fixture-probe" },
+      { "errors": ["invalid input"] }
+    ]
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "jsonrpc": "2.0",
+  "method": "runCmds",
+  "id": "ui-7f3a2b9c1d-2",
+  "params": {
+    "version": "latest",
+    "cmds": [
+      { "cmd": "banner motd", "input": "line one\nline two\nEOF\n", "revision": 2 },
+      "show version"
+    ],
+    "format": "text",
+    "autoComplete": true,
+    "expandAliases": true,
+    "timestamps": true,
+    "stopOnError": false,
+    "includeErrorDetail": true,
+    "requestTimeout": 120
+  }
+}

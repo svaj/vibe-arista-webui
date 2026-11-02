@@ -1,0 +1,18 @@
+{
+  "jsonrpc": "2.0",
+  "id": "ui-7f3a2b9c1d-1",
+  "result": [
+    {},
+    {
+      "hostname": "sw1",
+      "version": "4.28.13.1M",
+      "systemMacAddress": "50:08:00:bb:11:22",
+      "modelName": "DCS-7050TX-64",
+      "serialNumber": "0123ABCD56789",
+      "internalVersion": "4.28.13.1M-43620574.428131M",
+      "memTotal": 8109252,
+      "bootupTimestamp": 1730000000.0,
+      "uptime": 123456.78
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "jsonrpc": "2.0",
+  "id": "ui-7f3a2b9c1d-6",
+  "error": {
+    "code": 1001,
+    "message": "CLI command 3 of 4 'show tech-support internals' failed: internal exception while converting command output",
+    "data": [
+      {},
+      { "hostname": "sw1", "version": "4.28.13.1M" },
+      { "errors": ["internal exception while converting command output"] }
+    ]
+  }
+}
