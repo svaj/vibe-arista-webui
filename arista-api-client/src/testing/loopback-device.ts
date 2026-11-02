@@ -19,6 +19,7 @@ import { readFileSync, unlinkSync } from 'node:fs'
 import { createServer as createHttpServer, type IncomingHttpHeaders, type Server } from 'node:http'
 import { createServer as createHttpsServer } from 'node:https'
 import { createHash } from 'node:crypto'
+import type { PeerCertificate, TLSSocket } from 'node:tls'
 
 /** Absolute path to `test/fixtures/tls/`, resolved from this module. */
 export const TLS_FIXTURE_DIR = new URL('../../test/fixtures/tls/', import.meta.url)
@@ -89,8 +90,19 @@ export interface LoopbackDevice {
 
 function normalizeHeaders(headers: Readonly<Record<string, string | readonly string[]>> | undefined): Record<string, string | string[]> {
   const out: Record<string, string | string[]> = {}
-  for (const [name, value] of Object.entries(headers ?? {})) out[name] = Array.isArray(value) ? [...value] : value
+  for (const [name, value] of Object.entries(headers ?? {})) {
+    // `Array.isArray` does not narrow the negative half of `string | readonly string[]`, so both
+    // branches are written explicitly rather than relying on inference.
+    if (Array.isArray(value)) out[name] = [...(value as readonly string[])]
+    else out[name] = value as string
+  }
   return out
+}
+
+/** `getPeerCertificate` exists only on a TLS socket; a plain http listener hands us a `net.Socket`. */
+function peerCertificate(socket: NodeJS.Socket): PeerCertificate | undefined {
+  const tlsSocket = socket as Partial<TLSSocket>
+  return typeof tlsSocket.getPeerCertificate === 'function' ? tlsSocket.getPeerCertificate() : undefined
 }
 
 function handleRequest(server: Server, responder: LoopbackResponder, requests: LoopbackRequest[], requireClientCert: boolean): void {
@@ -98,16 +110,20 @@ function handleRequest(server: Server, responder: LoopbackResponder, requests: L
     const chunks: Buffer[] = []
     req.on('data', (chunk: Buffer) => chunks.push(chunk))
     req.on('end', () => {
-      const peer = req.socket.getPeerCertificate()
+      // A TLS peer that presented no certificate yields an empty object, not `undefined`, so the
+      // presence test is the subject rather than the object itself.
+      const peer = peerCertificate(req.socket)
+      const subject = peer?.subject
+      const presentedClientCert = subject !== undefined && Object.keys(subject).length > 0
       const entry: LoopbackRequest = {
         method: req.method ?? '',
         url: req.url ?? '',
         headers: req.headers,
         body: Buffer.concat(chunks).toString('utf8'),
-        ...(peer !== undefined && Object.keys(peer.subject).length > 0 ? { clientCertSubject: peer.subject as Record<string, string> } : {}),
+        ...(presentedClientCert ? { clientCertSubject: subject as Record<string, string> } : {}),
       }
       requests.push(entry)
-      if (requireClientCert && peer === undefined) {
+      if (requireClientCert && !presentedClientCert) {
         res.writeHead(401, { 'content-type': 'text/html' })
         res.end('<html>login required</html>')
         return
