@@ -1,0 +1,25 @@
+{
+  "hostname": "sw1",
+  "version": "4.28.13.1M",
+  "systemMacAddress": "00:00:00:00:00:00",
+  "modelName": "DCS-7050TX-64",
+  "serialNumber": "0000000000",
+  "aristaHardwareModel": "DCS-7050TX-64",
+  "aristaHardwareVersion": "0.00",
+  "internalVersion": "4.28.13.1M",
+  "internalArch": "ap48_h_-r4",
+  "architecture": "x86_64",
+  "versionFormat": "short",
+  "mem": 7934740,
+  "bootupTimestamp": 0,
+  "uptime": 0,
+  "uptimeString": "0:00:00",
+  "versionInfo": [
+    {
+      "version": "eos4.28.13.1M.vmlinux",
+      "imageType": "eroute",
+      "email": "",
+      "timestamp": ""
+    }
+  ]
+}
