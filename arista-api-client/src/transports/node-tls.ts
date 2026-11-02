@@ -20,7 +20,7 @@ import { checkServerIdentity, type ConnectionOptions, type PeerCertificate } fro
 
 import { NotSupportedError, TlsError } from '../errors'
 import { warnOnce } from '../internal/warn'
-import type { TlsMaterialOptions } from './contract'
+import { TLS_MATERIAL_KEYS, type TlsMaterialOptions } from './contract'
 
 /** Trust material after resolution: PEM text, never a path, so the caller can cache or log safely. */
 export interface ResolvedTlsMaterial {
@@ -110,7 +110,10 @@ export function resolveTlsConnect(
   mode: TlsMode,
 ): NodeTlsConnect {
   const given = input as Record<string, unknown>
-  const supplied = Object.keys(input).filter((key) => given[key] !== undefined)
+  // Only the trust-material keys count here. A transport hands this function its **whole** options
+  // record, so `Object.keys(input)` would read `kind`, `host`, `username` and `password` as if they
+  // were DR-013 material and refuse a legitimate cleartext `session` transport outright.
+  const supplied = TLS_MATERIAL_KEYS.filter((key) => given[key] !== undefined)
   if (target.scheme === 'http' && supplied.length > 0) {
     throw new NotSupportedError(
       `TLS options (${supplied.join(', ')}) cannot apply to a cleartext http endpoint (${target.host}:${String(target.port)}). Use kind 'https' or an https baseUrl (DR-013).`,

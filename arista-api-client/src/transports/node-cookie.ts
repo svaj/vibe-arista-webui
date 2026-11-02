@@ -27,7 +27,7 @@ import type { JsonRpcRequest } from '../types/eapi'
 import { TransportBase, idPolicyFrom, type RawSend, type RawSendContext, type TransportKernel } from './base'
 import { DEFAULT_HTTPS_PORT, DEFAULT_TIMEOUT_MS, type SessionTransportOptions } from './contract'
 import { resolveEndpoint, type ResolvedEndpoint } from './endpoint'
-import { mapHttpStatus, type WireErrorContext } from './error-map'
+import { guardEmptyResponseBody, mapHttpStatus, type WireErrorContext } from './error-map'
 import { assertCleartextAllowed } from './local'
 import { nodeCall } from './node-http'
 import { resolveTlsConnect, type NodeTlsConnect } from './node-tls'
@@ -150,7 +150,11 @@ function sessionKernel(options: SessionTransportOptions): TransportKernel {
       context,
     )
     if (response.status >= 300) throw mapHttpStatus(response.status, response.statusText, response.body, context)
-    return response.body
+    // The same guard the `fetch` and `node:https` senders apply (DR-019): an empty 200 is a listener
+    // that answered with nothing, and `parseResponse` calling that "malformed JSON" points the operator
+    // at their own body instead of at the switch. Not applied to `/login`, where an empty 200 with a
+    // `Set-Cookie` is the *expected* answer.
+    return guardEmptyResponseBody(response.body, context)
   }
 
   async function endSession(): Promise<void> {
