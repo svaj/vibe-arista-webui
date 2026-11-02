@@ -2,7 +2,7 @@
  * Request/response id correlation — M2 (#4), closing the gap PR #19 recorded for M1.
  *
  * M1 (#3) generates `<clientId>-<seq>` ids (DR-017) and `parseResponse` already reads the echoed
- * `id`, but nothing compared the two: pyeapi never does either (`eapilib.py:347` sets
+ * `id`, but nothing compared the two: pyeapi never does either (`eapilib.py:354` sets
  * `reqid = id(self)` and the reply's `id` is dropped on the floor). ARCHITECTURE §7 promises
  * "each request has its own id and the response is matched by id", and a *single* operator talking to
  * *one* switch is exactly the case where a mismatch means something real: a proxy that replayed a
@@ -16,8 +16,14 @@
  * independently of which request they answered (DR-003 keeps those portable). The codec still learns
  * the id — `ResponseContext.requestId` fills `requestId` on every error it builds (§ `wire.ts`).
  *
- * A response that omits `id` is tolerated: EOS always echoes one, but `test/fixtures/wire/` has
- * samples without it, and the JSON-RPC envelope types already model `id` as optional.
+ * A response that omits `id` is tolerated, and that is a scope decision rather than a gap: this check
+ * exists to refuse a body that answers **someone else's** request, so it can only act on an id it can
+ * see, and `undefined` means "cannot tell" — not "wrong". The envelope contracts already model `id` as
+ * optional (`JsonRpcSuccess`/`JsonRpcFailure`, src/types/eapi.ts) and `parseResponse` accepts an
+ * id-less body, so tightening it here would change the codec's contract at the wrong seam; the codec
+ * still fills `requestId` on every error it builds from `ResponseContext.requestId`. Whether a real
+ * EOS 4.28 listener can omit the echoed id is not settled by anything offline — it is a
+ * [device-sweep](../../docs/STATUS.md) question, and the tolerance costs nothing meanwhile.
  */
 
 import { EapiErrorCode, ProtocolError } from '../errors'
