@@ -153,7 +153,7 @@ describe('chunkConfig — EOF-terminated blocks', () => {
   })
 
   it('terminates on EOF only at column 0, matching upstream — and that is a live hazard for code units', () => {
-    // The terminator is compared after rstrip ONLY (client.py:744), so `      EOF` never ends the block
+    // The terminator is compared after rstrip ONLY (client.py:743), so `      EOF` never ends the block
     // at indent 0. pyeapi's own code-unit fixture hides the consequence by putting the block last;
     // here an `interface` section after it is consumed. Preserved for parity (MIGRATION.md §5 row 41)
     // and flagged in docs/STATUS.md §3 for the config-text capture to settle.
@@ -198,8 +198,9 @@ describe('chunkConfig — the recursion invariant is structural, not a comment',
 
 describe('chunkConfig — explicit failure modes', () => {
   it('raises ConfigParseError with pyeapi\'s wording when a body line is shorter than the block indent', () => {
-    // Byte-identical to upstream `client.py:723-730` (`{section_key!r}`, `{line!r}` via pythonRepr):
-    // a device log and this message can be diffed. Only the class differs (row 33).
+    // Byte-identical to upstream `client.py:723-726` (`{section_key!r}`, `{line!r}` via pythonRepr;
+    // the predicate around it is :720-730): a device log and this message can be diffed. Only the
+    // class differs (row 44).
     const config = 'router unsupported-literal\n      free-form body at indent six\n   !\n!\n'
     const expected =
       "Unable to parse section 'router unsupported-literal' at indent 6 due to short line '   !'; " +
@@ -230,7 +231,7 @@ describe('chunkConfig — explicit failure modes', () => {
   it('names the line when a config begins with an indented line, where pyeapi raises KeyError: None', () => {
     // client.py:763 assumes "key is always expected to be set by now"; for a config whose first line is
     // indented it is not, and Python dies with `KeyError: None` — no line, no section, no explanation.
-    // row 32.
+    // row 43.
     expect(() => chunkConfig('   orphan\nsecond\n')).toThrow(ConfigParseError)
     try {
       chunkConfig('   orphan\nsecond\n')
@@ -247,5 +248,60 @@ describe('chunkConfig — explicit failure modes', () => {
     // 6-indent body is "short" to a text editor and fine to pyeapi. Pinned so nobody "fixes" the check
     // into an under-indentation error without a device citation.
     expect(() => chunkConfig('router x\n      deep\n   not short at all\n!\n')).not.toThrow()
+  })
+})
+describe('chunkConfig — line boundaries THROUGH the whole pipeline (PLAN M6: CRLF inside the chunker, not only in text.ts)', () => {
+  it('CRLF survives nesting: keys rstrip the terminator, values keep CRLF verbatim — like upstream', () => {
+    // Transcribed from upstream `_chunkify` on 2026-11-02 (same runner as the oracle):
+    //   [['   profile PR', '   profile PR\r\n      cipher x\r\n'],
+    //    ['mac security', 'mac security\r\n   profile PR\r\n      cipher x\r\n'],
+    //    ['!', '!\r\n']]
+    // The recursion is the interesting part — the CRLFs ride through `chunkAtIndent(current, 3)` and
+    // the sub-section KEY is still rstripped (JS `\s` includes `\r`, so keys match their LF spelling).
+    expect(
+      entries('mac security\r\n   profile PR\r\n      cipher x\r\n!\r\n'),
+    ).toEqual([
+      ['   profile PR', '   profile PR\r\n      cipher x\r\n'],
+      ['mac security', 'mac security\r\n   profile PR\r\n      cipher x\r\n'],
+      ['!', '!\r\n'],
+    ])
+  })
+
+  it('a code unit closed by a COLUMN-0 EOF mid-config: the swallow ends and later sections resume normally', () => {
+    // The other side of the column-0-EOF note above — with `EOF` at column 0 the swallow DOES end.
+    // Transcribed from upstream on 2026-11-02 and matched here entry for entry, order included:
+    expect(entries('router general\n   code unit U\n      body()\nEOF\ninterface Ethernet1\n   no shutdown\n!\n')).toEqual([
+      ['   code unit U', '   code unit U\n      body()\nEOF\n'],
+      ['router general', 'router general\n   code unit U\n      body()\nEOF\n'],
+      ['interface Ethernet1', 'interface Ethernet1\n   no shutdown\n'],
+      ['!', '!\n'],
+    ])
+    // `   no shutdown` is NOT a key despite the deeper-looking line: the subsection probe tests
+    // `line[indent] == ' '` (client.py:729), and index 3 of `   no shutdown` is `n` — no recurse,
+    // no phantom sub-section. Pinned because it looks like a missed key.
+    expect(chunkConfig('interface Ethernet1\n   no shutdown\n').has('   no shutdown')).toBe(false)
+  })
+})
+
+describe('chunkConfig — CPython-vs-JS whitespace seams, pinned as DIVERGENCES (MIGRATION.md §5 row 53)', () => {
+  it('a banner terminated by NEL (U+0085) ENDS the block in CPython and does NOT end it here', () => {
+    // CPython rstrips NEL (str.isspace includes \u0085) so upstream's `line_rs == 'EOF'` test
+    // (client.py:743) fires on 'EOF\u0085'. Transcribed:
+    //   [['banner motd', 'banner motd\nhi\nEOF\x85'], ['z', 'z\n']]
+    // Here rstrip follows JS \s, which excludes \u0085 — the terminator compare fails and the rest
+    // of the config is swallowed by the banner. EOS never emits NEL, so this only bites a pasted or
+    // transcoded blob; the pin exists so the trade is visible, not surprising. text.test.ts pins the
+    // primitive side of the same seam.
+    expect(entries('banner motd\nhi\nEOF\u0085z\n')).toEqual([['banner motd', 'banner motd\nhi\nEOF\u0085z\n']])
+  })
+
+  it('a line ending in U+001c keys WITH the control here; the upstream key is the rstripped text', () => {
+    // Transcribed upstream: 'x\u001cy' -> [['x', 'x\x1c'], ['y', 'y']] — CPython rstrip eats \x1c.
+    // Ours: the control survives rstrip (JS \s again), so the KEY carries it. Split boundaries agree
+    // (U+001c is a line break in both — see text.test.ts); only the rstrip differs.
+    expect(entries('x\u001cy')).toEqual([
+      ['x\u001c', 'x\u001c'],
+      ['y', 'y'],
+    ])
   })
 })
