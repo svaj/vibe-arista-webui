@@ -19,6 +19,8 @@ import { readFileSync, unlinkSync } from 'node:fs'
 import { createServer as createHttpServer, type IncomingHttpHeaders, type Server } from 'node:http'
 import { createServer as createHttpsServer } from 'node:https'
 import { createHash } from 'node:crypto'
+import { connect as netConnect, type AddressInfo } from 'node:net'
+import { setTimeout as sleep } from 'node:timers/promises'
 import type { PeerCertificate, TLSSocket } from 'node:tls'
 
 /** Absolute path to `test/fixtures/tls/`, resolved from this module. */
@@ -59,10 +61,21 @@ export interface LoopbackAnswer {
   readonly headers?: Readonly<Record<string, string | readonly string[]>>
   readonly body?: string
   /**
-   * Drop the socket without answering — what a half-open listener or an intermediary timing out looks
-   * like. The client must map it to `TransportError` with a `retryable` hint, not to a parse failure.
+   * Drop the connection without answering — what a half-open listener, or an intermediary giving up,
+   * looks like. The client must map it to `TransportError` with a `retryable` hint, not to a parse
+   * failure.
+   *
+   * `true`/`'fin'` closes the socket cleanly (the request bytes are already on the wire, so the far
+   * end may or may not have acted on them); `'rst'` resets it. Both are worth testing because they
+   * surface as **different** client errors: a FIN gives undici `UND_ERR_SOCKET` ("other side closed",
+   * with the whole request counted in `bytesWritten`), an RST gives a bare `ECONNRESET`.
+   *
+   * This destroys the **socket**, never `req.destroy()`: on a server, `IncomingMessage.destroy()`
+   * tears down only the request stream and leaves the connection open waiting for the next pipelined
+   * request, so a client awaiting a response waits forever. That was the real cause of the
+   * mid-request test timing out — not a bug in the fetch path.
    */
-  readonly hangUp?: boolean
+  readonly hangUp?: boolean | 'fin' | 'rst'
   /**
    * Hold the request open this long before answering. Used to cross the client deadline, where the
    * only acceptable outcome is `TimeoutError` — not `ProtocolError` from an empty body (DR-019).
@@ -129,8 +142,13 @@ function handleRequest(server: Server, responder: LoopbackResponder, requests: L
         return
       }
       const answer = responder(entry, requests.length - 1)
-      if (answer.hangUp === true) {
-        req.destroy()
+      if (answer.hangUp === true || answer.hangUp === 'fin') {
+        // The socket, not the request — see the `hangUp` doc above.
+        req.socket.destroy()
+        return
+      }
+      if (answer.hangUp === 'rst') {
+        req.socket.resetAndDestroy()
         return
       }
       const send = (): void => {
@@ -213,6 +231,52 @@ export async function listenHttps(responder: LoopbackResponder, options: { reado
       })
     },
   }
+}
+
+/** Try one TCP connect and report how it ended, never leaving a socket behind. */
+function probeConnection(port: number): Promise<'accepted' | 'refused' | 'other'> {
+  return new Promise((resolve) => {
+    const socket = netConnect({ port, host: '127.0.0.1' })
+    socket.once('connect', () => {
+      socket.destroy()
+      resolve('accepted')
+    })
+    socket.once('error', (error: NodeJS.ErrnoException) => {
+      socket.destroy()
+      resolve(error.code === 'ECONNREFUSED' ? 'refused' : 'other')
+    })
+  })
+}
+
+/**
+ * A port number that is **provably** refusing connections: bind an ephemeral listener, close it, then
+ * wait until the kernel answers `ECONNREFUSED`.
+ *
+ * Needed because closing a listener is not atomic with the port refusing connections. For a short
+ * window afterwards the kernel still completes the handshake and then sends RST, so a client that
+ * connects immediately sees `read ECONNRESET` (a reset after the connection existed) rather than
+ * `connect ECONNREFUSED` (nothing ever reached the device) — and those two map to different error
+ * classes on purpose. A bind-then-close-then-connect test therefore asserts the wrong thing, and
+ * hard-coding a port number is not an acceptable substitute (docs/TESTING.md §1: loopback, ephemeral,
+ * never fixed).
+ */
+export async function closedPort(): Promise<number> {
+  const probe = createHttpServer()
+  await new Promise<void>((resolve, reject) => {
+    probe.once('error', reject)
+    probe.listen(0, '127.0.0.1', () => resolve())
+  })
+  const port = (probe.address() as AddressInfo).port
+  await new Promise<void>((resolve) => probe.close(() => resolve()))
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    const outcome = await probeConnection(port)
+    if (outcome === 'refused') return port
+    if (outcome === 'other') {
+      throw new Error(`probing port ${String(port)} for ECONNREFUSED returned something else — the loopback assumption is broken`)
+    }
+    await sleep(25)
+  }
+  throw new Error(`port ${String(port)} never started refusing connections, so the dead-endpoint case cannot be made deterministic`)
 }
 
 /** A `POST /command-api` body answered with a JSON-RPC envelope echoing the request id. */

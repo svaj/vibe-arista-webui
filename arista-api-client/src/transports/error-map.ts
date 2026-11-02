@@ -50,6 +50,21 @@ function baseContext(ctx: WireErrorContext): TransportErrorOptions {
   }
 }
 
+/**
+ * A `200` whose body is empty is a listener that answered without producing anything, not a body that
+ * happens to be unparseable. Reported as `TransportError` by **both** senders (`fetch` and
+ * `node:https`) so the two runtimes agree; without it `parseResponse` would call it `-32700` malformed
+ * JSON and point the operator at the wrong thing. `retryable: false` because the request did reach the
+ * listener, so a write may have been applied before the response went empty.
+ */
+export function guardEmptyResponseBody(body: string, ctx: WireErrorContext): string {
+  if (body.trim() !== '') return body
+  throw new TransportError(
+    `eAPI at ${ctx.endpoint} answered HTTP 200 with an empty body. The listener accepted the request and produced nothing, so no command result can be reported — check the switch's eAPI state before re-sending (DR-019).`,
+    { ...baseContext(ctx), status: 200, retryable: false },
+  )
+}
+
 /** Body text prepared for an error message: DR-011 redaction, one line, truncation. */
 export function safeBodyText(body: string): string {
   const oneLine = redactWireText(body).replace(/\s+/g, ' ').trim()
@@ -127,19 +142,31 @@ export function mapHttpStatus(
 
 /**
  * The error shapes we expect from `fetch`/undici and from `node:https`:
- *  - `AbortError` from an `AbortController` (our deadline, or the caller's `signal`);
- *  - `TypeError: fetch failed`, whose `cause` carries the real syscall/TLS code;
- *  - `Error: socket hang up` / `ECONNRESET` from a listener that closed the connection mid-request.
+ *  - `AbortError` (a `DOMException` in undici) from an `AbortController` — our deadline, or the
+ *    caller's `signal`;
+ *  - `TypeError: fetch failed`, whose **`cause` carries the real syscall/TLS code** — undici wraps
+ *    everything one level down, so classification must walk the chain rather than read `error.code`;
+ *  - `SocketError: other side closed` (`UND_ERR_SOCKET`) or a bare `read ECONNRESET` from a listener
+ *    that closed the connection mid-request;
+ *  - `UND_ERR_HEADERS_TIMEOUT`/`UND_ERR_BODY_TIMEOUT` when undici's own socket timeouts win the race
+ *    against our `AbortController`.
+ *
+ * `node:https` reports the syscall code directly (no `cause` layer), which is why the same table
+ * serves both `fetch` transports and the Node transports.
  */
 const TLS_CODES: readonly string[] = [
   'CERT_HAS_EXPIRED',
   'CERT_REVOKED',
   'CERT_UNTRUSTED',
+  'CERT_COMMON_NAME_INVALID',
   'DEPTH_ZERO_SELF_SIGNED_CERT',
+  'HOSTNAME_MISMATCH',
   'SELF_SIGNED_CERT_IN_CHAIN',
   'UNABLE_TO_GET_ISSUER_CERT',
   'UNABLE_TO_GET_ISSUER_CERT_LOCALLY',
   'UNABLE_TO_VERIFY_LEAF_SIGNATURE',
+  'UNSUPPORTED_PROTOCOL',
+  'WRONG_VERSION_NUMBER',
 ]
 
 /** Codes that mean "the TLS layer itself failed", matched as a prefix family (`ERR_SSL_*`, `ERR_TLS_*`). */
@@ -155,6 +182,8 @@ const CONNECT_CODES: readonly string[] = [
   'ENETRESET',
   'ENOTFOUND',
   'EAI_AGAIN',
+  'EAI_FAIL',
+  'EAI_NONAME',
   'ENOENT',
   'EACCES',
   'EPERM',
@@ -164,12 +193,24 @@ const CONNECT_CODES: readonly string[] = [
   'UND_ERR_CONNECT',
 ]
 
+/**
+ * Codes for a connection that died **after** the request was on its way: the far end hung up, reset,
+ * or was torn down. `UND_ERR_SOCKET` is undici's "other side closed" and carries `bytesWritten` for
+ * the whole request; a bare `ECONNRESET` is the RST equivalent from `node:https`/`net`.
+ */
 const HANGUP_CODES: readonly string[] = ['ECONNRESET', 'UND_ERR_SOCKET', 'EPIPE', 'ERR_STREAM_PREMATURE_CLOSE']
 
+/** undici's own idle/read timeouts: the request went, the answer did not come back. */
+const RESPONSE_TIMEOUT_CODES: readonly string[] = ['UND_ERR_HEADERS_TIMEOUT', 'UND_ERR_BODY_TIMEOUT']
+
+/** Cancellation, whichever layer noticed it first. */
+const ABORT_CODES: readonly string[] = ['ABORT_ERROR', 'UND_ERR_ABORTED']
+
 /** Fallback patterns, used only when there is no `code` to match — intermediaries in front of EOS vary. */
-const TLS_TEXT = /\bssl\b|\btls\b|certificate|handshake|self[- ]signed|altname|cipher|record layer|wrong version number|unsupported protocol/i
+const TLS_TEXT = /\bssl\b|\btls\b|certificate|handshake|self[- ]signed|altname|cipher|record layer|wrong version number|unsupported protocol|unable to get issuer|too many certificates/i
 const HANGUP_TEXT = /socket hang up|other side closed|premature close|connection reset/i
 const CONNECT_TEXT = /econnrefused|enotfound|eai_again|getaddrinfo|connection refused|network unreachable|no such file or directory|unix socket/i
+const TIMEOUT_TEXT = /headers timeout|body timeout/i
 
 /** Walk the `cause` chain — undici hides the syscall code under a `TypeError: fetch failed`. */
 function errorChain(error: unknown): readonly unknown[] {
@@ -204,19 +245,29 @@ function textsOf(chain: readonly unknown[]): string {
     .join(' ')
 }
 
-export type WireFailureClass = 'abort' | 'tls' | 'connect' | 'hangup' | 'unknown'
+export type WireFailureClass = 'abort' | 'tls' | 'connect' | 'hangup' | 'response-timeout' | 'unknown'
 
-/** Classify one wire failure into the taxonomy: code first, message text only as a fallback. */
+/**
+ * Classify one wire failure into the taxonomy: code first, message text only as a fallback.
+ *
+ * Order matters. TLS is checked before connect/hangup because a failed handshake often arrives as a
+ * connection-level error too, and `TlsError` (from our own fingerprint pin, `node-tls.ts`) is checked
+ * before anything else so a deliberate trust decision is never reclassified as infrastructure noise.
+ */
 export function classifyWireFailure(error: unknown): WireFailureClass {
   const chain = errorChain(error)
   const codes = codesOf(chain)
+  const names = namesOf(chain)
   const text = textsOf(chain)
-  if (namesOf(chain).includes('AbortError')) return 'abort'
+  if (names.includes('TlsError')) return 'tls'
+  if (names.includes('AbortError') || codes.some((code) => ABORT_CODES.includes(code.toUpperCase()))) return 'abort'
   if (codes.some((code) => TLS_CODE_PREFIXES.some((prefix) => code.startsWith(prefix)) || TLS_CODES.includes(code))) return 'tls'
   if (codes.some((code) => CONNECT_CODES.includes(code))) return 'connect'
   if (codes.some((code) => HANGUP_CODES.includes(code))) return 'hangup'
+  if (codes.some((code) => RESPONSE_TIMEOUT_CODES.includes(code))) return 'response-timeout'
   if (TLS_TEXT.test(text)) return 'tls'
   if (HANGUP_TEXT.test(text)) return 'hangup'
+  if (TIMEOUT_TEXT.test(text)) return 'response-timeout'
   if (CONNECT_TEXT.test(text)) return 'connect'
   return 'unknown'
 }
@@ -232,6 +283,14 @@ function describeCause(error: unknown): string {
  * Map a thrown wire failure to the error taxonomy. `deadlineHit` distinguishes *our* timeout
  * (`TimeoutError`, DR-019) from a caller's `AbortSignal` (`TransportError`, which is not a device
  * problem): the difference between "the switch did not answer" and "you cancelled".
+ *
+ * ## What `retryable` means here, and why the UI depends on it
+ *
+ * `true` — the request demonstrably never reached the device, so re-sending cannot double-apply a
+ * write. `false` — the commands may already have run (a reset after the body was written, any
+ * timeout), which for a configuration write is the only answer that matters. `undefined` — we cannot
+ * tell, and the UI must say so instead of guessing. DR-019's own retry only ever fires on
+ * `ConnectError`, so a `true` on another class makes a resend *safe*, not automatic.
  */
 export function mapWireFailure(error: unknown, ctx: WireErrorContext, deadlineHit: boolean): TransportError {
   const options = baseContext(ctx)
@@ -247,17 +306,27 @@ export function mapWireFailure(error: unknown, ctx: WireErrorContext, deadlineHi
     case 'abort':
       return new TransportError(`eAPI request to ${ctx.endpoint} was cancelled before it completed`, { ...options, retryable: false })
     case 'tls':
+      // Nothing reached the CLI, so a resend is safe — but this class is never auto-retried by
+      // DR-019, because the failure is deterministic: the same trust configuration fails again.
       return new TlsError(
         `TLS failure connecting to ${ctx.endpoint}: ${detail}. EOS ships a self-signed certificate, so give this transport "ca" or "fingerprint", or — deliberately, and with a warning — "dangerouslyDisableTlsVerification" (DR-013).`,
-        options,
+        { ...options, retryable: true },
       )
     case 'connect':
       return new ConnectError(`cannot reach eAPI at ${ctx.endpoint}: ${detail}`, { ...options, retryable: true })
     case 'hangup':
-      return new TransportError(`the eAPI listener at ${ctx.endpoint} closed the connection mid-request: ${detail}`, {
-        ...options,
-        retryable: true,
-      })
+      // The request had already been written when the far end hung up. EOS's nginx may have passed it
+      // to the CLI before the socket died, so this is the one class where "retry it" can silently
+      // apply a configuration twice. Conservative flag, and the message says why.
+      return new TransportError(
+        `the eAPI listener at ${ctx.endpoint} closed the connection mid-request: ${detail}. The commands may already have run on the switch — check its state before re-sending (DR-019).`,
+        { ...options, retryable: false },
+      )
+    case 'response-timeout':
+      return new TimeoutError(
+        `the eAPI listener at ${ctx.endpoint} accepted the request and never answered it: ${detail}. The device may still have applied the commands — check its state before re-sending a write (DR-019).`,
+        { ...options, retryable: false },
+      )
     default:
       return new TransportError(`transport failure talking to ${ctx.endpoint}: ${detail}`, options)
   }

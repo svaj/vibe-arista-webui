@@ -7,7 +7,12 @@
  *  - `::test_send_with_authentication` (an authenticated send still completes) → the header parity block
  *  - `::test_send_unauthorized_user` (401) → `AuthError`, where pyeapi raised `ConnectionError` (row 21)
  *  - `::test_send_raises_connection_error` (a body that is not JSON) → typed error, not a parse failure
- *  - `::test_send_raises_connection_socket_error` (socket trouble) → `TransportError`/`ConnectError`
+ *  - `::test_send_raises_connection_socket_error` (socket trouble) → `TransportError`/`ConnectError`.
+ *    pyeapi folds every wire failure into one `ConnectionError(connection, 'Socket error during eAPI
+ *    connection: …')` (`eapilib.py:473-478`), so upstream cannot distinguish "nothing reached the
+ *    switch" from "the switch may already have run my write". This suite asserts the split, and asserts
+ *    the `retryable` flag on each class, because that flag is what a UI renders as "this config write
+ *    may have landed" (DR-019).
  *  - `::test_create_http_connection` / `::test_create_https_connection` (construction + `__str__`) →
  *    the `address` assertions
  * The `http.client`/`ssl` plumbing those upstream tests assert with `Mock`s (`transport.putrequest`,
@@ -27,7 +32,7 @@ import { createTransport } from './create'
 import { EAPI_CONTENT_TYPE, FetchTransport, HttpTransport } from './fetch'
 import { basicAuth } from './auth'
 import { DEFAULT_TIMEOUT_MS } from './contract'
-import { listenHttp, listenHttps, healthyDevice, type LoopbackDevice, type LoopbackRequest } from '../testing/loopback-device'
+import { listenHttp, listenHttps, closedPort, healthyDevice, type LoopbackDevice, type LoopbackRequest } from '../testing/loopback-device'
 
 let device: LoopbackDevice | undefined
 /** Every `warnOnce` line emitted by the current case — these warnings are behaviour (DR-008/DR-013/DR-014). */
@@ -222,17 +227,18 @@ describe('HTTP status mapping, before the body is parsed (row 21)', () => {
 
 describe('transport-level failures below HTTP', () => {
   it('a refused port is ConnectError with `retryable: true` (nothing reached the device)', async () => {
-    // Close an ephemeral listener and reuse its number: the port is guaranteed free at that moment,
-    // and no fixed port is ever bound or assumed.
-    const probe = await listenHttp(healthyDevice())
-    const deadPort = probe.port
-    await probe.close()
+    // `closedPort()` binds an ephemeral listener, closes it and waits for the kernel to actually
+    // answer ECONNREFUSED. The obvious "close it and reuse the number" race asserted a false
+    // premise: for a moment after `close()` the kernel still completes the handshake and then sends
+    // RST, which is a *reset* (`read ECONNRESET`) and maps to a different class on purpose.
+    const deadPort = await closedPort()
     const transport = createTransport({ kind: 'http', host: '127.0.0.1', port: deadPort, allowInsecureTransport: true })
     const failure = await transport.execute('show version').catch((error: unknown) => error)
     expect(failure).toBeInstanceOf(ConnectError)
     expect((failure as InstanceType<typeof ConnectError>).retryable).toBe(true)
     expect((failure as InstanceType<typeof ConnectError>).commands).toEqual(['show version'])
     expect((failure as InstanceType<typeof ConnectError>).endpoint).toBe(`http://127.0.0.1:${String(deadPort)}/command-api`)
+    expect((failure as InstanceType<typeof ConnectError>).message).toMatch(/ECONNREFUSED/u)
   })
 
   it('a name that cannot resolve is ConnectError as well (.invalid is RFC 2606 reserved)', async () => {
@@ -242,13 +248,48 @@ describe('transport-level failures below HTTP', () => {
     expect((failure as InstanceType<typeof ConnectError>).retryable).toBe(true)
   })
 
-  it('a listener that drops the socket mid-request is a retryable TransportError, not a parse failure', async () => {
-    device = await listenHttp(() => ({ hangUp: true }))
+  it('a listener that closes the socket mid-request is a TransportError that refuses to promise a resend', async () => {
+    // undici reports this as `UND_ERR_SOCKET` ("other side closed") with the whole request already
+    // written. Whether EOS's nginx passed it to the CLI before dying is unknowable, so `retryable`
+    // must be false — that flag is what a UI uses to decide whether a config write may have landed.
+    device = await listenHttp(() => ({ hangUp: 'fin' }))
+    const transport = createTransport({ kind: 'http', baseUrl: device.origin, allowInsecureTransport: true })
+    const failure = await transport.execute([{ cmd: 'configure', input: 'vlan 42\nEOF\n' }]).catch((error: unknown) => error)
+    expect(failure).toBeInstanceOf(TransportError)
+    expect(failure).not.toBeInstanceOf(ConnectError)
+    expect(failure).not.toBeInstanceOf(ProtocolError)
+    const typed = failure as InstanceType<typeof TransportError>
+    expect(typed.retryable).toBe(false)
+    expect(typed.message).toMatch(/closed the connection mid-request/u)
+    expect(typed.message).toMatch(/may already have run/u)
+    expect(typed.commands).toEqual([{ cmd: 'configure', input: 'vlan 42\nEOF\n' }])
+    // It is not mistaken for a parse failure, and the listener really did see the request.
+    expect(device.callCount()).toBe(1)
+  })
+
+  it('a listener that resets the connection mid-request maps the same way (bare ECONNRESET)', async () => {
+    // The RST variant arrives as a syscall-level `ECONNRESET` with no undici socket stats. Same
+    // conclusion, different error shape — the taxonomy must not depend on which one the runtime
+    // happened to surface.
+    device = await listenHttp(() => ({ hangUp: 'rst' }))
     const transport = createTransport({ kind: 'http', baseUrl: device.origin, allowInsecureTransport: true })
     const failure = await transport.execute('show version').catch((error: unknown) => error)
     expect(failure).toBeInstanceOf(TransportError)
-    expect((failure as InstanceType<typeof TransportError>).retryable).toBe(true)
+    expect((failure as InstanceType<typeof TransportError>).retryable).toBe(false)
     expect((failure as InstanceType<typeof TransportError>).message).toMatch(/closed the connection mid-request/u)
+  })
+
+  it('a 200 with no body at all is the transport failure it looks like, not malformed JSON', async () => {
+    // The listener answered the request and produced nothing. `parseResponse` would call that
+    // `-32700`, which sends the operator looking at their JSON instead of at the switch.
+    device = await listenHttp(() => ({ status: 200, body: '' }))
+    const transport = createTransport({ kind: 'http', baseUrl: device.origin, allowInsecureTransport: true })
+    const failure = await transport.execute('show version').catch((error: unknown) => error)
+    expect(failure).toBeInstanceOf(TransportError)
+    expect(failure).not.toBeInstanceOf(ProtocolError)
+    expect((failure as InstanceType<typeof TransportError>).status).toBe(200)
+    expect((failure as InstanceType<typeof TransportError>).retryable).toBe(false)
+    expect((failure as InstanceType<typeof TransportError>).message).toMatch(/empty body/u)
   })
 
   it('the self-signed certificate a stock switch serves fails with TlsError from fetch (DR-013)', async () => {

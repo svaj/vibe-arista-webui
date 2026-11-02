@@ -20,7 +20,7 @@ import type { JsonRpcRequest } from '../types/eapi'
 import { authorizationHeader } from './auth'
 import { idPolicyFrom, type RawSend, type TransportKernel } from './base'
 import type { CredentialOptions, TlsMaterialOptions, TransportBaseOptions, TransportKind } from './contract'
-import { mapHttpStatus, mapWireFailure, type WireErrorContext } from './error-map'
+import { guardEmptyResponseBody, mapHttpStatus, mapWireFailure, type WireErrorContext } from './error-map'
 import { EAPI_CONTENT_TYPE } from './fetch'
 import { resolveTlsConnect, type NodeTlsConnect, type TlsMode } from './node-tls'
 import type { ResolvedEndpoint } from './endpoint'
@@ -167,22 +167,9 @@ export function createNodeSender(params: {
     if (response.status >= 300) {
       throw mapHttpStatus(response.status, response.statusText, response.body, context)
     }
-    return parseHandshakeGuard(response.body, context)
+    // Shared with the `fetch` sender: an empty 200 is a transport fact, not a JSON problem.
+    return guardEmptyResponseBody(response.body, context)
   }
-}
-
-/**
- * A `200` with an empty body is what a half-open EAPI listener looks like; treat it as the transport
- * failure it is instead of letting `parseResponse` call it malformed JSON.
- */
-function parseHandshakeGuard(body: string, context: WireErrorContext): string {
-  if (body.trim() === '') {
-    throw new TransportError(`eAPI at ${context.endpoint} returned a 200 with an empty body`, {
-      endpoint: context.endpoint,
-      ...(context.request?.id === undefined ? {} : { requestId: context.request.id }),
-    })
-  }
-  return body
 }
 
 /**
