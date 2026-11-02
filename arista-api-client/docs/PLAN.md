@@ -247,25 +247,27 @@ graph LR
 ---
 
 ### M6 — Text-config engine
-**Port of:** `client.py:193-245` `section`/`_chunkify` (lru_cache) and `utils.py:175-235` `expand_range`/`collapse_range`; `abstract.py:82-101` `get_block`.
+**Port of:** `client.py:697-798` — `_chunkify` (the `@lru_cache` decorator sits at `:697`, body `:698-774`) and `section` (`:776-798`) — plus `utils.py:169-232` `lookahead`/`expand_range`/`collapse_range` and `abstract.py:82-101` `get_block`. *(The header previously cited `client.py:193-245`, which is the `Config`/`load_config` area — corrected 2026-11-02 after opening the file.)*
 
-- [ ] Port `_chunkify` as a pure function `chunkConfig(config: string): Map<string,string>` — indent-aware sections *and* nested sub-sections, with the recursion invariant (only the outer call may use `indent = 0`).
-- [ ] Carry the two special cases: `banner … MULTILINE` / EOF-terminated blocks, and `code unit …` continuation lines. Keep the explicit failure mode for a short line inside an indented block ("likely unhandled multiline literal block").
-- [ ] **Cache**: pyeapi uses an `lru_cache` on a method (a memory leak keyed by config text); replace with a content-hash `WeakMap`/single-entry memo invalidated on `refresh()` → **DR-026**.
-- [ ] `section(regex, {config})` semantics preserved: first matching key, `NotFoundError` when absent (pyeapi raises `TypeError` — map to `NotFoundError` for sane `catch`) → **DR-027**.
-- [ ] `getBlock(parent, config)` = anchored `^…$` lookup (`abstract.py:82`), returning `undefined` instead of throwing.
-- [ ] `expandRange('1-3,7') → ['1','2','3','7']` and `collapseRange([...]) → '1-3,7'`; pyeapi's `*` and comma/range delimiters preserved. These drive `interface Ethernet1-4`, `vlan 10-20`, `switchport trunk allowed vlan`.
-- [ ] Config-text helpers used by every resource: `findLine(config, re)`, `parseBlock(body)`, `unquote(value)` (EOS `"quoted string"` handling in `description`/`name`).
+- [x] Port `_chunkify` as a pure function `chunkConfig(config: string): Map<string,string>` — indent-aware sections *and* nested sub-sections, with the recursion invariant (only the outer call may use `indent = 0`) now enforced structurally: the indent parameter is module-private (MIGRATION.md §5 row 42).
+- [x] Carry the two special cases: `banner … MULTILINE` / EOF-terminated blocks, and `code unit …` continuation lines. Keep the explicit failure mode for a short line inside an indented block ("likely unhandled multiline literal block"). Pinned against transcribed upstream output both ways — indented EOF keeps swallowing (row 41) and column-0 EOF closes correctly — `chunk.test.ts`.
+- [x] **Cache**: pyeapi uses an `lru_cache` on a method (a memory leak keyed by config text); replaced by a single-entry content-hash memo with exact-equality confirmation, invalidated via `invalidate()` (driven by `refresh()` in M4) → **DR-026**; the shared document is a `ReadonlyMap` (rows 12/52).
+- [x] `section(regex, {config})` semantics preserved: first matching key, `NotFoundError` when absent (pyeapi raises `TypeError` at `client.py:795`; verified) → **DR-027** (rows 13/50), `NotSupportedError` for the pyeapi sentinel strings.
+- [x] `getBlock(parent, {config})` = anchored `^…$` lookup (`abstract.py:98`), returning `undefined` instead of throwing, catching only `NotFoundError` (row 51).
+- [x] `expandRange('1-3,7') → ['1','2','3','7']` and `collapseRange([...]) → '1-3,7'`; pyeapi's `*` and comma/range delimiters preserved — with `*`/`Ethernet*`/`foo`/`''` now REFUSED where pyeapi passed them through, and its zero-truthiness artefacts pinned (rows 45-48). These are what drive `interface Ethernet1-4`, `vlan 10-20`, `switchport trunk allowed vlan` for M9/M10 — pyeapi itself has no range callers (row 45).
+- [x] Config-text helpers used by every resource: `findLine(config, re)`, `parseBlock(body)`, `unquote(value)` (EOS `"quoted string"` handling in `description`/`name`, row 49), plus `splitLines`/`rstrip`/`lineIndent` with CPython-boundary faithfulness (row 53). **Carry-over for M7 (#9):** `describeLine` keeps the first whitespace run inside `value` (` "quoted"` with quotes), contradicting its own doc and making its `unquote` call unreachable — pinned as current behaviour in `text.test.ts`; fix it deliberately there, not by accident.
+
+**Node-layer gap (expected, not a blocker here):** the `Node.section()` method and the config-cache wiring (`node.refresh() → invalidate()`) land with **M4 (#6)** — that branch owns the `Node` class. This branch deliberately ships the pure engine + cache and does not create competing `Node` methods. Likewise, `src/config` is not yet re-exported from `src/index.ts`/`src/node.ts` — M7 (#9) wires the public surface (and owns the missing `USAGE.md` snippet, DoD item 5).
 
 **Tests (high priority — pyeapi's own `_chunkify` coverage is thin; expect to write more than upstream):**
-- [ ] Golden fixtures from real EOS: capture supported 4.28 config forms from cEOS early, and retain separate 7050TX-64 / 4.28.13.1M captures for target parity. Include `router bgp` sub-blocks (`address-family`), `vlan` blocks, `port-channel` with `member interface`, nested `mac security profile`, `class-map`/`policy-map` where supported; record unsupported cases explicitly.
-- [ ] `banner motd MULTILINE: …\nEOF` block stays one section; `code unit` line grouping.
-- [ ] Short-line-inside-block → the explicit ValueError-equivalent (`ConfigParseError`), not a wrong answer.
-- [ ] `section()` returns the same text pyeapi would for those fixtures (parity assertions).
-- [ ] Range helpers: pyeapi's 15 `test_utils.py` cases incl. `expand_range('1-3,5')`, mixed ports, invalid input.
-- [ ] Property test (fast-check): `collapseRange(expandRange(x)) === canonical(x)` for generated ranges.
+- [ ] Golden fixtures from real EOS: capture supported 4.28 config forms from cEOS early, and retain separate 7050TX-64 / 4.28.13.1M captures for target parity. Include `router bgp` sub-blocks (`address-family`), `vlan` blocks, `port-channel` with `member interface`, nested `mac security profile`, `class-map`/`policy-map` where supported; record unsupported cases explicitly. *(Left open deliberately: what shipped is 11 **hand-authored** `.conf` fixtures + an upstream-pyeapi oracle — `test/fixtures/config/README.md` says so. The cEOS image is not installed on this machine; the capture is M12 (#14), STATUS §3.)*
+- [x] `banner motd MULTILINE: …\nEOF` block stays one section; `code unit` line grouping.
+- [x] Short-line-inside-block → the explicit ValueError-equivalent (`ConfigParseError`), not a wrong answer.
+- [x] `section()` returns the same text pyeapi would for those fixtures (parity assertions) — `chunk.fixture.test.ts` (ordered-entry oracle) + `section.test.ts` (every oracle key replayed through the transcribed first-match rule; inline answers transcribed 2026-11-02).
+- [x] Range helpers: all **6** `test_utils.py` range cases (`test/unit/test_utils.py:51-81` — the box's "15" counted every method in that file; 9 of them exercise `make_iterable`/`load_module`/`debug`, which are M7-planned or dropped (§7)) ported by name, incl. `expand_range('1-3,5')`, mixed ordering, invalid input.
+- [x] Property test (fast-check): `collapseRange(expandRange(x)) === canonical(x)` for generated ranges — `fast-check@^4.10.2` devDependency added, generator invariant stated in the test.
 
-**Exit gate:** every wave-1 resource can be parsed from text config with no bespoke regex.
+**Exit gate:** every wave-1 resource can be parsed from text config with no bespoke regex. *(The engine proves this for config TEXT — 100% statements/lines over `src/config` — but it is only OBSERVABLE as satisfied when M8-M10 parse with these helpers and their tests contain no ad-hoc config regexes. Keep it as the standing acceptance criterion for M7-M10.)*
 
 ---
 

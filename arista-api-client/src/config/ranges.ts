@@ -1,6 +1,8 @@
 /**
  * Range expand/collapse — M6 (#8), port of pyeapi `utils.expand_range` / `utils.collapse_range`
- * (`pyeapi/utils.py:175-196` and `:198-233`, on `lookahead` at `:169-173`).
+ * (`pyeapi/utils.py:175-195` and `:198-232`, on `lookahead` at `:169-172`), against upstream answers
+ * transcribed in `ranges.test.ts` — every `utils.py:` number in this file was opened and confirmed on
+ * 2026-11-02, because this module's first draft citing them was wrong in five places.
  *
  * These are the helpers that turn a device's compact range vocabulary into something a UI can select
  * and a command string can carry: `switchport trunk allowed vlan 10-12,20`, `interface Ethernet1-4`,
@@ -8,18 +10,24 @@
  * only callers in the upstream tree are its own unit tests (`test/unit/test_utils.py:51-81`) — so the
  * "which resource drives which range string" contract in PLAN.md is a claim about *this* port's
  * resources (M9 #11, M10 #12), not an upstream behaviour. Verified by grep over the upstream tree;
- * MIGRATION.md §5 row 35.
+ * MIGRATION.md §5 row 45.
  *
- * Deliberate divergences, all recorded in MIGRATION.md §5 rows 34-36:
+ * Deliberate divergences, recorded in MIGRATION.md §5 rows 46-48:
  *  - `collapseRange` accepts a **list** as well as a delimited string. Upstream's docstring says
- *    "list of values" while its body calls `arg.split(...)` (`utils.py:205`), so a pyeapi caller who
- *    believes the docstring gets `AttributeError`. Both forms work here.
+ *    "list of values" (`utils.py:202`) while its body calls `arg.split(...)` (`utils.py:210`), so a
+ *    pyeapi caller who believes the docstring gets `AttributeError`. Both forms work here. (row 46)
  *  - malformed tokens raise `NotSupportedError` naming them. Upstream leaks Python's
- *    `int()`/`ValueError` (`utils.py:188-189`, `:216-217`) — and for `collapseRange` an empty token is
- *    silently swallowed by the `if v2:` truthiness test (`utils.py:214`), producing garbage such as
- *    `collapse_range('1,,2') === ['1', '0', '2']`.
- *  - `collapseRangeToString` is new: the device-ready joined form, because upstream returns a *list*
- *    (`utils.py:233`) while EOS wants one string.
+ *    `int()`/`ValueError` (`utils.py:190-191`, `:215-216`), and worse, `collapse_range`'s `if v2:`
+ *    truthiness test (`utils.py:214`) silently CORRUPTS instead: `collapse_range('1,2,')` answers
+ *    `['1-2', '']` and `collapse_range('0,1')` answers `['1']` — a run starting at 0 dies because
+ *    `range_start = 0` is falsy at `:226`. (`collapse_range('1,,2')` *does* crash, `ValueError` at
+ *    `:215`; an earlier revision of this comment claimed `['1','0','2']` for it, which no pyeapi
+ *    version produces — corrected 2026-11-02 against the transcription in `ranges.test.ts`.) (row 47)
+ *  - endpoints are canonically decimal here, where upstream leaks the raw token into emitted runs
+ *    (`utils.py:227`/`:231` interpolate the un-`int()`-ed `v1` when the pair test ran on ints; the
+ *    closing `str(x)` at `:232` never re-parses — `collapse_range('01,02')` answers `['1-02']`), and
+ *    `collapseRangeToString` is new: the device-ready joined form, because upstream returns a *list*
+ *    (`utils.py:232`) while EOS wants one string. (row 48)
  */
 
 import { NotSupportedError } from '../errors'

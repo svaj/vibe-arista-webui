@@ -276,7 +276,7 @@ export class NotSupportedError extends EapiError {
  * **Deliberate placement:** a subclass of `EapiError`, **not** of `CommandError` as the
  * `docs/ARCHITECTURE.md` §4 diagram drew it — `CommandError`'s contract is a device JSON-RPC failure
  * envelope (`code`, `results[]`, `failedCommand`), and a section that simply is not in the running-config
- * has none of those. Inventing a fake code there would make `switch (e.code)` lie. MIGRATION.md §5 row 38.
+ * has none of those. Inventing a fake code there would make `switch (e.code)` lie. MIGRATION.md §5 row 50.
  *
  * Only a *required* lookup throws; an optional one returns `undefined` (DR-027 — `getBlock`,
  * `Vlans.get`). Resources subclass this for their own vocabulary (`VlanNotFoundError`, M9 #11).
@@ -307,7 +307,7 @@ export interface ConfigParseErrorOptions extends EapiErrorOptions {
  * This is a **parse** failure, not a wrong answer: the alternative is silently reporting a section that
  * the switch does not have, which in a config UI means showing an operator a diff that was never the
  * the device's state. Structured fields ride along so the webui can name the section and the offending
- * line instead of pasting a stack trace. MIGRATION.md §5 rows 32-33.
+ * line instead of pasting a stack trace. MIGRATION.md §5 rows 43-44.
  */
 export class ConfigParseError extends EapiError {
   readonly sectionKey: string | undefined

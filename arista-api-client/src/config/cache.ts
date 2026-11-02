@@ -21,7 +21,7 @@
  *
  * The parsed document is handed out as a `ReadonlyMap` (`chunk.ts`), so "share the memo" and "don't
  * let a caller poison it" are both true at compile time. MIGRATION.md §5 row 12 (planned) is realised
- * here; row 40 records how.
+ * here; row 52 records how.
  */
 
 import { chunkConfig, type ConfigSections } from './chunk'

@@ -6,14 +6,14 @@
  * parameter, which is **not** part of the public contract here:
  *
  * > "it's imperative that the most outer call is made with `indent=0`, as the indent parameter defines
- * > processing of nested sub-sections" (`client.py:716-720`)
+ * > processing of nested sub-sections" (`client.py:715-718`)
  *
  * In pyeapi that invariant is only a docstring comment on a *public-ish* method, and the recursion
  * reaches back into the same cached function. Here the recursion is a module-private function, so a
  * caller physically cannot pass a non-zero indent and get a half-chunked document back. The invariant
- * is now structural instead of aspirational — MIGRATION.md §5 row 31.
+ * is now structural instead of aspirational — MIGRATION.md §5 row 42.
  *
- * Output shape (the docstring example at `client.py:705-714`, verified against upstream by the oracle
+ * Output shape (the docstring example at `client.py:708-713`, verified against upstream by the oracle
  * in `test/fixtures/config/`): a map from **section key** (the rstripped header line, indentation
  * included for a sub-section) to **the section text** (header line plus its body, terminators intact).
  * Both sections and sub-sections are keys, and iteration order is load-bearing: `section()` takes the
@@ -50,7 +50,7 @@ const CODE_UNIT_PREFIX = 'code unit '
 /** EOF-terminated literal block opener at indent 0 (`banner motd`, `banner login`) — `client.py:747`. */
 const BANNER_PREFIX = 'banner '
 
-/** The terminator line pyeapi compares after `rstrip` (`client.py:744`). */
+/** The terminator line pyeapi compares after `rstrip` (`client.py:743`). */
 const EOF_LINE = 'EOF'
 
 /**
@@ -87,7 +87,7 @@ function chunkAtIndent(config: string, indent: number): MutableSections {
     const lineRs = rstrip(line)
 
     if (multiline !== undefined) {
-      // pyeapi appends unconditionally (`client.py:741`); the key always exists because the opener
+      // pyeapi appends unconditionally (`client.py:742`); the key always exists because the opener
       // created it, so the `?? ''` is a no-op kept for the compiler, not a repair path.
       sections.set(multiline, `${sections.get(multiline) ?? ''}${line}`)
       if (lineRs === EOF_LINE) multiline = undefined
@@ -119,7 +119,7 @@ function chunkAtIndent(config: string, indent: number): MutableSections {
         // pyeapi's `sections[key] += line` with `key` still `None` raises `KeyError: None`
         // (`client.py:763`, whose comment assumes "key is always expected to be set by now" — it is
         // not, for a config whose first line is indented). A crash with no line number is not an
-        // answer we can show an operator: MIGRATION.md §5 row 32.
+        // answer we can show an operator: MIGRATION.md §5 row 43.
         throw new ConfigParseError(
           `Unable to parse config: line ${position + 1} ${pythonRepr(lineRs)} is indented but no ` +
             'section header precedes it',
@@ -162,7 +162,7 @@ function chunkAtIndent(config: string, indent: number): MutableSections {
  * Keeping the raise is the difference between "the parse said something false" and "the parse said it
  * could not parse" — PLAN.md's M6 line "keep the explicit failure mode … rather than a wrong answer".
  * The message wording is upstream's, so a device-vs-pyeapi comparison still lines up; the class is
- * ours: `ConfigParseError` instead of a bare `ValueError` — MIGRATION.md §5 row 33.
+ * ours: `ConfigParseError` instead of a bare `ValueError` — MIGRATION.md §5 row 44.
  */
 function hasSubsectionLines(section: readonly string[], indent: number, sectionKey: string): boolean {
   for (const line of section) {

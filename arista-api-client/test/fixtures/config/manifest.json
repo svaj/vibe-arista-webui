@@ -10,7 +10,7 @@
     "banner-eof.conf": {
       "label": "EOF-terminated multiline banners at indent 0",
       "forms": ["banner login", "banner motd", "blank line inside a banner body", "hostname", "the standalone `!` marker line"],
-      "notes": "pyeapi's own banner regex (api/system.py `_parse_banners`) assumes `EOF` at column 0, which is why the terminator test here is column-0. The chunker compares the EOF line after rstrip only (client.py:744), so an indented EOF never terminates."
+      "notes": "pyeapi's own banner regex (api/system.py:97-109 `_parse_banners`, `^…EOF$` under re.M) assumes `EOF` at column 0, which is why the terminator test here is column-0. The chunker compares the EOF line after rstrip only (client.py:743), so an indented EOF never terminates."
     },
     "banner-indented-not-multiline.conf": {
       "label": "known limitation: a `banner` opener that is indented is not treated as multiline",
