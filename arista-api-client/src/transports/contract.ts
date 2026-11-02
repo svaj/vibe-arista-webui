@@ -202,9 +202,19 @@ export interface LocalTrustGate {
 
 // --- per-kind option records ---------------------------------------------------------------------
 
-/** `https` over `fetch` (browser) or `node:https` (Node, when TLS trust options are supplied). */
+/**
+ * `https` over `fetch` (browser) or `node:https` (Node, when TLS trust options are supplied).
+ *
+ * TLS material is **allowed on this kind**, which is what makes DR-013 pinning and row 28 possible:
+ * `kind: 'https'` must be able to carry `ca`/`fingerprint` from the `./node` entry, or the only way
+ * to express trust would be to switch to `https-client-cert`/`session`, whose auth semantics are
+ * different. A browser-facing call site that passes them is refused **at runtime** by
+ * `assertOptionKeys(..., 'browser')` in `createTransport` with a message naming the entry that does
+ * accept them; the `never`-typed compile-time variant of that guard is kept on `http`, where TLS
+ * material is meaningless rather than entry-dependent.
+ */
 export interface HttpsTransportOptions
-  extends TransportBaseOptions, EndpointOptions, CredentialOptions, NodeOnlyTlsOptions {
+  extends TransportBaseOptions, EndpointOptions, CredentialOptions, TlsMaterialOptions {
   readonly kind: 'https'
 }
 
