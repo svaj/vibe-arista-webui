@@ -45,6 +45,25 @@ function syscall(message: string, code: string): Error {
   return Object.assign(new Error(message), { code })
 }
 
+/** The shape undici actually produces when an `AbortController` fires mid-`fetch`. */
+function abortedUnderFetchFailed(): Error {
+  const cause: Error & { name: string } = Object.assign(new Error('The operation was aborted'), {
+    name: 'AbortError',
+  })
+  return Object.assign(new TypeError('fetch failed'), { cause })
+}
+
+/**
+ * `expect().toBeInstanceOf` asserts but does not narrow, and several mappers return the
+ * `TransportError | ProtocolError` union. This asserts the branch and hands the value back with its
+ * real type, so subclass-only fields (`rawBody`, `status`) are read through the type that declares
+ * them instead of a cast at every call site.
+ */
+function asSubclass<T extends Error>(failure: TransportError | ProtocolError, ctor: new (...args: never[]) => T): T {
+  expect(failure).toBeInstanceOf(ctor)
+  return failure as unknown as T
+}
+
 describe('classification is by code, with the cause chain unwrapped (undici buries it)', () => {
   const cases: readonly [string, unknown, string][] = [
     // "nothing reached the device"
@@ -78,9 +97,12 @@ describe('classification is by code, with the cause chain unwrapped (undici buri
     ['ERR_SSL_DEPTH_EXCEEDED (chain too long)', syscall('chain too long', 'ERR_SSL_DEPTH_EXCEEDED'), 'tls'],
     ['WRONG_VERSION_NUMBER', syscall('wrong version number', 'WRONG_VERSION_NUMBER'), 'tls'],
     ['our own TlsError stays TLS', new TlsError('pinned fingerprint did not match'), 'tls'],
-    // cancellation
+    // cancellation. undici does not put a code on the abort: `fetch` rejects with
+    // `TypeError: fetch failed` whose `cause` is a DOMException named `AbortError`, so the name is
+    // what carries it — and `ABORT_ERR` is the code Node's own abort APIs surface.
     ['AbortError from our deadline', Object.assign(new Error('This operation was aborted'), { name: 'AbortError' }), 'abort'],
-    ['AbortError nested under fetch failed', undici('TypeError', 'The operation was aborted', 'DOMException_READ_ABORTED'), 'abort'],
+    ['AbortError nested under fetch failed', abortedUnderFetchFailed(), 'abort'],
+    ['ABORT_ERR under fetch failed', Object.assign(new TypeError('fetch failed'), { cause: Object.assign(new Error('The operation was aborted'), { code: 'ABORT_ERR' }) }), 'abort'],
     ['UND_ERR_ABORTED', syscall('The operation was aborted', 'UND_ERR_ABORTED'), 'abort'],
     // unmatched
     ['a plain Error nobody recognises', new Error('something odd happened in a middleware'), 'unknown'],
@@ -185,22 +207,23 @@ describe('status mapping that fetch.test.ts does not already cover', () => {
   it('413 says the batch was too large, and is not safe to resend unchanged', () => {
     const failure = mapHttpStatus(413, 'Payload Too Large', 'too big', ctx)
     expect(failure).toBeInstanceOf(TransportError)
-    expect(failure.status).toBe(413)
-    expect(failure.retryable).toBe(false)
+    // `mapHttpStatus` returns a `TransportError | ProtocolError` union and `expect`'s
+    // `toBeInstanceOf` is not a TS narrowing assertion, so the subclass-only fields are matched as
+    // data rather than read off the union.
+    expect(failure).toMatchObject({ status: 413, retryable: false })
     expect(failure.message).toMatch(/split the batch/u)
   })
 
   it('an unexpected 4xx is reported with its status and refused a resend', () => {
     const failure = mapHttpStatus(418, "I'm a teapot", 'no coffee here', ctx)
-    expect(failure.status).toBe(418)
-    expect(failure.retryable).toBe(false)
+    expect(failure).toMatchObject({ status: 418, retryable: false })
     expect(failure.message).toMatch(/unexpected HTTP status/u)
   })
 
   it('a 3xx is reported instead of followed, so credentials cannot be re-posted elsewhere', () => {
     const failure = mapHttpStatus(301, 'Moved Permanently', '', { ...ctx, request: buildRequest('show version', { id: 'r-301' }) })
     expect(failure).toBeInstanceOf(TransportError)
-    expect(failure.retryable).toBe(false)
+    expect(failure).toMatchObject({ retryable: false })
     expect(failure.message).toMatch(/does not follow redirects/u)
     expect(failure.message).toMatch(/DR-036/u)
   })
@@ -245,8 +268,8 @@ describe('the response-body hygiene rules the mappers share', () => {
 
   it('the protocol failure for a bad status keeps a redacted rawBody (405)', () => {
     const failure = mapHttpStatus(405, 'Method Not Allowed', '{"username":"api","password":"hunter2"}', ctx)
-    expect(failure).toBeInstanceOf(ProtocolError)
-    expect(failure.rawBody).not.toContain('hunter2')
-    expect(failure.rawBody).toContain(REDACTED)
+    const protocol = asSubclass(failure, ProtocolError)
+    expect(protocol.rawBody).not.toContain('hunter2')
+    expect(protocol.rawBody).toContain(REDACTED)
   })
 })

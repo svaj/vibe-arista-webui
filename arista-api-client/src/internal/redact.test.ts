@@ -111,6 +111,28 @@ describe('redactSecrets — deep structural form (logs, fixtures, error data)', 
     })
   })
 
+  it('redacts a JSON member whose key names a credential, without touching the username', () => {
+    // The `/login` body the cookie transports post (DR-018) and any proxy error page reflected into
+    // an error's rawBody. Key-based, so it does not depend on guessing where a secret ends.
+    expect(redactSecrets({ username: 'api', password: 'hunter2' })).toEqual({
+      username: 'api',
+      password: REDACTED,
+    })
+    for (const key of ['passwd', 'secret', 'enablePassword', 'api_key', 'token', 'Authorization']) {
+      expect(redactSecrets({ [key]: 'hunter2', keep: 'visible' })).toEqual({ [key]: REDACTED, keep: 'visible' })
+    }
+    // Nested and inside arrays, because a login body is rarely the top-level object we are shown.
+    expect(redactSecrets({ request: { body: [{ authorization: 'Basic aGFudDoy' }] } })).toEqual({
+      request: { body: [{ authorization: REDACTED }] },
+    })
+    // An empty value stays empty: redacting it would invent a secret that was never there.
+    expect(redactSecrets({ password: '' })).toEqual({ password: '' })
+    // Wire text that is not JSON still goes through the text pass.
+    expect(redactWireText('{"username":"api","password":"hunter2"}')).toBe(
+      `{"username":"api","password":"${REDACTED}"}`,
+    )
+  })
+
   it('preserves non-string scalars and key order', () => {
     expect(redactSecrets({ b: 1, a: true, c: null, d: 2.5 })).toEqual({ b: 1, a: true, c: null, d: 2.5 })
     // `redactSecrets` returns `unknown` by contract (it accepts `unknown`), so the object-ness has to

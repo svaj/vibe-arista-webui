@@ -203,8 +203,12 @@ const HANGUP_CODES: readonly string[] = ['ECONNRESET', 'UND_ERR_SOCKET', 'EPIPE'
 /** undici's own idle/read timeouts: the request went, the answer did not come back. */
 const RESPONSE_TIMEOUT_CODES: readonly string[] = ['UND_ERR_HEADERS_TIMEOUT', 'UND_ERR_BODY_TIMEOUT']
 
-/** Cancellation, whichever layer noticed it first. */
-const ABORT_CODES: readonly string[] = ['ABORT_ERROR', 'UND_ERR_ABORTED']
+/**
+ * Cancellation, whichever layer noticed it first. `ABORT_ERR` is what Node's own abort surfaces, and
+ * a DOMException carries the answer in its `name` rather than a `code` (see the test cases) — the
+ * chain walk in `classifyWireFailure` reads `name` off every level, so both shapes are covered.
+ */
+const ABORT_CODES: readonly string[] = ['ABORT_ERR', 'ABORT_ERROR', 'UND_ERR_ABORTED']
 
 /** Fallback patterns, used only when there is no `code` to match — intermediaries in front of EOS vary. */
 const TLS_TEXT = /\bssl\b|\btls\b|certificate|handshake|self[- ]signed|altname|cipher|record layer|wrong version number|unsupported protocol|unable to get issuer|too many certificates/i
