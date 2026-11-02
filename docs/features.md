@@ -9,22 +9,25 @@ for the **7050X** series, and what's in EOS 4.28.13M.
 > - *(FlexProfile)* / *(FlexProfile Lite)* = the source matrix ties the feature to a programmable
 >   forwarding-profile partition (FLX / FLX-Lite). Other footnote tags from the source (E, Z, V2) are dropped.
 
+### Note
+Since this was pulled from a feature list, this needs to be turned into relevant terminology for our project.  (E.g "IEEE 1588 PTP — two-step transparent clock" might just be "IEE 1588 PTP configuration")
+
 ## Management & System Services
 
-- [ ] Allow command execution / a shell to EOS
+- [ ] (Medium priority) Allow command execution / a shell to EOS
 - [ ] SSH v2 (with SSH host keys) config
 - [ ] Telnet config
 - [ ] Management VRF
 - [ ] Management port isolation
 - [ ] Management to IPv6 addresses on VLAN and management interfaces
-- [ ] DNS client
+- [ ] (Low priority) DNS client
 - [ ] NTP / NTPv6
 - [ ] NTP extensions for DHCP in ZTP
 - [ ] IEEE 1588 PTP — two-step boundary clock
 - [ ] IEEE 1588 PTP — two-step transparent clock
 - [ ] IEEE 1588 PTP — one-step transparent clock
 - [ ] IEEE 802.1AB LLDP
-- [ ] Syslog
+- [ ] (Medium priority) View Syslog
 - [ ] File download via FTP, TFTP, HTTP, HTTPS
 - [ ] Login and MOTD banners
 - [ ] Interface range support
@@ -44,7 +47,7 @@ for the **7050X** series, and what's in EOS 4.28.13M.
 
 ## Security & Access Control
 
-- [ ] Ingress and egress IPv6 ACLs
+- [ ] (Medium-high priority) Ingress and egress IPv6 ACLs
 - [ ] Control-Plane ACLs (CP-ACL)
 - [ ] ACL counters
 - [ ] ACL deny logging
@@ -63,8 +66,7 @@ for the **7050X** series, and what's in EOS 4.28.13M.
 
 ## Observability, Mirroring & Automation
 
-- [ ] EOS API (eAPI)
-- [ ] EOS RPC SDK
+- [ ] (High priority) EOS API (eAPI) Typescript client
 - [ ] OpenConfig models over gRPC / RESTCONF / NETCONF
 - [ ] OpenConfig support for CPU state
 - [ ] GNSI (gRPC Network Security Interface)
@@ -79,7 +81,7 @@ for the **7050X** series, and what's in EOS 4.28.13M.
 
 ## Layer 2
 
-- [ ] VLAN-based port segmentation
+- [ ] (High priority) VLAN-based port segmentation
 - [ ] Tagged native VLAN mode
 - [ ] IEEE 802.1D bridging
 - [ ] IEEE 802.1Q trunking
@@ -95,8 +97,8 @@ for the **7050X** series, and what's in EOS 4.28.13M.
 - [ ] Bridge assurance
 - [ ] Disable STP on a VLAN (routed ports)
 - [ ] Backup interface
-- [ ] Link Aggregation Groups — up to 16 ports per LAG, 64 member interfaces total
-- [ ] IEEE 802.3ad LACP (incl. minimum links)
+- [ ] (High priority) Link Aggregation Groups — up to 16 ports per LAG, 64 member interfaces total
+- [ ] (High priority) IEEE 802.3ad LACP (incl. minimum links)
 - [ ] LAG hash on L2 & L3 header fields
 - [ ] Multi-chassis LAG (MLAG), incl. peer gateway
 - [ ] IGMP snooping + MLAG

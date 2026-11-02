@@ -6,6 +6,16 @@ An attempt to vide code a React frontend to manage an arista switch.  This start
 ## Stack
 This project is going to be comprised of a typescript [api client](./arista-api-client) (vibe-coded migrating from the arista python [api client](https://github.com/arista-eosplus/pyeapi) most likely) and a react [frontend](./arista-webui) that uses said client to connect to an Arista switch and configure it.  I am using vite + typescript + oxc (vite 8's rolldown pipeline, oxlint) with react 19, and tests run in vitest (`npm test` inside [arista-webui](./arista-webui)).  Further architectural decisions are yet to be made.
 
+## Integration and E2E test lab
+
+Arista cEOS-lab **4.28.14M** and its vendor installation instructions are available locally
+under `/home/svaj/development/arista/cEOS/`. Use disposable cEOS nodes as the preferred
+planned target for real-eAPI integration/live tests and Playwright browser E2E tests.
+See the [cEOS lab runbook and implementation checklist](./docs/CEOS.md) for setup,
+readiness, safety gates, CI, and cleanup. The harness is not implemented yet; normal
+`npm test` stays offline. Container results do not replace validation on the
+DCS-7050TX-64 running **4.28.13.1M**, especially for hardware-dependent features.
+
 ## AI agent setup
 
 The repo ships repo-local Copilot customizations under [.github/](./.github):

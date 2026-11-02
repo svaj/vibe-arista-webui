@@ -13,8 +13,19 @@ npm test          # single run (vitest run)
 npm run test:watch
 ```
 
-Vitest is the project's only test runner — Jest knowledge/patterns can be reused as
+Vitest is the project's current test runner — Jest knowledge/patterns can be reused as
 guidance (`jest.*` → `vi.*`) but Jest itself is not used here.
+
+### Planned real-EOS browser E2E tests
+
+Keep component tests mocked and offline. Use **Playwright** in a separate opt-in lane
+against disposable **cEOS-lab 4.28.14M**, with the UI's same-origin proxy targeting the
+lab's HTTPS eAPI endpoint. See the [cEOS runbook](../docs/CEOS.md) for the local image,
+bootstrap/readiness, credentials/TLS, isolation, CI restrictions, cleanup, and test flows.
+The proxy wiring and Playwright/cEOS harness are planned, not installed or runnable yet.
+Assert real EOS state after preview/abort and isolated commit/read-back flows, not just
+UI success messages. Do not direct browser E2E tests at the physical switch. cEOS
+coverage does not prove 7050TX-64 hardware capabilities or exact 4.28.13.1M behavior.
 
 Currently, two official plugins are available:
 

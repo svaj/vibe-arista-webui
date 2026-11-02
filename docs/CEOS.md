@@ -1,0 +1,182 @@
+# cEOS lab for integration, live, and browser E2E tests
+
+## Status and scope
+
+The local Arista distribution contains **cEOS-lab 4.28.14M** at
+`/home/svaj/development/arista/cEOS/cEOS-lab-4.28.14M.tar`, with vendor installation
+instructions in `cEOS-lab-README-generic.txt` in the same directory. The vendor README
+uses 4.21.0F as an example; use the actual local image and version below.
+
+This is the preferred **planned** target for tests that need real EOS software.
+The API client, live harness, provisioning automation, and Playwright suite are not
+implemented yet. These instructions adapt the supplied vendor recipe; boot, eAPI
+bootstrap, and test execution have **not** been validated in this workspace.
+Existing `npm test` runs stay offline and must not start Docker or contact EOS.
+
+| Target | What it can establish | What it cannot establish |
+|---|---|---|
+| MockTransport + recorded fixtures | Deterministic errors, parsers, command generation, UI states | Current EOS behavior |
+| cEOS-lab 4.28.14M | Real eAPI/auth, JSON/text replies, config sessions, supported VLAN/interface operations, browser-to-proxy-to-EOS flows | Exact 4.28.13.1M behavior or 7050TX-64 hardware support |
+| DCS-7050TX-64 / 4.28.13.1M | Exact target schemas, licensing, platform limits, physical interfaces and ASIC-dependent behavior | Disposable, unrestricted CI write target |
+
+cEOS is real EOS software, not a mock switch. Passing a container test is not evidence
+for hardware forwarding, throughput, optics/PHY, TCAM/FlexProfile, LAG limits, hardware
+VXLAN support, or license availability on the physical switch. Keep target-specific
+fixtures and capability results separate. Patch-release differences must be investigated,
+not normalized away to make tests pass.
+
+## Manual lab setup (trusted Linux host only)
+
+Prerequisites: an authorized copy of the image, Docker with permission to run privileged
+containers, sufficient host resources, and unused lab names/ports. Check the image's
+architecture and host/kernel/cgroup compatibility during the first boot; the generic
+README does not establish those requirements for this host.
+
+**Security boundary:** the vendor recipe requires `--privileged`; this gives the container
+extensive host access. Use a dedicated trusted lab host/runner. Never mount the Docker
+socket or host credentials, use host networking, attach physical/production interfaces,
+or run untrusted PR code on this runner. Image access is subject to Arista's terms:
+do not commit or publicly redistribute the tar, imported image, signatures, or credentials.
+
+The following is a manual recipe, not a command to run as part of this documentation
+change. It intentionally creates one node; stop if any names already exist.
+
+```bash
+docker import /home/svaj/development/arista/cEOS/cEOS-lab-4.28.14M.tar ceosimage:4.28.14M
+docker network create vibe-ceos-mgmt
+docker network create vibe-ceos-data
+docker create --name=vibe-ceos --privileged \
+  --network=vibe-ceos-mgmt -p 127.0.0.1:8443:443 \
+  -e INTFTYPE=eth -e ETBA=1 -e SKIP_ZEROTOUCH_BARRIER_IN_SYSDBINIT=1 \
+  -e CEOS=1 -e EOS_PLATFORM=ceoslab -e container=docker \
+  -i -t ceosimage:4.28.14M \
+  /sbin/init systemd.setenv=INTFTYPE=eth systemd.setenv=ETBA=1 \
+  systemd.setenv=SKIP_ZEROTOUCH_BARRIER_IN_SYSDBINIT=1 \
+  systemd.setenv=CEOS=1 systemd.setenv=EOS_PLATFORM=ceoslab \
+  systemd.setenv=container=docker
+docker network connect vibe-ceos-data vibe-ceos
+docker start vibe-ceos
+docker inspect --format '{{with index .NetworkSettings.Networks "vibe-ceos-mgmt"}}{{.IPAddress}}/{{.IPPrefixLen}}{{end}}' vibe-ceos
+docker exec -it vibe-ceos Cli
+```
+
+In EOS, inspect `show version`, `show interfaces status`, and
+`show management api http-commands`. Confirm the actual management/data interface
+mapping rather than assuming physical port counts or that Docker `eth1` is `Ethernet1`.
+Allow several minutes for EOS agents to start. If ZTP blocks bootstrap, resolve it only
+inside this disposable node; `zerotouch disable` can trigger a reboot, so reconnect and
+recheck readiness before proceeding.
+
+Configure a throwaway lab-only user interactively (replace `<lab-only-password>`; do not
+reuse a switch or personal password, or save the transcript):
+
+```text
+enable
+configure terminal
+username eapi-test privilege 15 role network-admin secret <lab-only-password>
+interface Management0
+   ip address <docker-mgmt-ip>/<prefix-length>
+   no shutdown
+exit
+management api http-commands
+   protocol https
+   no shutdown
+end
+```
+
+These are proposed EOS 4.28 bootstrap commands, to verify on first boot. They are a
+provisioning exception to test-session rules and apply **only to the disposable container**.
+Use the management address/prefix printed by `docker inspect` and the management interface
+confirmed above (the example uses `Management0`); do not assume Docker's IP allocation
+has configured EOS. Verify the address in EOS before probing the published port.
+Do not run `copy running-config startup-config`; bootstrap afresh after recreating the lab.
+Do not enable plaintext HTTP or expose the unauthenticated localhost API.
+
+Establish HTTPS trust from the local container/CLI, not from an unverified network peer.
+Inspect the configured certificate location (4.28.13.1M uses
+`/persist/secure/capi.pem`), securely extract only its **public certificate**, and use
+a trusted CA/certificate or pin with matching hostname/SAN validation. Do not copy the
+whole PEM into artifacts: it may contain a private key. Do not globally disable TLS
+verification; see [CONNECTIVITY.md](../arista-api-client/docs/CONNECTIVITY.md).
+
+Readiness requires a successful **authenticated POST**, not just a running process or
+an open port. Once a matching trusted certificate is configured, a manual probe is:
+
+```bash
+curl --fail-with-body --cacert /path/to/lab-public-ca.pem --user eapi-test \
+  -H 'Content-Type: application/json-rpc' \
+  -d '{"jsonrpc":"2.0","method":"runCmds","params":{"version":1,"format":"json","cmds":["show version"]},"id":"ceos-ready"}' \
+  https://localhost:8443/command-api
+```
+
+`curl` prompts for the lab password. An HTTP 200 alone is insufficient: require no
+JSON-RPC `error`, the expected result shape, cEOS model, and version **4.28.14M**.
+Use a bounded readiness timeout; on failure, retain redacted Docker/EOS diagnostics
+and fail the job rather than proceeding with fixtures or another switch.
+
+## Planned harness contract and safety
+
+Use the API client's existing opt-in live lane
+([TESTING.md](../arista-api-client/docs/TESTING.md)), with:
+
+- `EAPI_LIVE=1`, explicit `EAPI_HOST`, `EAPI_USER`, and `EAPI_PASS` (or `EAPI_PASS_VAR`).
+  The harness must support the published host/port, e.g. `localhost:8443`, without
+  silently defaulting to port 443 or a real-switch profile.
+- `EAPI_TARGET_CLASS=lab` for writes and `EAPI_SCRATCH_INTERFACE` discovered from the
+  container's interfaces for interface writes.
+- An exact allow-listed endpoint in the planned `test/device-allowlist.json`, including
+  port and target kind (`ceos` versus hardware). Check `show version` against the
+  expected model and exact image version as well as the existing 4.28 train guard.
+  `EAPI_TARGET_CLASS=lab` alone does not prove a target is disposable.
+- Named config sessions, test-owned VLANs/interfaces, no management-path mutations,
+  no startup-config persistence, and `abort` in `finally` for every uncommitted session.
+  Commit tests must undo running-config changes explicitly or discard their disposable
+  container; abort cannot undo a committed session.
+- Single-flight execution **per endpoint**, both between jobs and within Vitest/Playwright.
+  Parallel jobs need separate containers, networks, and published ports.
+
+Local opt-out reports an explicit skip reason. An explicitly requested CI cEOS/E2E job
+must fail on missing image, credentials, readiness, trust, target mismatch, zero executed
+tests, or teardown failure; it must never fall back to mocks or the physical switch.
+Normal runs must not include the separate persistence-test exception in TESTING.md.
+
+Record fixtures under `recordings/ceos-4.28.14M/` separately from
+`recordings/7050tx-64-4.28.13.1M/`. Record exact version, model, image identity/checksum,
+commands/format, and topology/interface mapping with each capture. Redact passwords,
+enable input, keys, tokens, serials/MACs/addresses where identifying, and config secrets
+before saving fixtures, logs, traces, or screenshots. Refresh is explicit and reviewed;
+never overwrite hardware fixtures with cEOS recordings.
+
+## Browser E2E and CI plan
+
+1. Keep Vitest component tests mocked/offline. Add Playwright separately when the UI
+   has an eAPI-backed workflow; no new runner is installed by this documentation change.
+2. Provision cEOS, pass the readiness gate, then start the frontend with its loopback
+   same-origin proxy targeting **only** the lab endpoint. Credentials stay in the proxy
+   process, not browser storage or traces. Validate trusted upstream TLS.
+3. Exercise browser → proxy → real eAPI: version/status read, VLAN/interface read,
+   preview/diff → abort, and an isolated commit → read-back → cleanup cycle. Assert
+   EOS state as well as UI messages. Test auth/unreachable/command errors explicitly;
+   fault injection or mocks may supplement but do not count as real-cEOS coverage.
+4. Report Playwright and API live results separately. A passing mock E2E run must not
+   be labeled cEOS coverage. Capture redacted diagnostics before teardown on failure.
+5. Initially use explicit trusted `workflow_dispatch` on a dedicated Linux runner with
+   authorized image access. Keep ordinary PR checks offline. Any future automatic
+   cEOS lane needs a trusted-code policy, image licensing/access review, and isolated
+   privileged runner; never expose image/host credentials to fork PRs.
+6. Cleanup in an always/finally path, including failed readiness or tests. Track resource
+   ownership per run; remove only that run's containers/networks, not shared resources.
+
+For the manual names above, after diagnostics are collected and only if this run created
+them:
+
+```bash
+docker rm -f vibe-ceos
+docker network rm vibe-ceos-data vibe-ceos-mgmt
+```
+
+Do not use Docker-wide prune commands. Remove any run-owned secret files separately.
+Retain an imported image only as an authorized local cache, never a public CI artifact.
+Future two-node labs may test supported MLAG/routing control-plane behavior using isolated
+Docker links, following the vendor recipe; they still do not validate physical-switch
+forwarding or platform support.
