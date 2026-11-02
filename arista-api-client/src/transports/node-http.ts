@@ -15,7 +15,6 @@ import { request as httpRequest, type IncomingHttpHeaders, type IncomingMessage 
 import { request as httpsRequest, type RequestOptions } from 'node:https'
 import { Buffer } from 'node:buffer'
 
-import { TransportError } from '../errors'
 import type { JsonRpcRequest } from '../types/eapi'
 import { authorizationHeader } from './auth'
 import { idPolicyFrom, type RawSend, type TransportKernel } from './base'

@@ -49,6 +49,14 @@ const USERNAME_CREDENTIAL =
 /** `enable` (optionally with arguments) — the only command whose `input` is treated as a secret. */
 const ENABLE_COMMAND = /^enable(?:\s|$)/i
 
+/**
+ * A JSON member whose **name** declares it holds a credential. eAPI's own envelopes have no such
+ * keys, but everything around eAPI does: the `/login` body the cookie transports post (DR-018) and
+ * the HTML/JSON an intermediary reflects back into an error's `rawBody`. Matching on the key is the
+ * reliable half of DR-011 — unlike the text rules it never has to guess where a secret ends.
+ */
+const SECRET_KEY = /^(?:password|passwd|password1|secret|enable[_-]?password|api[_-]?key|token|authorization)$/i
+
 /** Redacts secrets inside a single piece of device or command text. Idempotent. */
 export function redactCommandText(text: string): string {
   return text
@@ -91,6 +99,10 @@ export function redactSecrets(value: unknown): unknown {
   const out: Record<string, unknown> = {}
   for (const [key, entry] of Object.entries(value)) {
     if (key === 'input' && isCommandObject(value) && typeof value.cmd === 'string' && ENABLE_COMMAND.test(value.cmd)) {
+      out[key] = REDACTED
+      continue
+    }
+    if (SECRET_KEY.test(key) && typeof entry === 'string' && entry !== '') {
       out[key] = REDACTED
       continue
     }
