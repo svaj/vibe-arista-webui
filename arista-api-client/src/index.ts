@@ -1,10 +1,16 @@
 /**
  * `@devhax-heavy-industries/arista-eapi` — browser-safe entry point (DR-002).
  *
- * M1 (#3) put the wire protocol core behind this entry: the `runCmds` codec, the error taxonomy
- * and DR-011 redaction. Transports are M2 (#4), profiles M3 (#5) and the `Node` command layer
- * M4 (#6). Nothing exported here performs I/O — `WireSender` is the injected seam M2 implements,
- * and no file reachable from this module may import a `node:` built-in (DR-002, docs/ARCHITECTURE.md §5).
+ * M1 (#3) put the wire protocol core behind this entry: the `runCmds` codec, the error taxonomy and
+ * DR-011 redaction. M2 (#4) adds the browser-capable transports: `FetchTransport` (`https`) and
+ * `HttpTransport` (`http`, loopback-gated). Profiles are M3 (#5) and the `Node` command layer M4 (#6).
+ *
+ * Two properties are enforced, not just intended:
+ *  - no file reachable from this module imports a `node:` built-in — checked by
+ *    `src/browser-safety.test.ts` **and** by the Vite build guard in `vite.config.ts`, which fails the
+ *    build if `dist/index.js` ever references one (DR-002);
+ *  - nothing here performs I/O except through a `Transport` you construct explicitly, and the
+ *    switch-local kinds (`unix`, `http-local`) cannot be built from this entry at all (DR-008/DR-014).
  */
 
 // --- wire codec (src/internal/wire.ts; internals are not an import path, but the codec, error and
@@ -72,6 +78,51 @@ export type {
   ShowReply,
   WireSender,
 } from './types/eapi'
+
+// --- transports (M2 #4, DR-002) -------------------------------------------------------------------
+// The two kinds a browser build may construct, plus the contracts M4's `Node` (#6) and the webui hold.
+// The Node-only kinds are *reachable as type names* here (so a profile object can be typed once) but
+// `createTransport` refuses them at runtime with a `NotSupportedError` that names the `./node` import
+// (DR-002/DR-013/DR-014/DR-018) — asserted in `src/browser-safety.test.ts`.
+export { createTransport } from './transports/create'
+export { EAPI_CONTENT_TYPE, FetchTransport, HttpTransport } from './transports/fetch'
+export { basicAuth, authorizationHeader } from './transports/auth'
+export {
+  DEFAULT_HTTP_PATH,
+  DEFAULT_HTTP_PORT,
+  DEFAULT_HTTPS_PORT,
+  DEFAULT_HTTP_LOCAL_PORT,
+  DEFAULT_TIMEOUT_MS,
+  DEFAULT_UNIX_PATH,
+  normalizeTransportKind,
+  TRANSPORT_ALIASES,
+} from './transports/contract'
+export { isLoopbackHost } from './transports/endpoint'
+export type {
+  BrowserTransportKind,
+  ClientCertTransportOptions,
+  CredentialOptions,
+  EndpointOptions,
+  HttpLocalTransportOptions,
+  HttpTransportOptions,
+  HttpsTransportOptions,
+  InsecureTransportGate,
+  LocalTrustGate,
+  MockTransportOptions,
+  NodeOnlyTlsOptions,
+  NodeOnlyTransportKind,
+  SessionTransportOptions,
+  TlsMaterialOptions,
+  Transport,
+  TransportBaseOptions,
+  TransportExecOptions,
+  TransportKind,
+  TransportOptions,
+  UnixTransportOptions,
+  WireTraceDirection,
+  WireTraceRecord,
+  WireTraceSink,
+} from './transports/contract'
 
 /**
  * Placeholder for the connection options `createNode` will take.
