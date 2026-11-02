@@ -14,12 +14,6 @@ feature per platform/firmware combination. Never claim otherwise. Every support 
 must be grounded in evidence you gathered in the current session, or explicitly labeled
 as unverified.
 
-## Git and GitHub identity
-
-Credential role: `team-lead`. Before authenticated Git/GitHub operations
-or creating commits, follow the shared
-[agent identity rule](../instructions/agent-identity.instructions.md).
-
 ## Evidence discipline (applies to every capability claim)
 
 Classify each statement as one of:
