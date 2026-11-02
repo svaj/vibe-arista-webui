@@ -65,16 +65,29 @@ It never parses command semantics and never retries writes (DR-019).
 
 ```ts
 export interface Transport {
-  readonly kind: TransportKind;              // 'https' | 'http' | 'https-client-cert' | 'session' | 'unix' | 'http-local' | 'mock'
-  execute(commands: CommandSpec[], options?: ExecOptions): Promise<EapiReply>;
+  readonly kind: TransportKind;              // 'https | http | https-client-cert | session | unix | http-local | mock'
+  readonly address: string;
+  execute(commands: CommandSpec | readonly CommandSpec[],
+          options?: TransportExecOptions): Promise<SendRequestResult>;
   close(): Promise<void>;
+  toString(): string;
 }
 ```
 
-**Node (`src/node.ts`)** — the command layer: `exec` (show/enabled commands with the 1003 text
-fallback), `show<T>` (typed contract map), `configure`, config-session lifecycle, lazy
-version/model/memoisation, and cache invalidation. This is pyeapi's `client.Node` minus the stashed
-errors and the `response` duplicate.
+`execute()` resolves to M1's `SendRequestResult` (the `{ok: true, request, encoding, result,
+viaTextRetry}` / `{ok: false, request, error, viaTextRetry}` union), not a bare `EapiReply`: the codec
+owns the 1003 → `format:'text'` repair (DR-012) and the response-id check (DR-017), so `Node` reads the
+encoding that actually answered off the result instead of guessing it. Device failures are typed errors
+(`CommandError` / `ProtocolError`) in that union, never thrown by the transport contract.
+
+**Node (`src/command-layer.ts`, M4 #6 — exported from both entry points)** — the command layer:
+`runCommands`, `exec` (pyeapi `enable`, with the 1003 text fallback reported as `encoding` + `fellBack`),
+`show<T>` / `showText` over the augmentable `ShowContracts` map, `configure` / `configureVariants`,
+`getConfig` and the async config accessors, memoised device identity (`getVersion`), and cache
+invalidation (`refresh`). This is pyeapi's `client.Node` minus the stashed errors, the `response`
+duplicate and everything M5/M6 own: no config-session verbs (`configSession`/`diff`/`commit`/`abort`,
+M5 #7) and no `section()`/`_chunkify` (M6 #8). `src/node.ts` is the **Node-runtime entry point** (the
+`./node` export condition), not this class — see §6.
 
 **Config-text engine (`src/internal/config-text.ts`)** — `chunkConfig`, `configSection`,
 `getBlock`, `expandRange`, `collapseRange`, line/quote helpers. Every resource module in pyeapi is
@@ -179,19 +192,28 @@ A `BrowserSafety.test.ts` guard asserts that constructing `kind: 'unix'` from th
 ```
 arista-api-client/
   src/
-    index.ts                # public surface, browser-safe
-    node.ts                 # Node entry: NodeTransport set + profiles + session journal
-    testing.ts              # MockTransport, fixture loader (used by webui tests too)
-    types/                  # wire + contract types (no runtime code)
-    internal/               # wire.ts, redact.ts, config-text.ts, ranges.ts, collections.ts, journal.ts
-    transports/             # fetch.ts, tls.ts, cookie.ts, unix.ts, http-local.ts
-    resources/              # base.ts + one dir/file per pyeapi api module
+    index.ts                # public surface, browser-safe (M1 codec + errors, M2 fetch/http, M4 Node)
+    node.ts                 # `./node` entry: the Node-only transport kinds + createTransport (NOT the Node class)
+    command-layer.ts        # `Node` — the command layer (M4 #6), re-exported from both entries
     errors.ts
-    node.ts                 # Node command layer  (entry file re-exports)
-    capabilities.ts
-  test/fixtures/            # recorded JSON, 4.28 config text samples
+    types/                  # wire + contract types (no runtime code)
+    testing/                # mock-transport.ts, fake-sender.ts, recording.ts, loopback-device.ts — tests only,
+                            #   not reachable from either entry point (browser-safe: no `node:` import)
+    internal/               # wire.ts, redact.ts, warn.ts, variants.ts (M4) | config-text.ts (M6),
+                            #   ranges.ts/collections.ts/journal.ts (M6/M7/M5 — planned)
+    transports/             # contract.ts, base.ts, create.ts, correlate.ts, endpoint.ts, auth.ts,
+                            #   error-map.ts, local.ts, fetch.ts, node-{create,https,tls,http,cookie,
+                            #   client-cert,unix,http-local}.ts (the `./node` senders)
+    resources/              # base.ts + one dir/file per pyeapi api module (M7 #9 onward)
+    profiles.ts             # M3 #5 planned (Node entry only — `eapi.conf`, DR-038)
+    capabilities.ts         # M11 #13 planned (DR-033)
+  test/fixtures/            # wire/ and show/ samples (hand-authored, synthetic until M12 #14 records captures)
   docs/                     # this set
 ```
+
+`command-layer.ts` imports **only types** from `src/transports/` (the `Transport` interface) and values
+from `src/internal/`, so the runtime graph stays acyclic and the same class runs over the browser and
+Node senders — see §1's layering rule and `src/browser-safety.test.ts`.
 
 Lint rules (oxlint, root config extended by the package): `import/no-cycle`, no `node:*` in files
 reachable from `src/index.ts` (via a boundaries plugin or an explicit `no-restricted-imports` glob),
@@ -206,10 +228,16 @@ oxlint's rule set doesn't cover it — check `npm run lint` after wiring M0 and 
 - A `Node` is **not** thread-safe in the "one config at a time" sense: EOS serialises configuration
   (and returns 1006 when locked). The client keeps a single in-flight mutation per `Node`
   (a promise chain guard) so the webui cannot fire two `configure()` calls in parallel and create an
-  indeterminate pending session (DR-025).
+  indeterminate pending session (DR-025). **Not yet implemented:** M4 (#6) shipped `configure()` without
+  that guard and without the session state it depends on — the guard lands with the config-session work
+  in M5 (#7), and until then a caller must serialise its own writes.
 - Read paths may be parallel; each request has its own id and the response is matched by id.
 - Caches: `running-config`/`startup-config` text, `chunkConfig` result (DR-026), parsed profile list,
-  probed capabilities (TTL). All invalidated by `refresh()` or explicitly.
+  probed capabilities (TTL). All invalidated by `refresh()` or explicitly. Shipped by M4 (#6): the two
+  config texts, cleared by `refresh()` or by a write while `autorefresh` is on; the parsed device
+  identity (`getVersion`) is memoised and **deliberately not** cleared, matching pyeapi's `refresh()`
+  (`client.py:991-1001`) — MIGRATION.md §5 row 35. `chunkConfig` (M6 #8), profiles (M3 #5) and
+  capabilities (M11 #13) are still planned.
 - No module-level mutable singletons (pyeapi's `config = Config()` at import is a deliberate
   non-goal, DR-038).
 

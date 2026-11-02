@@ -4,7 +4,10 @@ Single source for "where are we". Update **in the same commit** that changes cod
 mirrored GitHub issue (see §4). Detailed task lists live in [PLAN.md](./PLAN.md); behaviour changes go
 in [MIGRATION.md §5](./MIGRATION.md#5-semantic-divergences-worth-reviewing).
 
-As of 2026-11-01: **M2 done — every pyeapi transport has a TypeScript equivalent; still no `Node` command layer.**
+As of 2026-11-01: **M2 and M4 delivered — every pyeapi transport has a TypeScript equivalent, and the
+`Node` command layer exists.** Neither is merged yet: M4 (#6) is branched from the M2 branch
+(`agents/issue-6-m4-node-command-layer` on top of `agents/issue-4-m2-transports` / PR #19), so #19
+merges first and M4's review diff is only the command layer.
 The package (M0) builds, lints, tests and type-checks from the repo root, and `arista-webui` imports it
 by name. The wire core (M1) stays pure: `src/types/eapi.ts` carries the `runCmds` contracts and the
 `WireSender` seam, `src/internal/wire.ts` encodes/decodes envelopes with no I/O, `src/errors.ts` holds
@@ -14,9 +17,11 @@ synthetic until M12 #14 records captures). M2 added `src/transports/`: one `Tran
 the codec, `FetchTransport` in the browser entry and the six Node senders (`https`, `http`,
 `https-client-cert`, `session`, `unix`, `http-local`) behind `./node`, with DR-013 trust options, DR-014
 local-transport warnings, DR-018 cookie sessions, DR-019 retry rules, DR-017 response-id correlation and
-`MockTransport` for offline tests. `createNode()` in `src/index.ts` / `src/node.ts` still throws — the
-codec and the senders exist, but the command layer that uses them is M4 (#6). **M3 (#5, connection
-profiles) is the next action.**
+`MockTransport` for offline tests. M4 added `src/command-layer.ts` (pyeapi's `Node` class, minus what
+other milestones own) and `src/internal/variants.ts`: read-only work against a mocked switch is now fully
+usable with no resource module, which is PLAN's M4 exit gate. `createNode()` in `src/index.ts` /
+`src/node.ts` **still throws** — a `Node` is built from an explicit `Transport` until M3 defines the
+connection/profile bag. **M3 (#5, connection profiles) is the next action.**
 
 **Test infrastructure planning update:** local cEOS-lab **4.28.14M** and vendor install
 instructions are now available under `/home/svaj/development/arista/cEOS/`.
@@ -35,7 +40,7 @@ eAPI readiness, and harness execution are **not yet validated**. Hardware remain
 | M1 | Wire protocol core | `done` | 2026-11-01 | 2026-11-01 | [#3](https://github.com/svaj/vibe-arista-webui/issues/3) | codec in `src/internal/wire.ts` (pure, no I/O) + `src/errors.ts` + `src/types/eapi.ts`; DR-010/011/012/016/017 in; **27** hand-authored samples in `test/fixtures/wire/` driven by `src/internal/wire.fixture.test.ts` (message prose is synthetic until M12 #14 records captures); client coverage 98.98% stmts / 94.73% branch / 100% lines (thresholds 85/75/60); no transport yet, `WireSender` + `src/testing/fake-sender.ts` are the only send seam; no runtime `show()` yet — the type tests pin the `ShowReply<K>` map M4 (#6) implements it against; codec does not yet correlate the echoed response id with the request id, and `ProtocolError` does not carry an id — M2 (#4) decides both |
 | M2 | Transports | `done` | 2026-11-01 | 2026-11-01 | [#4](https://github.com/svaj/vibe-arista-webui/issues/4) | all seven pyeapi transports ported (`src/transports/`), stacked on #19 for review; DR-002 browser-safety is enforced by `src/browser-safety.test.ts` in the unit project + CI — a **test** gate, not a literal step of `npm run build`; TLS behaviour is verified only against synthetic loopback certs, since the **device** fingerprint/TLS-version capture (STATUS §3, DECISIONS open items 3) is still outstanding |
 | M3 | Connection profiles | `not-started` | — | — | | |
-| M4 | `Node` command layer | `not-started` | — | — | | |
+| M4 | `Node` command layer | `done` | 2026-11-01 | 2026-11-01 | [#6](https://github.com/svaj/vibe-arista-webui/issues/6) | **delivered on an unmerged branch**, stacked on #19 (M2) — merge #19 first. `src/command-layer.ts` (pyeapi's `Node` class; `src/node.ts` stays the Node-runtime **entry**, so the docs' old `src/node.ts` target is corrected in MIGRATION §1) + `src/internal/variants.ts`. In: `runCommands`, `exec` (one entry per command, `{command, result, encoding, fellBack}`, no duplicate `response` key — DR-007), `show`/`showText` over the augmentable `ShowContracts` map, `getConfig` + the async config accessors (DR-005), memoised `getVersion()`, `configure` / `configureVariants` (DR-006), `setEnablePassword` + the `sendEnable: false` priv-15 shortcut (DR-009), `refresh()`, `close()`, config-mode refusal (`NotSupportedError`, `configure all <intf> …` exempt), short-answer pairing that names the command by its `cmd`, and no `MULTILINE:` rewrite (DR-015). **8 new §5 rows (31–38).** Out on purpose: config-session verbs and the DR-025 guard/serialisation (M5 #7), `section()`/`_chunkify` (M6 #8), `api()` (dropped, DR-006), `configSection()`, profiles/`createNode` (M3 #5). Offline only: 75 cases over `MockTransport` + `test/fixtures/show/` (synthetic), no device, no cEOS; client 529 → **618** tests; coverage 96.98% stmts / 90.86% branch / 97.64% lines (`command-layer.ts` 100% stmts/funcs) |
 | M5 | Config sessions & change safety | `not-started` | — | — | | commit-timer semantics unverified; investigate in cEOS, confirm target-sensitive behavior on hardware |
 | M6 | Text-config engine | `not-started` | — | — | | capture cEOS 4.28 config text early, keep target-hardware fixtures separate |
 | M7 | Resource framework | `not-started` | — | — | | |
