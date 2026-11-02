@@ -21,7 +21,7 @@ import {
   type TransportBaseOptions,
 } from './contract'
 import { resolveEndpoint, type ResolvedEndpoint, type ResolveEndpointDefaults } from './endpoint'
-import { mapHttpStatus, mapWireFailure } from './error-map'
+import { guardEmptyResponseBody, mapHttpStatus, mapWireFailure } from './error-map'
 import type { JsonRpcRequest } from '../types/eapi'
 
 /** The header eAPI documents and pyeapi sends (`eapilib.py:432`): `application/json-rpc`. */
@@ -63,6 +63,12 @@ export function createFetchSender(endpoint: ResolvedEndpoint, credentials: Crede
         redirect: 'manual',
       })
       const body = await response.text()
+      if (response.status < 300) {
+        // Same guard the Node sender applies: a 200 with no body is the listener answering with
+        // nothing, and `parseResponse` calling that "malformed JSON" would point the operator away
+        // from the real problem.
+        return guardEmptyResponseBody(body, context)
+      }
       if (response.status >= 300) {
         // Thrown on purpose: a non-2xx body is not an eAPI envelope, so it must not reach
         // `parseResponse` and be reported as malformed JSON. (pyeapi parses first, which is why a
