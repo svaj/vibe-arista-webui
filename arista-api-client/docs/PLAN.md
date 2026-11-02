@@ -156,26 +156,26 @@ graph LR
 ### M2 — Transports
 **Port of:** `EapiConnection` + the 7 subclasses in `eapilib.py` (68-757) and `TRANSPORTS` in `client.py:112-121`.
 
-- [ ] `interface Transport { execute(commands, opts): Promise<EapiReply>; close(): Promise<void>; readonly kind: TransportKind }`. Transport is the seam that makes the dual-runtime decision work → **DR-002**.
-- [ ] `FetchTransport` (shared, browser-safe): POST to `<base>/command-api`, `Content-Type: application/json-rpc`, `Authorization: Basic`, timeout via `AbortController` (pyeapi default `timeout: 60` seconds — keep 60 000 ms).
-- [ ] Node TLS options (`./node` entry): `ca`, `cert`, `key`, `serverName`, **`fingerprint`** (pin self-signed device cert), `rejectUnauthorized` guarded by an explicit `dangerouslyDisableTlsVerification` flag — never a silent default → **DR-013**. pyeapi's `enforce_verification`/`context` knobs are **not** reproduced; they are documented as "replaced by explicit options".
-- [ ] `HttpTransport` ( cleartext ) — allowed only for `http://` loopback or when `allowInsecureTransport: true`; log a warning. Replaces pyeapi `http`.
-- [ ] `ClientCertTransport` = pyeapi `https_certs`: requires `cert`+`key`, verification on when `ca` given, off (with warning) when omitted — same semantics as `HTTPSCertConnection.connect()`, but surfaced as explicit options and Node-only.
-- [ ] `SessionCookieTransport` = pyeapi `http_session`/`https_session`: `POST /login {"username","password"}` → capture `Set-Cookie`, then send it on `/command-api`. Node-only (browser cannot set `Cookie` on a cross-origin request). Must handle non-200 → `AuthError`, and must never echo the body. Logout/`POST /logout` added (pyeapi never logs out) → **DR-018**.
-- [ ] Local transports (Node-only, feature-flagged): `UnixSocketTransport` (`/var/run/command-api.sock`) and `HttpLocalTransport` (`127.0.0.1:8080`, **plain HTTP only — 4.28 has no 8443 listener**; pyeapi's `DEFAULT_HTTPS_LOCAL_PORT` is a legacy constant) → **DR-014**. Both must print a security warning: EOS marks these `DISABLE_AAA` → unauthenticated priv-15.
-- [ ] `TransportKind` string union + a `createTransport(options)` factory with an exhaustive switch (compile error when a kind is unimplemented).
-- [ ] Error mapping: HTTP 401 → `AuthError` (pyeapi raises `ConnectionError`); HTTP 405 → `ProtocolError` (eAPI is POST-only); `ECONNREFUSED`/DNS/TLS handshake → `ConnectError`/`TlsError`; socket hang-up → `TransportError` with `retryable` hint.
-- [ ] Retry policy: none at transport level by default (config writes are not idempotent). `readOnly: true` requests may retry once on `ConnectError` → **DR-019**.
-- [ ] `MockTransport` in `src/testing/`: scripted replies by command match + a `recording` mode used by M12.
+- [x] `interface Transport { execute(commands, opts)(commands, opts): Promise<EapiReply>; close(): Promise<void>; readonly kind: TransportKind }`. Transport is the seam that makes the dual-runtime decision work → **DR-002**.
+- [x] `FetchTransport` (shared, browser-safe): POST to `<base>/command-api`, `Content-Type: application/json-rpc`, `Authorization: Basic`, timeout via `AbortController` (pyeapi default `timeout: 60` seconds — keep 60 000 ms).
+- [x] Node TLS options (`./node` entry): `ca`, `cert`, `key`, `serverName`, **`fingerprint`** (pin self-signed device cert), `rejectUnauthorized` guarded by an explicit `dangerouslyDisableTlsVerification` flag — never a silent default → **DR-013**. pyeapi's `enforce_verification`/`context` knobs are **not** reproduced; they are documented as "replaced by explicit options".
+- [x] `HttpTransport` ( cleartext ) — allowed only for `http://` loopback or when `allowInsecureTransport: true`; log a warning. Replaces pyeapi `http`.
+- [x] `ClientCertTransport` = pyeapi `https_certs`: requires `cert`+`key`, verification on when `ca` given, off (with warning) when omitted — same semantics as `HTTPSCertConnection.connect()`, but surfaced as explicit options and Node-only.
+- [x] `SessionCookieTransport` = pyeapi `http_session`/`https_session`: `POST /login {"username","password"}` → capture `Set-Cookie`, then send it on `/command-api`. Node-only (browser cannot set `Cookie` on a cross-origin request). Must handle non-200 → `AuthError`, and must never echo the body. Logout/`POST /logout` added (pyeapi never logs out) → **DR-018**.
+- [x] Local transports (Node-only, feature-flagged): `UnixSocketTransport` (`/var/run/command-api.sock`) and `HttpLocalTransport` (`127.0.0.1:8080`, **plain HTTP only — 4.28 has no 8443 listener**; pyeapi's `DEFAULT_HTTPS_LOCAL_PORT` is a legacy constant) → **DR-014**. Both must print a security warning: EOS marks these `DISABLE_AAA` → unauthenticated priv-15.
+- [x] `TransportKind` string union + a `createTransport(options)` factory with an exhaustive switch (compile error when a kind is unimplemented).
+- [x] Error mapping: HTTP 401 → `AuthError` (pyeapi raises `ConnectionError`); HTTP 405 → `ProtocolError` (eAPI is POST-only); `ECONNREFUSED`/DNS/TLS handshake → `ConnectError`/`TlsError`; socket hang-up → `TransportError` with `retryable` hint.
+- [x] Retry policy: none at transport level by default (config writes are not idempotent). `readOnly: true` requests may retry once on `ConnectError` → **DR-019**.
+- [x] `MockTransport` in `src/testing/`: scripted replies by command match + a `recording` mode used by M12.
 
 **Tests (high priority — port of the connection half of `test_eapilib.py` + `test_client.py::test_connect_*`):**
-- [ ] Request headers: content type, basic-auth string parity with pyeapi for `admin:` (byte-exact base64), absent auth when no credentials.
-- [ ] 401/403/405/ECONNREFUSED/TLS-failure paths each throw the mapped error and attach `commands`.
-- [ ] Timeout: `AbortController` fires at the configured ms; error is `TimeoutError` not `ProtocolError`.
-- [ ] Cookie transport: login POST body shape, cookie reuse on the following call, non-200 login → `AuthError`.
-- [ ] Cert transport: missing `key`/`cert` → `TypeError` at construction (pyeapi `ValueError`).
-- [ ] Local transports: unix path default, `8080` default, warning emitted, refusal to construct in the browser build (guard test).
-- [ ] `dangerouslyDisableTlsVerification` warns; omitting it against a self-signed cert fails with `TlsError`.
+- [x] Request headers: content type, basic-auth string parity with pyeapi for `admin:` (byte-exact base64), absent auth when no credentials.
+- [x] 401/403/405/ECONNREFUSED/TLS-failure paths each throw the mapped error and attach `commands`.
+- [x] Timeout: `AbortController` fires at the configured ms; error is `TimeoutError` not `ProtocolError`.
+- [x] Cookie transport: login POST body shape, cookie reuse on the following call, non-200 login → `AuthError`.
+- [x] Cert transport: missing `key`/`cert` → `TypeError` at construction (pyeapi `ValueError`).
+- [x] Local transports: unix path default, `8080` default, warning emitted, refusal to construct in the browser build (guard test).
+- [x] `dangerouslyDisableTlsVerification` warns; omitting it against a self-signed cert fails with `TlsError`.
 
 **Exit gate:** every pyeapi transport has a TS equivalent or a documented, deliberate omission; no Node built-ins reachable from the browser entry (enforced by a build-time check).
 
