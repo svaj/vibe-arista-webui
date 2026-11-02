@@ -130,24 +130,24 @@ graph LR
 ### M1 — Wire protocol core
 **Port of:** `pyeapi/eapilib.py` (request/response codec, error classes). **Do not** port the `http.client` transport subclasses here.
 
-- [ ] `src/types/eapi.ts`: `JsonRpcId`, `CommandSpec = string | { cmd: string; input?: string; revision?: number }` (**only these three keys exist server-side**), `RunCmdsParams` (`version: 1 | 'latest'`, `format: 'json' | 'text'`, `cmds`, `autoComplete`, `expandAliases`, `timestamps`, `stopOnError`, `requestTimeout`, `includeErrorDetail`), `JsonRpcSuccess`, `JsonRpcFailure`, `EapiResponse` union.
-- [ ] `buildRequest(commands, opts)` — mirrors pyeapi's param **allow-list** behaviour, then extends it to the four params pyeapi drops (`stopOnError`, `includeErrorDetail`, `requestTimeout`) → **DR-016**. Unknown params must be rejected at compile time *and* runtime.
-- [ ] Request id policy: monotonic per-connection integer + optional client nonce (pyeapi uses `id(self)`, which is not unique across processes) → **DR-017**.
-- [ ] `parseResponse(text)` → discriminated union; never throw on `error` — return the failure and let the caller raise. Malformed JSON → `ProtocolError` carrying the raw body (truncated to a limit).
-- [ ] Error taxonomy in `src/errors.ts`: `EapiError` (base), `CommandError` (`code`, `message`, `commandError`, `results[]`, `failedCommand`, `trace()`), `TransportError` (+ subtypes `AuthError`, `TlsError`, `ConnectError`, `TimeoutError`), `ProtocolError`, `SessionError`, `NotSupportedError`. Numeric codes as a `const enum`-free frozen map: `-32700 -32600 -32601 -32602 -32603 1000 1001 1002 1003 1004 1005 1006`. **There is no 1007** → **DR-010**.
-- [ ] `error.data` handling: array-of-results path (pyeapi `_parse_error_message`) **and** the `includeErrorDetail` object path `{result[], errorDetail[{index,code,message,cmd}]}`.
-- [ ] `renderCommandError()` message format identical to pyeapi (`Error [code]: msg [err]` for 1000/1001/1002/1004, `Error [code]: msg` otherwise) so device-sourced text stays comparable.
-- [ ] Secret redaction (**DR-011, a real fix over pyeapi**): redact `input` for `{'cmd':'enable', input}` in (a) log/debug output and (b) *every* error message, not just 1005 — EOS appends `input=%r` to messages for 1000/1001/1002/1004 too. Also redact passwords in `username … secret …` commands before logging. Reuse the `{'cmd':…, 'input':…}` shape matching from `pyeapi/eapilib.py:502-566` inline (do **not** port the generic `_find_sub_json`).
-- [ ] `-32602` decoration: when the message matches `unexpected keyword argument '(.*)'`, append `"parameter is not supported in this version of EOS"` (pyeapi `eapilib.py:460-468`).
-- [ ] `text`-encoding fallback hook: on **1003** (`COMMAND_UNCONVERTED`) re-issue the single command with `format: 'text'` — matching pyeapi `Node.enable(strict=False)`; keep `strict` semantics under a different name (`{ tolerateErrors: false }`) → **DR-012**.
+- [x] `src/types/eapi.ts`: `JsonRpcId`, `CommandSpec = string | { cmd: string; input?: string; revision?: number }` (**only these three keys exist server-side**), `RunCmdsParams` (`version: 1 | 'latest'`, `format: 'json' | 'text'`, `cmds`, `autoComplete`, `expandAliases`, `timestamps`, `stopOnError`, `requestTimeout`, `includeErrorDetail`), `JsonRpcSuccess`, `JsonRpcFailure`, `EapiResponse` union.
+- [x] `buildRequest(commands, opts)` — mirrors pyeapi's param **allow-list** behaviour, then extends it to the four params pyeapi drops (`stopOnError`, `includeErrorDetail`, `requestTimeout`) → **DR-016**. Unknown params must be rejected at compile time *and* runtime.
+- [x] Request id policy: monotonic per-connection integer + optional client nonce (pyeapi uses `id(self)`, which is not unique across processes) → **DR-017**.
+- [x] `parseResponse(text)` → discriminated union; never throw on `error` — return the failure and let the caller raise. Malformed JSON → `ProtocolError` carrying the raw body (truncated to a limit).
+- [x] Error taxonomy in `src/errors.ts`: `EapiError` (base), `CommandError` (`code`, `message`, `commandError`, `results[]`, `failedCommand`, `trace()`), `TransportError` (+ subtypes `AuthError`, `TlsError`, `ConnectError`, `TimeoutError`), `ProtocolError`, `SessionError`, `NotSupportedError`. Numeric codes as a `const enum`-free frozen map: `-32700 -32600 -32601 -32602 -32603 1000 1001 1002 1003 1004 1005 1006`. **There is no 1007** → **DR-010**.
+- [x] `error.data` handling: array-of-results path (pyeapi `_parse_error_message`) **and** the `includeErrorDetail` object path `{result[], errorDetail[{index,code,message,cmd}]}`.
+- [x] `renderCommandError()` message format identical to pyeapi (`Error [code]: msg [err]` for 1000/1001/1002/1004, `Error [code]: msg` otherwise) so device-sourced text stays comparable.
+- [x] Secret redaction (**DR-011, a real fix over pyeapi**): redact `input` for `{'cmd':'enable', input}` in (a) log/debug output and (b) *every* error message, not just 1005 — EOS appends `input=%r` to messages for 1000/1001/1002/1004 too. Also redact passwords in `username … secret …` commands before logging. Reuse the `{'cmd':…, 'input':…}` shape matching from `pyeapi/eapilib.py:502-566` inline (do **not** port the generic `_find_sub_json`).
+- [x] `-32602` decoration: when the message matches `unexpected keyword argument '(.*)'`, append `"parameter is not supported in this version of EOS"` (pyeapi `eapilib.py:460-468`).
+- [x] `text`-encoding fallback hook: on **1003** (`COMMAND_UNCONVERTED`) re-issue the single command with `format: 'text'` — matching pyeapi `Node.enable(strict=False)`; keep `strict` semantics under a different name (`{ tolerateErrors: false }`) → **DR-012**.
 
 **Tests (high priority — port of `test/unit/test_eapilib.py`, 38 methods):**
-- [ ] `buildRequest`: cmds passthrough, string→array coercion, param allow-list, `version: 'latest'`, explicit `stopOnError:false`, `includeErrorDetail:true`, rejection of a bogus param.
-- [ ] Every envelope sample in `test/fixtures/wire/*.json`: success, `error` with `data[]`, `error` with `errorDetail`, `-32700`, `-32601`, empty `data` omitted.
-- [ ] One assertion per code 1000-1006 → expected class + `.code` + rendered message.
-- [ ] Redaction: enable-input never appears in `error.message`, `Error.toString()`, or the logger output (assert on the *serialised* error).
-- [ ] 1003 → automatic text retry, and 1003 with `tolerateErrors:false` → throws.
-- [ ] Type tests (`expectTypeOf`) that `show<T>()` narrows by command literal.
+- [x] `buildRequest`: cmds passthrough, string→array coercion, param allow-list, `version: 'latest'`, explicit `stopOnError:false`, `includeErrorDetail:true`, rejection of a bogus param.
+- [x] Every envelope sample in `test/fixtures/wire/*.json`: success, `error` with `data[]`, `error` with `errorDetail`, `-32700`, `-32601`, empty `data` omitted.
+- [x] One assertion per code 1000-1006 → expected class + `.code` + rendered message.
+- [x] Redaction: enable-input never appears in `error.message`, `Error.toString()`, or the logger output (assert on the *serialised* error).
+- [x] 1003 → automatic text retry, and 1003 with `tolerateErrors:false` → throws.
+- [x] Type tests (`expectTypeOf`) that `show<T>()` narrows by command literal.
 
 **Exit gate:** encode + decode are pure (no I/O), fully covered, and fixture-driven.
 

@@ -1,0 +1,8 @@
+{
+  "jsonrpc": "2.0",
+  "id": "ui-7f3a2b9c1d-14",
+  "error": {
+    "code": -32700,
+    "message": "parse error: Expecting property name enclosed in double quotes: line 1 column 42 (char 41)"
+  }
+}

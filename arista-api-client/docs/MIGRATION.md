@@ -142,6 +142,8 @@ tests portable by behaviour and keeps MIGRATION rows 1-word different.
 | 16 | `MULTILINE:` pseudo-syntax inside command strings (`client.py:900-906`) | `{cmd, input}` objects with explicit `EOF` | DR-015 |
 | 17 | `EapiConnection.execute` stores last error on the connection | nothing stashed; errors propagate | DR-005 |
 | 18 | `streaming` silently added to every request (`eapilib.py:360`) | not sent; `runCmds` kwarg is unused server-side | DR-016 |
+| 19 | 1000/1001/1002/1004 render `… [<command_error>]`; with no `error.data` Python interpolates the literal `None` → `Error [1000]: msg [None]` (`eapilib.py:106-110`) | brackets omitted entirely when `commandError` is absent; the `[…]` suffix still appears byte-for-byte when data exists | M1 (#3) — `[]`/`[None]` matched nothing in a device log and made the text harder to diff against EOS output |
+| 20 | `get_trace()` pairs commands with output, then appends the never-ran tail **only if `index:` is truthy** (`eapilib.py:130-143`, guard at 138) — so when exactly one command produced output (`index == 0`) commands 2..N vanish from the trace | every command is always represented: paired with its output, or listed with `output: undefined` | M1 (#3) — a 1-of-N failure is the common case and losing the tail hides which commands never ran |
 
 ---
 

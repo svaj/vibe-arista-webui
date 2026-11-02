@@ -1,13 +1,77 @@
 /**
  * `@devhax-heavy-industries/arista-eapi` — browser-safe entry point (DR-002).
  *
- * M0 skeleton (#2): the tooling, the entry split and the public name are what is real
- * here. The wire codec is M1 (#3), transports are M2 (#4), profiles are M3 (#5) and the
- * `Node` command layer below is M4 (#6). Nothing in this file performs I/O.
- *
- * Do not import `node:*` from anything reachable from this file — the browser bundle is
- * built from it (build guard: M2, #4).
+ * M1 (#3) put the wire protocol core behind this entry: the `runCmds` codec, the error taxonomy
+ * and DR-011 redaction. Transports are M2 (#4), profiles M3 (#5) and the `Node` command layer
+ * M4 (#6). Nothing exported here performs I/O — `WireSender` is the injected seam M2 implements,
+ * and no file reachable from this module may import a `node:` built-in (DR-002, docs/ARCHITECTURE.md §5).
  */
+
+// --- wire codec (src/internal/wire.ts; internals are not an import path, but the codec, error and
+//     redaction helpers re-exported here are the public surface — DR-040) -------------------------
+// `pythonRepr`, `formatErrorDataEntries` and `decorateUnsupportedParam` stay internal: they exist to
+// keep pyeapi message rendering comparable (tested directly) and are not a consumer contract.
+export {
+  buildRequest,
+  createRequestIds,
+  isUnconvertedCommandFailure,
+  MAX_RAW_BODY,
+  parseErrorEnvelope,
+  parseResponse,
+  runRequest,
+  sendRequest,
+  unwrapResponse,
+  type BuildRequestOptions,
+  type ParsedResponse,
+  type RequestIdOptions,
+  type ResponseContext,
+  type SendRequestOptions,
+  type SendRequestResult,
+} from './internal/wire'
+export { REDACTED, redactCommandText, redactCommands, redactSecrets, redactWireText } from './internal/redact'
+
+// --- error taxonomy (DR-010, DR-011) ------------------------------------------------------------
+export {
+  AuthError,
+  CommandError,
+  ConnectError,
+  EapiError,
+  EapiErrorCode,
+  eapiErrorName,
+  NotSupportedError,
+  ProtocolError,
+  renderCommandError,
+  SessionError,
+  TimeoutError,
+  TlsError,
+  TransportError,
+  type CommandErrorOptions,
+  type EapiErrorOptions,
+  type ProtocolErrorOptions,
+  type TraceEntry,
+} from './errors'
+
+// --- wire contracts (src/types/eapi.ts, declaration-only) ---------------------------------------
+export type {
+  CommandObject,
+  CommandResult,
+  CommandSpec,
+  EapiResponse,
+  ErrorDetailData,
+  ErrorDetailEntry,
+  JsonRpcError,
+  JsonRpcFailure,
+  JsonRpcId,
+  JsonRpcRequest,
+  JsonRpcSuccess,
+  RequestIdPolicy,
+  RunCmdsFormat,
+  RunCmdsParams,
+  RunCmdsVersion,
+  ShowContracts,
+  ShowReply,
+  WireSender,
+} from './types/eapi'
 
 /**
  * Placeholder for the connection options `createNode` will take.
