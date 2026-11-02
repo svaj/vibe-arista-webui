@@ -154,10 +154,40 @@ describe('runCommands — pyeapi run_commands (client.py:876-926)', () => {
     await expect(node.show('version')).rejects.toThrow(ProtocolError)
     await expect(node.show('version')).rejects.toThrow(/no result object for "show version"/)
   })
+
   it('names a command object by its cmd when that command has no reply (exec, revision form)', async () => {
-    const t = mockTransport().replies('enable\\nshow cvx', [])
-    await expect(nodeWith(t).exec({ cmd: 'show cvx', revision: 2 })).rejects.toThrow(/no result object for "show cvx"/)
-  })})
+    // The script is the exact command set the transport sends (`enable` plus the object form, which
+    // `MockTransport` matches by its `cmd` text) and it answers `enable` **only** — so the object
+    // command really is sent and really gets no result object, and the pairing code is what throws.
+    // pyeapi pairs results to commands **positionally**: the strict path indexes `commands[index]`
+    // while looping the *answers* (`client.py:852-856`), so a short answer silently drops the tail;
+    // the non-strict path reads `resp[0]` (`client.py:862-864`), so a short answer dies in a bare
+    // `IndexError: list index out of range` with no command named. Neither is usable in a UI, so a
+    // short answer is a `ProtocolError` naming the command by its `cmd` text — never the serialised
+    // object form and never an index. MIGRATION.md §5 row 38.
+    const t = mockTransport().replies('enable\nshow cvx', [{}])
+    const error = (await nodeWith(t)
+      .exec({ cmd: 'show cvx', revision: 2 })
+      .catch((thrown: unknown) => thrown)) as ProtocolError
+    expect(error).toBeInstanceOf(ProtocolError)
+    expect(error.message).toMatch(/no result object for "show cvx"/)
+    expect(error.message).not.toContain('revision')
+    expect(error.commands).toEqual([{ cmd: 'show cvx', revision: 2 }])
+  })
+
+  it('a batched answer that comes back short names the first unanswered command (§5 row 38)', async () => {
+    // `tolerateErrors: false` is one request with every command, so pairing is positional here too:
+    // `show a` has its reply, `show b` does not. pyeapi's strict path would emit one entry and stay
+    // silent about the missing one (`client.py:852`).
+    const t = mockTransport().replies('enable\nshow a\nshow b', [{}, { a: 1 }])
+    const error = (await nodeWith(t)
+      .exec(['show a', 'show b'], { tolerateErrors: false })
+      .catch((thrown: unknown) => thrown)) as ProtocolError
+    expect(error).toBeInstanceOf(ProtocolError)
+    expect(error.message).toMatch(/no result object for "show b"/)
+    expect(t.callCount()).toBe(1)
+  })
+})
 
 describe('exec — pyeapi enable (client.py:800-875)', () => {
   it('returns one entry per command with the DR-007 shape and nothing else', async () => {
