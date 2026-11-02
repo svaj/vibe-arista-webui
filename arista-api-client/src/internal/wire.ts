@@ -272,6 +272,18 @@ export function decorateUnsupportedParam(message: string): string {
 export interface ResponseContext {
   /** Attached to the resulting error so it can say *which* commands failed (pyeapi does the same). */
   readonly commands?: readonly CommandSpec[] | undefined
+  /**
+   * The id of the request this body is answering — M2 (#4) added this, closing the gap PR #19
+   * recorded for M1 ("`ProtocolError` currently carries no `requestId`"). EOS echoes `id` back, and
+   * when it is present it still wins: this only fills the gap for a body that omits it, so an error
+   * object always has something a device log can be grepped for (DR-017).
+   *
+   * Note what this is **not**: it is not a correlation check. Refusing a response whose id belongs to
+   * another request is a property of the round trip, so it lives at the transport seam
+   * (`src/transports/correlate.ts`) and keeps the codec pairing-independent — which is what lets the
+   * 27 wire fixtures be decoded without reference to the request that produced them.
+   */
+  readonly requestId?: JsonRpcId | undefined
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -293,6 +305,7 @@ function protocolError(message: string, body: string, context: ResponseContext, 
     code,
     rawBody: truncateBody(redactCommandText(body)),
     commands: safeCommands(context.commands),
+    ...(context.requestId === undefined ? {} : { requestId: context.requestId }),
   })
 }
 
@@ -371,7 +384,8 @@ export function parseErrorEnvelope(failure: JsonRpcFailure, context: ResponseCon
   const options: { -readonly [K in keyof CommandErrorOptions]: CommandErrorOptions[K] } = {
     // The commands an error carries must be redacted too: an `enable` command object is the secret.
     commands: safeCommands(context.commands),
-    requestId: failure.id,
+    // The envelope's own id wins; the context id is the fallback for a body that omits one (DR-017).
+    requestId: failure.id ?? context.requestId,
     commandError: hasData ? formatErrorDataEntries(errorDataEntries(data)) : undefined,
   }
   if (Array.isArray(data)) {
@@ -497,7 +511,9 @@ function wireOptions(options: SendRequestOptions): BuildRequestOptions {
 
 async function attempt(sender: WireSender, commands: readonly CommandSpec[], options: SendRequestOptions): Promise<Attempt> {
   const request = buildRequest(commands, wireOptions(options))
-  const parsed = parseResponse(await sender.send(request), { commands: request.params.cmds })
+  // `requestId` in the context is the fallback id for errors (DR-017); the pairing check itself is the
+  // transport's job (`src/transports/correlate.ts`, M2 #4).
+  const parsed = parseResponse(await sender.send(request), { commands: request.params.cmds, requestId: request.id })
   return { request, parsed }
 }
 
