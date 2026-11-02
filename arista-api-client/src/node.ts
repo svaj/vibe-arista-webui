@@ -14,9 +14,9 @@
  *
  * Still ahead: `eapi.conf` profiles and the `createNode`/`createConnection` factories M3 (#5 /
  * DR-038), the on-disk config-session journal M5 (#7 / DR-022), the config-text engine M6 (#8) and
- * the live/recorded suite M12 (#14). The command layer itself (M4, #6) lives in
- * `src/command-layer.ts` and is re-exported from the browser entry below — this file adds only the
- * Node-only kinds on top of it.
+ * the live/recorded suite M12 (#14). The command layer (M4, #6) is shipped: `src/command-layer.ts`
+ * holds `Node`, re-exported from the browser entry below, so this file adds only the Node-only kinds
+ * on top of it — which is where a `Node` over `kind: 'session'` or `kind: 'unix'` can be built.
  *
  * Requires Node >= 20 (`engines`) because `fetch` must be global.
  */

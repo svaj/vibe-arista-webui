@@ -5,8 +5,9 @@
  * DR-011 redaction. M2 (#4) adds the browser-capable transports: `FetchTransport` (`https`) and
  * `HttpTransport` (`http`, loopback-gated). M4 (#6) adds the `Node` command layer
  * (`src/command-layer.ts`): `exec` / `show` / `showText` / `configure` / cached configs / device
- * identity. Connection profiles and the option-bag factories (`createNode`, `createConnection`) are
- * M3 (#5) — build a `Node` from an explicit `Transport` until then.
+ * identity. Connection profiles and the option-bag factories (`createNode`, `createConnection`) —
+ * i.e. `eapi.conf` lookup and the transport-plus-settings bag — are M3 (#5), so until then a `Node`
+ * is built from an explicit `Transport`.
  *
  * Two properties are enforced, not just intended:
  *  - no file reachable from this module imports a `node:` built-in — checked by

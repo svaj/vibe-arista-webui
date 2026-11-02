@@ -4,10 +4,10 @@ Single source for "where are we". Update **in the same commit** that changes cod
 mirrored GitHub issue (see §4). Detailed task lists live in [PLAN.md](./PLAN.md); behaviour changes go
 in [MIGRATION.md §5](./MIGRATION.md#5-semantic-divergences-worth-reviewing).
 
-As of 2026-11-01: **M2 and M4 delivered — every pyeapi transport has a TypeScript equivalent, and the
-`Node` command layer exists.** Neither is merged yet: M4 (#6) is branched from the M2 branch
-(`agents/issue-6-m4-node-command-layer` on top of `agents/issue-4-m2-transports` / PR #19), so #19
-merges first and M4's review diff is only the command layer.
+As of 2026-11-02: **M2 and M4 delivered — every pyeapi transport has a TypeScript equivalent, and the
+`Node` command layer exists.** M4 (#6) branched from the M2 branch, and M2 has since landed on `main`
+(PR #20 merged, its commits re-committed), so this branch's review diff against `main` is only the
+command layer. It is under review as PR #22, not merged.
 The package (M0) builds, lints, tests and type-checks from the repo root, and `arista-webui` imports it
 by name. The wire core (M1) stays pure: `src/types/eapi.ts` carries the `runCmds` contracts and the
 `WireSender` seam, `src/internal/wire.ts` encodes/decodes envelopes with no I/O, `src/errors.ts` holds
