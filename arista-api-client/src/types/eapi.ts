@@ -130,7 +130,10 @@ export interface WireSender {
  * One command literal → typed reply. M4 (#6) implements the runtime `show()` against this map;
  * it starts empty on purpose and consumers add entries by **declaration merging**
  * (ARCHITECTURE.md §9.1), which is what keeps the webui's screens typed without waiting on us.
- * See `src/types/eapi.test.ts` for the augment + narrow type test.
+ * A consumer writes that augmentation against this package's own name (USAGE.md §4). The in-package
+ * type test `src/types/eapi.test.ts` has to target the declaring module instead, because TS2664
+ * forbids a package from augmenting its own name; `arista-webui/src/eapi-show-contracts.test.ts`
+ * proves the consumer spelling merges through this module's re-export.
  */
 export interface ShowContracts {
   // Deliberately no members: this is a declaration-merging target, not a value contract.

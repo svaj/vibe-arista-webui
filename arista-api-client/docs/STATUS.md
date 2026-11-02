@@ -4,10 +4,14 @@ Single source for "where are we". Update **in the same commit** that changes cod
 mirrored GitHub issue (see §4). Detailed task lists live in [PLAN.md](./PLAN.md); behaviour changes go
 in [MIGRATION.md §5](./MIGRATION.md#5-semantic-divergences-worth-reviewing).
 
-As of 2026-11-01: **M0 done — the package exists and is wired, no protocol code yet.** Repo is now
-an npm-workspaces monorepo (lockfile at the root); `@devhax-heavy-industries/arista-eapi` builds,
-lints, tests and type-checks, and `arista-webui` imports it by name. `src/index.ts` / `src/node.ts`
-hold placeholders only — the wire protocol starts at M1. M1 is the next action.
+As of 2026-11-01: **M1 done — the wire protocol core exists; still no transport.** The package (M0)
+builds, lints, tests and type-checks from the repo root, and `arista-webui` imports it by name. Now on
+top of it: `src/types/eapi.ts` carries the `runCmds` contracts plus the `WireSender` seam M2 (#4)
+implements, `src/internal/wire.ts` encodes and decodes envelopes with no I/O, `src/errors.ts` holds the
+DR-010 code set and DR-011 redaction contract, and the 27 hand-authored samples in
+`test/fixtures/wire/` are driven by `src/internal/wire.fixture.test.ts` (all message prose is still
+synthetic until M12 #14 records captures). `createNode()` in `src/index.ts` / `src/node.ts` still
+throws — connections start at M3/M4. **M2 (#4, transports) is the next action.**
 
 **Test infrastructure planning update:** local cEOS-lab **4.28.14M** and vendor install
 instructions are now available under `/home/svaj/development/arista/cEOS/`.
@@ -23,8 +27,8 @@ eAPI readiness, and harness execution are **not yet validated**. Hardware remain
 | ID | Milestone | Status | Started | Done | Issue | Blockers / notes |
 |---|---|---|---|---|---|---|
 | M0 | Workspace & package scaffolding | `done` | 2026-11-01 | 2026-11-01 | [#2](https://github.com/svaj/vibe-arista-webui/issues/2) | exit gate green from the repo root (typecheck/lint/test/build + webui imports by name, no path hacks); CI matrix is **22/24** because Vitest 5/jsdom 30 exclude Node 20. Package name still undecided (**DR-020**); `docs` script deferred (no generator chosen — M13 #15); placeholders only in `src/index.ts` / `src/node.ts` |
-| M1 | Wire protocol core | `not-started` | — | — | | needs `test/fixtures/wire/*.json` authored |
-| M2 | Transports | `not-started` | — | — | | depends on M1; cert pinning needs device fingerprint capture |
+| M1 | Wire protocol core | `done` | 2026-11-01 | 2026-11-01 | [#3](https://github.com/svaj/vibe-arista-webui/issues/3) | codec in `src/internal/wire.ts` (pure, no I/O) + `src/errors.ts` + `src/types/eapi.ts`; DR-010/011/012/016/017 in; **27** hand-authored samples in `test/fixtures/wire/` driven by `src/internal/wire.fixture.test.ts` (message prose is synthetic until M12 #14 records captures); client coverage 98.98% stmts / 94.73% branch / 100% lines (thresholds 85/75/60); no transport yet, `WireSender` + `src/testing/fake-sender.ts` are the only send seam; no runtime `show()` yet — the type tests pin the `ShowReply<K>` map M4 (#6) implements it against; codec does not yet correlate the echoed response id with the request id, and `ProtocolError` does not carry an id — M2 (#4) decides both |
+| M2 | Transports | `not-started` | — | — | | depends on M1 (**done**); cert pinning needs device fingerprint capture |
 | M3 | Connection profiles | `not-started` | — | — | | |
 | M4 | `Node` command layer | `not-started` | — | — | | |
 | M5 | Config sessions & change safety | `not-started` | — | — | | commit-timer semantics unverified; investigate in cEOS, confirm target-sensitive behavior on hardware |

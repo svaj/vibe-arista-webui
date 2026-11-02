@@ -8,7 +8,7 @@
  * nothing opens a socket (DR-034).
  */
 
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { expectTypeOf } from 'vitest'
 
 import {
@@ -193,6 +193,21 @@ describe('request id policy (DR-017)', () => {
 
   it('gives a call with no policy a one-shot id of the same shape', () => {
     expect(buildRequest(['show version']).id).toMatch(/^[0-9a-z]+-1$/)
+  })
+
+  it('falls back to a non-crypto client segment when WebCrypto is absent, and stays monotonic', () => {
+    // `randomToken` has a documented degradation path for runtimes without `globalThis.crypto`.
+    // The sequence half of the id (the part that correlates a connection's log lines) must survive it.
+    vi.stubGlobal('crypto', undefined)
+    try {
+      const ids = createRequestIds()
+      expect(ids.clientId).toMatch(/^[0-9a-z]+$/)
+      expect(ids.clientId.length).toBeGreaterThan(0)
+      expect([ids.next(), ids.next()]).toEqual([`${ids.clientId}-1`, `${ids.clientId}-2`])
+    } finally {
+      vi.unstubAllGlobals()
+    }
+    expect(createRequestIds().clientId).toMatch(/^[0-9a-f]{12}$/)
   })
 })
 
@@ -388,6 +403,35 @@ describe('error.data — both shapes (DR-010, DR-011)', () => {
     expect(error.results).toHaveLength(2)
   })
 
+  it('errorDetail entries without `cmd` resolve failedCommand through the entry index', () => {
+    // 4.28 sometimes writes `errorDetail` with only `{index, code, message}`. The index is then the
+    // only pointer into the sent command list, so the derivation must use it rather than give up.
+    const error = parseErrorEnvelope(
+      {
+        jsonrpc: '2.0',
+        error: {
+          code: 1002,
+          message: "CLI command 2 of 2 'name x' failed: invalid command",
+          data: { result: [{}, { errors: ['invalid command'] }], errorDetail: [{ index: 1, code: 1002, message: 'invalid command' }] },
+        },
+      },
+      { commands: ['vlan 4095', 'name x'] },
+    )
+    expect(error.failedCommand).toBe('name x')
+    expect(error.errorDetail).toEqual([{ index: 1, code: 1002, message: 'invalid command' }])
+  })
+
+  it('an error.data that is neither shape yields no [...] text and no results, rather than crashing', () => {
+    // A proxy or a future EOS build could put a scalar where the array belongs. `errorDataEntries`
+    // returns [] for it, so the rendering rule stays "empty brackets for a bracketed code".
+    const error = parseErrorEnvelope({ jsonrpc: '2.0', error: { code: 1002, message: 'invalid command', data: 42 } })
+    expect(error.commandError).toBe('')
+    expect(error.results).toEqual([])
+    expect(error.errorDetail).toBeUndefined()
+    expect(error.failedCommand).toBeUndefined()
+    expect(error.message).toBe('Error [1002]: invalid command []')
+  })
+
   it('data omitted: no [...] suffix, empty results (pyeapi prints the literal None — MIGRATION §5)', () => {
     const error = parseErrorEnvelope({ jsonrpc: '2.0', error: { code: 1002, message: 'invalid command' } })
     expect(error.commandError).toBeUndefined()
@@ -449,6 +493,13 @@ describe('pyeapi %r rendering parity (MessageFormat of CommandError)', () => {
     expect(pythonRepr({})).toBe('{}')
     expect(pythonRepr([])).toBe('[]')
     expect(pythonRepr(0.5)).toBe('0.5')
+  })
+
+  it('degrades to String() for a value JSON never carries, instead of throwing', () => {
+    // Only reachable through a caller bug (a symbol/bigint handed to the codec), and the failure mode
+    // must stay a readable log fragment rather than an exception inside error rendering.
+    expect(pythonRepr(Symbol('tag'))).toBe('Symbol(tag)')
+    expect(pythonRepr(10n)).toBe('10')
   })
 
   it('flattens every key of every data entry into "k: repr(v)" pairs, joined with ", "', () => {

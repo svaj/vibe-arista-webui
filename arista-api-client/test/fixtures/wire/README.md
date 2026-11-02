@@ -42,7 +42,11 @@ Naming: `<method>--<scenario>.json`, per TESTING.md §4 — never named after a 
 ## Secret probe token
 
 `pw-from-fixture-probe` is the **only** credential-shaped string allowed anywhere in this package's
-fixtures. `src/internal/wire.test.ts` asserts (a) it never appears in a `CommandError` message,
-`String(error)` or `JSON.stringify(error)`, and (b) any `{cmd: "enable", input: …}` object found in
-a `wire/*.json` fixture carries exactly this token — so a real enable password can never be
-committed to the tree by accident. M12 (#14) adds the same guard for recorded fixtures.
+fixtures. Two files hold the guard, one layer each: `src/internal/wire.test.ts` proves the probe never
+appears in a `CommandError` message, `String(error)`, `error.stack` or `JSON.stringify(error)` for the
+inline envelopes, and `src/internal/wire.fixture.test.ts` proves it across this directory — enumerating
+every file and requiring an exact manifest match (a fixture cannot sit undriven), the
+`<method>--<scenario>.json` name convention (a sidecar such as `passwords.conf.json` fails it), every
+`{cmd: "enable", input: …}` object carrying exactly this token, and `redactWireText()` over every
+fixture body. So a real enable password cannot be committed to the tree by accident, in either the
+message text or a structured field. M12 (#14) adds the same guard for recorded fixtures.
