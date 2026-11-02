@@ -81,19 +81,43 @@ graph LR
 ### M0 — Workspace & package scaffolding
 **Goal:** the package exists, builds, lints, tests, and is importable from `arista-webui` by name.
 
-- [ ] Create root `package.json` with `"private": true`, `"workspaces": ["arista-api-client", "arista-webui"]`, and root scripts `build`, `test`, `lint`, `typecheck` that fan out to both packages.
-- [ ] `arista-api-client/package.json`: name `@devhax-heavy-industries/arista-eapi` (**DR-020 open**), `"type": "module"`, engines `node >= 20`, sideEffects false.
+- [x] Create root `package.json` with `"private": true`, `"workspaces": ["arista-api-client", "arista-webui"]`, and root scripts `build`, `test`, `lint`, `typecheck` that fan out to both packages.
+- [x] `arista-api-client/package.json`: name `@devhax-heavy-industries/arista-eapi` (**DR-020 open**), `"type": "module"`, engines `node >= 20`, sideEffects false.
 - [ ] Scripts mirroring the webui: `build` (vite lib mode) · `typecheck` (`tsc -b`) · `lint` (`oxlint`) · `test` (`vitest run --project unit`) · `test:watch` (`vitest --project unit`) · `test:live` (`vitest run --project live`) · `coverage` (unit project only) · `docs`.
-- [ ] `exports` map with conditions: `"."` → browser-safe build; `"./node"` → Node build (unix socket, client certs); `"./package.json"`. Types first, `import` only (no CJS) — **DR-021**.
-- [ ] `tsconfig.json` + `tsconfig.build.json`: `strict`, `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`, `verbatimModuleSyntax`, `isolatedModules`, `declaration` + `declarationMap`, `emitDeclarationOnly` for the types step. `target: ES2022`, `lib: ["ES2023", "DOM"]`.
-- [ ] `vite.config.ts` lib mode (rolldown) with two entries (`index.ts`, `node.ts`), `formats: ["es"]`, externals left external (`node:net`, `node:tls`, `node:fs`).
-- [ ] `vitest.config.ts` with `projects`: `unit` (node env, excludes `*.live.test.ts`) and `live` (include only `*.live.test.ts`, `pool: forks`, run only via `test:live`). Coverage provider `v8` with thresholds (see TESTING.md).
-- [ ] `.oxlintrc.json` at repo root (shared by both packages) with the `typescript` + `import` plugin rules; per-package overrides. If `oxfmt` is available in the pinned `oxlint` major, adopt it and disable Prettier.
-- [ ] Source skeleton: `src/index.ts`, `src/node.ts`, `src/internal/`, `src/resources/`, `src/types/`, `src/testing/` (public test helpers), `.gitignore`, `LICENSE` (**BSD-3-Clause, retaining Arista's copyright — DR-001**), `NOTICE` attributing the pyeapi port.
-- [ ] CI: GitHub Actions workflow (Node 20/22 matrix, `typecheck` → `lint` → `test` → `build`; reserve real-EOS jobs for explicit trusted `workflow_dispatch`, per M12 and the cEOS runbook).
-- [ ] Verify the webui resolves the workspace package (`import { createNode } from '@devhax-heavy-industries/arista-eapi'` type-checks; Vite dev server serves it unbuilt during development).
+- [x] `exports` map with conditions: `"."` → browser-safe build; `"./node"` → Node build (unix socket, client certs); `"./package.json"`. Types first, `import` only (no CJS) — **DR-021**.
+- [x] `tsconfig.json` + `tsconfig.build.json`: `strict`, `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`, `verbatimModuleSyntax`, `isolatedModules`, `declaration` + `declarationMap`, `emitDeclarationOnly` for the types step. `target: ES2022`, `lib: ["ES2023", "DOM"]`.
+- [x] `vite.config.ts` lib mode (rolldown) with two entries (`index.ts`, `node.ts`), `formats: ["es"]`, externals left external (`node:net`, `node:tls`, `node:fs`).
+- [x] `vitest.config.ts` with `projects`: `unit` (node env, excludes `*.live.test.ts`) and `live` (include only `*.live.test.ts`, `pool: forks`, run only via `test:live`). Coverage provider `v8` with thresholds (see TESTING.md).
+- [x] `.oxlintrc.json` at repo root (shared by both packages) with the `typescript` + `import` plugin rules; per-package overrides. If `oxfmt` is available in the pinned `oxlint` major, adopt it and disable Prettier.
+- [x] Source skeleton: `src/index.ts`, `src/node.ts`, `src/internal/`, `src/resources/`, `src/types/`, `src/testing/` (public test helpers), `.gitignore`, `LICENSE` (**BSD-3-Clause, retaining Arista's copyright — DR-001**), `NOTICE` attributing the pyeapi port.
+- [x] CI: GitHub Actions workflow (Node 20/22 matrix, `typecheck` → `lint` → `test` → `build`; reserve real-EOS jobs for explicit trusted `workflow_dispatch`, per M12 and the cEOS runbook).
+- [x] Verify the webui resolves the workspace package (`import { createNode } from '@devhax-heavy-industries/arista-eapi'` type-checks; Vite dev server serves it unbuilt during development).
 
-**Exit gate:** `npm run build && npm run typecheck && npm run lint && npm test` green from the repo root; webui imports the package with no path hacks.
+> **M0 notes (2026-11-01, PR for #2 — what deviated and why):**
+> * Every script named above exists **except `docs`** — no doc generator has been chosen and
+>   adding one here would be an unjustified dependency. Docs/release tooling is M13's (#15).
+> * `tsconfig` needed **three** projects, not two, so colocated tests are type-checked while
+>   `dist/` stays clean: `tsconfig.json` (solution, like the webui's) → `tsconfig.build.json`
+>   (composite, `emitDeclarationOnly`, excludes `*.test.ts`/`*.live.test.ts`),
+>   `tsconfig.test.json` (noEmit, type-checks `src/**` including tests),
+>   `tsconfig.node.json` (noEmit, type-checks `vite.config.ts`/`vitest.config.ts` — mirrors the webui).
+> * `exports` gained a **`development` condition** (`./src/*.ts`) ahead of `import`, so `arista-webui`
+>   dev/test consumes the TypeScript source with no library build and no `resolve.alias`; production
+>   builds use `dist/`. `./testing` (DR-021) is **not** wired yet — nothing to point at until M1/M2.
+> * Coverage `include` is `['src/**/*.ts']` rather than TESTING.md's `['src/**']`: the skeleton keeps
+>   a one-page `README.md` in each `src/` subdirectory (git cannot store empty dirs) and the v8
+>   provider tried to parse them (`PARSE_ERROR`).
+> * `oxlint@1.90.0` ships only the `oxlint` bin — no bundled `oxfmt` — so there was nothing to adopt;
+>   `oxfmt` exists only as a separate package and adopting it would reformat `arista-webui` too.
+>   The existing `arista-webui/.oxlintrc.json` moved to the repo root and gained the `import` plugin
+>   (`import/no-cycle`) plus an `arista-api-client/**` override that switches the React rules off.
+> * Two build-order traps fixed: Vite's `emptyOutDir` deletes `dist/*.d.ts`, so the client's `build`
+>   is `vite build && tsc -b --force`; and `arista-webui/tsconfig.json` references
+>   `../arista-api-client/tsconfig.build.json` so a standalone webui typecheck has declarations
+>   available (resolution is still by package name — no path alias).
+> * The workspace lockfile moved from `arista-webui/package-lock.json` to the repo root.
+
+**Exit gate:** `npm run build && npm run typecheck && npm run lint && npm test` green from the repo root; webui imports the package with no path hacks. ✅ met (2026-11-01).
 
 ---
 

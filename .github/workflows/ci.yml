@@ -1,0 +1,52 @@
+name: CI
+
+# Offline quality gate only (#2 / M0). This workflow must never start, build or contact an
+# EOS device or a cEOS-lab container: no `arista_eos` image, no docker, no eAPI endpoint.
+# Real-EOS / cEOS lanes are M12 (#14) work and, when added, must be a separate explicitly
+# trusted `workflow_dispatch` job on a dedicated runner per docs/CEOS.md — never a PR job.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: typecheck / lint / test / build (node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['20', '22']
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install (lockfile at the workspace root)
+        run: npm ci
+
+      # Order deliberately mirrors the local exit gate from PLAN.md M0.
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test (offline only — never a device)
+        run: npm test
+
+      - name: Build
+        run: npm run build

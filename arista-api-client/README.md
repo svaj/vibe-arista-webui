@@ -4,9 +4,11 @@ A TypeScript eAPI client for Arista EOS, ported from (and deliberately **not** a
 Arista's Python [pyeapi](https://github.com/arista-eosplus/pyeapi). It is the library
 [`arista-webui/`](../arista-webui/) uses to talk to the DCS-7050TX-64 / EOS 4.28.13.1M switch.
 
-> **Status: planned, not implemented.** pyeapi 1.0.4-rc0 was inventoried (≈9 k LOC of source, 436 unit
-> + 284 system test methods) and every milestone is scoped, but M0 has not started. Progress board:
-> [docs/STATUS.md](./docs/STATUS.md).
+> **Status: M0 scaffolding only — no protocol code yet** (2026-11-01). The package is a real
+> workspace package that builds, type-checks, lints and tests, and `arista-webui` imports it by name;
+> both entry points (`src/index.ts`, `src/node.ts`) are clearly marked placeholders. pyeapi 1.0.4-rc0
+> was inventoried (≈9 k LOC of source, 436 unit + 284 system test methods) and every milestone is
+> scoped. Progress board: [docs/STATUS.md](./docs/STATUS.md).
 
 ## Read these
 
@@ -38,11 +40,14 @@ Arista's Python [pyeapi](https://github.com/arista-eosplus/pyeapi). It is the li
 ## Working on it
 
 ```bash
-npm install                      # repo root, workspaces
-npm run build -w @devhax-heavy-industries/arista-eapi
-npm test    -w @devhax-heavy-industries/arista-eapi # never touches the switch
+npm install                      # repo root, workspaces (single lockfile lives at the root)
+npm run typecheck --workspaces   # or: npm run typecheck  (fans out to both packages)
+npm run lint    -w @devhax-heavy-industries/arista-eapi
+npm test        -w @devhax-heavy-industries/arista-eapi # never touches the switch (vitest --project unit)
+npm run test:watch -w @devhax-heavy-industries/arista-eapi
+npm run coverage -w @devhax-heavy-industries/arista-eapi # unit project only, v8 thresholds
 npm run test:live -w @devhax-heavy-industries/arista-eapi   # gated: EAPI_LIVE=1 + EAPI_HOST/USER/PASS + EAPI_TARGET_CLASS=lab
-npm run lint -w @devhax-heavy-industries/arista-eapi
+npm run build   -w @devhax-heavy-industries/arista-eapi # vite lib build + tsc declarations
 node arista-api-client/scripts/create-issues.mjs   # mirror PLAN.md milestones to GitHub issues (idempotent)
 ```
 
@@ -54,3 +59,5 @@ updated in the same commit — is spelled out in [docs/PLAN.md §6](./docs/PLAN.
 Derived from Arista Networks' pyeapi (BSD-3-Clause). Baseline commit: `6816d9e` (`1.0.4-rc0`),
 local clone at `/home/svaj/development/arista/pyeapi`. Files that are direct translations of pyeapi
 functions carry the upstream copyright header; see [docs/DECISIONS.md DR-001](./docs/DECISIONS.md#dr-001--license-and-attribution).
+Since M0 (#2) the licensing paperwork is in the package itself: [`LICENSE`](./LICENSE) (BSD-3-Clause,
+Arista's copyright retained) and [`NOTICE`](./NOTICE) (upstream attribution).

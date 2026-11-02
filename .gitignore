@@ -4,6 +4,9 @@ node_modules/
 # Build output
 dist/
 
+# Test coverage (vitest v8 provider)
+coverage/
+
 # TypeScript incremental build info
 *.tsbuildinfo
 

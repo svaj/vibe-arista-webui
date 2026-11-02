@@ -1,0 +1,53 @@
+{
+  "name": "@devhax-heavy-industries/arista-eapi",
+  "version": "0.0.0",
+  "private": true,
+  "description": "TypeScript client for Arista EOS eAPI (DCS-7050TX-64 / EOS 4.28.13.1M), ported from Arista's pyeapi.",
+  "license": "BSD-3-Clause",
+  "type": "module",
+  "sideEffects": false,
+  "engines": {
+    "node": ">=20"
+  },
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "development": "./src/index.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./node": {
+      "types": "./dist/node.d.ts",
+      "development": "./src/node.ts",
+      "import": "./dist/node.js",
+      "default": "./dist/node.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "src",
+    "docs",
+    "LICENSE",
+    "NOTICE",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "vite build && tsc -b --force",
+    "typecheck": "tsc -b",
+    "lint": "oxlint",
+    "test": "vitest run --project unit",
+    "test:watch": "vitest --project unit",
+    "test:live": "vitest run --project live",
+    "coverage": "vitest run --project unit --coverage"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "@vitest/coverage-v8": "^5.0.5",
+    "oxlint": "^1.90.0",
+    "typescript": "~7.0.2",
+    "vite": "^8.3.5",
+    "vitest": "^5.0.5"
+  }
+}
