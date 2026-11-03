@@ -3,7 +3,11 @@
  *
  * M1 (#3) put the wire protocol core behind this entry: the `runCmds` codec, the error taxonomy and
  * DR-011 redaction. M2 (#4) adds the browser-capable transports: `FetchTransport` (`https`) and
- * `HttpTransport` (`http`, loopback-gated). Profiles are M3 (#5) and the `Node` command layer M4 (#6).
+ * `HttpTransport` (`http`, loopback-gated). M4 (#6) adds the `Node` command layer
+ * (`src/command-layer.ts`): `exec` / `show` / `showText` / `configure` / cached configs / device
+ * identity. Connection profiles and the option-bag factories (`createNode`, `createConnection`) —
+ * i.e. `eapi.conf` lookup and the transport-plus-settings bag — are M3 (#5), so until then a `Node`
+ * is built from an explicit `Transport`.
  *
  * Two properties are enforced, not just intended:
  *  - no file reachable from this module imports a `node:` built-in — checked by
@@ -124,9 +128,37 @@ export type {
   WireTraceSink,
 } from './transports/contract'
 
+// --- command layer (M4 #6, src/command-layer.ts) ------------------------------------------------
+// pyeapi's `client.Node`, ported by behaviour rather than by shape (DR-003): `runCommands`, `exec`
+// (= pyeapi `enable`, no duplicate `response` key — DR-007), the typed `show` shell over the
+// augmentable `ShowContracts` map, `configure`, the async config accessors (DR-005) and the lazily
+// parsed device identity. `parseVersionProperties` and `tryVariants` are exported because TESTING.md
+// §6 keeps parsers pure and unit-testable without a device (DR-006 for variants).
+export { Node, parseVersionProperties } from './command-layer'
+export { tryVariants } from './internal/variants'
+export type {
+  ConfigOutput,
+  ConfigTarget,
+  ExecResult,
+  GetConfigOptions,
+  NodeRequestOptions,
+  NodeSettings,
+  ShowOptions,
+  ShowTextOptions,
+  VersionProperties,
+} from './command-layer'
+export type { CliVariant, VariantSender } from './internal/variants'
+
 /**
- * Placeholder for the connection options `createNode` will take.
- * The real shape (transport selection, TLS trust, profiles) is defined by M2/M3.
+ * Placeholder for the **connection** options `createNode` will take, i.e. how to reach the switch
+ * (transport selection, TLS trust, credentials, profile name). M2 (#4) shipped the real shape for a
+ * transport ({@link TransportOptions}); the combined bag — those options plus the per-node settings
+ * below — is defined by M3 (#5), which owns profiles and the `client.connect()` equivalent
+ * (PLAN.md M3: "`createConnection(profile)` and `createNode(profile)`").
+ *
+ * The per-`Node` behaviour bag is {@link NodeSettings}, and it is not the same thing: it is the second
+ * argument of `new Node(transport, settings)` (pyeapi's `Node(connection, **kwargs)`,
+ * `client.py:495-507`).
  */
 export interface NodeOptions {
   /** Host or address of the switch's eAPI endpoint (`POST /command-api`). */
@@ -134,16 +166,27 @@ export interface NodeOptions {
 }
 
 /**
- * M0 placeholder (#2). Creates a client for one switch.
+ * M0 placeholder (#2), still unimplemented after M4 (#6): building a client from *connection options*
+ * is pyeapi's `connect(..., return_node=True)`, and PLAN.md assigns that to M3 (#5), together with
+ * `eapi.conf` profiles — a profile is where `transport`/`host`/`enablepwd` come from.
  *
- * Always throws: the command layer it is supposed to return arrives in M4 (#6).
- * Its only job is to make the package resolvable and importable by name from
+ * What M4 did land is the thing this function would return: construct it from an explicit transport
+ * in the meantime —
+ *
+ * ```ts
+ * const node = new Node(createTransport({ kind: 'https', host, username, password }), {
+ *   configDefaults: true,
+ * })
+ * ```
+ *
+ * Its other job, unchanged since M0, is to make the package resolvable and importable by name from
  * `arista-webui` — see `arista-webui/src/eapi-package.test.ts`.
  */
 export function createNode(options: NodeOptions = {}): never {
   throw new Error(
-    `@devhax-heavy-industries/arista-eapi: createNode() is an M0 placeholder (#2) and has no ` +
-      `implementation yet — the command layer lands in M4 (#6). Received options: ` +
-      `${JSON.stringify(options)}`,
+    `@devhax-heavy-industries/arista-eapi: createNode() is an M0 placeholder (#2) — connection/profile ` +
+      `options land in M3 (#5). The command layer it would hand back exists now (M4, #6): ` +
+      `new Node(createTransport({ kind, … }), { enablePassword, autorefresh, configDefaults }). ` +
+      `Received options: ${JSON.stringify(options)}`,
   )
 }

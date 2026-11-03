@@ -195,27 +195,27 @@ graph LR
 ---
 
 ### M4 — `Node` command layer
-**Port of:** `client.py:464-955` (`Node.__init__`, `enable`, `run_commands`, `config`, `get_config`, `refresh`, `version`/`model`).
+**Port of:** `client.py:464-1001` (`Node.__init__`, `enable`, `run_commands`, `config`, `get_config`, `refresh`, `version`/`model`).
 
-- [ ] `class Node` with `readonly connection: Transport` and lazy, cached `version`, `versionNumber`, `model` (parse from `show version` exactly like `_get_version_properties`, `client.py:557-575`).
-- [ ] `runCommands(cmds, {encoding, sendEnable})` → raw `result[]` (pyeapi `run_commands`), including the `MULTILINE:` pseudo-syntax **replaced** by real `{cmd, input}` objects → **DR-015**.
-- [ ] `exec(commands, opts)` = pyeapi `enable()`: returns `{command, result, encoding}` per command; `1003` retry-with-text; explicit `strict` → `tolerateErrors`; refuses config-mode commands with `NotSupportedError` (pyeapi raises `TypeError` when the literal `configure` is present).
-- [ ] Drop the duplicate `response` key; keep only `result` → **DR-007**.
-- [ ] `show<T>(command)` typed shell: `show('version')` → `ShowVersionReply`, `show('vlan 20')` → … via a `ShowCommandContracts` interface map that consumers can augment (declaration merging). This is the piece the webui builds on.
-- [ ] `configure(commands)` (pyeapi `config`) → `configureTerminal` path; `configureSession` path arrives in M5. Both strip the prepended command's output (`response.pop(0)`) and clear config caches, and honour `autorefresh`.
-- [ ] `enablePassword` handling: `node.setEnablePassword(pw)` → sends `{'cmd':'enable','input':pw}`; **document the priv-15-user shortcut**: with a `privilege 15` Basic-auth user, `sendEnable: false` and the `enable` command is unnecessary → **DR-009**.
-- [ ] `getConfig({config:'running'|'startup', params:'all', as:'string'|'lines'})` with `configDefaults` support; validate the config name.
-- [ ] `runningConfig` / `startupConfig` as **async accessors** (`getRunningConfig()`), since TS getters can't await; document the divergence from pyeapi properties → **DR-005**.
-- [ ] `refresh()` invalidates cached configs; `autorefresh` default `true` preserved.
-- [ ] `CliVariants` equivalent: `configure([...variant(a), ...])` → `{ variants: [['a','b'], ['c','d']] }` tried in order, re-raising the last `CommandError` (pyeapi `client.py:640-673`). Decide parity vs. ergonomics: keep as `tryVariants()` utility, not a type-level magic → **DR-006**.
+- [x] `class Node` with `readonly connection: Transport` and lazy, cached `version`, `versionNumber`, `model` (parse from `show version` exactly like `_get_version_properties`, `client.py:557-575`).
+- [x] `runCommands(cmds, {encoding, sendEnable})` → raw `result[]` (pyeapi `run_commands`), including the `MULTILINE:` pseudo-syntax **replaced** by real `{cmd, input}` objects → **DR-015**.
+- [x] `exec(commands, opts)` = pyeapi `enable()`: returns `{command, result, encoding}` per command; `1003` retry-with-text; explicit `strict` → `tolerateErrors`; refuses config-mode commands with `NotSupportedError` (pyeapi raises `TypeError` when the literal `configure` is present).
+- [x] Drop the duplicate `response` key; keep only `result` → **DR-007**.
+- [x] `show<T>(command)` typed shell: `show('version')` → `ShowVersionReply`, `show('vlan 20')` → … via a `ShowCommandContracts` interface map that consumers can augment (declaration merging). This is the piece the webui builds on.
+- [x] `configure(commands)` (pyeapi `config`) → `configureTerminal` path; `configureSession` path arrives in M5. Both strip the prepended command's output (`response.pop(0)`) and clear config caches, and honour `autorefresh`.
+- [x] `enablePassword` handling: `node.setEnablePassword(pw)` → sends `{'cmd':'enable','input':pw}`; **document the priv-15-user shortcut**: with a `privilege 15` Basic-auth user, `sendEnable: false` and the `enable` command is unnecessary → **DR-009**.
+- [x] `getConfig({config:'running'|'startup', params:'all', as:'string'|'lines'})` with `configDefaults` support; validate the config name.
+- [x] `runningConfig` / `startupConfig` as **async accessors** (`getRunningConfig()`), since TS getters can't await; document the divergence from pyeapi properties → **DR-005**.
+- [x] `refresh()` invalidates cached configs; `autorefresh` default `true` preserved.
+- [x] `CliVariants` equivalent: `configure([...variant(a), ...])` → `{ variants: [['a','b'], ['c','d']] }` tried in order, re-raising the last `CommandError` (pyeapi `client.py:628-652`). Decide parity vs. ergonomics: keep as `tryVariants()` utility, not a type-level magic → **DR-006**.
 
 **Tests (high priority — 53 pyeapi unit tests in `test_client.py`; port these 30):**
-- [ ] `enable`: single/multi command, `send_enable` true/false, enable password insertion order, result indexing, `response.pop(0)` after `configure terminal`.
-- [ ] `config`: chunk of commands order, `configure terminal` prefix, autorefresh off → no `refresh()` call, cache cleared afterwards.
-- [ ] `get_config`: `running-config`/`startup-config`, `params` appended, `as_string` vs lines, invalid name throws.
-- [ ] version/model parsing: fixture `show version` for `4.28.13.1M` + `DCS-7050TX-64`, and the no-match fallbacks.
-- [ ] Error attachment: failing command set → error carries `commands`.
-- [ ] Type-level: `show('version')` returns `ShowVersionReply`; unknown command → `unknown` (not `any`).
+- [x] `enable`: single/multi command, `send_enable` true/false, enable password insertion order, result indexing, `response.pop(0)` after `configure terminal`.
+- [x] `config`: chunk of commands order, `configure terminal` prefix, autorefresh off → no `refresh()` call, cache cleared afterwards.
+- [x] `get_config`: `running-config`/`startup-config`, `params` appended, `as_string` vs lines, invalid name throws.
+- [x] version/model parsing: fixture `show version` for `4.28.13.1M` + `DCS-7050TX-64`, and the no-match fallbacks.
+- [x] Error attachment: failing command set → error carries `commands`.
+- [x] Type-level: `show('version')` returns `ShowVersionReply`; unknown command → `unknown` (not `any`).
 
 **Exit gate:** read-only work against a mocked switch is fully usable without any resource module (the "generic exec/show" escape hatch works).
 
