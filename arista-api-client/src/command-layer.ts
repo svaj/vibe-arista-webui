@@ -4,13 +4,20 @@
  * renaming the **shape** per DR-003.
  *
  * Deliberately absent here, because other milestones own them:
- *  - `section()` / `_chunkify()` — the config-text engine, M6 (#8). pyeapi clears an `lru_cache` on
- *    `_chunkify` after every write (`client.py:666`); DR-026 replaces that with a hash-keyed memo, so
- *    a parse cannot outlive the config text it was derived from and needs no invalidation hook here.
  *  - `configure_session` / `diff` / `commit` / `abort` — M5 (#7). The DR-025 guard ("`configure()`
  *    while a config session is open") belongs at the top of {@link Node.configure}.
  *  - `api()` module autoload — dropped outright (DR-006, MIGRATION.md §7), so its upstream test
- *    (`test_client.py::test_api_autoloader`) has nothing to port to.
+ *    (`test_client.py::test_api_autoloader`) has nothing to port to. {@link Node.resource} is the typed
+ *    replacement (M7 #9):
+ *    a key of the augmentable `ResourceKinds` map over a frozen factory table, not a module path.
+ *
+ * Shipped here by M7 (#9) — the pairing PR #23 deferred to this milestone ("Deliberately no
+ * `Node.chunkConfig`/`Node.section` wiring — that pairing is M7", STATUS.md §1):
+ *  - pyeapi's `section()` / `_chunkify()` (`client.py:697-774`, `:776-798`) on top of M6's engine
+ *    (`src/config/`), with pyeapi's `_chunkify.cache_clear()` calls (`client.py:665-666`, `:689-690`)
+ *    realised as DR-026's per-source memos — {@link Node.chunkConfig}, {@link Node.section};
+ *  - MIGRATION.md §2 promised the method name `configSection()`; as built it is `section()`, matching
+ *    pyeapi and M6's own function name (row 73).
  *
  * Layering (docs/ARCHITECTURE.md §1): this file is the `Node` box — it holds a `Transport`
  * **interface** and nothing else at the runtime seam, so the same command layer runs over `fetch`
@@ -24,10 +31,16 @@
  */
 
 import { NotSupportedError, ProtocolError } from './errors'
+import { createConfigChunkCache } from './config/cache'
+import { getBlock as blockOfSection, section as matchSection } from './config/section'
+import { RESOURCE_FACTORIES, ResourceRegistry } from './resources/registry'
 import { redactCommands } from './internal/redact'
 import { toCommandSpecArray } from './internal/wire'
 import { tryVariants } from './internal/variants'
 import type { CliVariant } from './internal/variants'
+import type { ConfigSections } from './config/chunk'
+import type { SectionPattern } from './config/section'
+import type { ResourceName } from './resources/registry'
 import type { Transport, TransportExecOptions } from './transports/contract'
 import type { CommandResult, CommandSpec, RunCmdsFormat, ShowContracts, ShowReply } from './types/eapi'
 
@@ -101,6 +114,19 @@ export interface GetConfigOptions extends NodeRequestOptions {
 export type ShowOptions = Omit<NodeRequestOptions, 'format'> & {
   /** Ask for a specific JSON model revision of the command (`JsonCli.py:36-39` allows `revision`). */
   readonly revision?: number | undefined
+}
+
+/**
+ * Which cached config text an operation reads — the second argument of pyeapi's
+ * `Node.section(regex, config='running_config')` (`client.py:776`, resolved at `:789-791`), spelled as
+ * the wire union {@link ConfigTarget} instead of the `'running_config'` sentinel string (row 36 kept it
+ * this way for `getConfig` too). Added by M7 (#9) for {@link Node.chunkConfig} / {@link Node.section};
+ * there is no `params` here because a chunked read is always the whole config, exactly as pyeapi's
+ * `_chunkify(self.running_config)` was (`client.py:790-791`).
+ */
+export interface NodeConfigOptions {
+  /** Which config to chunk and search. Default `running-config`, as in pyeapi. */
+  readonly config?: ConfigTarget | undefined
 }
 
 /** Options for {@link Node.showText} — always `format:'text'`, no revision (text output has none). */
