@@ -63,6 +63,8 @@ import type { CliVariant } from './internal/variants'
 import type { ConfigSections } from './config/chunk'
 import type { SectionPattern } from './config/section'
 import type { SystemResource } from './resources/system'
+import type { SwitchportsResource } from './resources/switchports'
+import type { VlansResource } from './resources/vlans'
 import type { ResourceKinds, ResourceName } from './resources/registry'
 import type { Transport, TransportExecOptions } from './transports/contract'
 import type { CommandResult, CommandSpec, RunCmdsFormat, ShowContracts, ShowReply } from './types/eapi'
@@ -620,15 +622,33 @@ export class Node {
   }
 
   /**
+   * The `vlans` resource — the same per-`Node` {@link resourceMemo} as {@link resource}, exactly as M8
+   * (#10) wired `node.system` (DR-052): `node.vlans === node.vlans === node.resource('vlans')`. pyeapi's
+   * equivalent is `node.api('vlans')`, which resolves a module path and rebuilds the object every call
+   * (`client.py:927-950`); the module factory it replaces is `vlans.py:361-372`. Added by M9 (#11).
+   */
+  get vlans(): VlansResource {
+    return this.resource('vlans')
+  }
+
+  /**
+   * The `switchports` resource — same memo, same reasoning as {@link vlans}; pyeapi's factory is
+   * `switchports.py:406-417` and its accessor never was (DR-006). Added by M9 (#11).
+   */
+  get switchports(): SwitchportsResource {
+    return this.resource('switchports')
+  }
+
+  /**
    * The resource for `name` — DR-006's replacement for pyeapi's string-keyed `Node.api(name)`
    * (`client.py:927-950`, where the name is a module path loaded off the filesystem). Here it is a key of
    * the augmentable {@link ResourceKinds} map, checked at compile time and again at runtime
    * (`src/resources/registry.ts`), and the instance is memoised per `Node` rather than rebuilt per call
    * (pyeapi builds a fresh object every call, `client.py:946-949`).
    *
-   * M7 (#9) shipped the map empty and M8 (#10) claimed the first row, so an unregistered name —
-   * `vlans`, `switchports`, `interfaces` until M9 #11 / M10 #12, or a typo — throws a `NotSupportedError`
-   * naming it and listing what is registered. Apps define their own resources with
+   * M7 (#9) shipped the map empty, M8 (#10) claimed the first row and M9 (#11) claimed `vlans` /
+   * `switchports`, so an unregistered name — `interfaces` until M10 #12, or a typo — throws a
+   * `NotSupportedError` naming it and listing what is registered. Apps define their own resources with
    * `createResourceRegistry(factories, node)`.
    *
    * @throws {NotSupportedError} no factory is registered for `name`.

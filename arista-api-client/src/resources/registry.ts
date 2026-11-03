@@ -18,9 +18,9 @@
  * threw both statically and at runtime. The registry landed then because the framework, not the modules,
  * is what needs the plumbing — PLAN.md M7's exit gate is "the first resource module (M8) requires ~30
  * lines of new plumbing at most", and `base.test.ts` measures that cost against a throwaway entity.
- * **M8 (#10) claimed the first row:** `system` is registered below, which is also the first live use of
- * `Node`'s static accessor (`node.system`) over that memo. `vlans`/`switchports`/`interfaces` still
- * arrive with M9 (#11) and M10 (#12).
+ * **M8 (#10) claimed the first row** (`system`, with `Node.system` for it), and **M9 (#11) claimed the
+ * next two** (`vlans`, `switchports`, with `Node.vlans` / `Node.switchports`). `interfaces` still arrives
+ * with M10 (#12).
  *
  * Instances are memoised **per `Node`**, not globally: `ResourceRegistry` is constructed with the `Node`
  * it drives, so two switches get two resource objects and no module-level mutable singleton exists
@@ -28,7 +28,9 @@
  */
 
 import { NotSupportedError } from '../errors'
+import { SwitchportsResource } from './switchports'
 import { SystemResource } from './system'
+import { VlansResource } from './vlans'
 import type { Node } from '../command-layer'
 
 /** A resource constructor: the `Node` it operates on in, the resource instance out (pyeapi's `instance(node)`). */
@@ -48,13 +50,17 @@ export type ResourceFactory<T> = (node: Node) => T
  * }
  * ```
  *
- * The first row is M8's (`system`, #10); `vlans`/`switchports` (#11) and `interfaces` (#12) follow.
- * A name in this interface without a factory in {@link RESOURCE_FACTORIES} is a bug in this package, and
- * {@link ResourceRegistry.get} throws rather than returning `undefined` (row 79).
+ * The first rows are M8's (`system`, #10) and M9's (`vlans`, `switchports`, #11); `interfaces` (#12)
+ * follows. A name in this interface without a factory in {@link RESOURCE_FACTORIES} is a bug in this
+ * package, and {@link ResourceRegistry.get} throws rather than returning `undefined` (row 79).
  */
 export interface ResourceKinds {
   /** The global system settings — `src/resources/system.ts`, port of pyeapi `api/system.py`. */
   system: SystemResource
+  /** The VLANs in the running-config — `src/resources/vlans.ts`, port of pyeapi `api/vlans.py`. */
+  vlans: VlansResource
+  /** The L2 state of each Ethernet / Port-Channel interface — `src/resources/switchports.ts`, port of pyeapi `api/switchports.py`. */
+  switchports: SwitchportsResource
 }
 
 /** Any name `node.resource()` may be asked for. Grows by one row per resource module (M8-M10). */
@@ -74,12 +80,14 @@ type AnyResource = unknown
  * App-defined resources go in their own {@link ResourceRegistry} instead.
  *
  * One row per shipped module — pyeapi's `instance(api)` factories (`system.py:183-186`,
- * `vlans.py:370-372`, …) are the thing this table replaces, and pyeapi resolves the **name** to a module
- * path at call time (`client.py:927-950`), which is what DR-006 removes. `ResourceFactories<ResourceKinds>`
+ * `vlans.py:361-372`, `switchports.py:406-417`) are the thing this table replaces, and pyeapi resolves
+ * the **name** to a module path at call time (`client.py:927-950`), which is what DR-006 removes. `ResourceFactories<ResourceKinds>`
  * is exhaustive, so a `ResourceKinds` row without a factory here is a compile error (row 79).
  */
 export const RESOURCE_FACTORIES: ResourceFactories<ResourceKinds> = Object.freeze({
   system: (node) => new SystemResource(node),
+  vlans: (node) => new VlansResource(node),
+  switchports: (node) => new SwitchportsResource(node),
 })
 
 /**
