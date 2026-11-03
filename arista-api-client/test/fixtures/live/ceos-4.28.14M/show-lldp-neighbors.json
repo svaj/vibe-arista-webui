@@ -1,0 +1,38 @@
+{
+  "metadata": {
+    "targetClass": "lab",
+    "targetKind": "ceos-container",
+    "imageTag": "arista/ceos:4.28.14M",
+    "imageId": "sha256:8fd4e31caeba5db82d706eaed00252d67a1caa7d68670e5bd7e2af54935f2e28",
+    "imageRepoDigests": [
+      "arista/ceos@sha256:8fd4e31caeba5db82d706eaed00252d67a1caa7d68670e5bd7e2af54935f2e28"
+    ],
+    "aristaVersion": "4.28.14M-50015774.42814M (engineering build)",
+    "aristaVersionBase": "4.28.14M",
+    "internalVersion": "4.28.14M-50015774.42814M",
+    "modelName": "cEOSLab",
+    "hardwareEvidence": "none — cEOS-lab container capture; not DCS-7050TX-64 / 4.28.13.1M evidence (DR-043)",
+    "runId": "lab-419881-9d034b",
+    "capturedAt": "2026-11-03T17:49:32.441Z",
+    "capturedBy": "scripts/ceos-lab.mjs",
+    "endpoint": "127.0.0.1:46537",
+    "transport": "https + HTTP basic auth to the run-owned published loopback port; container-side pinned certificate",
+    "tlsPinFingerprint256": "8940F7A2842D81E394F59A93B48165A1DF218E5847D22C5FCAF502056D1E0CAF",
+    "bootupTimestamp": 1793728117.082213,
+    "redactionApplied": [
+      "username/secret and enable/passphrase text replaced with <redacted-lab-secret>",
+      "systemMacAddress / hwMacAddress / configMacAddress zeroed",
+      "no key material: the container keeps the key in a sibling file that is never read",
+      "serialNumber is the empty string on this cEOS-lab image and is kept verbatim"
+    ]
+  },
+  "command": "show lldp neighbors",
+  "format": "json",
+  "result": {
+    "tablesDeletes": 0,
+    "tablesInserts": 0,
+    "lldpNeighbors": [],
+    "tablesDrops": 0,
+    "tablesAgeOuts": 0
+  }
+}
