@@ -636,9 +636,9 @@ export class Node {
    * locally while a session is open on this node (the command exits sessions it finds, `:57`). A device
    * rejection for a pending commit timer arrives as `SessionError` naming the session (row 62).
    */
-  configureReplace(url: string, options: ConfigureReplaceOptions = {}): Promise<readonly CommandResult[]> {
+  async configureReplace(url: string, options: ConfigureReplaceOptions = {}): Promise<readonly CommandResult[]> {
     assertNoSessionConflict(this.activeSession, 'configureReplace()', [url])
-    return configureReplaceOn(this, url, options)
+    return await configureReplaceOn(this, url, options)
   }
 
   /**

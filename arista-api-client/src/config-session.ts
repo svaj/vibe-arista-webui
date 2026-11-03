@@ -142,9 +142,9 @@ export interface SessionCommandTarget {
 /** Creation options for {@link Node.configSession}. pyeapi has no equivalent: it only makes a `uuid4`. */
 export interface ConfigSessionOptions {
   /**
-   * Session name. Omit it and the client builds `ui-<host>-<pid>-<rand8>` (or without the pid where
-   * there is no process, i.e. a browser) — DR-022's "named, not anonymous" rule, with DR-047 fixing the
-   * prefix spelling. A supplied name **re-attaches** to that device-side session if one exists
+   * Session name. Omit it and the client builds `ui-<host>-p<pid>-<hex8>` (or without the `p<pid>` token
+   * where there is no process, i.e. a browser) — DR-022's "named, not anonymous" rule, with DR-047 fixing
+   * the prefix spelling. A supplied name **re-attaches** to that device-side session if one exists
    * (`SessionCli.py:224-267` re-enters by name) instead of failing.
    */
   readonly name?: string | undefined
@@ -274,11 +274,40 @@ function quoteDescription(text: string): string {
   return `"${text.replace(/\\/gu, '\\\\').replace(/"/gu, '\\"')}"`
 }
 
-/** Strip scheme, credentials and path from a transport address, and make it safe for a session name. */
+/**
+ * The host token of DR-047's default name: the part of an endpoint that says **which switch** a session
+ * belongs to, which is the whole point of scoping a name (pyeapi's bare `uuid4`, `client.py:1006`, says
+ * nothing, so two switches' orphans are indistinguishable in a shared report).
+ *
+ * A scheme URL contributes its hostname **only**: `Transport#address` always spells an explicit port and
+ * request path (`transports/endpoint.ts:131`), and a session name cannot carry the separator that would
+ * make a port readable — the CLI matches the name with `\S+` (`SessionCli.py:216`), so `:` is impossible
+ * and `sw1.lan-443` reads as a hostname with a made-up suffix. Uniqueness comes from the `-p<pid>-<hex8>`
+ * tail; this token only has to tell different switches apart, and stay short enough to read in
+ * `show configuration sessions`.
+ *
+ * A `unix:` address has no host at all, so its socket path *is* the identity and its separators become
+ * dots (`unix:/var/run/command-api.sock` → `var.run.command-api.sock`). An IPv6 literal collapses to its
+ * digits for the same separator reason — again, the tail is what disambiguates.
+ *
+ * Userinfo is dropped in every case. `address` is secret-free by contract (`transports/contract.ts`), and
+ * a generated name is written onto a switch, so it must stay secret-free even when handed an address that
+ * is not (DR-011).
+ */
 function addressToHostToken(address: string): string {
-  const withoutScheme = address.includes('://') ? address.slice(address.indexOf('://') + 3) : address.replace(/^unix:/u, '')
-  const hostPart = (withoutScheme.split('/')[0] ?? '').replace(/^[^@]*@/u, '')
-  const safe = hostPart.replace(/[^A-Za-z0-9._-]/gu, '-').replace(/^[-.]+|[-.]+$/gu, '')
+  const socketPath = /^unix:(\/.*)$/u.exec(address)?.[1]
+  if (socketPath !== undefined) return safeHostToken(socketPath.replace(/^\/+|\/+$/gu, '').replace(/\//gu, '.'))
+  const afterScheme = address.includes('://') ? address.slice(address.indexOf('://') + 3) : address
+  const authority = afterScheme.split('/')[0] ?? ''
+  const host = authority.includes('@') ? authority.slice(authority.lastIndexOf('@') + 1) : authority
+  const bracketEnd = host.indexOf(']')
+  const withoutPort = host.startsWith('[') ? (bracketEnd === -1 ? host.slice(1) : host.slice(1, bracketEnd)) : host.replace(/:\d*$/u, '')
+  return safeHostToken(withoutPort)
+}
+
+/** Clamp a host token to the character set and length a session name can carry. */
+function safeHostToken(value: string): string {
+  const safe = value.replace(/[^A-Za-z0-9._-]/gu, '-').replace(/^[-.]+|[-.]+$/gu, '')
   return safe === '' ? 'device' : safe.slice(0, 32)
 }
 
@@ -302,16 +331,19 @@ function randomToken(): string {
 }
 
 /**
- * DR-047's default name: `ui-<host>-<pid>-<hex8>`, or `ui-<host>-<hex8>` where there is no process
+ * DR-047's default name: `ui-<host>-p<pid>-<hex8>`, or `ui-<host>-<hex8>` where there is no process
  * (a browser). pyeapi's `uuid4()` (`client.py:1006`) is unfindable afterwards, which is the whole
- * orphan problem DR-023 exists for. The prefix is also `recoverOrphans()`'s default filter.
+ * orphan problem DR-023 exists for. The prefix is also `recoverOrphans()`'s default filter, so it is
+ * spelled with its trailing dash and the segments are appended to it — joining `ui-` with `-` would put
+ * two dashes where the prefix ends and the host begins, and a name that does not start with the prefix
+ * spelled this way silently stops matching the recovery filter.
  */
 export function generateSessionName(endpoint: string): string {
-  const segments = [SESSION_NAME_PREFIX, addressToHostToken(endpoint)]
+  const segments = [addressToHostToken(endpoint)]
   const pid = processToken()
   if (pid !== undefined) segments.push(`p${String(pid)}`)
   segments.push(randomToken())
-  return segments.join('-')
+  return SESSION_NAME_PREFIX + segments.join('-')
 }
 
 /**
@@ -626,14 +658,18 @@ export class ConfigSession {
         // read-only retry is refused here even if a caller asks for it: re-sending a half-applied
         // changeset is exactly the failure that mode exists to prevent.
         //
-        // `tolerateErrors` is defaulted the *other* way from the rest of the package for the same reason.
-        // DR-012's 1003 repair re-issues the request with `format: 'text'`, and here the request is a whole
-        // staged changeset — so a repair would run every command a second time. pyeapi never had that
-        // hazard in this path: its repair lives in `enable()` (`client.py:865-871`) and `_configure_session`
-        // calls `run_commands`, which has none. A caller who wants the repair asks for it explicitly.
-        tolerateErrors: false,
+        // `tolerateErrors` is forced off for the same reason and, unlike everywhere else in the package,
+        // it is **not** an opt-in a caller can buy back. At the wire layer that flag is only the DR-012
+        // `1003 → format:'text'` repair, and `sendRequest` performs it by re-issuing *the same command
+        // list* (`internal/wire.ts:521-566`); inside a session that list is
+        // `[enable, configure session <name>, …changeset]`, so a repair would run every command the
+        // device has already applied a second time. pyeapi never had this hazard: its repair lives in
+        // `enable()` (`client.py:865-871`) and `_configure_session` calls `run_commands`, which has none.
+        // A session that answers 1003 gets the `CommandError`; a caller who wants the text encoding gets
+        // it where one command is at stake — {@link ConfigSession#diff} or `Node.showText`.
         ...options,
         readOnly: false,
+        tolerateErrors: false,
         ...(format === undefined ? {} : { format }),
       })
     } catch (error) {
@@ -647,7 +683,13 @@ export class ConfigSession {
     }
     // A staged write invalidates the diff the operator just read, so the flag is cleared here and set
     // again by diff()/showSessionConfig(). The device answered, so every command in the batch ran.
+    //
+    // The state goes back the same way, exactly as DR-048's diagram draws it (`diffed --> open` on a
+    // write): a handle left in `diffed` would let a UI see `hasDiffBeenRead() === false` while still
+    // trusting the state that says the rendered diff is current. The two fields must say one thing.
+    // `diff()`/`showSessionConfig()` move back to `diffed` just below, after this returns.
     this.diffRead = false
+    if (this.sessionState === 'diffed') this.sessionState = 'open'
     // pyeapi pops the `configure session <name>` reply the same way (`client.py:693`).
     return results.slice(1)
   }
@@ -657,16 +699,22 @@ export class ConfigSession {
    * (`client.py:676-696`); this is the public verb. A rejected command throws `CommandError` carrying
    * `failedCommand` and the `results[]` the device managed to produce, and the session **stays open** so
    * `abort()` is still available.
+   *
+   * Every verb that returns a promise is `async`, state-machine refusals included: a `SessionError` for a
+   * dead handle has to arrive as a rejection like every other failure on this path, so that a caller
+   * building a promise array (`[session.abort(), session.run([...])]`) gets one error channel instead of
+   * a synchronous throw that walks past its `.catch` (and an unhandled rejection for the calls already
+   * created in front of it).
    */
-  run(commands: CommandSpec | readonly CommandSpec[], options: SessionRequestOptions = {}): Promise<readonly CommandResult[]> {
+  async run(commands: CommandSpec | readonly CommandSpec[], options: SessionRequestOptions = {}): Promise<readonly CommandResult[]> {
     this.assertLive('run commands')
     const tail = Array.isArray(commands) ? (commands as readonly CommandSpec[]) : [commands as CommandSpec]
-    return this.send(tail, options)
+    return await this.send(tail, options)
   }
 
   /** Alias of {@link ConfigSession#run} for callers who think of it as "these commands". */
-  commands(batch: CommandSpec | readonly CommandSpec[], options: SessionRequestOptions = {}): Promise<readonly CommandResult[]> {
-    return this.run(batch, options)
+  async commands(batch: CommandSpec | readonly CommandSpec[], options: SessionRequestOptions = {}): Promise<readonly CommandResult[]> {
+    return await this.run(batch, options)
   }
 
   /**
@@ -828,9 +876,9 @@ export class ConfigSession {
    * {@link rollbackCleanConfigOn} is the convenience that opens a session, stages it, and hands the
    * session back un-committed (row 63).
    */
-  rollbackCleanConfig(groups?: readonly string[]): Promise<readonly CommandResult[]> {
+  async rollbackCleanConfig(groups?: readonly string[]): Promise<readonly CommandResult[]> {
     this.assertLive('roll back to the clean configuration')
-    return this.send([cleanConfigCommand(groups)], {})
+    return await this.send([cleanConfigCommand(groups)], {})
   }
 
   /**
@@ -841,9 +889,9 @@ export class ConfigSession {
    * `ConfigSession` package — so the grammar here rests on that comment, and the paired STATUS.md §3
    * sweep line is open (row 63).
    */
-  rollbackToSession(sessionName: string): Promise<readonly CommandResult[]> {
+  async rollbackToSession(sessionName: string): Promise<readonly CommandResult[]> {
     this.assertLive('roll back to a committed session')
-    return this.send([`rollback ${assertSessionName(sessionName)}`], {})
+    return await this.send([`rollback ${assertSessionName(sessionName)}`], {})
   }
 
   /**
@@ -1192,6 +1240,26 @@ export interface WebStorageLike {
 export const SESSION_JOURNAL_STORAGE_KEY = 'arista-eapi:sessions'
 
 /**
+ * DR-011's choke point for the storage journal, mirroring `FileSessionJournal`'s `toRecord`: a record is
+ * **rebuilt field by field**, never spread from the caller's object. `SessionJournalEntry` has no field
+ * that could hold a password, but a caller arriving from JS with an option bag that happens to carry
+ * `enablePassword` would otherwise have it `JSON.stringify`-ed straight into `localStorage` — which is
+ * readable by every script on that origin and is often synced. Keys outside the allow-list are dropped
+ * rather than rejected here, because unlike the file journal this one also rewrites entries it merely
+ * read back, and a recovery path must not die on a stale record.
+ */
+function toStoredEntry(entry: SessionJournalEntry): SessionJournalEntry {
+  const { pid, description } = entry
+  return {
+    name: entry.name,
+    endpoint: entry.endpoint,
+    startedAt: entry.startedAt,
+    ...(typeof pid === 'number' && Number.isInteger(pid) ? { pid } : {}),
+    ...(typeof description === 'string' && description !== '' ? { description } : {}),
+  }
+}
+
+/**
  * A {@link SessionJournal} over a web storage object. Same allow-list discipline as the Node file
  * journal: a stored record is rebuilt field by field, so a password can never ride along by accident,
  * and corrupt JSON reads as empty rather than throwing in a recovery path.
@@ -1221,7 +1289,7 @@ export function createWebStorageJournal(storage: WebStorageLike, key = SESSION_J
   }
 
   function write(entries: readonly SessionJournalEntry[]): void {
-    storage.setItem(key, JSON.stringify(entries))
+    storage.setItem(key, JSON.stringify(entries.map(toStoredEntry)))
   }
 
   return {
