@@ -59,7 +59,7 @@ describe('expandRange — orderings and boundary cases (PLAN M6 test list)', () 
     // token (the passthrough branch, utils.py:193-194). A wildcard is NOT expanded by pyeapi —
     // it survives untouched, so `expand_range('Ethernet*') -> ['Ethernet*']` identically. This port
     // requires integers so a UI never renders `Ethernet*` as if it were a member list
-    // (MIGRATION.md §5 row 54). pyeapi itself never calls these functions at all (row 60), so the
+    // (MIGRATION.md §5 row 47). pyeapi itself never calls these functions at all (row 45), so the
     // wildcard "support" was dead code even upstream.
     expect(() => expandRange('*')).toThrowError(NotSupportedError)
     expect(() => expandRange('*')).toThrow('expandRange: "*" is not an integer or a range')
@@ -82,14 +82,14 @@ describe('expandRange — orderings and boundary cases (PLAN M6 test list)', () 
   it('non-numeric input raises instead of leaking through as a member', () => {
     // upstream: expand_range('a-b') -> ValueError "invalid literal for int() with base 10: 'a'";
     // but note expand_range('foo') -> ['foo'] PASSTHROUGH (no range delimiter, no validation).
-    // Both shapes are refused here (row 54):
+    // Both shapes are refused here (row 47):
     expect(() => expandRange('a-b')).toThrow('expandRange: "a" is not an integer range endpoint')
     expect(() => expandRange('foo')).toThrow('expandRange: "foo" is not an integer or a range')
   })
 
   it('the empty string raises, where upstream answers [""]', () => {
     // upstream: expand_range('') -> [''] — an empty token sails through the passthrough branch.
-    // Returning [''] would render an empty VLAN member in a UI (row 54).
+    // Returning [''] would render an empty VLAN member in a UI (row 47).
     expect(() => expandRange('')).toThrowError(NotSupportedError)
     expect(() => expandRange('')).toThrow('expandRange: "" is not an integer or a range')
   })
@@ -157,7 +157,7 @@ describe('collapseRange — output ORDER is pinned (section()/rendering consumer
 
   it('a reversed run string never collapses: "5-3" is refused, where upstream answers ["5-3"]', () => {
     // upstream: collapse_range('5-3') -> ['5-3'] — one passthrough token, garbage in/garbage out.
-    // A range token is not a value for the collapse input (row 54):
+    // A range token is not a value for the collapse input (row 47):
     expect(() => collapseRange('5-3')).toThrow('collapseRange: "5-3" is not an integer')
   })
 
@@ -191,7 +191,7 @@ describe('collapseRange — input shapes and the upstream artefacts this port re
     //   collapse_range('1,0,1') -> ['1', '1']            (same bug, second flavour)
     //   collapse_range('1,,2')  -> ValueError: invalid literal for int() with base 10: '' (at :215)
     // The module header previously cited `['1','0','2']` for the last one — that was never upstream's
-    // answer; the real artefacts are the first three, and every shape throws here (row 54):
+    // answer; the real artefacts are the first three, and every shape throws here (row 47):
     expect(() => collapseRange('1,2,')).toThrow('collapseRange: "" is not an integer')
     expect(() => collapseRange('1,,2')).toThrow('collapseRange: "" is not an integer')
     expect(() => collapseRange('')).toThrow('collapseRange: "" is not an integer') // upstream ['']
@@ -203,7 +203,7 @@ describe('collapseRange — input shapes and the upstream artefacts this port re
     // upstream: collapse_range('01,02') -> ['1-02'] — the run start was int()-ified (:215) but the
     // closing token takes the raw-string branch (:227 uses `v1` as the unsplit text when the pair
     // test ran on ints, and :231 keeps strings wholesale), and the final `[str(x) for x in values]`
-    // (:232) never re-canonicalises. Ours always emits canonical decimals (MIGRATION.md §5 row 55):
+    // (:232) never re-canonicalises. Ours always emits canonical decimals (MIGRATION.md §5 row 48):
     expect(collapseRange('01,02')).toEqual(['1-2'])
     expect(collapseRange(' +7,+9 ')).toEqual(['7', '9']) // upstream ['7', '+9 '] — spacey bytes leak raw
   })
@@ -226,7 +226,7 @@ describe('delimiters — pyeapi keyword defaults and the guards upstream lacks',
 
   it('degenerate delimiters are refused up front, where upstream scrambles silently', () => {
     // upstream: expand_range('1-3', '-', '-') splits on '-' then treats every piece as a range —
-    // no guard exists. This port refuses the nonsense configuration itself (row 54):
+    // no guard exists. This port refuses the nonsense configuration itself (row 47):
     expect(() => expandRange('1-3', { valueDelimiter: '-', rangeDelimiter: '-' })).toThrow(
       'range delimiters must differ, got "-" for both',
     )
@@ -245,7 +245,7 @@ describe('sortedRangeValues — the canonical pre-collapse shape (#8 addition, n
   })
 })
 
-describe('collapseRangeToString — the device-ready join (MIGRATION.md §5 row 55)', () => {
+describe('collapseRangeToString — the device-ready join (MIGRATION.md §5 row 48)', () => {
   it('joins with the value delimiter, where upstream returns a list and leaves the join to the caller', () => {
     // upstream: collapse_range('1,2,3,7') -> ['1-3', '7'] and `utils.py:232` is the last line — no
     // joined form exists; EOS wants '1-3,7' inside a `switchport trunk allowed vlan` command.

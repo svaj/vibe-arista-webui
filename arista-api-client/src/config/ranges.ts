@@ -10,7 +10,7 @@
  * only callers in the upstream tree are its own unit tests (`test/unit/test_utils.py:51-81`) — so the
  * "which resource drives which range string" contract in PLAN.md is a claim about *this* port's
  * resources (M9 #11, M10 #12), not an upstream behaviour. Verified by grep over the upstream tree;
- * MIGRATION.md §5 row 60.
+ * MIGRATION.md §5 row 45.
  *
  * Deliberate divergences, recorded in MIGRATION.md §5 rows 46-48:
  *  - `collapseRange` accepts a **list** as well as a delimited string. Upstream's docstring says
@@ -22,12 +22,12 @@
  *    `['1-2', '']` and `collapse_range('0,1')` answers `['1']` — a run starting at 0 dies because
  *    `range_start = 0` is falsy at `:226`. (`collapse_range('1,,2')` *does* crash, `ValueError` at
  *    `:215`; an earlier revision of this comment claimed `['1','0','2']` for it, which no pyeapi
- *    version produces — corrected 2026-11-02 against the transcription in `ranges.test.ts`.) (row 54)
+ *    version produces — corrected 2026-11-02 against the transcription in `ranges.test.ts`.) (row 47)
  *  - endpoints are canonically decimal here, where upstream leaks the raw token into emitted runs
  *    (`utils.py:227`/`:231` interpolate the un-`int()`-ed `v1` when the pair test ran on ints; the
  *    closing `str(x)` at `:232` never re-parses — `collapse_range('01,02')` answers `['1-02']`), and
  *    `collapseRangeToString` is new: the device-ready joined form, because upstream returns a *list*
- *    (`utils.py:232`) while EOS wants one string. (row 55)
+ *    (`utils.py:232`) while EOS wants one string. (row 48)
  */
 
 import { NotSupportedError } from '../errors'

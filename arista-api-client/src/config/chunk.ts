@@ -11,7 +11,7 @@
  * In pyeapi that invariant is only a docstring comment on a *public-ish* method, and the recursion
  * reaches back into the same cached function. Here the recursion is a module-private function, so a
  * caller physically cannot pass a non-zero indent and get a half-chunked document back. The invariant
- * is now structural instead of aspirational — MIGRATION.md §5 row 57.
+ * is now structural instead of aspirational — MIGRATION.md §5 row 42.
  *
  * Output shape (the docstring example at `client.py:708-713`, verified against upstream by the oracle
  * in `test/fixtures/config/`): a map from **section key** (the rstripped header line, indentation
@@ -119,7 +119,7 @@ function chunkAtIndent(config: string, indent: number): MutableSections {
         // pyeapi's `sections[key] += line` with `key` still `None` raises `KeyError: None`
         // (`client.py:763`, whose comment assumes "key is always expected to be set by now" — it is
         // not, for a config whose first line is indented). A crash with no line number is not an
-        // answer we can show an operator: MIGRATION.md §5 row 58.
+        // answer we can show an operator: MIGRATION.md §5 row 43.
         throw new ConfigParseError(
           `Unable to parse config: line ${position + 1} ${pythonRepr(lineRs)} is indented but no ` +
             'section header precedes it',
@@ -162,7 +162,7 @@ function chunkAtIndent(config: string, indent: number): MutableSections {
  * Keeping the raise is the difference between "the parse said something false" and "the parse said it
  * could not parse" — PLAN.md's M6 line "keep the explicit failure mode … rather than a wrong answer".
  * The message wording is upstream's, so a device-vs-pyeapi comparison still lines up; the class is
- * ours: `ConfigParseError` instead of a bare `ValueError` — MIGRATION.md §5 row 59.
+ * ours: `ConfigParseError` instead of a bare `ValueError` — MIGRATION.md §5 row 44.
  */
 function hasSubsectionLines(section: readonly string[], indent: number, sectionKey: string): boolean {
   for (const line of section) {
