@@ -340,6 +340,109 @@ DR-032/DR-033 and the physical device sweep remain necessary. Two-node cEOS topo
 can be investigated for supported MLAG/routing control-plane tests without claiming
 physical forwarding parity.
 
+<!--
+Numbering note (M7, #9, 2026-11-03): DR-001..043 are on `main`/PR #23. The bands reserved across the
+branches stacked on PR #23 are DR-044..046 = M3 (#5, PR #24, not in this tree), DR-047..050 = M5 (#7,
+agents/issue-7-m5-config-sessions, not in this tree), DR-051..054 = M7 (#9, below). DR-003 and DR-031
+are not gaps — both exist above — but no entry in this log is ever renumbered, so the bands stay
+visible here rather than in a table (this file has no index section; the milestone index is
+STATUS.md §1 and the decision-to-milestone trail is each entry's `Related:` line).
+-->
+
+### DR-051 — a command builder answers with a string, or it refuses
+`abstract.command_builder(string, value=None, default=None, disable=None)` (`pyeapi/api/abstract.py:129`)
+always answers a string: its precedence is stated in its own docstring at `:137` ("Parameters are
+evaluated in the order 'default', 'disable', 'value'") and coded at `:152-161`, and the final `else:`
+(`:160-161`) returns `'no %s'` for a call that supplied **no value at all** — upstream marking that line
+"to be deprecated and replaced with the error below" with the replacement `raise ValueError` commented
+out at `:162-164`. Upstream's own suites are pre-armed for that fix: 12 sites read "If command_builder
+fails because value is None, uncomment" (9 in `test_api_bgp.py` incl. `:117`, 2 in
+`test_api_ipinterfaces.py` at `:104`/`:135`, 1 in `test_api_routemaps.py:154`).
+**Decision:** one free function, `commandBuilder(command, { mode, value }) → string`
+(`arista-api-client/src/resources/command-builder.ts`), with a thin `protected` delegate on
+`ResourceBase` so modules call it the way pyeapi's do. The precedence is preserved — `mode: 'default'`
+preempts `mode: 'no'` preempts a left-over `value`, so a verb that forwards both cannot flip an
+explicitly negated command into a write. The two fall-throughs are deleted: no `mode` + no `value`, or
+`mode:'set'` with nothing to set, raises `NotSupportedError` naming the rejected input. The result is
+always a `string`, never a boolean, never a `{ok,error}` bag, and nothing is stashed for later
+inspection.
+**Consequence:** 45 cases in `command-builder.test.ts` are the truth table; the `cmd()` spelling that
+MIGRATION §2's row planned did not ship — `commandBuilder` is the shipped name, and a **free function**
+(not a method) is what lets the whole table be tested with no `Node` at all. A numeric `0` keeps its
+value (`mtu 0`), where pyeapi's `elif value:` produced the `no` form.
+**Related:** DR-037 (this decides the *result shape*; DR-037 decided the *modes*), DR-005, DR-015,
+DR-031; [MIGRATION.md §5](./MIGRATION.md#5-semantic-divergences-worth-reviewing) rows 3 / 73 / 74 / 82.
+
+### DR-052 — resources come from a closed registry, never an autoloaded name
+pyeapi resolves a resource name as a **filesystem path**: `Node.api(self, name, namespace='pyeapi.api')`
+(`client.py:927`) calls `load_module('{}.{}'.format(namespace, name))` (`:945`), then
+`module.initialize(self)` / `return module.instance(self)` (`:946-949`), so a typo is an import error at
+first use and **every call constructs a fresh resource object** — which is why `Interfaces` needed its
+own `_instances` dict (`interfaces.py:90`, read at `:122-126`) to behave statefully. Upstream's entire
+coverage of the mechanism is `test_api_autoloader` (`test/unit/test_client.py:210-212`), asserting only
+`assertIsNotNone`.
+**Decision:** keep DR-006's rule that an `api()`-shaped call stays **out of the type**. The seam that
+ships is `node.resource(name)` / `node.hasResource(name)` over `ResourceKinds` — an augmentable interface
+in the same style as `ShowContracts` — backed by the frozen `RESOURCE_FACTORIES` table and a
+`ResourceRegistry` memoised **per `Node`**. Compile time and runtime both check the name, because
+declaration merging can add a type row whose factory was never registered; that case throws a
+`NotSupportedError` listing registered names rather than returning `undefined`. Apps with dynamic tables
+build their own map with `createResourceRegistry(factories, node)`.
+**Consequence:** `ResourceKinds` is **empty at M7**, and that is deliberate — the static
+`node.vlans`-style getters DR-006 also names are deferred to M8 (#10)/M9 (#11)/M10 (#12), since a
+getter's return type is the module's class and no module exists yet. What M7 measured instead is the
+cost of adding one: one interface row plus one factory, on top of a 19-line entity in
+`src/resources/base.test.ts` (the exit-gate count, §5 row 82). Also honestly open after this milestone:
+`src/index.ts`/`src/node.ts` do **not** re-export the framework yet, so it is reachable in-repo and to
+M8-M10 but not to a consumer of the package (STATUS.md §1's M7 row carries that as the remaining piece).
+**Related:** DR-006 (title: "Static typed accessors replace `node.api('vlans')` autoload"), DR-038,
+DR-040, ARCHITECTURE.md §7; §5 rows 79 / 82.
+
+### DR-053 — throwing validators replace pyeapi's predicate-plus-`False` guards
+`isvlan(value)` (`api/vlans.py:63-80`) runs `value = int(value)` (`:77`) and `value in range(1, 4095)`
+(`:78`), so `'0020'` is a VLAN and `20.5` is truncated to `20`, while `isvlan(None)` escapes as a bare
+`TypeError` because the handler catches only `ValueError` (`:79-80`); call sites then fold the guard
+into the swallowed `return self.configure(command) if isvlan(vid) else False` (`:204`, `:216`, `:232`).
+There are **two different** `isvalidinterface` predicates: `interfaces.py:81-83`, an unanchored
+`re.match(r'([EPVLM][a-z-C]+)', value)` followed by set membership in `VALID_INTERFACES` (`:71-78`), and
+`stp.py:346-363`, which tests `value[0:2] in ['Et', 'Po']`. Both were opened and run against Python 3 on
+2026-11-03: `Ethernet1` → `Ethernet`, `Port-Channel1` → `Port-Channel`, `Po1` → `Po` (rejected by the
+set), `Et1` → no match, and a bare `Vlan` with no index **passes**.
+**Decision:** one name per concept in `arista-api-client/src/resources/validators.ts`:
+`assertVlanId`/`isVlanId` (`Number.isSafeInteger`, 1..4094, no string coercion) and
+`assertInterfaceName`/`isInterfaceName` (anchored `^(kind)digits+$` over upstream's six kinds). Every
+refusal is a `NotSupportedError` naming the rejected value with the same `%r` rendering pyeapi uses, and
+`configureInterface` applies the interface guard **before** anything is built, because the dynamic
+`marshall` dispatch that enforced it upstream is not ported (DR-006).
+**Consequence:** two of upstream's own assertions are inverted deliberately —
+`test_api_vlans.py:54-55` requires `isvlan('1234')` to be `True`, and ours refuses any string, because a
+string at that point means a UI forgot to parse a form field. The guards are input guards, not platform
+claims: the kind list is upstream's, not an EOS 4.28 statement, and the widening (subinterfaces, slot
+forms) is refused until there is device evidence. **Open item 7** below tracks it, in the same class as
+`modelName` (open item 1). M10 (#12) replaces the regex with the per-kind discriminated-union parser
+PLAN asks for.
+**Related:** DR-004, DR-005, DR-032, DR-042, DR-006; §5 rows 76 / 74 / 77.
+
+### DR-054 — `toArray` is the package's only implicit-coercion boundary, and it copies
+`make_iterable(value)` (`pyeapi/utils.py:147-166`) turns a `str`/`dict`/`CliVariants` into a one-element
+list (`:159-161`) and lets everything else through **by identity** (`:163-166` returns the same object),
+which is the whole cause of the mutation bug at `api/abstract.py:176-177`: `configure_interface` runs
+`commands = make_iterable(commands)` and then `commands.insert(0, 'interface %s' % name)`, splicing the
+parent line into the caller's array — permanently, on a reused list. Upstream's four
+`test_make_iterable_*` methods (`test/unit/test_utils.py:23-41`, on the single `TestUtils` class at `:8`)
+never assert anything about aliasing, and no upstream suite exercises the bug.
+**Decision:** `toArray<T>(value: T | readonly T[]): T[]` in
+`arista-api-client/src/internal/collections.ts`. An array in always yields a **new** array; the only
+accepted shapes are one value or an array; `undefined`/`null` raises `NotSupportedError` naming the
+expectation instead of a `TypeError` from a later frame. Every command-list helper in the package
+(`configure`, `configureInterface`, `submodeCommands`) routes through it, so no exported verb can be
+handed a caller array that comes back modified.
+**Consequence:** a `Set`, `Map` or generator is treated as ONE value, never spread — `Array.from` is the
+caller's explicit step, since guessing "one value or its spread?" is exactly the duck typing DR-004
+removes. DR-041's rule ("`make_iterable`'s implicit coercion becomes explicit `toArray()` at the
+boundary") now has a second, concrete justification beyond typing: aliasing corrupts a caller's state.
+**Related:** DR-041, DR-004, DR-003; §5 rows 71 / 72 / 74.
+
 ---
 
 ### DR-044 — profile state is a value you pass, never a module global
@@ -488,6 +591,13 @@ config session and are **not read-only**:
    while the hardware is **DCS-7050TX-64** and this build exposes ALE `hardware tcam` /
    `system profile` instead. The feature matrix needs re-deriving from the correct SKU page — affects
    which modules ever get promised to the UI.
+7. **Interface-name grammar on this unit** (DR-053): `assertInterfaceName` accepts exactly the six kind
+   spellings pyeapi's `VALID_INTERFACES` lists (`interfaces.py:71-78`) plus an all-digit index. Unverified
+   on the 7050TX-64 / 4.28.13.1M — and refused here rather than guessed — are subinterface forms
+   (`Ethernet1.100`), slot/chassis numbering, `Peer-Ethernet`, and whether MLAG/Fabric endpoints imply a
+   kind upstream omits. Needs a `show interfaces description` (or equivalent) capture from the M12 (#14)
+   sweep; M10 (#12) will widen the parser to the discriminated union PLAN asks for only once that
+   evidence exists. Same class of open identifier question as item 1's `modelName`.
 
 7. **Config-session name grammar on the 4.28.13.1M target and in cEOS** (DR-047): the longest
    `configure session <name>` EOS accepts and the character set it matches. `MAX_SESSION_NAME_LENGTH = 64`
