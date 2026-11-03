@@ -62,6 +62,12 @@ try {
 `CommandSpec[]` a resource would send, so the UI can show exactly what will change before it runs
 ([ARCHITECTURE.md §9](./ARCHITECTURE.md)).
 
+> What is real on this branch, vs what the tour above previews: `createNode()`/`createConnection()` still
+> throw until M3 (#5, PR #24) lands the profile bag, and `node.vlans` / `node.configSession()` need the
+> modules that do not exist yet — M7 (#9) shipped the framework those modules will be written against
+> (§6), M5's session verbs ride their own branch. §4's "What the command layer ships today" is the
+> authoritative list of working verbs.
+
 ---
 
 ## 3. Connecting
@@ -134,6 +140,10 @@ await node.exec('show version', { sendEnable: false });
 | `exec(cmds, { tolerateErrors, sendEnable })` | `ExecResult[]` = `{ command, result, encoding, fellBack }` | no duplicate `response` key (DR-007); refused for any `configure …` except `configure all <intf> …` (row 32) |
 | `getConfig({ config, params, as })` | `string` or `readonly string[]` | `config: 'running-config' \| 'startup-config'`; `as: 'string'` trims, `'lines'` (default) does not |
 | `getRunningConfig()` / `getStartupConfig()` | cached `string` | cleared by `refresh()` or by a write while `autorefresh` is on (row 34) |
+| `chunkConfig({ config })` | `Promise<ConfigSections>` = `ReadonlyMap<string, string>` | **added by M7 (#9)**: the cached text split into section keys by M6's chunker, over one DR-026 memo per source. `{ config: 'startup-config' }` to read the other one |
+| `section(pattern, { config })` | `Promise<string>` | first section whose **key** matches (`pattern` is `string \| RegExp`, compiled like pyeapi's). Absence throws `NotFoundError`; a bad pattern stays a `SyntaxError` (rows 50/80) |
+| `getBlock(parent, { config })` | `Promise<string \| undefined>` | anchored `^parent$` lookup, `undefined` when the switch has no such section (rows 51/80). The parent is spliced **as written**, so a name with regex metacharacters is a pattern — pyeapi parity |
+| `resource(name)` / `hasResource(name)` | `ResourceKinds[K]` / `boolean` | **added by M7 (#9)**: the typed replacement for pyeapi's `node.api(name)` (DR-006/DR-052, row 79). `ResourceKinds` is empty until M8-M10 register modules, so every typed call is a compile error and every untyped one throws a `NotSupportedError` listing what is registered; `hasResource('vlans')` answers `false` today |
 | `getVersion()` | `{ version, versionNumber, model, modelName }` | one memoised `show version`; `refresh()` leaves it (row 35) |
 | `configure(cmds, opts)` | `readonly CommandResult[]` | prepends `configure terminal`, strips both prepended replies, throws on failure — there is no `false` to check |
 | `configureVariants(variants, opts)` | same | first spelling that succeeds wins; last `CommandError` re-raised (row 37). Standalone: `tryVariants(variants, cmds => node.configure(cmds))` |
@@ -196,30 +206,157 @@ const preview = await node.verifyConfig(['vlan 20', 'name PROD']); // normalised
 
 ---
 
-## 6. Resources (wave 1)
+## 6. The resource framework (M7, #9), and how a wave-1 module reads config
+
+**Reachability, stated honestly first.** M7 ships the framework — `ResourceBase`, `Entity`,
+`EntityCollection`, `commandBuilder`, `submodeCommands`, `toArray`, `parseConfigBlock`, the validators,
+`ResourceRegistry`/`createResourceRegistry`, and the `Node`↔`src/config/` pairing (`chunkConfig`,
+`section`, `getBlock`, `resource`, `hasResource`) — but `src/index.ts`/`src/node.ts` do **not** re-export
+the framework classes yet, and the `exports` map has only `.` and `./node`. So a package consumer cannot
+`import { Entity } …` until that wiring lands (STATUS §1's M7 row carries it as the one open piece; M8
+(#10) is its first real consumer). And **no wave-1 module exists**: `node.vlans`, `node.system`,
+`node.switchports` are still future tense (M8 #10, M9 #11, M10 #12), because `ResourceKinds` is
+deliberately empty (DR-052). Everything below is what the shipped code does today and what a module
+writes against it — `src/resources/base.test.ts` drives exactly this shape over `MockTransport`.
+
+### The two base classes
 
 ```ts
-await node.system.get();                              // { hostname, ipRouting, banner }
-await node.system.setHostname('sw1');
-await node.system.setBanner('motd', 'Authorized use only.');   // {cmd,input} multiline under the hood
+// a named collection — VLANs, interfaces, users
+class Vlans extends EntityCollection<VlanEntry, number, VlanAttrs> {
+  getAll(): Promise<ResourceTable<number, VlanEntry>>;   // ReadonlyMap: device order, real key types
+  get(id: number): Promise<VlanEntry | undefined>;       // no `default=` fallback parameter
+  create(id: number, attrs?: VlanAttrs): Promise<void>;  // rejects with CommandError if refused
+  delete(id: number): Promise<void>;
+  setDefault(id: number): Promise<void>;                 // pyeapi spells this `default(vid)`
+}
 
-await node.vlans.get(20);                             // VlanEntry | undefined
-await node.vlans.getAll();
-await node.switchports.get('Ethernet1');               // { mode, accessVlan, trunkNativeVlan, … }
-await node.switchports.setAccessVlan('Ethernet1', 20);
-await node.switchports.setTrunkAllowedVlans('Ethernet20', '10-20,30');
-await node.switchports.defaultTrunkAllowedVlans('Ethernet20');   // `default` form, not "pass null"
+// a single global-ish entity — hostname/routing/banners (M8), spanning-tree, MLAG
+class SystemSettings extends Entity<SystemState> {
+  get(): Promise<SystemState>;      // never `undefined`: a global with nothing configured still answers
+}
 
-await node.interfaces.getAll();                        // keyed by canonical name
-await node.interfaces.portChannel.setMembers('port-channel1', ['Ethernet1', 'Ethernet2'], 'active');
-await node.interfaces.portChannel.setMinimumLinks('port-channel1', 1);
-await node.interfaces.ethernet.setFlowControl('Ethernet1', 'send', false);
+const vlans = new Vlans(node);      // ResourceBase refuses a Node missing
+                                    // getRunningConfig/getStartupConfig/chunkConfig/configure — at `new`
+await vlans.has(20);                // and .keys() / .entries(): ONE getAll() each, never a read per element
 ```
 
-Conventions (full table in [MIGRATION.md §3](./MIGRATION.md#3-resource-verb-conventions)):
-`setX(v)` / `unsetX()` (`no …`) / `defaultX()` (`default …`) — negation is never implied by passing a
-falsy value. `create` / `delete` / `setDefault` for presence. Reads return `undefined` for
-not-found; writes **throw**.
+pyeapi's `vlans[20]`, `len(vlans)`, `for vlan in vlans` and `vlans()` are **not** ported (DR-004, §7):
+each of those was a device read in disguise, and `Vlans.getall` paid one config read **per VLAN**
+(`vlans.py:191`). Writes never answer `false` and there is no `.error` to remember to check — they reject
+with the device `CommandError`, `failedCommand` and redacted `commands` included (DR-005).
+
+### Verb conventions (the whole rule, so a module never invents one)
+
+| you want | verb | emitted command | pyeapi spellings |
+|---|---|---|---|
+| read everything / read one | `getAll()` / `get(k)` | — | `getall()` / `get(name, default=None)` |
+| existence, add, remove, reset | `has(k)` · `create(k, attrs?)` · `delete(k)` · `setDefault(k)` | `vlan 20` / `no vlan 20` / `default vlan 20` | `create` · `delete` · `default` |
+| set one field / negate it / default it | `setF(v)` · `unsetF()` · `defaultF()` | `mtu 1500` / `no mtu` / `default mtu` | `set_f(v)` · `set_f(disable=True)` · `set_f(default=True)` |
+| membership inside an entry | `addX(v)` · `removeX(v)` | `trunk group red` | `add_trunk_group` · `remove_trunk_group` |
+
+Reads answer `undefined` for not-found; writes **throw**; negation is always a mode, never a falsy value;
+attributes are one options bag. `unset<Field>`/`default<Field>` are the two families this port adds —
+DR-037 refuses `set_x(name, None)` meaning `no …`.
+
+### Building a command line, and what it refuses
+
+```ts
+commandBuilder('ip routing', { value: true });                    // 'ip routing'          (value=True)
+commandBuilder('mtu', { value: 1500 });                           // 'mtu 1500'
+commandBuilder('mtu', { mode: 'no' });                            // 'no mtu'              (disable=True)
+commandBuilder('mtu', { mode: 'default' });                       // 'default mtu'         (default=True)
+commandBuilder('name', { mode: 'default', value: 'PROD' });       // 'default name'  — mode preempts value
+commandBuilder('mtu', { value: 0 });                              // 'mtu 0'          — upstream answered 'no mtu'
+commandBuilder('mtu', {});                                        // throws NotSupportedError (upstream: 'no mtu')
+commandBuilder('mtu', { mode: 'set', value: false });             // throws — falsy is not a value
+commandBuilder('mtu 1500\nno ip routing', { value: 1 });          // throws — a line boundary is TWO commands;
+                                                                  // use { cmd, input } (DR-015, row 74)
+submodeCommands('interface Ethernet1', ['mtu 1500']);             // ['interface Ethernet1', 'mtu 1500']
+```
+
+`submodeCommands` returns a **new** array, and every helper in the package routes command lists through
+`toArray`, which copies. pyeapi's `configure_interface` does `make_iterable(commands)` then
+`commands.insert(0, …)`, so it splices the parent line into *your* array and sends it again on the next
+call (`abstract.py:176-177`, and again at `vlans.py:244-245`) — DR-054/rows 71-72 are the fix. Argument
+guards throw too: `assertInterfaceName('Po1')` and `assertVlanId('20')` both name the rejected value, and
+both are **stricter than upstream on purpose** (`isvlan('1234')` is `True` in pyeapi; `Ethernet1.100` is
+refused until the interface grammar is captured — DR-053, DECISIONS open item 7).
+
+### How a wave-1 module reads device config: through the pairing
+
+A module never runs `show running-config`, never chunks text itself and never caches a parse — that is
+the `Node`'s job (one read per config change, DR-026/DR-030):
+
+```ts
+// on ResourceBase (what a module calls) — all three delegate to the Node's memoized document:
+await this.config();                    // cached text (async on purpose: DR-005)
+await this.configSections();            // ReadonlyMap of section keys → text
+await this.getBlock('vlan 20');         // string | undefined
+await this.section(/^interface\s+Et/);  // throws NotFoundError when absent
+
+// on Node (same code path, usable from a screen or a script):
+await node.chunkConfig({ config: 'startup-config' });
+await node.getBlock('vlan 20');
+```
+
+Then parse with M6's primitives, not your own regex (this is PLAN's M6 exit gate, and the reason
+`parseConfigBlock` exists — upstream re-runs a bespoke regex per module, `vlans.py:57-60`,
+`interfaces.py:65`/`:108`/`:206`):
+
+```ts
+const body = (await vlans.getBlock(20)) ?? '';
+const parsed = parseConfigBlock(body, {
+  name: (block) => findValue(block.body, 'name'),
+  trunkGroups: (block) => findAllValues(block.body, 'trunk group'),
+  header: (block) => block.header,               // the section header, for the key it matched on
+});
+// parsed's TYPE comes from the map: { readonly name: string | undefined,
+//   readonly trunkGroups: string[], readonly header: string }
+```
+
+**What `parseConfigBlock` returns:** one record per call — `ParsedFields<P>`, i.e. exactly the parser
+map's keys with each extractor's return type as its value type, so the entry interface and its parser
+are one declaration and a forgotten field is a compile error where the module assigns the result. It runs
+M6's `parseBlock` once (`{ header, body: readonly ConfigLine[] }`, `!` separator lines included) and
+hands that block to every extractor. `''` is not an error: it parses to `{ header: '', body: [] }`,
+because "absent" (`getBlock` → `undefined`) versus "present but empty" is ordinary wave-1 control flow.
+It defines no error class of its own — a `ConfigParseError` (MIGRATION rows 43-44) surfaces from the
+`chunkConfig`/`getBlock` call that produced the text, and a parse failure is reported rather than
+answered with a missing field.
+
+**The caveat a module must know today** (pinned in `text.test.ts` and `config-block.test.ts`, decided in
+MIGRATION row 81): M6's `describeLine` does not `lstrip` the whitespace run after the first token, so
+`findValue(block.body, 'name')` answers `' PROD'` (leading space, and therefore the quotes on
+`description "WAN uplink"` are never stripped), and a two-word keyword leaves its own tail —
+`findAllValues(block.body, 'trunk group')` answers `' group red'`. So today read `line.text` and slice,
+rather than pretending the contract is clean (M9 (#11), the first real reader, owns the one-line fix —
+not the framework milestone, which has nothing to validate the new contract against):
+
+```ts
+const trunkAllowed = (block: ConfigBlock): string[] =>
+  block.body
+    .filter((line) => line.text.startsWith('switchport trunk allowed vlan '))
+    .map((line) => line.text.slice('switchport trunk allowed vlan '.length));
+```
+
+And after any write: `configure()` and `refresh()` drop the chunk memos unconditionally (pyeapi clears
+its `_chunkify` cache before the `autorefresh` test, `client.py:665-669`), so a re-read really is a read.
+
+### Your own resources, before the built-ins exist
+
+pyeapi's `node.api('vlans')` loaded a **module by name** (`client.py:945`); here a resource name is a key
+of a closed map, memoised per `Node` (DR-006/DR-052):
+
+```ts
+const registry = createResourceRegistry({ myThing: (node) => new MyThing(node) }, node);
+registry.get('myThing');          // the same instance on every call, for this Node only
+registry.has('other');            // false — and get('other') throws naming what IS registered
+```
+
+`node.resource(...)`/`node.hasResource(...)` use this same registry type; extend `ResourceKinds` by
+declaration merging (the form in `arista-webui/src/eapi-show-contracts.test.ts`) — but remember a merged
+type row with no factory throws by design, and that the framework's own re-export is still pending.
 
 ---
 
