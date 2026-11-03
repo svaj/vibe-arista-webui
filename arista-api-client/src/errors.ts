@@ -267,3 +267,64 @@ export class NotSupportedError extends EapiError {
     this.name = 'NotSupportedError'
   }
 }
+
+/**
+ * A lookup that came up empty (M6 #8, DR-027). pyeapi signals "not found" by raising `TypeError`
+ * (`client.py:795`), which is uncatchable-as-meaning and indistinguishable from a real argument-type
+ * bug; resources then hide it with `except TypeError` (`api/abstract.py:100`).
+ *
+ * **Deliberate placement:** a subclass of `EapiError`, **not** of `CommandError` as the
+ * `docs/ARCHITECTURE.md` §4 diagram drew it — `CommandError`'s contract is a device JSON-RPC failure
+ * envelope (`code`, `results[]`, `failedCommand`), and a section that simply is not in the running-config
+ * has none of those. Inventing a fake code there would make `switch (e.code)` lie. MIGRATION.md §5 row 50.
+ *
+ * Only a *required* lookup throws; an optional one returns `undefined` (DR-027 — `getBlock`,
+ * `Vlans.get`). Resources subclass this for their own vocabulary (`VlanNotFoundError`, M9 #11).
+ */
+export class NotFoundError extends EapiError {
+  constructor(message: string, options: EapiErrorOptions = {}) {
+    super(message, options)
+    this.name = 'NotFoundError'
+  }
+}
+
+export interface ConfigParseErrorOptions extends EapiErrorOptions {
+  /** The section key whose body could not be chunked, when the failure is inside a known section. */
+  readonly sectionKey?: string | undefined
+  /** The indent level the chunker was reading at, in leading-whitespace characters. */
+  readonly indent?: number | undefined
+  /** The line that broke the shape — unindented tail for a short line, raw text for a leading indent. */
+  readonly shortLine?: string | undefined
+  /** 1-based line number within the chunk being parsed, when the failure has one. */
+  readonly line?: number | undefined
+}
+
+/**
+ * The device config text does not fit the section model — the shape pyeapi raises a bare `ValueError`
+ * for (`client.py:720-730`: a body line shorter than its block's indent, which is what an
+ * EOF-terminated literal block looks like once it has been folded into an indented section).
+ *
+ * This is a **parse** failure, not a wrong answer: the alternative is silently reporting a section that
+ * the switch does not have, which in a config UI means showing an operator a diff that was never the
+ * the device's state. Structured fields ride along so the webui can name the section and the offending
+ * line instead of pasting a stack trace. MIGRATION.md §5 rows 43-44.
+ */
+export class ConfigParseError extends EapiError {
+  readonly sectionKey: string | undefined
+  readonly indent: number | undefined
+  readonly shortLine: string | undefined
+  readonly line: number | undefined
+
+  constructor(message: string, options: ConfigParseErrorOptions = {}) {
+    super(message, options)
+    this.name = 'ConfigParseError'
+    this.sectionKey = options.sectionKey
+    this.indent = options.indent
+    this.shortLine = options.shortLine
+    this.line = options.line
+  }
+
+  override toJSON(): Record<string, unknown> {
+    return { ...super.toJSON(), sectionKey: this.sectionKey, indent: this.indent, shortLine: this.shortLine, line: this.line }
+  }
+}

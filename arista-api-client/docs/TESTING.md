@@ -175,8 +175,8 @@ in `finally`; committed test changes require explicit reversal or container disp
 | `profiles.ts` | INI valid/malformed/no-`host`/tags, `$EAPI_CONF`, unknown profile error | `test_client.py::TestConfig` |
 | `node.ts` | `configure terminal` prefix + output pop; `autorefresh`; `get_config` name validation; version/model parsing on 4.28 fixture; error carries `commands` | `test_client.py` (53 — port 30) |
 | `node.session.ts` | named re-attach, text-forced `diff`, commit/abort, orphan recovery, 1006, blocked `configure()` while open, journal survives reload | new (upstream has 7 weak cases) |
-| `internal/config-text.ts` | nested sections (`router bgp` → `address-family`), `banner … EOF`, `code unit`, short-line error, `section()` parity, memo invalidation | upstream-weak: author from real 4.28 configs |
-| `internal/ranges.ts` | `'1-3,5'`, `'Ethernet1-4'`, collapse round-trip, invalid input | `test_utils.py` (15) + property tests |
+| `config/chunk.ts`, `config/cache.ts`, `config/section.ts` (shipped M6, #8 — was planned as `internal/config-text.ts`) | nested sections (`router bgp` → `address-family`), `banner … EOF`, `code unit`, short-line error, `section()` parity, memo invalidation | upstream-weak; driven by the committed pyeapi oracle `test/fixtures/config/pyeapi-oracle.json` + `scripts/config-chunkify-oracle.py` — device captures owed to M12 (#14) |
+| `config/ranges.ts` (shipped M6, #8 — was planned as `internal/ranges.ts`) | `'1-3,5'`, `'Ethernet1-4'`, collapse round-trip, invalid input | `test_utils.py` 6/6 range cases by name + fast-check property |
 | `resources/base.ts` | builder precedence table (`set`/`no`/`default`), `configureInterface` non-mutation, throwing resources, registry identity | `abstract.py` cases embedded in module tests |
 | `resources/system.ts` | hostname get/set, `ip routing` set/no/default, banner multiline payload | `test_api_system.py` (5) |
 | `resources/vlans.ts` | get/create/delete/default, name, state, trunk groups add/remove, invalid vlan id, `getAll` on 4094-vlan config (perf smoke) | `test_api_vlans.py` (15) |

@@ -1,0 +1,257 @@
+{
+  "fixtures": {
+    "banner-eof.conf": {
+      "entries": [
+        [
+          "!",
+          "!\n"
+        ],
+        [
+          "hostname sw1",
+          "hostname sw1\n"
+        ],
+        [
+          "banner login",
+          "banner login\nUnauthorized access is prohibited.\nAll sessions are logged.\nEOF\n"
+        ],
+        [
+          "banner motd",
+          "banner motd\nWelcome to sw1 (lab).\n\nLast config change: nowhere.\nEOF\n"
+        ]
+      ]
+    },
+    "banner-indented-not-multiline.conf": {
+      "entries": [
+        [
+          "   banner inner",
+          "   banner inner\n      free-form text that is not terminated by the chunker\n"
+        ],
+        [
+          "   EOF",
+          "   EOF\n"
+        ],
+        [
+          "router general",
+          "router general\n   banner inner\n      free-form text that is not terminated by the chunker\n   EOF\n"
+        ],
+        [
+          "!",
+          "!\n"
+        ]
+      ]
+    },
+    "code-unit-control-functions.conf": {
+      "entries": [
+        [
+          "router general",
+          "router general\n   control-functions\n      code unit SAMPLE_REDISTRIBUTE\n               function STATIC_TO_BGP() {\n                     if igp.tag is 101 {\n                       community = {\n                     65001:101,\n                     65001:102\n                   };\n                 }\n               }\n      EOF\n   !\n!\n"
+        ]
+      ]
+    },
+    "mac-security-profile.conf": {
+      "entries": [
+        [
+          "   profile PR",
+          "   profile PR\n      cipher aes256-gcm\n"
+        ],
+        [
+          "   profile QR",
+          "   profile QR\n      cipher aes128-gcm\n"
+        ],
+        [
+          "   profile EMPTY",
+          "   profile EMPTY\n"
+        ],
+        [
+          "mac security",
+          "mac security\n   profile PR\n      cipher aes256-gcm\n   profile QR\n      cipher aes128-gcm\n   profile EMPTY\n"
+        ],
+        [
+          "!",
+          "!\n"
+        ]
+      ]
+    },
+    "minimal-with-blank-line.conf": {
+      "entries": [
+        [
+          "",
+          "\n"
+        ],
+        [
+          "hostname sw1",
+          "hostname sw1\n"
+        ],
+        [
+          "!",
+          "!\n"
+        ],
+        [
+          "interface Management1",
+          "interface Management1\n   ip address dhcp\n"
+        ]
+      ]
+    },
+    "qos-class-policy-map.conf": {
+      "entries": [
+        [
+          "   class gold",
+          "   class gold\n      set ip dscp af11\n      set qos-group 1\n"
+        ],
+        [
+          "   class class-default",
+          "   class class-default\n      drop\n"
+        ],
+        [
+          "class-map type qos match-all gold",
+          "class-map type qos match-all gold\n   match ip dscp af11\n"
+        ],
+        [
+          "class-map type cos match-all silver",
+          "class-map type cos match-all silver\n   match cos 3\n"
+        ],
+        [
+          "policy-map type qos QUEUES",
+          "policy-map type qos QUEUES\n   class gold\n      set ip dscp af11\n      set qos-group 1\n   class class-default\n      drop\n"
+        ],
+        [
+          "!",
+          "!\n"
+        ]
+      ]
+    },
+    "router-bgp-address-family.conf": {
+      "entries": [
+        [
+          "      rd 1:1",
+          "      rd 1:1\n"
+        ],
+        [
+          "      route-target import 10.10:100",
+          "      route-target import 10.10:100\n"
+        ],
+        [
+          "      address-family ipv4",
+          "      address-family ipv4\n         neighbor 172.16.0.1 activate\n"
+        ],
+        [
+          "      !",
+          "      !\n"
+        ],
+        [
+          "   router-id 1.1.1.1",
+          "   router-id 1.1.1.1\n"
+        ],
+        [
+          "   maximum-paths 4 ecmp 4",
+          "   maximum-paths 4 ecmp 4\n"
+        ],
+        [
+          "   neighbor LEAF peer-group",
+          "   neighbor LEAF peer-group\n"
+        ],
+        [
+          "   neighbor 10.0.0.1 peer-group LEAF",
+          "   neighbor 10.0.0.1 peer-group LEAF\n"
+        ],
+        [
+          "   address-family ipv4",
+          "   address-family ipv4\n      neighbor LEAF activate\n      network 192.0.2.0/24\n"
+        ],
+        [
+          "   !",
+          "   !\n"
+        ],
+        [
+          "   vrf TENANT",
+          "   vrf TENANT\n      rd 1:1\n      route-target import 10.10:100\n      address-family ipv4\n         neighbor 172.16.0.1 activate\n      !\n"
+        ],
+        [
+          "router bgp 43902",
+          "router bgp 43902\n   router-id 1.1.1.1\n   maximum-paths 4 ecmp 4\n   neighbor LEAF peer-group\n   neighbor 10.0.0.1 peer-group LEAF\n   address-family ipv4\n      neighbor LEAF activate\n      network 192.0.2.0/24\n   !\n   vrf TENANT\n      rd 1:1\n      route-target import 10.10:100\n      address-family ipv4\n         neighbor 172.16.0.1 activate\n      !\n   !\n"
+        ],
+        [
+          "!",
+          "!\n"
+        ]
+      ]
+    },
+    "switchport-trunk.conf": {
+      "entries": [
+        [
+          "interface Ethernet1",
+          "interface Ethernet1\n   description Uplink to core\n   switchport mode trunk\n   switchport trunk allowed vlan 10-12,20,30-33\n   switchport trunk native vlan 99\n"
+        ],
+        [
+          "!",
+          "!\n"
+        ],
+        [
+          "interface Ethernet3",
+          "interface Ethernet3\n   description \"WAN uplink (customer A)\"\n   switchport access vlan 20\n"
+        ],
+        [
+          "interface Port-Channel1",
+          "interface Port-Channel1\n   description LAG to core\n   switchport mode trunk\n   switchport trunk native vlan 99\n"
+        ],
+        [
+          "interface Management1",
+          "interface Management1\n   ip address dhcp\n"
+        ],
+        [
+          "port-channel 1",
+          "port-channel 1\n   member interface Ethernet1\n   member interface Ethernet3\n"
+        ]
+      ]
+    },
+    "unhandled-literal-blank-line.conf": {
+      "error": {
+        "message": "Unable to parse section '' at indent 6 due to short line '   !'; likely unhandled multiline literal block (EOF-terminated)",
+        "type": "ValueError"
+      }
+    },
+    "unhandled-literal-short-line.conf": {
+      "error": {
+        "message": "Unable to parse section 'router unsupported-literal' at indent 6 due to short line '   !'; likely unhandled multiline literal block (EOF-terminated)",
+        "type": "ValueError"
+      }
+    },
+    "vlan-blocks.conf": {
+      "entries": [
+        [
+          "vlan 1",
+          "vlan 1\n"
+        ],
+        [
+          "!",
+          "!\n"
+        ],
+        [
+          "vlan 10",
+          "vlan 10\n   name ten\n"
+        ],
+        [
+          "vlan 11-13",
+          "vlan 11-13\n   name group-block\n"
+        ],
+        [
+          "vlan 20",
+          "vlan 20\n   name \"twenty (ops)\"\n   state suspend\n   trunk group red\n   trunk group blue\n"
+        ]
+      ]
+    }
+  },
+  "provenance": {
+    "generatedBy": "arista-api-client/scripts/config-chunkify-oracle.py",
+    "python": "3.13.5",
+    "upstream": "pyeapi",
+    "upstreamPath": "/home/svaj/development/arista/pyeapi",
+    "upstreamRef": {
+      "branch": "develop",
+      "commit": "6816d9e498f06d773fd97121b805dec198c9f6e2"
+    },
+    "upstreamSource": "pyeapi/client.py:698-774 (_chunkify), decorator at :697 removed via __wrapped__",
+    "upstreamVersion": "1.0.4",
+    "what": "Ordered output of upstream pyeapi Node._chunkify over each fixture. NOT device output."
+  }
+}

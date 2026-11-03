@@ -19,6 +19,11 @@ export default defineConfig({
         'src/internal/': { lines: 90, branches: 85 },
         'src/transports/': { lines: 85, branches: 80 },
         'src/resources/': { lines: 85, branches: 80 },
+        // M6 (#8) added this one once src/config/ measured 100/93.75/100/100 (stmts/branch/funcs/
+        // lines) under its new suites — same strength as the src/internal gate, both strictly
+        // above the global 85/75 floor. It exists so M7-M10 consumption cannot erode the engine's
+        // coverage back to the 34% that failed this milestone's gate.
+        'src/config/': { lines: 90, branches: 85 },
         lines: 85,
         branches: 75,
         functions: 60,
