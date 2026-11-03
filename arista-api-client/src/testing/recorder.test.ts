@@ -93,7 +93,10 @@ function showVersionBody(id: string): string {
 
 describe('the target slug is version/model separated, per docs/TESTING.md:130-131', () => {
   it('spells the hardware directory exactly as the docs spell it', () => {
-    expect(targetSlug('DCS-7050TX-64', '4.28.13.1M', 'hardware')).toBe('7050tx-64-4.28.13.1M')
+    // Through the shared identity so this case cannot drift from the fixture lane's model/version pair.
+    expect(targetSlug(HARDWARE.modelName, HARDWARE.version, HARDWARE.targetClass)).toBe(
+      '7050tx-64-4.28.13.1M',
+    )
   })
 
   it('spells the cEOS directory exactly as the runbook spells it', () => {
