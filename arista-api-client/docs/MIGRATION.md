@@ -250,7 +250,7 @@ a returned `False`, ours asserts a thrown `CommandError` with the same command l
 
 | `test/system/*` (284 methods) | | `src/**/*.live.test.ts` (subset, gated) | ~70 |
 
-Total planned offline tests for wave 1 + framework **~460 landed-equivalent**; wave 2 adds ~180 and wave 3 ~110 (upstream method counts 113 / 139 / 78 — see the note above). *(As of M7 (#9) on this branch: the framework half is landed and past its estimate — **139** tests in the seven framework/pairing files above, against the ~66 the STATUS §2 framework row planned — and the package's whole offline suite is **36 files / 891 tests**. The remainder of that ~300 belongs to wave-1 modules M8-M10, none of which has landed. The **186** two rows up is the recounted W2/W3 upstream method count (it matches STATUS §1's W2 row); the `~230` beside it is this port's own target once those modules exist, not an upstream number.)*
+Total planned offline tests for wave 1 + framework **~460 landed-equivalent**; wave 2 adds ~180 and wave 3 ~110 (upstream method counts 113 / 139 / 78 — see the note above). *(As of M7 (#9) on this branch: the framework half is landed and past its estimate — **139** tests in the seven framework/pairing files above, against the ~66 the STATUS §2 framework row planned — and the package's whole offline suite is **36 files / 892 tests**. The remainder of that ~300 belongs to wave-1 modules M8-M10, none of which has landed. The **186** two rows up is the recounted W2/W3 upstream method count (it matches STATUS §1's W2 row); the `~230` beside it is this port's own target once those modules exist, not an upstream number.)*
 
 ---
 
