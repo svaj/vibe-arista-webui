@@ -5,13 +5,13 @@
  * What is asserted here is the **entry**, not the profile engine: the three accepted bag forms, which
  * kinds this entry can build, the `eapi.conf`-free constraint (DR-002/DR-038: a profile *name* is
  * useless without an explicit `store`, and no implicit `connection:localhost` socket profile exists
- * here — DR-008/DR-014, MIGRATION.md §5 row 48), and the secret discipline the UI depends on (DR-011).
+ * here — DR-008/DR-014, MIGRATION.md §5 row 55), and the secret discipline the UI depends on (DR-011).
  *
  * pyeapi parity anchors: `connect()` is `client.py:394-461` (positional-or-kwargs, `return_node`
  * defaults False, a silent `host='localhost'` at `:394`), `connect_to(name)` is `client.py:1040-1067`
  * (a module-global `config`, `AttributeError` on a miss, `enablepwd` folded into the `Node` at
  * `:1066`). This entry has no `return_node` flag (DR-005 — the function name says it), no default host
- * (row 8), no module-global config (row 47) and a typed `NotSupportedError` instead of `AttributeError`.
+ * (row 8), no module-global config (row 54) and a typed `NotSupportedError` instead of `AttributeError`.
  *
  * The M4-era construction path (`new Node(createTransport(…))`) stays covered: M3 had to add the
  * factories without breaking callers that already write it.
@@ -143,7 +143,7 @@ describe('createNode / createConnection from a profile', () => {
     expect(message).toContain('AttributeError')
   })
 
-  it('never injects the implicit [connection:localhost] socket profile (DR-008, row 48)', () => {
+  it('never injects the implicit [connection:localhost] socket profile (DR-008, row 55)', () => {
     const profiles = store()
     expect(profiles.names()).not.toContain('localhost')
     const message = failureMessage(() => createConnection({ profileName: 'localhost', store: profiles }))
@@ -165,7 +165,7 @@ describe('createNode / createConnection from a profile', () => {
     expect(message).toMatch(/profileName form/u)
   })
 
-  it('refuses a profile whose own keys could not be honoured instead of defaulting them (row 52)', () => {
+  it('refuses a profile whose own keys could not be honoured instead of defaulting them (row 59)', () => {
     const broken = createProfiles({ lab: { transport: 'https', host: '10.0.0.30', port: 'not-a-port' } })
     const message = failureMessage(() => createConnection({ profileName: 'lab', store: broken }))
     expect(message).toMatch(/refusing to build a connection from profile/u)

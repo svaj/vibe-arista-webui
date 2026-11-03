@@ -81,7 +81,7 @@ export type {
 /**
  * Options for the name-based factories below — `createNodeFor`/`createConnectionFor` are pyeapi's
  * `connect_to(name)` (`client.py:1040-1067`), which reads a module-global `Config` nobody asked for
- * (row 47). Here the store is either handed over or loaded through the seams in
+ * (row 54). Here the store is either handed over or loaded through the seams in
  * {@link NodeLoadEapiConfOptions}, and a test injects its own `fs` instead of a home directory.
  */
 export interface NodeProfileOptions extends NodeSettings {

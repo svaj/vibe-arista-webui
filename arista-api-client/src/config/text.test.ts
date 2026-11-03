@@ -26,7 +26,7 @@
  * leading space), `"   code unit U".lstrip() == 'code unit U'`, `"\tdeep".lstrip() == "deep"`.
  * **Divergence pinned against those:** JS `\s` excludes `\u0085` and `\u001c`-`\u001f`, which Python's
  * `str.isspace()` includes, so this module's `rstrip`/`lstrip` keep the exotic terminator byte instead
- * of dropping it — MIGRATION.md §5 row 53. The text here is the ACTUAL behaviour; the CPython value
+ * of dropping it — MIGRATION.md §5 row 60. The text here is the ACTUAL behaviour; the CPython value
  * is in the comment. Never flip the assertion without deciding the divergence again.
  */
 
@@ -121,7 +121,7 @@ describe('stripLineEnd — removes ONE trailing CPython terminator, nothing else
   })
 })
 
-describe('rstrip / lstrip — CPython whitespace rules, with the JS \\s divergence pinned (row 53)', () => {
+describe('rstrip / lstrip — CPython whitespace rules, with the JS \\s divergence pinned (row 60)', () => {
   it('strips ordinary whitespace at the correct end', () => {
     expect(rstrip('alpha   \t ')).toBe('alpha')
     expect(rstrip('   !')).toBe('   !') // CPython: '!' is not whitespace, leading space stays
@@ -138,7 +138,7 @@ describe('rstrip / lstrip — CPython whitespace rules, with the JS \\s divergen
     expect(rstrip('x\u00a0')).toBe('x') // NBSP: whitespace in both sets
   })
 
-  it('DIVERGENCE (MIGRATION.md §5 row 53): \\u0085 and \\u001c-\\u001f are Python whitespace, NOT JS \\s', () => {
+  it('DIVERGENCE (MIGRATION.md §5 row 60): \\u0085 and \\u001c-\\u001f are Python whitespace, NOT JS \\s', () => {
     // CPython (transcribed 2026-11-02): "x\u0085".rstrip() == 'x';
     //   "x\u001c\u001d\u001e\u001f".rstrip() == 'x'; "\u0085x".lstrip() == 'x'.
     // This module instead keeps them (JS \s = WhiteSpace+LineTerminator: \u0085 is Cc, \u001c-\u001f are
@@ -187,7 +187,7 @@ describe('parseBlock / describeLine — pyeapi has NO equivalent (each api modul
     // pyeapi's resource regexes treat `!` as an ordinary line inside the block (e.g. the vlans
     // NAME_RE at api/vlans.py:58 searches THROUGH it); parseBlock decorates rather than truncates so
     // M7+ can decide. Nothing here is upstream code — parseBlock is a new-shape helper (its lack of
-    // an upstream twin is why rows 50-52 had to re-derive the chunker's contract).
+    // an upstream twin is why rows 57-59 had to re-derive the chunker's contract).
     const block = parseBlock('router bgp 1\n   vrf T\n      !\n   !\n')
     const terminators = block.body.filter((line) => line.token === '!')
     expect(terminators).toHaveLength(2)
@@ -287,10 +287,10 @@ describe('findValue / findAllValues — keyword-anchored value reads off a parse
   })
 })
 
-describe('unquote — EOS `"quoted string"` values; pyeapi has NO quote handling at all (row 49)', () => {
+describe('unquote — EOS `"quoted string"` values; pyeapi has NO quote handling at all (row 56)', () => {
   it('strips a matched outer pair, keeping interior spaces verbatim', () => {
     // the switchport-trunk fixture's real device line: description "WAN uplink (customer A)";
-    // pyeapi's regex (api/interfaces.py:206 `description (.+)$`) yields the QUOTES verbatim — row 49.
+    // pyeapi's regex (api/interfaces.py:206 `description (.+)$`) yields the QUOTES verbatim — row 56.
     expect(unquote('"WAN uplink (customer A)"')).toBe('WAN uplink (customer A)')
     expect(unquote('" WAN uplink "')).toBe(' WAN uplink ') // leading/trailing space was WHY EOS quoted it
   })
@@ -306,7 +306,7 @@ describe('unquote — EOS `"quoted string"` values; pyeapi has NO quote handling
   })
 
   it('un-escapes \\" inside a properly quoted value', () => {
-    // This quoting rule is THIS port's (no upstream twin, row 49); EOS itself escapes inner quotes
+    // This quoting rule is THIS port's (no upstream twin, row 56); EOS itself escapes inner quotes
     // in `show running-config` — the device round-trip of a description with a literal quote is an
     // M12 (#14) capture, so only the port's OWN rules are pinned here.
     expect(unquote('"say \\"hi\\""')).toBe('say "hi"')

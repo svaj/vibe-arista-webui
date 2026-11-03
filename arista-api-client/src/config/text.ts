@@ -15,7 +15,7 @@
  * `str.isspace()` includes and JS `\s` does not (they agree on everything EOS emits, `\u00a0`
  * included). That only bites a terminator byte sitting at the END of a `splitLinesKeepends` line, so
  * the concrete divergence is narrow: an `EOF\u0085` line closes a banner under CPython and under
- * pyeapi, and does not close one here — MIGRATION.md §5 row 53, pinned in `text.test.ts` and at the
+ * pyeapi, and does not close one here — MIGRATION.md §5 row 60, pinned in `text.test.ts` and at the
  * chunk level in `chunk.test.ts`, never silently "fixed". The parity oracle in
  * `test/fixtures/config/` is what keeps the rest of the claim honest rather than assumed: every
  * fixture is chunked by upstream pyeapi and by `chunkConfig`, and the two outputs are compared entry
@@ -225,7 +225,7 @@ function matchesKeyword(text: string, keyword: string): boolean {
  * carry leading/trailing space — `description " WAN uplink "`, `name "vlan ten"`, and the
  * `interface description` text M10 (#12) reads back. pyeapi has **no** quote handling at all
  * (`api/vlans.py` `NAME_RE`, `api/interfaces.py:205-207` `description (.+)$`), so a pyeapi resource
- * hands the UI a value with literal quote characters in it. Divergence: MIGRATION.md §5 row 49.
+ * hands the UI a value with literal quote characters in it. Divergence: MIGRATION.md §5 row 56.
  *
  * Rules, deliberately conservative: an inner `\"` is unescaped; a value that is not wrapped in a
  * matched pair of double quotes is returned untouched (an apostrophe inside `description Don't do

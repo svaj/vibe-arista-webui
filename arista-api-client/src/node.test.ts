@@ -90,7 +90,7 @@ describe('the kinds only this entry can build (DR-002/DR-013/DR-014/DR-018)', ()
     expect(transport.address).toBe('https://sw1.lan:443/command-api')
   })
 
-  it('builds mTLS from a profile, because cert/key survive the profile round trip (row 52)', () => {
+  it('builds mTLS from a profile, because cert/key survive the profile round trip (row 59)', () => {
     const store = createProfiles({
       mtls: {
         transport: 'https_certs',
@@ -108,7 +108,7 @@ describe('the kinds only this entry can build (DR-002/DR-013/DR-014/DR-018)', ()
 })
 
 describe('createNodeFor / createConnectionFor: eapi.conf by name, through an injected fs', () => {
-  it('reads the named file, not the real home directory, and defaults the transport to https (row 52)', () => {
+  it('reads the named file, not the real home directory, and defaults the transport to https (row 59)', () => {
     const fs = fakeConfFileSystem({ '/lab/eapi.conf': LAB_CONF })
     const node = createNodeFor('switch', { conf: { fs, env: {}, paths: ['/lab/eapi.conf'] } })
     expect(node.connection.address).toBe('https://10.0.0.7:443/command-api')
@@ -150,7 +150,7 @@ describe('createNodeFor / createConnectionFor: eapi.conf by name, through an inj
 
   it("carries pyeapi's implicit [connection:localhost] socket profile — inert until the risk is stated", () => {
     // `client.py:214-221` injects it into every config; DR-008 keeps that on this entry only, and
-    // DR-014 keeps it unusable until `allow_local_unauthenticated` is stated (MIGRATION.md §5 row 48).
+    // DR-014 keeps it unusable until `allow_local_unauthenticated` is stated (MIGRATION.md §5 row 55).
     const store = new ProfileStore()
     const message = failureMessage(() => createNodeFor('localhost', { store }))
     expect(store.get('localhost')?.transport).toBe('socket')

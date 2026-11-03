@@ -20,7 +20,7 @@
  *    and DR-013 trust material out of a browser bundle (DR-002/DR-008/DR-013/DR-014/DR-018).
  *
  * pyeapi quirks kept, each pinned by `src/profiles.test.ts` and reviewed in
- * [MIGRATION.md §5 row 47-53](../docs/MIGRATION.md#5-semantic-divergences-worth-reviewing):
+ * [MIGRATION.md §5 row 54-60](../docs/MIGRATION.md#5-semantic-divergences-worth-reviewing):
  *  - a `[connection:<name>]` section with no `host` **key** gets `host = <section name>`
  *    (`client.py:207-211`) — how upstream's `nohost.conf` fixture yields `host: 'test'`
  *    (`test_client.py::test_config_for_replaces_host_w_name`). Row 51.
@@ -40,7 +40,7 @@
  *
  * Deliberately **not** kept:
  *  - the module-global `config = Config()` that autoloads a file at import (`client.py:318`) — no
- *    hidden state (DR-038/DR-044, row 47);
+ *    hidden state (DR-038/DR-044, row 54);
  *  - the implicit `connection:localhost` → **socket** profile injected into every config
  *    (`client.py:214-221`). That injection lives on the Node side only, and even there the profile
  *    cannot become a transport until the caller states the DR-008/DR-014 risk. Row 48.
@@ -61,7 +61,7 @@ export const DEFAULT_PROFILE_TRANSPORT: TransportKind = 'https'
 /** The section prefix pyeapi adds to a connection name (`client.py:268`, `:301`). */
 export const CONNECTION_SECTION_PREFIX = 'connection:'
 
-/** The name pyeapi's `_add_default_connection` injects (`client.py:214-221`) — Node side only (row 48). */
+/** The name pyeapi's `_add_default_connection` injects (`client.py:214-221`) — Node side only (row 55). */
 export const DEFAULT_LOCAL_CONNECTION_NAME = 'localhost'
 
 /** A value as it can arrive: an INI/env string, or a typed value from application config. */
@@ -75,19 +75,19 @@ export type ProfileRecord = Readonly<Record<string, ProfileFields>>
 
 /** What can go wrong: the file's structure, or the meaning of one key. */
 export type ProfileIssueKind =
-  /** A section header with nothing after `connection:` — no caller could look it up (row 51). */
+  /** A section header with nothing after `connection:` — no caller could look it up (row 58). */
   | 'empty-name'
-  /** A section that is not `[connection:<name>]`. pyeapi treats every section as a connection (row 51). */
+  /** A section that is not `[connection:<name>]`. pyeapi treats every section as a connection (row 58). */
   | 'non-connection-section'
-  /** A section repeated in one file; pyeapi's read aborts there and loses everything after it (row 49). */
+  /** A section repeated in one file; pyeapi's read aborts there and loses everything after it (row 56). */
   | 'duplicate-section'
-  /** A line configparser rejects: no `:`/`=` separator, no key, or a continuation with nothing to continue (row 49). */
+  /** A line configparser rejects: no `:`/`=` separator, no key, or a continuation with nothing to continue (row 56). */
   | 'invalid-line'
-  /** A key outside both the pyeapi and this client's profile vocabulary (row 52). */
+  /** A key outside both the pyeapi and this client's profile vocabulary (row 59). */
   | 'unknown-key'
-  /** A recognized key whose value this client cannot honour (row 52). */
+  /** A recognized key whose value this client cannot honour (row 59). */
   | 'invalid-value'
-  /** `transport =` present but empty; pyeapi treats empty as unset and uses `https` (`client.py:452`) (row 53). */
+  /** `transport =` present but empty; pyeapi treats empty as unset and uses `https` (`client.py:452`) (row 60). */
   | 'empty-transport'
 
 export interface ProfileIssue {
@@ -118,7 +118,7 @@ export interface ProfileIssue {
 export interface ConnectionProfile {
   /** The connection name: everything right of `connection:` in the section header (`client.py:301`). */
   readonly name: string
-  /** The transport **spelling** as its author wrote it. Resolved and validated on use (row 53). */
+  /** The transport **spelling** as its author wrote it. Resolved and validated on use (row 60). */
   readonly transport?: string | undefined
   readonly host?: string | undefined
   readonly port?: number | undefined
@@ -136,7 +136,7 @@ export interface ConnectionProfile {
   /** pyeapi `tags: a,b` (`client.py:223-233`). */
   readonly tags?: readonly string[] | undefined
   /**
-   * `default = true`: **parsed, never acted on** (row 52). Letting a file pick which switch to talk to
+   * `default = true`: **parsed, never acted on** (row 59). Letting a file pick which switch to talk to
    * is the kind of hidden default DR-008/DR-038 removed, so the caller always names the profile.
    */
   readonly default?: boolean | undefined
@@ -162,7 +162,7 @@ export interface ConnectionProfile {
   readonly nonce?: string | undefined
   readonly seed?: string | undefined
   readonly idStart?: number | undefined
-  /** What normalization could not honour. {@link profileToTransportOptions} is the loud gate (row 52). */
+  /** What normalization could not honour. {@link profileToTransportOptions} is the loud gate (row 59). */
   readonly issues?: readonly ProfileIssue[] | undefined
 }
 
@@ -302,7 +302,7 @@ function coerceNumber(value: ProfileFieldValue): number | undefined {
 function coerceTags(value: ProfileFieldValue): readonly string[] {
   const parts = typeof value === 'string' ? value.split(',') : Array.isArray(value) ? (value as readonly string[]) : [asText(value)]
   // pyeapi's `generate_tags` strips each tag but keeps an empty one (`client.py:230`), so `tags: a,,b`
-  // really does index a `''` tag. Kept, and pinned by a test (row 53).
+  // really does index a `''` tag. Kept, and pinned by a test (row 60).
   return parts.map((part) => part.trim())
 }
 
@@ -402,11 +402,11 @@ function blockingIssues(issues: readonly ProfileIssue[]): readonly ProfileIssue[
  * Normalize one connection: coerce every recognized key and record everything that could not be
  * honoured.
  *
- * Deliberately not a throw (row 49): one bad `port` in a profile nobody is using today must not make
+ * Deliberately not a throw (row 56): one bad `port` in a profile nobody is using today must not make
  * the other nine profiles unreadable the way pyeapi's whole-file read abort does. The issue rides on
  * the profile, which matters because a value that failed to coerce is **not** stored and so can never
  * be rediscovered later. {@link profileToTransportOptions} then refuses to build a transport from it
- * (row 52) instead of quietly taking the kind's default port — which is what pyeapi leaves behind when
+ * (row 59) instead of quietly taking the kind's default port — which is what pyeapi leaves behind when
  * its deep `int(port)` runs (`eapilib.py:666`).
  */
 export function normalizeProfile(
@@ -564,9 +564,9 @@ export interface ParsedEapiConf {
   readonly profiles: readonly ConnectionProfile[]
   /** Structure-level problems, plus every profile's key-level ones. */
   readonly issues: readonly ProfileIssue[]
-  /** Section names that are not `[connection:<name>]`, `DEFAULT` included (row 51). */
+  /** Section names that are not `[connection:<name>]`, `DEFAULT` included (row 58). */
   readonly otherSections: readonly string[]
-  /** The `[DEFAULT]` section's fields — configparser merges them into every section (row 50). */
+  /** The `[DEFAULT]` section's fields — configparser merges them into every section (row 57). */
   readonly defaults?: ProfileFields | undefined
 }
 
@@ -574,7 +574,7 @@ export interface ParseEapiConfOptions {
   /**
    * Reproduce pyeapi's host defaulting (`client.py:207-211`): a connection section with no `host` key
    * gets `host = <section name>`. Default `true`, because keeping the quirk is what makes an operator's
-   * existing `~/.eapi.conf` behave the way they already read it (row 51).
+   * existing `~/.eapi.conf` behave the way they already read it (row 58).
    */
   readonly applyHostDefault?: boolean | undefined
 }
@@ -598,7 +598,7 @@ function bareSectionName(name: string): string {
 /**
  * The minimal INI reader PLAN M3 asks for: no dependency, and deliberately not a general INI library.
  * It reads the subset an `eapi.conf` uses and **tolerates** everything else, reporting instead of
- * discarding (row 49, DR-045).
+ * discarding (row 56, DR-045).
  *
  * What tolerance means, measured against real pyeapi/`configparser` behaviour in this environment
  * rather than assumed:
@@ -612,11 +612,11 @@ function bareSectionName(name: string): string {
  *    (`test_client.py::test_load_config_yaml`). Here: issues, and the file is still read.
  *  - a value containing `%` → pyeapi's `read()` throws `InterpolationSyntaxError` out through
  *    `load_config`, because configparser interpolates at the `items()` call on `client.py:207`. Here:
- *    no interpolation at all, so `p%s` stays a password (row 50).
+ *    no interpolation at all, so `p%s` stays a password (row 57).
  *  - a UTF-8 BOM, or a section that is not a connection: pyeapi discards the file / crashes in
- *    `generate_tags` (`client.py:233`); here both are reported and reading continues (rows 49/51).
+ *    `generate_tags` (`client.py:233`); here both are reported and reading continues (rows 56/58).
  *
- * Option keys are lowercased and section names are not, exactly as configparser does it (row 51), and
+ * Option keys are lowercased and section names are not, exactly as configparser does it (row 58), and
  * every issue carries a 1-based line number.
  */
 export function parseEapiConf(text: string, options: ParseEapiConfOptions = {}): ParsedEapiConf {
@@ -692,7 +692,7 @@ export function parseEapiConf(text: string, options: ParseEapiConfOptions = {}):
 
     // An indented line with no delimiter continues the previous value, joined with `\n` — verified
     // against configparser, which reads `host: 1.1.1.1` followed by `  more` as `'1.1.1.1\nmore'`.
-    // An indented line that *does* carry a delimiter stays an ordinary option (row 49).
+    // An indented line that *does* carry a delimiter stays an ordinary option (row 56).
     if (/^\s/.test(line) && current !== undefined && !KEY_VALUE_SPLIT.test(trimmed)) {
       if (lastKey === undefined) {
         badLine(lineStart, 'is indented as if it continued a value, but the section has no value to continue yet', current.name)
@@ -719,7 +719,7 @@ export function parseEapiConf(text: string, options: ParseEapiConfOptions = {}):
     // (`\s*(=|:)\s*` before the value capture, which is then `strip()`ed as added), so a real
     // `eapi.conf` author's `enablepwd: enablepwd` reads as `enablepwd`, not `' enablepwd'` — verified
     // against a live pyeapi read of upstream's own fixture. Inline comments are still not stripped,
-    // so a password containing `#1` survives (row 49).
+    // so a password containing `#1` survives (row 56).
     const value = trimmed.slice(split.index + 1).trim()
     const key = keyLabel(rawKey)
     if (key === '') {
@@ -764,7 +764,7 @@ export function parseEapiConf(text: string, options: ParseEapiConfOptions = {}):
     }
 
     // `[DEFAULT]` first, the section's own keys on top: configparser merges its default section into
-    // every `items()` call, and pyeapi reads sections through `items()` (row 50).
+    // every `items()` call, and pyeapi reads sections through `items()` (row 57).
     const fields: Record<string, ProfileFieldValue> = { ...(defaults ?? {}), ...section.fields }
     // pyeapi's quirk, verified against a run: the substitution happens when the `host` **key** is
     // absent, not when its value is blank (`client.py:207-211`). A present-but-empty `host` therefore
@@ -783,7 +783,7 @@ export function parseEapiConf(text: string, options: ParseEapiConfOptions = {}):
  * The pyeapi profile registry (`client.py:127-312`) without the file — and without pyeapi's
  * module-global instance (`client.py:318`), which autoloaded a config at import time. A caller
  * constructs the store it uses; the Node entry fills one from `eapi.conf` on demand
- * (DR-038/DR-044, row 47).
+ * (DR-038/DR-044, row 54).
  */
 export class ProfileStore {
   #profiles = new Map<string, ConnectionProfile>()
@@ -794,7 +794,7 @@ export class ProfileStore {
    * of `connection:` — the prefix is the file's business, not the caller's. Re-adding a name replaces
    * it, and the tag index is rebuilt exactly as `client.py:312` does. Unlike upstream, the values are
    * normalized here instead of being left as strings for a connection constructor to interpret later
-   * (row 52).
+   * (row 59).
    */
   addConnection(name: string, fields: ProfileFields = {}): ConnectionProfile {
     const trimmed = name.trim()
@@ -846,7 +846,7 @@ export class ProfileStore {
    * pyeapi `Config.generate_tags` (`client.py:223-233`). Public and idempotent for the same reason
    * upstream exposes it: the tag index is derived state, and `addConnection` re-runs it
    * (`client.py:312`). pyeapi walks **every** section and crashes on one without a colon
-   * (`client.py:233`); this walks connection profiles only (row 51).
+   * (`client.py:233`); this walks connection profiles only (row 58).
    */
   generateTags(): void {
     this.#tags = new Map<string, string[]>()
@@ -863,7 +863,7 @@ export class ProfileStore {
    * pyeapi `hosts_for_tag(tag)` (`client.py:352-367`). `undefined` when the tag is unknown, because
    * upstream returns `None` and its own test asserts exactly that
    * (`test/unit/test_client.py::test_hosts_for_tag_returns_none`). An empty array would let
-   * `for (const host of …)` look like a fan-out that succeeded and found nobody (row 53).
+   * `for (const host of …)` look like a fan-out that succeeded and found nobody (row 60).
    */
   hostsForTag(tag: string): readonly string[] | undefined {
     const hosts = this.#tags.get(tag.trim())
@@ -879,7 +879,7 @@ export class ProfileStore {
    * pyeapi `_add_default_connection` (`client.py:214-221`): the implicit
    * `[connection:localhost] transport = socket`. Called **only** by the Node loader (DR-008) — a
    * browser app never receives a hidden localhost, and even in Node this profile cannot become a
-   * transport until the caller states the DR-008/DR-014 risk (row 48).
+   * transport until the caller states the DR-008/DR-014 risk (row 55).
    */
   addDefaultLocalConnection(): ConnectionProfile {
     return this.addConnection(DEFAULT_LOCAL_CONNECTION_NAME, { transport: 'socket' })
@@ -982,7 +982,7 @@ function profileWithoutLocalOptIn(kind: 'unix' | 'http-local'): NotSupportedErro
  * package's kind name, and the switch over {@link TransportKind} below is exhaustive: an unhandled kind
  * is a compile error, an unknown *name* is a {@link NotSupportedError} that lists what is accepted and
  * never falls back to a default transport, and a name that resolves to a kind the calling entry point
- * cannot build fails with a message naming the `./node` import (DR-046, MIGRATION.md §5 row 53).
+ * cannot build fails with a message naming the `./node` import (DR-046, MIGRATION.md §5 row 60).
  */
 export function profileToTransportOptions(profile: ConnectionProfile, options: ProfileTransportOptions): TransportOptions {
   const { entry } = options

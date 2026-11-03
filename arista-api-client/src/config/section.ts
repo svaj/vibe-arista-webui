@@ -13,7 +13,7 @@
  * has no such section" from "I passed the wrong argument type" — and `get_block` papers over it with
  * `except TypeError` (`abstract.py:100`), which also swallows genuine `TypeError`s from a bad pattern.
  * Here `section` throws `NotFoundError` for absence (and only for absence), and `getBlock` returns
- * `undefined`. MIGRATION.md §5 row 13 (planned) / rows 50-51 (as implemented).
+ * `undefined`. MIGRATION.md §5 row 13 (planned) / rows 57-58 (as implemented).
  */
 
 import { NotFoundError, NotSupportedError } from '../errors'

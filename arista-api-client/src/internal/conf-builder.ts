@@ -46,7 +46,7 @@ export interface ProfileConnectionOptions extends NodeSettings {
   readonly overrides?: ProfileFields | undefined
   /**
    * Allow pyeapi's implicit `[connection:localhost] transport = socket` to be added when the store has
-   * no `localhost` (`client.py:214-221`). Node only — DR-008, MIGRATION.md §5 row 48.
+   * no `localhost` (`client.py:214-221`). Node only — DR-008, MIGRATION.md §5 row 55.
    */
   readonly implicitLocalhost?: boolean | undefined
 }
@@ -137,7 +137,7 @@ function assertProfileFormKeys(options: object, accepted: readonly string[], for
  * pyeapi `connect_to(name)` raises `AttributeError('connection profile not found in config')`
  * (`client.py:1061-1064`, asserted by upstream's `test_missing_connection_raises_attribute_error`).
  * Here it is an `EapiError` subtype the UI can branch on, naming the profile and what *is* known.
- * The password is not in `store.toString()` either — that method lists names only (DR-011, row 47).
+ * The password is not in `store.toString()` either — that method lists names only (DR-011, row 54).
  */
 export function profileNotFound(name: string, store: ProfileStore): NotSupportedError {
   const known = store.names()
@@ -172,7 +172,7 @@ function optionsFromProfileName(
   const { store, profileName, implicitLocalhost } = options
   if (implicitLocalhost ?? entry === 'node') {
     // `_add_default_connection` again, so `createNodeFor('localhost')` works from a bare store too —
-    // Node only, and still inert until `allowLocalUnauthenticated` is stated (DR-008, row 48).
+    // Node only, and still inert until `allowLocalUnauthenticated` is stated (DR-008, row 55).
     if (!store.has(DEFAULT_LOCAL_CONNECTION_NAME)) store.addDefaultLocalConnection()
   }
   const profile = store.get(profileName)

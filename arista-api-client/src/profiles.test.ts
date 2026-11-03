@@ -12,7 +12,7 @@
  *
  * pyeapi parity anchors are re-verified against `pyeapi/test/unit/test_client.py` expectations at
  * the cited `client.py` lines; where we deliberately diverge, the assertion says which row of
- * MIGRATION.md §5 owns the decision (rows 47-53 are M3's band).
+ * MIGRATION.md §5 owns the decision (rows 54-60 are M3's band).
  */
 
 import { describe, expect, it } from 'vitest'
@@ -67,7 +67,7 @@ describe('the eapi.conf fixture corpus is read, not decorative', () => {
 })
 
 describe('parseEapiConf — structure', () => {
-  it("upstream's eapi.conf keeps its three sections and every value ends up un-padded (row 52)", () => {
+  it("upstream's eapi.conf keeps its three sections and every value ends up un-padded (row 59)", () => {
     // The upstream file writes `enablepwd: enablepwd` with a space after the delimiter, and
     // configparser consumes it (`(=|:)\s*` before the value capture). pyeapi's own tests compare the
     // bare word, and so must we — a stored ' enablepwd' is a password that fails at the CLI with no
@@ -83,15 +83,15 @@ describe('parseEapiConf — structure', () => {
     })
     expect(test1.tags).toEqual(['tag1', 'tag2'])
     expect(test1.transport).toBeUndefined()
-    // No `host` **key**: pyeapi substitutes the section name (`client.py:207-211`), row 51.
+    // No `host` **key**: pyeapi substitutes the section name (`client.py:207-211`), row 58.
     expect(profileOf(parsed, 'test2').host).toBe('test2')
-    // The file's own `localhost` section is the author's, not ours: no transport either way (row 48
+    // The file's own `localhost` section is the author's, not ours: no transport either way (row 55
     // governs only the *injected* profile, which this module never creates).
     expect(profileOf(parsed, 'localhost')).toMatchObject({ host: 'localhost', username: 'eapi' })
     expect(parsed.issues).toEqual([])
   })
 
-  it('a section with no keys gets host = the section name (upstream nohost.conf, row 51)', () => {
+  it('a section with no keys gets host = the section name (upstream nohost.conf, row 58)', () => {
     const parsed = parseEapiConf(confFixture('nohost.conf'))
     expect(profileOf(parsed, 'test').host).toBe('test')
     expect(parsed.issues).toEqual([])
@@ -118,13 +118,13 @@ describe('parseEapiConf — structure', () => {
     const crlf = profileOf(parsed, 'crlf')
     expect(crlf).toMatchObject({ host: '10.0.0.10', username: 'cli' })
     // Inline `#` is NOT a comment start for configparser and not for us either — a password with a
-    // `#` in it must survive the round trip intact (row 49).
+    // `#` in it must survive the round trip intact (row 56).
     expect(crlf.password).toBe('crlf#keep')
     expect(crlf.enablePassword).toBe('en#crlf')
     expect(crlf.tags).toEqual(['rack-c', 'rack-d'])
   })
 
-  it('merges a duplicate section, first value wins, and keeps reading (row 49)', () => {
+  it('merges a duplicate section, first value wins, and keeps reading (row 56)', () => {
     // pyeapi raises DuplicateSectionError and loses every profile after the duplicate
     // (`client.py:198-203` — verified by running it); the profiles.test manifest fixture exists
     // because that data loss is the single worst failure mode an operator can hit.
@@ -141,7 +141,7 @@ describe('parseEapiConf — structure', () => {
     expect(JSON.stringify(parsed.issues)).not.toContain('dup-secret')
   })
 
-  it('reports every kind of malformed line with its 1-based line number instead of discarding (rows 49/51)', () => {
+  it('reports every kind of malformed line with its 1-based line number instead of discarding (rows 56/58)', () => {
     const parsed = parseEapiConf(confFixture('malformed.conf'))
     expect(parsed.profiles.map((profile) => profile.name)).toEqual(['ok'])
     expect(profileOf(parsed, 'ok').host).toBe('10.0.0.5')
@@ -169,7 +169,7 @@ describe('parseEapiConf — structure', () => {
     expect(printed).not.toContain('10.0.0.5')
   })
 
-  it('merges [DEFAULT] into every connection, raw section kept for the caller (row 50)', () => {
+  it('merges [DEFAULT] into every connection, raw section kept for the caller (row 57)', () => {
     const parsed = parseEapiConf(confFixture('defaults.conf'))
     expect(parsed.profiles.map((profile) => profile.name)).toEqual(['withdef', 'ownuser'])
     expect(profileOf(parsed, 'withdef')).toMatchObject({ username: 'global-user', timeoutMs: 30_000 })
@@ -178,7 +178,7 @@ describe('parseEapiConf — structure', () => {
     expect(parsed.otherSections).toEqual([]) // the default section is metadata, never a connection
   })
 
-  it('keeps % inside a value that would crash pyeapi through configparser interpolation (row 50)', () => {
+  it('keeps % inside a value that would crash pyeapi through configparser interpolation (row 57)', () => {
     // pyeapi's `items()` call at `client.py:207` interpolates every value; `100%` raises
     // InterpolationSyntaxError out of `load_config`, discarding the whole file. There is nothing to
     // interpolate here, so the password is simply kept — a silently-dropped config is the worse bug.
@@ -187,7 +187,7 @@ describe('parseEapiConf — structure', () => {
     expect(parsed.issues).toEqual([])
   })
 
-  it('trims tags but indexes an empty one, exactly like generate_tags does (client.py:230, row 53)', () => {
+  it('trims tags but indexes an empty one, exactly like generate_tags does (client.py:230, row 60)', () => {
     const parsed = parseEapiConf(confFixture('tags.conf'))
     expect(profileOf(parsed, 't1').tags).toEqual(['rack-a', 'rack-b', ''])
     expect(profileOf(parsed, 't2').tags).toEqual(['', 'rack-a'])
@@ -289,7 +289,7 @@ describe('normalizeProfile — meaning', () => {
     expect(normalizeProfile('c', { enablePassword: 'camel' }).profile.enablePassword).toBe('camel')
   })
 
-  it('records a blocking issue instead of storing an unreadable value (row 52)', () => {
+  it('records a blocking issue instead of storing an unreadable value (row 59)', () => {
     // Every one of these is a value pyeapi either crashes on later (`int(port)`, `eapilib.py:666`)
     // or quietly ignores (`deafult`, row 31's bug). Here the key is reported by name and NOT stored.
     const cases: [string, Record<string, ProfileFieldValue>, string][] = [
@@ -332,7 +332,7 @@ describe('normalizeProfile — meaning', () => {
   })
 })
 
-describe('ProfileStore — the registry without pyepais module-global (client.py:127-312, row 47)', () => {
+describe('ProfileStore — the registry without pyepais module-global (client.py:127-312, row 54)', () => {
   it('addConnection trims the name, refuses the empty one pyeapi still registers', () => {
     const store = new ProfileStore()
     expect(store.addConnection(' sw1 ', { host: 'x' }).name).toBe('sw1')
@@ -350,7 +350,7 @@ describe('ProfileStore — the registry without pyepais module-global (client.py
     expect(store.size).toBe(1)
   })
 
-  it('hostsForTag yields undefined for an unknown tag, not an empty list (row 53)', () => {
+  it('hostsForTag yields undefined for an unknown tag, not an empty list (row 60)', () => {
     // Upstream returns `None` and its test `test_hosts_for_tag_returns_none` asserts it; an empty
     // array would make a failed fan-out look like a fan-out that succeeded and found nobody.
     const store = createProfiles(parseEapiConf(confFixture('tags.conf')).profiles)
@@ -377,7 +377,7 @@ describe('ProfileStore — the registry without pyepais module-global (client.py
     expect(rendered).not.toContain('enablepwd')
   })
 
-  it('never invents the implicit localhost profile in this layer (row 48; only loaders call the injection)', () => {
+  it('never invents the implicit localhost profile in this layer (row 55; only loaders call the injection)', () => {
     const store = new ProfileStore()
     expect(store.has(DEFAULT_LOCAL_CONNECTION_NAME)).toBe(false)
     const local = store.addDefaultLocalConnection()
@@ -436,13 +436,13 @@ describe('profileToTransportOptions — translation to one TransportOptions memb
     })
   })
 
-  it('defaults a missing transport to https, like DEFAULT_TRANSPORT applied in connect (client.py:124, :452 — row 52)', () => {
+  it('defaults a missing transport to https, like DEFAULT_TRANSPORT applied in connect (client.py:124, :452 — row 59)', () => {
     const options = profileToTransportOptions(profile({ host: 'sw1.lan' }), { entry: 'browser' })
     expect(options).toMatchObject({ kind: 'https' })
     expect(DEFAULT_PROFILE_TRANSPORT).toBe('https')
   })
 
-  it('resolves pyeapi transport spellings through TRANSPORT_ALIASES, never by falling through (row 53)', () => {
+  it('resolves pyeapi transport spellings through TRANSPORT_ALIASES, never by falling through (row 60)', () => {
     // `client.py:388-389` raises TypeError('invalid transport specified'); here the refusal is typed,
     // names the profile and both spellings, and lists what IS accepted per entry — no default kind.
     const message = (): string => {
@@ -496,7 +496,7 @@ describe('profileToTransportOptions — translation to one TransportOptions memb
     }
   })
 
-  it('keeps the switch-local kinds inert until the risk is stated (DR-008/DR-014, row 48)', () => {
+  it('keeps the switch-local kinds inert until the risk is stated (DR-008/DR-014, row 55)', () => {
     let message = ''
     try {
       profileToTransportOptions(profile({ transport: 'socket' }), { entry: 'node' })
@@ -527,7 +527,7 @@ describe('profileToTransportOptions — translation to one TransportOptions memb
     expect(profileToTransportOptions(profile({ transport: 'mock' }), { entry: 'node' })).toEqual(expect.objectContaining({ kind: 'mock' }))
   })
 
-  it('refuses to build anything from a profile whose own keys could not be honoured (row 52)', () => {
+  it('refuses to build anything from a profile whose own keys could not be honoured (row 59)', () => {
     const broken = normalizeProfile('broken', { host: 'x', port: 'nope', enablePassword: 'unused-enable-secret' })
     let message = ''
     try {

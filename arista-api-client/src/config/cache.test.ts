@@ -3,13 +3,13 @@
  * `@lru_cache(maxsize=None)` on `_chunkify` (`pyeapi/client.py:697`, and the manual
  * `self._chunkify.cache_clear()` calls at `client.py:665-666` and `:689-690` — verified by opening
  * those lines on 2026-11-02): an **unbounded** dict keyed by full config text, shared mutably with
- * every caller. MIGRATION.md §5 row 12 planned the replacement; row 52 records how this is built.
+ * every caller. MIGRATION.md §5 row 12 planned the replacement; row 59 records how this is built.
  *
  * All four claims under test: identical text hits; changed text misses; bounded (single-entry, so no
  * pyeapi-style growth across polls); explicit `invalidate()`. Plus the two honesty guards the DR
  * leans on: the content hash is a fast reject, never trust — a hash collision with different text
  * MUST NOT serve the held document (that would hand one switch's sections to another switch's
- * config, which row 52 calls a configuration hazard, not a perf detail); and the handed-out map is
+ * config, which row 59 calls a configuration hazard, not a perf detail); and the handed-out map is
  * `ReadonlyMap`-typed, where pyeapi hands out the live cache dict.
  */
 
@@ -119,7 +119,7 @@ describe('createConfigChunkCache — the memo is shared but read-only at compile
   it('mutation attempts on a handed-out document are TYPE errors (@ts-expect-error), unlike pyeapi live lru_cache dict', () => {
     const cache = createConfigChunkCache()
     const sections = cache.chunkConfig('hostname sw1\n')
-    // The guard is COMPILE-time (row 52): at runtime this is still a Map, and it mutates the shared
+    // The guard is COMPILE-time (row 59): at runtime this is still a Map, and it mutates the shared
     // memo — which is exactly why the type excludes it. The `delete` undoes the `set` so this test
     // reads cleanly; the type errors are the assertion.
     // @ts-expect-error ReadonlyMap has no set — the poison-the-memo path is closed at build time.

@@ -184,11 +184,11 @@ graph LR
 ### M3 — Connection profiles
 **Port of:** `client.py` `Config`, `load_config`, `config_for`, `hosts_for_tag`, `connect`, `connect_to`.
 
-- [ ] Decide the profile source: **Node** reads `~/.eapi.conf` and `/mnt/flash/eapi.conf` (INI, `[connection:name]`, honour `$EAPI_CONF`); **browser** receives profiles from app config (`createProfiles(...)`) — never filesystem access → **DR-038**.
-- [ ] Minimal INI parser (no dependency) + malformed-file tolerance (pyeapi logs and continues) and the `host` defaulting quirk (`client.py:207-211`: a section without `host` gets `host = <name>`).
-- [ ] Keep pyeapi's implicit `connection:localhost` → socket default **only** in Node; the browser default must be `https` with no host → **DR-008**.
-- [ ] `tags` support (`tags: a,b`) → `hostsForTag()`; `generateTags()` re-run semantics after `addConnection`.
-- [ ] `connect(options)` / `connectTo(name)` equivalents: `createConnection(profile)` and `createNode(profile)`, returning a `Node` when asked; validate the transport name exhaustively.
+- [x] Decide the profile source: **Node** reads `~/.eapi.conf` and `/mnt/flash/eapi.conf` (INI, `[connection:name]`, honour `$EAPI_CONF`); **browser** receives profiles from app config (`createProfiles(...)`) — never filesystem access → **DR-038**.
+- [x] Minimal INI parser (no dependency) + malformed-file tolerance (pyeapi logs and continues) and the `host` defaulting quirk (`client.py:207-211`: a section without `host` gets `host = <name>`).
+- [x] Keep pyeapi's implicit `connection:localhost` → socket default **only** in Node; the browser default must be `https` with no host → **DR-008**.
+- [x] `tags` support (`tags: a,b`) → `hostsForTag()`; `generateTags()` re-run semantics after `addConnection`.
+- [x] `connect(options)` / `connectTo(name)` equivalents: `createConnection(profile)` and `createNode(profile)`, returning a `Node` when asked; validate the transport name exhaustively.
 
 **Tests (port of the config half of `test_client.py`):** fixture INI files (valid, malformed, missing `host`, tags, duplicate sections), autoload search-path order, `$EAPI_CONF` override, `connectTo('nope')` → `ProfileNotFound`.
 

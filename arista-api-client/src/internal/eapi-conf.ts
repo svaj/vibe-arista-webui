@@ -13,7 +13,7 @@
  * answers for a browser app that has no files at all. The Node binding — the only place a real
  * `node:fs`, a real `process.env` or a real home directory appears — is `src/node-profiles.ts`.
  *
- * Two verified pyeapi behaviours are **not** reproduced, both in the operator's favour (row 47):
+ * Two verified pyeapi behaviours are **not** reproduced, both in the operator's favour (row 54):
  *  - `os.path.exists` is true for a **directory**, so pyeapi picks the directory as its config file,
  *    `configparser` swallows the resulting error, and the operator is left with only the implicit
  *    localhost profile and a `filename` pointing at something that was never read. Here a candidate
@@ -42,7 +42,7 @@ export const EAPI_CONF_ENV_VAR = 'EAPI_CONF'
 
 /** The filesystem an `eapi.conf` search needs. Everything else is a string decision. */
 export interface ConfFileSystem {
-  /** Should be `false` for a directory: pyeapi's `os.path.exists` is not, and that is a bug (row 47). */
+  /** Should be `false` for a directory: pyeapi's `os.path.exists` is not, and that is a bug (row 54). */
   exists(path: string): boolean
   /** Returns the file's text. May throw — the caller treats a throw as "not a usable config". */
   readText(path: string): string
@@ -65,7 +65,7 @@ export interface LoadEapiConfOptions extends ParseEapiConfOptions {
    *
    * **Node only, by DR-008** — and even then the resulting profile cannot become a transport until the
    * caller states `allowLocalUnauthenticated` (DR-014), because that listener is unauthenticated
-   * priv-15 on 4.28. A browser app passes `false` (row 48).
+   * priv-15 on 4.28. A browser app passes `false` (row 55).
    */
   readonly implicitLocalhost?: boolean | undefined
   /** Where to put what was found. Lets a caller merge several files, as `Config.read` does per file. */
@@ -130,7 +130,7 @@ export function eapiConfSearchPath(
  * Find and read the first usable `eapi.conf`. Tolerant by design, exactly like pyeapi's
  * `Config.read` — which catches configparser errors, logs one line, and carries on
  * (`client.py:198-203`) — and louder where pyeapi is quiet (a directory or an unreadable file is
- * reported and skipped rather than silently accepted, row 47).
+ * reported and skipped rather than silently accepted, row 54).
  *
  * Nothing is ever logged except through `onIssue` and {@link warnOnce}, and an issue text never
  * contains a credential value (DR-011): the parser names profiles, keys and lines only.
@@ -166,7 +166,7 @@ export function resolveEapiConf(options: LoadEapiConfOptions): LoadedEapiConf {
     } catch (error) {
       // pyeapi accepts this candidate because `os.path.exists` is true for a directory or an
       // unreadable file, then loses the error inside configparser and silently ends up with only
-      // `localhost`. Continuing the search, with a warning, is the honest version (row 47).
+      // `localhost`. Continuing the search, with a warning, is the honest version (row 54).
       const reason = error instanceof Error ? error.message : String(error)
       searched.push({ path: candidate.expanded, skipped: `could not be read: ${reason}` })
       warnOnce(
@@ -190,7 +190,7 @@ export function resolveEapiConf(options: LoadEapiConfOptions): LoadedEapiConf {
   }
 
   if (options.implicitLocalhost ?? false) {
-    // pyeapi `_add_default_connection` (`client.py:214-221`) — see DR-008/DR-014 and row 48: it exists
+    // pyeapi `_add_default_connection` (`client.py:214-221`) — see DR-008/DR-014 and row 55: it exists
     // here so an on-switch `[connection:localhost]` entry keeps working, and it is inert until the
     // caller states the risk, because `profileToTransportOptions` refuses it without the opt-in.
     if (!store.has(DEFAULT_LOCAL_CONNECTION_NAME)) store.addDefaultLocalConnection()

@@ -92,7 +92,7 @@ describe('nodeConfFileSystem — the seam bound to node:fs (test reads the shipp
   const fixtureFile = confFixturePath('dut.conf')
   const fixtureDir = fixtureFile.replace(/\/dut\.conf$/u, '')
 
-  it('exists() is true for a real file and false for a missing one — and false for a directory (row 47)', () => {
+  it('exists() is true for a real file and false for a missing one — and false for a directory (row 54)', () => {
     // pyeapi decides candidate-ness with os.path.exists (client.py:178), which says TRUE for a
     // directory — the source of the "config that was never read" bug. isFile() is the fix.
     expect(nodeConfFileSystem.exists(fixtureFile)).toBe(true)

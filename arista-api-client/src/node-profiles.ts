@@ -32,7 +32,7 @@ export type { ConfFileSystem, EapiConfCandidate, LoadedEapiConf, LoadEapiConfOpt
  * The default filesystem for {@link loadEapiConf}. A candidate that is a directory or unreadable
  * reports itself instead of being skipped silently, because `resolveEapiConf` continues the search
  * (pyeapi's `os.path.exists` + configparser's swallowed error leave an operator with a config that
- * was never read — `client.py:178-183`; MIGRATION.md §5 row 47).
+ * was never read — `client.py:178-183`; MIGRATION.md §5 row 54).
  */
 export const nodeConfFileSystem: ConfFileSystem = {
   exists(path: string): boolean {

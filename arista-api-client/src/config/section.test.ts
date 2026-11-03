@@ -20,7 +20,7 @@
  *   bgp fixture, section '^   address-family ipv4$'     -> '   address-family ipv4\n      neighbor LEAF activate\n      network 192.0.2.0/24\n'
  *   vlan fixture, get_block 'vlan 20'       -> 'vlan 20\n   name "twenty (ops)"\n   state suspend\n   trunk group red\n   trunk group blue\n'
  *   vlan fixture, section '^vlan 11.13$'    -> 'vlan 11-13\n   name group-block\n'   (the PARENT IS SPLICED INTO THE PATTERN
- *                                                                                     VERBATIM — `.` widens; row 51)
+ *                                                                                     VERBATIM — `.` widens; row 58)
  *   banner fixture, section 'banner motd'   -> 'banner motd\nWelcome to sw1 (lab).\n\nLast config change: nowhere.\nEOF\n'
  *
  * **DR-027 vs upstream — verified at the file, not inherited:** I opened `client.py:776-798` on
@@ -28,7 +28,7 @@
  * Node; 792 compiles the pattern; 793 builds `matching_keys`; **794-795**:
  * `if len(matching_keys) == 0: raise TypeError('config section not found')`; 796-798 take
  * `matching_keys[0]`. So upstream signals "not found" with a **TypeError** — this port raises
- * `NotFoundError` (DR-027, MIGRATION.md §5 row 50), and `getBlock` answers `undefined`
+ * `NotFoundError` (DR-027, MIGRATION.md §5 row 57), and `getBlock` answers `undefined`
  * where `get_block` swallows the `TypeError` at `abstract.py:100-101` and returns `None`.
  */
 
@@ -69,7 +69,7 @@ describe('section() — transcribed upstream answers', () => {
   })
 
   it('missing key → NotFoundError (upstream raises TypeError at client.py:795 — DR-027)', () => {
-    // Transcribed: `TypeError: config section not found`. Our message ADDS the pattern (row 50) so
+    // Transcribed: `TypeError: config section not found`. Our message ADDS the pattern (row 57) so
     // the webui error panel can say which lookup failed without re-deriving the call site:
     expect(() => section('nope', { config: ETHERNETS })).toThrowError(NotFoundError)
     expect(() => section('nope', { config: ETHERNETS })).toThrow('config section not found: nope')
@@ -114,7 +114,7 @@ describe('getBlock() — anchored ^…$ lookup, undefined for absence (abstract.
     expect(getBlock('interface Ethernet99', { config: ETHERNETS })).toBeUndefined()
   })
 
-  it('the parent is interpolated AS WRITTEN — metacharacters in a name widen the match (row 51, kept for parity)', () => {
+  it('the parent is interpolated AS WRITTEN — metacharacters in a name widen the match (row 58, kept for parity)', () => {
     // Transcribed: section('^vlan 11.13$') finds the `vlan 11-13` section upstream because the `.`
     // is a pattern wildcard, not a literal dash. Same answer here — a caller needing a literal name
     // must build an escaped RegExp themselves (documented on getBlock):
@@ -188,7 +188,7 @@ describe('section() — option validation and the pyeapi sentinels (no Node on t
     expect(() => section('anything', { config: broken })).toThrowError(ConfigParseError)
     expect(() => getBlock('anything', { config: broken })).toThrowError(ConfigParseError)
     // getBlock only converts NotFoundError: upstream's catch-all `except TypeError` swallowing a
-    // ConfigParseError-shaped failure is exactly what DR-027 removes (rows 52/50).
+    // ConfigParseError-shaped failure is exactly what DR-027 removes (rows 59/57).
   })
 
   it('the DR-026 memo path: {config, cache} chunks the text exactly once across repeated lookups', () => {

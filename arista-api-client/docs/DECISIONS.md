@@ -342,6 +342,41 @@ physical forwarding parity.
 
 ---
 
+### DR-044 — profile state is a value you pass, never a module global
+Upstream configures through one process-wide `Config` (`client.py:127`) plus free functions that mutate it
+(`load_config` `:321`, `config_for` `:334`, `hosts_for_tag` `:352`, `connect_to` `:1040`), so any two libraries
+in one process overwrite each other's profiles and a test cannot isolate a profile set. Here `parseEapiConf`
+is pure, `ProfileStore` is a caller-owned instance, and the factories take the store as an argument; the
+`eapi.conf` search lives behind injected `exists`/`readTextFile` seams in `src/internal/eapi-conf.ts` and is
+reachable only from `./node`. **Consequence:** one extra argument compared with a pyeapi transplant, in exchange
+for 84 specs that never touch a real filesystem and a DR-002 gate that stays structurally true.
+**Related:** DR-038, DR-002, §5 rows 54/55/58.
+
+### DR-045 — an unreadable or malformed `eapi.conf` produces a report, never silence
+`configparser` raises on the first bad line and pyeapi drops the whole file (`client.py:199-203`); directories
+and unreadable paths disappear inside `configparser.read()`; and `BasicInterpolation` turns a password
+containing a bare `%` into a crash (verified on this machine's interpreter: `100%` ⇒
+`InterpolationSyntaxError`, and `p%%s` ⇒ silently the *different* value `p%s`). An operator hand-editing
+`/mnt/flash/eapi.conf` on a switch gets no diagnostics. Here every rejection is a typed `ProfileIssue` with a
+1-based line number, blocking vs advisory, parsing continues, duplicate sections merge first-value-wins,
+`[DEFAULT]` merging is kept, and interpolation is off so `%` is data. A blocking issue makes the factory refuse
+the profile instead of half-applying it. **Consequence:** three deliberate parse divergences (§5 rows 56-58),
+each pinned by a fixture — including upstream's own five files, which still parse to the same values.
+**Open item 10** captures a real operator file so the report can be compared against the image's own Python.
+**Related:** DR-044, DR-046, §5 rows 56-58.
+
+### DR-046 — transport spellings resolve through one table and fail before anything is sent
+Upstream validates the name where a connection object is built (`make_connection`, def `client.py:370`; unknown
+key ⇒ `TypeError('invalid transport specified')` at `:388-389`), applies `DEFAULT_TRANSPORT` at `:452`, and has
+no alias concept. Our browser bundle cannot open a Unix socket or a loopback switch-local hop, and finding that
+out on the first request is exactly what DR-002 exists to prevent. So every pyeapi spelling maps through M2's
+`TRANSPORT_ALIASES` to the typed `TransportKind`, `acceptedTransportNames()` is **derived** from that map so the
+two cannot drift, and each entry point decides which kinds it may build: the browser refuses `unix`,
+`http_local`, `https-client-cert` and `https-session` by name (naming `./node`), Node keeps them inert until
+`allowLocalUnauthenticated`. `http_cache` is §7 (upstream has no such key). **Consequence:** one validation path,
+a typed error before any socket opens, and pyeapi's spellings (`socket`, `local_api`, `https_certs`) keep working.
+**Related:** DR-008, DR-014, DR-002, DR-009, §5 rows 55/59.
+
 ## Open items (need the device)
 
 Use cEOS first for software behavior and schema exploration, recording its model/version;
@@ -368,3 +403,8 @@ config session and is **not read-only**:
 MLAG (`mlag` module, 21 upstream system tests): investigate supported control-plane
 behavior in an isolated two-node cEOS topology. Physical 7050TX-64 MLAG/forwarding
 validation still needs a second physical device; do not mark it verified from containers.
+
+10. **The operator's own `eapi.conf` on the target**: does `/mnt/flash/eapi.conf` exist on the 7050TX-64 (and
+    in cEOS), and what keys/spellings does it actually use? DR-045's issue report and DR-046's alias table were
+    written against this machine's `configparser` and pyeapi's fixtures — capture the device file in M12 (#14)
+    and diff both against the image's own Python before claiming parity for operator files.

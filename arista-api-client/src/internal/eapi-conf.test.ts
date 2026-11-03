@@ -8,7 +8,7 @@
  * (covered by `src/node-profiles.test.ts`). Everything here runs against the
  * `src/testing/fake-conf-fs.ts` seam — offline, no home directory, no device (DR-034).
  *
- * The divergences asserted here are MIGRATION.md §5 row 47's: pyeapi accepts a candidate as soon as
+ * The divergences asserted here are MIGRATION.md §5 row 54's: pyeapi accepts a candidate as soon as
  * `os.path.exists` says so — true for directories — and then loses configparser's unread error,
  * ending with a config that was never read. This layer reports and continues.
  */
@@ -115,7 +115,7 @@ describe('resolveEapiConf', () => {
     expect(loaded.profiles).toEqual([])
   })
 
-  it('reports a candidate that exists but cannot be read, warns once, and keeps searching (row 47)', () => {
+  it('reports a candidate that exists but cannot be read, warns once, and keeps searching (row 54)', () => {
     // pyeapi would ACCEPT this candidate (os.path.exists is true for a directory) and then lose the
     // error inside configparser, leaving the operator with only the implicit localhost profile and a
     // `filename` pointing at something that was never read (`client.py:178-183`, verified live).
@@ -133,7 +133,7 @@ describe('resolveEapiConf', () => {
     expect(warn).toHaveBeenCalledTimes(1)
   })
 
-  it('injects the implicit localhost profile only when asked — and never clobbers the author’s (row 48)', () => {
+  it('injects the implicit localhost profile only when asked — and never clobbers the author’s (row 55)', () => {
     const withIt = resolveEapiConf({ fs: fakeFs({ '/x/eapi.conf': LAB }), env: {}, paths: ['/x/eapi.conf'], implicitLocalhost: true })
     expect(withIt.store.names()).toEqual(['switch', 'localhost'])
     expect(withIt.store.get('localhost')?.transport).toBe('socket') // client.py:214-221 spelling
