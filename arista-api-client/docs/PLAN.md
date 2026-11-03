@@ -224,26 +224,64 @@ graph LR
 ### M5 — Config sessions & change safety
 **Port of:** `configure_session`, `diff`, `commit`, `abort`, `_configure_session` (`client.py:676-696`, `1003-1040`) — plus EOS capabilities pyeapi never exposed.
 
-- [ ] `node.configSession({ name?, description?, noCommit? })` → session object. pyeapi always fabricates a `uuid4`; **default our session name to a stable, prefixed id** (`ui-<host>-<pid?>-<uuid8>`) so a crashed client can find it again → **DR-022**.
-- [ ] Every session command re-sends `configure session <name>` as command #1 (that *is* how EOS re-attaches; pyeapi relies on it too).
-- [ ] `diff()` — must use `format:'text'`: `show session-config diffs` has no JSON model and returns **1003** under JSON (verified in the 4.28 image) → keep pyeapi's comment-but-fix-it: allow `show session-config` (JSON-capable) and force text for `diffs`.
-- [ ] `commit()`, `abort()`, `exitSession()`, plus `commitWithRevertTimer(hh:mm:ss)` (EOS auto-revert; **semantics of the confirming second `commit` need device verification** — [open items](./DECISIONS.md#open-items-need-the-device)).
-- [ ] `listSessions()` via `show configuration sessions` (**is** JSON-model-backed) + `recoverOrphans()` / `abortSession(name)` — pending sessions persist forever and hold the config lock, which is what produces **1006** for the next client → **DR-023**.
-- [ ] `rollbackCleanConfig(groups?)`, `rollbackToSession(name)` (config-history rollback), `configureReplace(url, {ignoreErrors, force, md5, skipCheckpoint})` with the "cannot configure replace while session X is pending" guard surfaced as `SessionError`.
-- [ ] `copyRunningToStartup()` / `writeMemory()` — pyeapi has nothing; a UI that commits is not durable without it → **DR-024**.
-- [ ] `stopOnError` exposure: default `true` (EOS default); a whole-changeset validate mode uses `{stopOnError:false, includeErrorDetail:true}`.
-- [ ] Session state machine in TS (`open | diffed | committed | aborted | lost`) + a guard that rejects `Node.configure()` while a session is open → **DR-025**.
-- [ ] Persist session names to a small journal (Node: `~/.config/arista-eapi/sessions.json`; browser: `localStorage`) so recovery survives reloads.
+- [x] `node.configSession({ name?, description?, noCommit? })` → session object. pyeapi always fabricates a `uuid4`; **default our session name to a stable, prefixed id** (`ui-<host>-<pid?>-<uuid8>`) so a crashed client can find it again → **DR-022**.
+- [x] Every session command re-sends `configure session <name>` as command #1 (that *is* how EOS re-attaches; pyeapi relies on it too).
+- [x] `diff()` — must use `format:'text'`: `show session-config diffs` has no JSON model and returns **1003** under JSON (verified in the 4.28 image) → keep pyeapi's comment-but-fix-it: allow `show session-config` (JSON-capable) and force text for `diffs`.
+- [x] `commit()`, `abort()`, `exitSession()`, plus `commitWithRevertTimer(hh:mm:ss)` (EOS auto-revert; **semantics of the confirming second `commit` need device verification** — [open items](./DECISIONS.md#open-items-need-the-device)).
+- [x] `listSessions()` via `show configuration sessions` (**is** JSON-model-backed) + `recoverOrphans()` / `abortSession(name)` — pending sessions persist forever and hold the config lock, which is what produces **1006** for the next client → **DR-023**.
+- [x] `rollbackCleanConfig(groups?)`, `rollbackToSession(name)` (config-history rollback), `configureReplace(url, {ignoreErrors, force, md5, skipCheckpoint})` with the "cannot configure replace while session X is pending" guard surfaced as `SessionError`.
+- [x] `copyRunningToStartup()` / `writeMemory()` — pyeapi has nothing; a UI that commits is not durable without it → **DR-024**.
+- [x] `stopOnError` exposure: default `true` (EOS default); a whole-changeset validate mode uses `{stopOnError:false, includeErrorDetail:true}`.
+- [x] Session state machine in TS (`open | diffed | committed | aborted | lost`) + a guard that rejects `Node.configure()` while a session is open → **DR-025**.
+- [x] Persist session names to a small journal (Node: `~/.config/arista-eapi/sessions.json`; browser: `localStorage`) so recovery survives reloads.
 
 **Tests (high priority):**
-- [ ] Command sequence for open/configure/diff/commit/abort (assert exact `cmds` arrays — including text-forced `diffs`).
-- [ ] Re-attach: two sequential `node.configSession({name})` calls produce `configure session <same name>` twice.
-- [ ] Orphan recovery: fixture `show configuration sessions` output with a pending `ui-x` session → `recoverOrphans()` issues `configure session ui-x abort`.
-- [ ] 1006 mapping → `SessionError('config locked')` with the offending session surfaced from `trace()`.
-- [ ] `writeMemory` never auto-runs on commit (data-loss-safe default) and requires an explicit flag.
+- [x] Command sequence for open/configure/diff/commit/abort (assert exact `cmds` arrays — including text-forced `diffs`).
+- [x] Re-attach: two sequential `node.configSession({name})` calls produce `configure session <same name>` twice.
+- [x] Orphan recovery: fixture `show configuration sessions` output with a pending `ui-x` session → `recoverOrphans()` issues `configure session ui-x abort`.
+- [x] 1006 mapping → `SessionError('config locked')` with the offending session surfaced from `trace()`.
+- [x] `writeMemory` never auto-runs on commit (data-loss-safe default) and requires an explicit flag.
 
-**Exit gate:** a change can be staged, reviewed as a diff, committed atomically, survived across a page reload, and cleaned up after a crash.
+**Exit gate:** a change can be staged, reviewed as a diff, committed atomically, survived across a page reload, and cleaned up after a crash. ✅ met against `MockTransport` — staged (`run`), reviewed (`diff`, text-forced), committed (`commit`, with the explicit `persist` option), resumable (`configSession({ name })` + `configure session <name>` as `cmds[0]` of every batch) and recoverable (`listSessions`/`abortSession`/`recoverOrphans` + a journal). **Met offline only**: no device or cEOS run has happened, so the device-*effect* half of that sentence is unverified — see the notes below.
 
+
+> **M5 notes (2026-11-03) — what is implemented, and what is still not true.**
+>
+> - **Implemented** (all 10 capability boxes and all 5 high-priority test boxes above, 15/15 ticked):
+>   `node.configSession({ name?, description?, noCommit?, journal? })` → `ConfigSession`; the **DR-022**
+>   prefixed, endpoint-scoped name `ui-<host>-p<pid>-<hex8>` (`ui-<host>-<hex8>` where there is no
+>   process) and `SESSION_NAME_PREFIX` doubling as the recovery filter — **DR-047** fixes the
+>   `arista-ui-<host>-<uuid8>` shape DR-022 originally sketched to this one, and the journal path; every
+>   batch re-sends `configure session <name>` as `cmds[0]` (two sequential handles prove it twice);
+>   `diff()` stating `format:'text'` on the request rather than implying it; `run`/`commands`, `commit`,
+>   `abort`, `exit`, `commitWithRevertTimer` + `confirmRevertTimer`, `showSessionConfig`,
+>   `validateChanges`; the `open | diffed | committed | aborted | lost` machine with the **DR-025**
+>   refusal of `configure()` / `configureReplace()` / a second live `configSession()` (**DR-048**: every
+>   terminal verb ends the handle); `listSessions` / `abortSession` / `recoverOrphans` and the `1006` →
+>   `SessionError('config locked')` mapping (**DR-023**, realised for the first time — pyeapi never
+>   mentions 1006); `rollbackCleanConfig` / `rollbackToSession` (stage inside a session, hand back
+>   uncommitted) and `configureReplace` with the pending-commit-timer refusal surfaced as a typed error;
+>   `copyRunningToStartup` / `writeMemory`, **never** implied by `commit()` (**DR-024**); `stopOnError`
+>   per operation plus the changeset mode; the journal on both entries (`FileSessionJournal` behind
+>   `./node`, `createWebStorageJournal` in the browser, allow-listed fields per **DR-011**, **DR-049**).
+>   Measured: **106** new tests (`config-session.test.ts` 78 + `node-session-journal.test.ts` 28), client
+>   31 files / **862** tests, webui 3/6, coverage 97.49% stmts / 90.84% branch with the thresholds
+>   untouched.
+> - **Not verified on hardware or cEOS, and therefore not claimed** (**DR-050**): what a `commit timer`
+>   does to *later* sessions, whether a second `commit` before the deadline confirms or resets the revert
+>   (open item 5 — the handler below the image's Python is native and was never inspected here);
+>   `configure session <name>` name length/charset; `description "…"` quoting depth; which of `no-commit`,
+>   `copy running-config startup-config` and `rollback clean-config [ { groups } ]` answer `1002` on the
+>   7050TX-64 (open items 7 and 8); `maxOpenSessions` / `service configuration session max pending`;
+>   whether `show configuration sessions` carries any start-time field (`olderThan` is journal-only until
+>   the capture says otherwise); and `copy running-config startup-config` behaviour on 4.28.13.1M. Each is
+>   a STATUS §3 sweep line to capture in M12 (#14). The specs pin the commands we send and how we read the
+>   answers — nothing about what the switch then does.
+> - **Still deferred on purpose:** `verifyConfig` / a real dry run stays **M11 (#13)** — which is why no
+>   `dryRun()` exists on the handle and why `validateChanges` is documented as "the device applied these,
+>   here is the per-command detail"; and the operator-facing screens (diff review, pending-session table,
+>   transaction UI) are **M13 (#15)**, together with the Playwright/cEOS browser lane. `Node.section()` /
+>   `chunkConfig` pairing and the resource `.commands()` accessors those screens would feed are M7 (#9).
 ---
 
 ### M6 — Text-config engine

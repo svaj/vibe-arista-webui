@@ -49,7 +49,7 @@ const vlans = await node.vlans.getAll();                  // { 1: {name:'default
 // make a reviewable change
 const session = await node.configSession({ name: 'ui-demo' });
 try {
-  await session.apply(await node.vlans.commands.create(20, { name: 'PROD' }));
+  await session.run(['vlan 20', 'name PROD']);       // resource .commands() accessors are M7 (#9)
   console.log(await session.diff());                      // text diff, forced format:'text'
   await session.commit();
 } catch (e) {
@@ -58,9 +58,10 @@ try {
 }
 ```
 
-`session.apply()` takes **commands**, not magic: `node.vlans.commands.create(...)` returns the
-`CommandSpec[]` a resource would send, so the UI can show exactly what will change before it runs
-([ARCHITECTURE.md §9](./ARCHITECTURE.md)).
+`session.run()` (alias `session.commands()`) takes **commands**, not magic — a `CommandSpec[]` or
+plain strings, exactly like `node.configure()`. When the resource modules land in M7 (#9) they will
+hand the same `CommandSpec[]` to it, which is what lets a UI show what will change before it runs
+([ARCHITECTURE.md §9](./ARCHITECTURE.md), §5 row 70).
 
 ---
 
@@ -154,45 +155,117 @@ declare module '@devhax-heavy-industries/arista-eapi' {
 
 ## 5. Writing: terminal config vs config sessions
 
-**Prefer sessions** for anything an operator should approve before it lands.
+Two write paths, and the object you get back makes the difference obvious: `configure()` returns device
+replies, `configSession()` returns a **handle** with a state machine behind it. Prefer a session for
+anything an operator should approve before it lands — DR-025 is the rule, §5 rows 61–70 are the record.
 
 ```ts
-// terminal mode — each command applies immediately
-await node.configure(['interface Ethernet1', 'switchport mode access', 'switchport access vlan 20']);
+import { createTransport, Node } from '@devhax-heavy-industries/arista-eapi';
 
-// session mode — one atomic change set, reviewable, resumable
-const s = await node.configSession({ name: 'ui-42f0', description: 'webui change 42f0' });
-await s.configure([...]);
-const diff = await s.diff();
-await s.commit();                       // running-config only; NOT persisted to startup
-await node.copyRunningToStartup();      // explicit, deliberate (DR-024)
+const node = new Node(createTransport({ kind: 'https', host, username, password }));
+
+// --- terminal: one request, applied as the device receives it
+await node.configure(['vlan 21', 'name OFFICE-VOICE']);
+
+// --- session: staged, reviewed as a diff, then committed or undone
+const session = await node.configSession({ description: 'ui:vlan-21' });   // name auto-generated
+await session.run(['vlan 21', 'name OFFICE-VOICE']);   // session.commands(…) is the same verb
+const diff = await session.diff();                     // format:'text' on the wire, never inferred
+if (approved && session.hasDiffBeenRead()) await session.commit();
+else await session.abort();
+session.state;                    // 'open' | 'diffed' | 'committed' | 'aborted' | 'lost'
 ```
 
-Recovering after a crash or a closed tab (pending sessions hold the config lock → error **1006**):
+What the session path guarantees, and where each guarantee comes from:
+
+- **A diff you can actually show.** `diff()` sends `show session-config diffs` with `format: 'text'` stated
+  on the request; `showSessionConfig()` sends `show session-config` and stays JSON, because that form *is*
+  model-backed while `diffs` is not — so a JSON ask for `diffs` is answered `1003`. pyeapi reaches the same
+  text encoding through an `encoding=` kwarg (`client.py:1008-1016`) and never says why, and there a typo in
+  the kwarg silently sends JSON instead. `hasDiffBeenRead()` flips back to `false` on every staged write,
+  which is the only honest way to gate a Commit button. §5 row 64.
+- **Re-attach is explicit, so a reload survives.** `configure session <name>` is `cmds[0]` of **every**
+  batch — the same insertion pyeapi makes (`client.py:687`) — so another process, or this page after a
+  reload, reaches the same staged changes:
+  `node.configSession({ name: 'ui-switch.home.arpa-p4242-9c1f2a70' })`. Nothing sends `exit` for you;
+  `exit()` detaches the handle and deliberately **leaves the device-side session pending**, which is what
+  `recoverOrphans()` reads back. §5 row 63.
+- **One session per `Node`.** While a handle is live, `configure()` and `configureReplace()` throw before
+  any request, and `exec()` keeps refusing every `configure …` spelling (§5 rows 32/62). pyeapi instead
+  re-routes a terminal write into whatever session the `Node` remembers (`client.py:635-636`) — that
+  behaviour is deliberately **not ported** (§7), because the diff an operator approved stops being the diff
+  that lands.
+- **A name another process can find.** Omit `name` and the client builds
+  `ui-<host>-p<pid>-<hex8>` (`ui-<host>-<hex8>` in a browser, which has no pid), hostname-only and
+  secret-free even from a malformed address (`generateSessionName`, DR-047). `SESSION_NAME_PREFIX` is also
+  `recoverOrphans()`'s default name filter, and `MAX_SESSION_NAME_LENGTH` plus an unsafe-token refusal stop
+  a name from splicing a second CLI verb into `cmds[0]`. What EOS itself limits is **not** captured here, so
+  those bounds are ours and open item 7 exists. pyeapi fabricates a bare `uuid4()`, never sends it and never
+  stores it (`client.py:1003-1006`; grepping that tree for `session_name` finds no consumer). §5 row 61.
+- **Recovery, not luck.** `node.listSessions({ detail? })` reads `show configuration sessions` in JSON and
+  validates the reply — one without a `sessions` object is a `ProtocolError`, never an empty table, because
+  "no pending sessions" would be a claim the device never made. `node.abortSession(name)` ends one session;
+  `node.recoverOrphans({ journal?, olderThan?, namePrefix? })` reconciles the journal against the device and
+  returns `{ aborted, failed, skipped, remaining, reported }`. A session whose `commitBy` is armed is
+  **reported, never aborted** — confirming or reverting a live change is a decision, not cleanup (DR-050).
+- **1006 is a named failure.** A held config lock becomes `SessionError` with the handle marked `lost`, and
+  the message names the three cleanup verbs. pyeapi cannot express it at all: the string `1006` appears
+  nowhere in the pinned clone (§5 row 66, DR-023).
+- **Commit is not a save.** `commit()` writes running-config only.
+  `copy running-config startup-config` is sent **only** by `node.copyRunningToStartup()` (alias
+  `node.writeMemory()`), or by `commit({ persist: true })` — which adds its own second round trip so a
+  failure can name which half happened: *committed, but … NOT saved to startup-config, so it is lost on
+  reboot*. pyeapi has no durability verb at all, which is why a pyeapi-driven change quietly evaporates on a
+  reboot (DR-024, §5 row 68).
+- **Rollback and replace are staged, not one-shot.** `node.rollbackCleanConfig({ groups? })` and
+  `node.rollbackToSession(name)` hand back an **uncommitted** `ConfigSession`: read `diff()`, then `commit()`
+  or `abort()` (`rollbackCleanConfig` is also on an open handle).
+  `node.configureReplace(url, { ignoreErrors?, force?, md5?, skipCheckpoint? })` renders the device's own
+  keywords, pre-validates `md5` as 32 lowercase hex digits, refuses locally while a session is live (the
+  command exits any session it finds, which would strand a reviewed changeset in a session this client still
+  owns), and maps the device's "session … pending commit timer" refusal — a *message*, not a code — to
+  `SessionError` naming that session. §5 row 69.
+- **A revert timer, with two honest gaps.** `session.commitWithRevertTimer('00:05:00')` sends
+  `commit timer hh:mm:ss` inside the session; `hh:mm` and `00:00:00` are refused client-side, the zero case
+  with the device's own wording so the two messages diff. Whether the timer blocks or rewrites later
+  sessions, and whether a second `commit` before the deadline **confirms or resets** the revert, is not
+  claimed: `confirmRevertTimer()` is named as intent, and `ConfigSessionSummary.commitBy` only says a revert
+  is armed. DECISIONS open item 5 and the STATUS §3 line stay open until cEOS and the target settle it.
+  §5 row 67.
+- **Journal on both entries.** Node: `FileSessionJournal` from `…/node`, path from `sessionJournalPath()` →
+  `$XDG_CONFIG_HOME/arista-eapi/sessions.json`, else `~/.config/arista-eapi/sessions.json`
+  (`SESSION_JOURNAL_PATH`, `defaultSessionJournal()`). Browser:
+  `createWebStorageJournal(window.localStorage)` from the main entry under `SESSION_JOURNAL_STORAGE_KEY`
+  (`arista-eapi:sessions`). Pass one with `configSession({ journal })`. Records are rebuilt from a key
+  allow-list (`name`, `endpoint`, `startedAt`, `pid?`, `description?`), so an `enablePassword` cannot ride
+  from a JS caller onto disk, and a corrupted file degrades to "no entries" instead of breaking recovery
+  (DR-011, DR-049). That path is **our** convention — EOS defines no journal file, and it must not be
+  described as one.
+- **Whole-changeset validation, which is not a dry run.** `session.validateChanges(batch)` sends **one**
+  batch with `{ stopOnError: false, includeErrorDetail: true }` and returns a `ChangesetOutcome` —
+  `{ ok: false, failures, staged, error }` **without** throwing — so one bad command does not kill the
+  handle: `diff()` shows what did land and `abort()` undoes it. Every command it accepted *was applied*;
+  there is no preview. A real preview needs `verifyConfig`, which is **M11 (#13)** and does not exist yet —
+  which is why the handle has no `dryRun()` method (DR-050, §5 rows 67–68).
 
 ```ts
-import { TransportError } from '@devhax-heavy-industries/arista-eapi';
-try {
-  await node.configure(['vlan 30']);
-} catch (e) {
-  if (e instanceof TransportError /* actually SessionError, code 1006 */) {
-    const stuck = await node.listSessions();          // show configuration sessions (JSON)
-    for (const name of e.likelyOrphans(node)) await node.abortSession(name);
-  }
+const outcome = await session.validateChanges(['vlan 21', 'interface Ethernet1 switchport mode access']);
+if (!outcome.ok) {
+  console.log(await session.diff(), outcome.failures);  // what landed, plus the per-command detail
+  await session.abort();
 }
 ```
 
-More session verbs the Python client never had: `configureReplace(url, opts)`,
-`rollbackCleanConfig()`, `rollbackToSession(name)`, `commitWithRevertTimer('00:05:00')`
-(verify semantics on device — [open items](./DECISIONS.md#open-items-need-the-device)).
-
-Whole-changeset validation without guessing:
-
-```ts
-const outcome = await node.exec(configLets, { stopOnError: false, includeErrorDetail: true });
-// every command's result + a per-command errorDetail[], instead of "command 7 failed"
-const preview = await node.verifyConfig(['vlan 20', 'name PROD']); // normalised configlets, no writes
-```
+> **Not verified on hardware or cEOS — and not claimed.** The *effect* of `commit timer`; whether a second
+> `commit` before the deadline confirms or resets it; the name length and charset EOS will accept; how deep
+> `description "…"` quoting goes; whether `no-commit` is accepted or answered `1002` by the 7050TX-64;
+> `maxOpenSessions` / `service configuration session max pending`; whether `show configuration sessions`
+> reports any start-time field (until it does, `olderThan` applies to journaled names only); and whether
+> `copy running-config startup-config` behaves as expected on 4.28.13.1M. Arista's CLI-plugin Python
+> (`SessionCli`, `ConfigSessionCli`, `ConfigSessionShowCli`, `ConfigSessionModel`, `CliCommon`,
+> `DateTimeRule`) is not obtainable from this workspace, so §5 rows 61–70 name those classes **without**
+> line numbers instead of printing references nobody can open. Each question is a STATUS §3 sweep line and a
+> DECISIONS open item (5, 7, 8) for M12 (#14) to capture. DR-050 is the rule that keeps this section honest.
 
 ---
 
