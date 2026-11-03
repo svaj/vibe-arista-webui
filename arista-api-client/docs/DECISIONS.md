@@ -342,6 +342,44 @@ physical forwarding parity.
 
 ---
 
+### DR-044 — profile state is a value you pass, never a module global
+Upstream keeps one process-wide `Config` (`client.py:127`) and mutates it through free functions
+(`load_config` `:321`, `config_for` `:334`, `hosts_for_tag` `:352`, `connect_to` `:1040`), so two libraries in
+one process overwrite each other's profiles and a test cannot isolate a profile set. Here `parseEapiConf` is
+pure, `ProfileStore` is caller-owned, and the factories take the store as an argument; the file search lives in
+`src/internal/eapi-conf.ts` with `exists`/`readTextFile` as parameters and is reachable only from `./node`.
+**Consequence:** one extra argument compared with a pyeapi transplant, in exchange for 84 specs that never touch
+a real filesystem and a DR-002 rule that stays structurally enforceable.
+**Related:** DR-038, DR-002, §5 rows 54/55/58.
+
+### DR-045 — an unreadable or malformed `eapi.conf` yields a report, never silence
+`configparser` raises on the first bad line and pyeapi discards the whole file (`client.py:199-203`);
+directories and unreadable paths disappear inside `configparser.read()`; and `BasicInterpolation` turns a
+password containing a bare `%` into a crash — verified here: `100%` raises `InterpolationSyntaxError`, and
+`p%%s` parses silently as the *different* value `p%s`. An operator hand-editing `/mnt/flash/eapi.conf` on a
+switch gets no diagnostics at all. Here every rejection is a typed `ProfileIssue` with a 1-based line number
+(blocking vs advisory), reading continues, duplicate sections merge first-value-wins, `[DEFAULT]` merging is
+kept, and interpolation is off so `%` is data. A blocking issue makes the factory refuse the profile rather than
+half-apply it. **Consequence:** three deliberate parse divergences (§5 rows 56-58), each pinned by a fixture —
+including upstream's own five `eapi.conf` files, which still parse to the same values. Open item 10 captures a
+device-written file so this can be compared against the image's own Python.
+**Related:** DR-044, DR-046, §5 rows 56-58.
+
+### DR-046 — transport spellings resolve through one table and fail before anything is sent
+Upstream validates the transport name where a connection object is built (`make_connection`, def
+`client.py:370`; unknown key ⇒ `TypeError('invalid transport specified')` at `:388-389`), applies
+`DEFAULT_TRANSPORT` at `:452`, and has no alias concept at all. A browser bundle cannot open a Unix socket or a
+switch-local loopback hop, and discovering that on the first request is exactly what DR-002 exists to prevent. So
+every pyeapi spelling maps through M2's `TRANSPORT_ALIASES` to the typed `TransportKind`;
+`acceptedTransportNames()` is **derived from that map** so the two cannot drift; and each entry point decides
+which kinds it may build — the browser refuses `unix`, `http_local`, `https-client-cert` and `https-session` by
+name (naming `./node`), Node keeps them inert until `allowLocalUnauthenticated`. `http_cache`, which pyeapi's
+docs name, is recorded in MIGRATION §7 because upstream implements no such key. **Consequence:** one validation
+path, a typed error before any socket exists, and pyeapi's own spellings (`socket`, `local_api`, `https_certs`)
+keep working. **Follow-up:** wave-1 runtime validators (`assertInterfaceName`, `assertVlanId`) are M7's (#9) and
+follow the same derive-don't-duplicate rule.
+**Related:** DR-008, DR-014, DR-002, DR-009, §5 rows 55/59.
+
 ## Open items (need the device)
 
 Use cEOS first for software behavior and schema exploration, recording its model/version;
@@ -368,3 +406,8 @@ config session and is **not read-only**:
 MLAG (`mlag` module, 21 upstream system tests): investigate supported control-plane
 behavior in an isolated two-node cEOS topology. Physical 7050TX-64 MLAG/forwarding
 validation still needs a second physical device; do not mark it verified from containers.
+
+10. **The operator's own `eapi.conf` on the target**: does `/mnt/flash/eapi.conf` exist on the 7050TX-64 (and
+    in cEOS), and which keys and transport spellings does it actually carry? DR-045's report and DR-046's alias
+    table were written against this machine's `configparser` and pyeapi's fixtures — capture the device file in
+    M12 (#14) and diff both against the image's own Python before claiming parity for hand-edited device files.

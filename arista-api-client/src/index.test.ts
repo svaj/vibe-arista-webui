@@ -1,30 +1,193 @@
+/**
+ * The browser-safe entry's factory surface — rewritten for M3 (#5), which is the milestone that
+ * replaced the M0 placeholder these specs used to pin.
+ *
+ * What is asserted here is the **entry**, not the profile engine: the three accepted bag forms, which
+ * kinds this entry can build, the `eapi.conf`-free constraint (DR-002/DR-038: a profile *name* is
+ * useless without an explicit `store`, and no implicit `connection:localhost` socket profile exists
+ * here — DR-008/DR-014, MIGRATION.md §5 row 55), and the secret discipline the UI depends on (DR-011).
+ *
+ * pyeapi parity anchors: `connect()` is `client.py:394-461` (positional-or-kwargs, `return_node`
+ * defaults False, a silent `host='localhost'` at `:394`), `connect_to(name)` is `client.py:1040-1067`
+ * (a module-global `config`, `AttributeError` on a miss, `enablepwd` folded into the `Node` at
+ * `:1066`). This entry has no `return_node` flag (DR-005 — the function name says it), no default host
+ * (row 8), no module-global config (row 54) and a typed `NotSupportedError` instead of `AttributeError`.
+ *
+ * The M4-era construction path (`new Node(createTransport(…))`) stays covered: M3 had to add the
+ * factories without breaking callers that already write it.
+ */
+
 import { describe, expect, it } from 'vitest'
 
-import { createNode } from './index'
+import {
+  createConnection,
+  createNode,
+  createProfiles,
+  createTransport,
+  Node,
+  NotSupportedError,
+  ProfileStore,
+  type ConnectionProfile,
+} from './index'
 
-describe('browser-safe entry', () => {
-  it('createNode is still a placeholder that says which milestone implements it', () => {
-    // The phrase `M0 placeholder (#2)` is what `arista-webui/src/eapi-package.test.ts` matches, so the
-    // webui keeps proving name-based resolution while the factory itself is unimplemented.
-    expect(() => createNode({ host: 'switch.local' })).toThrow(/M0 placeholder \(#2\)/)
+/** The message of the error a call throws, so several assertions can inspect one failure. */
+function failureMessage(fn: () => unknown): string {
+  try {
+    fn()
+  } catch (error) {
+    return error instanceof Error ? error.message : String(error)
+  }
+  throw new Error('expected the call to throw, but it returned normally')
+}
+
+function requireProfile(store: ProfileStore, name: string): ConnectionProfile {
+  const profile = store.configFor(name)
+  if (profile === undefined) throw new Error(`test setup: profile ${JSON.stringify(name)} is not in the store`)
+  return profile
+}
+
+describe('createNode / createConnection from an explicit connection bag', () => {
+  it('hands back the M4 command layer over a browser transport', () => {
+    const node = createNode({ kind: 'https', host: 'sw1.lan', username: 'ui-ro', password: 'unused-in-tests' })
+    expect(node).toBeInstanceOf(Node)
+    expect(node.connection.kind).toBe('https')
+    expect(node.connection.address).toBe('https://sw1.lan:443/command-api')
+    expect(String(node)).toBe('Node(connection=https://sw1.lan:443/command-api)')
   })
 
-  it('points at M3 (#5) for the option bag and at M4 (#6) for the command layer that exists now', () => {
-    // PLAN.md M3 owns `createConnection(profile)`/`createNode(profile)`; M4 (#6) shipped `Node`.
-    // Merging those two is M3's decision to make, not this milestone's.
-    expect(() => createNode({ host: 'sw1' })).toThrow(/M3 \(#5\)/)
-    expect(() => createNode({ host: 'sw1' })).toThrow('command layer it would hand back exists now (M4, #6)')
-    expect(() => createNode({ host: 'sw1' })).toThrow('new Node(createTransport(')
+  it('hands back a bare transport when no command layer was asked for', async () => {
+    const transport = createConnection({ kind: 'https', host: 'sw1.lan', port: 8443 })
+    expect(transport).not.toBeInstanceOf(Node)
+    expect(transport.address).toBe('https://sw1.lan:8443/command-api')
+    await transport.close()
   })
 
-  it('echoes the options it was handed, so a JS caller can see what it passed', () => {
-    expect(() => createNode({ host: 'sw1' })).toThrow(/"host":"sw1"/)
+  it("keeps M4's `new Node(createTransport(…))` callers working: same class, same options", () => {
+    const handBuilt = new Node(createTransport({ kind: 'https', host: 'sw1.lan' }), { configDefaults: false })
+    const fromFactory = createNode({ kind: 'https', host: 'sw1.lan', configDefaults: false })
+    expect(handBuilt.configDefaults).toBe(false)
+    expect(fromFactory).toBeInstanceOf(Node)
+    expect(fromFactory.constructor).toBe(handBuilt.constructor)
+    expect(fromFactory.configDefaults).toBe(false)
   })
 
-  it('exports the M4 command layer from the browser-safe entry', async () => {
+  it('splits the Node settings out of the bag instead of handing them to the transport (enablepwd)', () => {
+    // pyeapi `connect(..., enablepwd='enablepwd', return_node=True)` (`client.py:453-460`, `:504`),
+    // asserted upstream by `test_connect_return_node_enablepwd`. Until the M3 wiring was repaired this
+    // call threw on every attempt: M2's DR-016 allow-list refuses `enablePassword` on a *transport*
+    // bag, so the settings must be routed to the `Node` rather than pasted into the connection bag.
+    const node = createNode({
+      kind: 'https',
+      host: 'sw1.lan',
+      username: 'ui-ro',
+      password: 'unused-in-tests',
+      enablePassword: 'enable-secret',
+      autorefresh: false,
+    })
+    expect(node.settings.enablePassword).toBe('enable-secret')
+    expect(node.autorefresh).toBe(false)
+    expect(node.configDefaults).toBe(true)
+  })
+
+  it('keeps the Basic-auth password out of every rendered string (DR-011)', () => {
+    const node = createNode({ kind: 'https', host: 'sw1.lan', username: 'ui-ro', password: 'p@ss-words', enablePassword: 'enable-secret' })
+    for (const rendered of [String(node), node.connection.address]) {
+      expect(rendered).not.toContain('p@ss-words')
+      expect(rendered).not.toContain('ui-ro')
+    }
+    // `settings` holds the enable password the caller passed — one copy, needed to authenticate. What
+    // must never appear is the connection password, which lives only inside the transport.
+    expect(node.connection.address).toBe('https://sw1.lan:443/command-api')
+  })
+
+  it('refuses to invent a host, unlike pyeapi `connect()` (row 8)', () => {
+    expect(failureMessage(() => createConnection({ kind: 'https' }))).toMatch(/never defaults to localhost/u)
+  })
+
+  it('refuses a Node-only kind from this entry, naming the ./node import (DR-002/DR-013/DR-014)', () => {
+    expect(() => createConnection({ kind: 'unix', allowLocalUnauthenticated: true } as never)).toThrow(NotSupportedError)
+    expect(failureMessage(() => createConnection({ kind: 'session', host: 'sw1.lan' } as never))).toContain(
+      '@devhax-heavy-industries/arista-eapi/node',
+    )
+  })
+})
+
+describe('createNode / createConnection from a profile', () => {
+  const store = (): ProfileStore =>
+    createProfiles({
+      lab: { transport: 'https', host: '10.0.0.30', username: 'ui-ro', password: 'unused-in-tests', tags: 'rack-a', enablepwd: 'enable-secret' },
+      on: { transport: 'socket' },
+    })
+
+  it('resolves a pyeapi-spelled profile through TRANSPORT_ALIASES', () => {
+    const node = createNode({ profileName: 'lab', store: store(), configDefaults: false })
+    expect(node.connection.address).toBe('https://10.0.0.30:443/command-api')
+    expect(node.configDefaults).toBe(false)
+    // pyeapi `connect_to` folds `enablepwd` into the Node (`client.py:1066` → `client.py:504`).
+    expect(node.settings.enablePassword).toBe('enable-secret')
+  })
+
+  it('accepts a profile object as well as a name, with per-call overrides', () => {
+    const profiles = store()
+    const node = createNode({ profile: requireProfile(profiles, 'lab'), overrides: { host: '10.0.0.99' } })
+    expect(node.connection.address).toBe('https://10.0.0.99:443/command-api')
+  })
+
+  it('requires an explicit store: this entry has no filesystem to fall back to (DR-038/DR-044)', () => {
+    // A typed `NotSupportedError` where pyeapi raises AttributeError('connection profile not found in
+    // config') (`client.py:1061-1064`, upstream `test_missing_connection_raises_attribute_error`); the
+    // message lists the profiles that do exist so the UI can branch on it.
+    const message = failureMessage(() => createConnection({ profileName: 'nope', store: new ProfileStore() }))
+    expect(message).toMatch(/not defined/u)
+    expect(message).toMatch(/Known profiles: none/u)
+    expect(message).toContain('AttributeError')
+  })
+
+  it('never injects the implicit [connection:localhost] socket profile (DR-008, row 55)', () => {
+    const profiles = store()
+    expect(profiles.names()).not.toContain('localhost')
+    const message = failureMessage(() => createConnection({ profileName: 'localhost', store: profiles }))
+    expect(message).toMatch(/not defined/u)
+    expect(message.toLowerCase()).not.toContain('/var/run/command-api.sock')
+  })
+
+  it('refuses a socket profile with a message naming the entry that can build it (DR-002)', () => {
+    const message = failureMessage(() => createConnection({ profileName: 'on', store: store() }))
+    expect(message).toMatch(/browser build/u)
+    expect(message).toContain('@devhax-heavy-industries/arista-eapi/node')
+    expect(message).toMatch(/resolves to kind "unix"/u)
+  })
+
+  it('refuses connection options pasted into a profile-name bag rather than ignoring them (row 31)', () => {
+    const bag = { profileName: 'lab', store: store(), host: 'elsewhere.lan' }
+    const message = failureMessage(() => createNode(bag))
+    expect(message).toMatch(/unknown option\(s\) host/u)
+    expect(message).toMatch(/profileName form/u)
+  })
+
+  it('refuses a profile whose own keys could not be honoured instead of defaulting them (row 59)', () => {
+    const broken = createProfiles({ lab: { transport: 'https', host: '10.0.0.30', port: 'not-a-port' } })
+    const message = failureMessage(() => createConnection({ profileName: 'lab', store: broken }))
+    expect(message).toMatch(/refusing to build a connection from profile/u)
+    expect(message).toMatch(/is not a port number/u)
+    // Reported by key, never by value: a value at that position could be a secret (DR-011).
+    expect(message).not.toContain('not-a-port')
+  })
+})
+
+describe('what the browser entry exports', () => {
+  it('exports the profile surface without exporting a filesystem (DR-002)', async () => {
     const surface = await import('./index')
     expect(typeof surface.Node).toBe('function')
     expect(typeof surface.tryVariants).toBe('function')
     expect(typeof surface.parseVersionProperties).toBe('function')
+    expect(typeof surface.parseEapiConf).toBe('function')
+    expect(typeof surface.createProfiles).toBe('function')
+    expect(typeof surface.acceptedTransportNames).toBe('function')
+    // The filesystem half of DR-038 lives only behind `./node` (asserted for the module graph by
+    // `src/browser-safety.test.ts`; this is the export-surface half of the same rule).
+    const names = Object.keys(surface as unknown as Record<string, unknown>)
+    expect(names).not.toContain('loadEapiConf')
+    expect(names).not.toContain('nodeConfFileSystem')
   })
 })
