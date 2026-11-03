@@ -90,6 +90,41 @@ Unknown `kind` is a compile error and a runtime `NotSupportedError`.
 
 ---
 
+### Profiles: `eapi.conf` on Node, app config in the browser (M3 #5)
+
+Profile state is never process-global (**DR-044**): you build a `ProfileStore` and hand it to the factory, so
+two switches — or one test and one app — cannot overwrite each other.
+
+```ts
+// any entry: parse text you obtained yourself (no filesystem, no globals)
+import { parseEapiConf, ProfileStore, createNode } from '@devhax-heavy-industries/arista-eapi'
+
+const store = new ProfileStore()
+store.load(parseEapiConf(confText))        // problems are values too: store.issues() carries line numbers
+const node = createNode({ kind: 'profile', name: 'lab-2', store })
+```
+
+```ts
+// ./node only: pyeapi's search path ($EAPI_CONF, then ~/.eapi.conf, then /mnt/flash/eapi.conf)
+import { loadProfileStore, createNodeFor } from '@devhax-heavy-industries/arista-eapi/node'
+
+const node = createNodeFor('lab-2', { configDefaults: false })   // reads through injected exists/readTextFile
+```
+
+Four behaviours to check before building a UI on this:
+
+- **Nothing is discarded silently.** configparser aborts on the first bad line and pyeapi then loses the entire
+  file; `parseEapiConf` records one issue per site (blocking vs advisory) and keeps reading, so a typo in
+  section 2 does not hide sections 3-N (**DR-045**, §5 row 56).
+- **`%` in a password is data.** pyeapi inherits `BasicInterpolation`, so `100%` raises and costs you the file,
+  and `p%%s` quietly parses as a different value. Interpolation is off here (§5 row 57 — verified by running
+  this machine's `configparser`, not by reading pyeapi).
+- **`connection:localhost` means the switch-local unix socket, and only on Node.** The browser default is
+  `https` with an explicit host and it refuses `unix`/`http_local` by name; on Node the injected profile stays
+  inert until `allowLocalUnauthenticated` states the risk (**DR-008** + **DR-014**, §5 row 55).
+- **`hostsForTag(tag)` returns `undefined` for a tag nothing carries**, and `readonly []` for a tag that exists
+  with no hosts. pyeapi answers `None` for both, which cannot be told apart (§5 row 60).
+
 ## 4. Reading: `show`, `exec`, and un-modelled commands
 
 ```ts
