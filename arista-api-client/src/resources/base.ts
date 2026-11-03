@@ -13,7 +13,7 @@
  * | `BaseEntity.get_block` (`:82-101`) | {@link ResourceBase.getBlock} |
  * | `BaseEntity.configure` (`:103-127`) | {@link ResourceBase.configure} — throws, no bool |
  * | `BaseEntity.command_builder` (`:129-164`) | {@link ResourceBase.commandBuilder} → `command-builder.ts` |
- * | `BaseEntity.configure_interface` (`:166-179`) | {@link ResourceBase.configureInterface} — non-mutating |
+ * | `BaseEntity.configure_interface` (`:166-178`) | {@link ResourceBase.configureInterface} — non-mutating |
  * | `Entity` (`:181-196`, `Callable` via `__call__` at `:191`) | {@link Entity} — no `__call__` (DR-004) |
  * | `EntityCollection` (`:198-224`, `Mapping`) | {@link EntityCollection} — no `Mapping`/`__len__`/`__iter__`/`[]` |
  *
@@ -44,7 +44,6 @@
  * which is where `configure terminal` prepending and cache invalidation live).
  */
 
-import { getBlock as blockFromSections } from '../config/section'
 import { toArray } from '../internal/collections'
 import { commandBuilder, submodeCommands } from './command-builder'
 import { assertInterfaceName } from './validators'
@@ -121,13 +120,14 @@ export abstract class ResourceBase {
    * the parent into a regex (`'^%s$' % parent`, `:98`) and converts *any* `TypeError` to `None`
    * (`except TypeError`, `:100-101`).
    *
-   * Here it delegates to M6 (#8)'s `getBlock`, which catches only `NotFoundError` (row 51) and keeps the
-   * as-written parent splice that row also documents — so `getBlock('vlan 11.13')` can still answer the
-   * `vlan 11-13` section, exactly as upstream does. `undefined`, not a throw, because a resource deciding
-   * "the switch has no such section" is ordinary control flow (DR-027).
+   * Delegates to {@link Node.getBlock}, i.e. to M6 (#8)'s `getBlock` over this `Node`'s DR-026 memo, so
+   * the NotFoundError-only catch (`section.ts`) and the as-written parent splice live in exactly one
+   * place: `getBlock('vlan 11.13')` can still answer the `vlan 11-13` section, just as upstream does.
+   * `undefined`, not a throw, because a resource deciding "the switch has no such section" is ordinary
+   * control flow (DR-027).
    */
   async getBlock(parent: string, options: NodeConfigOptions = {}): Promise<string | undefined> {
-    return blockFromSections(parent, { sections: await this.node.chunkConfig(options) })
+    return this.node.getBlock(parent, options)
   }
 
   /**
@@ -166,7 +166,7 @@ export abstract class ResourceBase {
 
   /**
    * Enter `interface <name>` and configure it — pyeapi `BaseEntity.configure_interface`
-   * (`abstract.py:166-179`), whose `make_iterable` + `commands.insert(0, …)` pair (`:176-177`) mutates
+   * (`abstract.py:166-178`), whose `make_iterable` + `commands.insert(0, …)` pair (`:176-177`) mutates
    * the caller's array. Same for `Vlans.configure_vlan` (`vlans.py:234-244`).
    *
    * The array this verb sends is built fresh by {@link submodeCommands}, so calling it twice with one

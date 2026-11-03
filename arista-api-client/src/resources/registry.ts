@@ -58,12 +58,12 @@ export interface ResourceKinds {
 export type ResourceName = keyof ResourceKinds
 
 /** The factory map implied by a kinds map — exhaustive, so a kind without a factory is a compile error. */
-export type ResourceFactories<K extends Record<string, object>> = {
+export type ResourceFactories<K extends object> = {
   readonly [P in keyof K]: ResourceFactory<K[P]>
 }
 
 /** A resource instance, as the memo stores it. Heterogeneous by design: one map per `Node`. */
-type AnyResource = object
+type AnyResource = unknown
 
 /**
  * The built-in factories. Frozen, because a mutable module-level registry is what ARCHITECTURE.md §7
@@ -76,7 +76,7 @@ export const RESOURCE_FACTORIES: ResourceFactories<ResourceKinds> = Object.freez
  * A per-`Node` resource cache over a factory map. One instance is held by each `Node`
  * (`command-layer.ts`); apps building their own resources construct their own.
  */
-export class ResourceRegistry<K extends Record<string, object>> {
+export class ResourceRegistry<K extends object = ResourceKinds> {
   private readonly factories: ResourceFactories<K>
   private readonly node: Node
   private readonly instances: Map<keyof K, AnyResource> = new Map()
@@ -131,7 +131,7 @@ export class ResourceRegistry<K extends Record<string, object>> {
 }
 
 /** Convenience for app-defined registries: `createResourceRegistry({ myThing: (node) => new MyThing(node) }, node)`. */
-export function createResourceRegistry<K extends Record<string, object>>(
+export function createResourceRegistry<K extends object>(
   factories: ResourceFactories<K>,
   node: Node,
 ): ResourceRegistry<K> {

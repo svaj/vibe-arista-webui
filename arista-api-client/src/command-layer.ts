@@ -40,7 +40,7 @@ import { tryVariants } from './internal/variants'
 import type { CliVariant } from './internal/variants'
 import type { ConfigSections } from './config/chunk'
 import type { SectionPattern } from './config/section'
-import type { ResourceName } from './resources/registry'
+import type { ResourceKinds, ResourceName } from './resources/registry'
 import type { Transport, TransportExecOptions } from './transports/contract'
 import type { CommandResult, CommandSpec, RunCmdsFormat, ShowContracts, ShowReply } from './types/eapi'
 
@@ -327,6 +327,24 @@ export class Node {
   private startupConfig: string | undefined
   private versionInfo: VersionProperties | undefined
 
+  /**
+   * The DR-026 chunk memos, one per config cache (M7, #9 — the pairing PR #23 deferred here).
+   *
+   * pyeapi has a single `@lru_cache(maxsize=None)` on `_chunkify` (`client.py:697`) keyed by whichever
+   * text is handed to it, so a `Node` that alternates `section(…, 'running_config')` and
+   * `section(…, 'startup_config')` (`client.py:789-791`) keeps both forever and evicts neither. Two
+   * single-entry memos (`src/config/cache.ts`) match the two text caches they derive from instead.
+   */
+  private readonly runningChunks = createConfigChunkCache()
+  private readonly startupChunks = createConfigChunkCache()
+
+  /**
+   * The per-`Node` resource memo — DR-006's typed replacement for pyeapi's `Node.api()` module
+   * autoload (`client.py:927-950`). Constructed with this `Node`, so a resource never sees another
+   * switch's transport (docs/ARCHITECTURE.md §7 forbids the module-level singleton pyeapi uses).
+   */
+  private readonly resourceMemo = new ResourceRegistry(RESOURCE_FACTORIES, this)
+
   constructor(connection: Transport, settings: NodeSettings = {}) {
     assertTransport(connection)
     this.connection = connection
@@ -508,6 +526,83 @@ export class Node {
   }
 
   /**
+   * The cached config text, split into sections and sub-sections — pyeapi's `_chunkify()`
+   * (`client.py:697-774`) reached through {@link getRunningConfig} / {@link getStartupConfig}, and
+   * M6 (#8)'s chunker doing the parse. Shipped by M7 (#9): `src/config/` deliberately shipped with no
+   * `Node` methods, and PR #23 named this pairing as the milestone that wires it.
+   *
+   * The memo is DR-026's (one entry per source, hash-checked then confirmed by exact string equality,
+   * `src/config/cache.ts`), which is what replaces pyeapi's unbounded `lru_cache` + manual
+   * `cache_clear()`. So a `getAll()` that calls {@link section} 48 times over one config text chunks it
+   * once, and {@link refresh} / {@link configure} are the only ways the entry is dropped.
+   *
+   * pyeapi accepts the `'running_config'`/`'startup_config'` sentinel strings and resolves them against
+   * `self` (`client.py:789-791`); here the source is the {@link ConfigTarget} union, validated at runtime
+   * for a caller arriving from JS exactly as {@link getConfig} validates it (row 36).
+   */
+  async chunkConfig(options: NodeConfigOptions = {}): Promise<ConfigSections> {
+    const { config = 'running-config' }: NodeConfigOptions = options
+    assertConfigTarget(config)
+    return config === 'startup-config'
+      ? this.startupChunks.chunkConfig(await this.getStartupConfig())
+      : this.runningChunks.chunkConfig(await this.getRunningConfig())
+  }
+
+  /**
+   * The text of the first section whose **key** matches `pattern` — pyeapi `Node.section(regex, config)`
+   * (`client.py:776-798`), which is a search over section keys, not over config text; a string pattern is
+   * compiled as a regex exactly as `client.py:792` compiles it.
+   *
+   * M6 (#8)'s pure `section()` over this `Node`'s memoized document. Absence is a `NotFoundError`
+   * carrying the pattern, replacing pyeapi's `TypeError('config section not found')` (`client.py:795`),
+   * which was indistinguishable from a wrong-argument-type `TypeError` (DR-027). A genuine pattern error
+   * stays a `SyntaxError` — it is not disguised as "the switch has no such section".
+   */
+  async section(pattern: SectionPattern, options: NodeConfigOptions = {}): Promise<string> {
+    return matchSection(pattern, { sections: await this.chunkConfig(options) })
+  }
+
+  /**
+   * The whole block under one exact section header, or `undefined` when the switch does not have that
+   * section — pyeapi keeps this on the resource base (`abstract.py:82-101`); this client exposes it on
+   * `Node` as well (M7 #9) because it is the same `'^%s$'` splice over the same memo, and the parent is
+   * interpolated **as written** upstream parity (`abstract.py:98`), so a parent containing regex
+   * metacharacters is a pattern rather than a name.
+   *
+   * `undefined` and not a throw: upstream's `except TypeError` (`abstract.py:100-101`) converted *any*
+   * `TypeError` — including a bad pattern — to `None`; this converts only `NotFoundError` (DR-027),
+   * so a resource deciding "absent" is ordinary control flow while a mistake stays loud.
+   */
+  async getBlock(parent: string, options: NodeConfigOptions = {}): Promise<string | undefined> {
+    return blockOfSection(parent, { sections: await this.chunkConfig(options) })
+  }
+
+  /**
+   * The resource for `name` — DR-006's replacement for pyeapi's string-keyed `Node.api(name)`
+   * (`client.py:927-950`, where the name is a module path loaded off the filesystem). Here it is a key of
+   * the augmentable {@link ResourceKinds} map, checked at compile time and again at runtime
+   * (`src/resources/registry.ts`), and the instance is memoised per `Node` rather than rebuilt per call
+   * (pyeapi builds a fresh object every call, `client.py:946-949`).
+   *
+   * Empty at M7 (#9): no wave-1 resource module has shipped (M8 #10, M9 #11, M10 #12), so every typed
+   * call is a compile error and every untyped one throws a `NotSupportedError` that lists what is
+   * registered. Apps define their own resources with `createResourceRegistry(factories, node)`.
+   *
+   * @throws {NotSupportedError} no factory is registered for `name`.
+   */
+  resource<K extends ResourceName>(name: K): ResourceKinds[K] {
+    return this.resourceMemo.get(name)
+  }
+
+  /**
+   * Is there a resource behind `name`? Takes any property key on purpose — this is the check for a name
+   * that is only known at runtime (a webui table column), which the typed union cannot express.
+   */
+  hasResource(name: PropertyKey): boolean {
+    return this.resourceMemo.has(name)
+  }
+
+  /**
    * The device identity, read once and memoised. pyeapi has three separate lazy properties
    * (`client.py:536-556`) that can each fire their own `show version`, and parses the same answer
    * three times (MIGRATION.md §2, §5 row 35).
@@ -538,10 +633,10 @@ export class Node {
     // M5 (#7) guard goes here: a config session open on this Node must block terminal mode (DR-025).
     const specs = toCommandSpecArray(commands)
     const trip = await this.roundTrip(['configure terminal', ...specs], options)
-    // pyeapi clears the `_chunkify` lru_cache here (`client.py:666`) and refreshes only when
-    // `autorefresh` is on (`client.py:668-669`). M4 owns no derived cache to clear, and M6's
-    // replacement memo is keyed by config content (DR-026), so the stale-parse class of bug cannot
-    // exist on this side of the seam.
+    // pyeapi clears the `_chunkify` lru_cache unconditionally here (`client.py:665-666`), *before* the
+    // `autorefresh` gate at `:668-669`. The same seam, so the ordering is not free to drift: a derived
+    // parse must never outlive a write even for an operator who turned `autorefresh` off (row 73).
+    this.clearConfigChunks()
     if (this.autorefresh) this.refresh()
     return trip.result.slice(1)
   }
@@ -566,9 +661,20 @@ export class Node {
    * pyeapi `refresh()` (`client.py:991-1001`): drop the cached configs so the next read re-fetches
    * them (DR-005/DR-026/DR-030 — the single invalidation point every later cache hangs off).
    * Synchronous and non-throwing by design: it is a cache clear, not a device call.
+   *
+   * M7 (#9) added the derived half: the chunk memos are cleared here too, because a section document
+   * parsed from text that is no longer held cannot be trusted. pyeapi's equivalent is the manual
+   * `_chunkify.cache_clear()` at `client.py:666`/`:690` plus `_chunkify`'s own text key.
    */
   refresh(): void {
     this.runningConfig = undefined
     this.startupConfig = undefined
+    this.clearConfigChunks()
+  }
+
+  /** The one seam both chunk memos hang off, so no later cache can be forgotten by half of it. */
+  private clearConfigChunks(): void {
+    this.runningChunks.invalidate()
+    this.startupChunks.invalidate()
   }
 }
