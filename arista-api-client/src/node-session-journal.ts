@@ -1,4 +1,9 @@
 /**
+ * Evidence note: any `*Cli.py:NNN` reference in this file names Arista EOS **image internals**
+ * that are not present in this workspace (see `src/config-session.ts` for the full status);
+ * they are carried claims to re-capture in M12 (#14), not re-verifiable citations here.
+ */
+/**
  * The on-disk config-session journal — M5 (#7), DR-022/DR-023's recovery record, and the reason a
  * crashed CLI or a killed script does not leave a pending session holding the switch's config lock
  * forever (which is what answers the *next* client with **1006**, `CliCommon.py:33`).

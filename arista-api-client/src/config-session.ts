@@ -51,6 +51,21 @@
  *    `ConfigSessionCli.py:52-54`), which the CLI layer reports as **1006** (`CliCommon.py:33`).
  *    pyeapi has no handling for it; {@link ConfigSession} turns it into `SessionError` (DR-023, row 66).
  *
+ *
+ * ### Evidence status of the `*Cli.py:` references in this file
+ *
+ * Numbers like `SessionCli.py:268-282` point at Arista's **EOS 4.28 image internals**, which are not
+ * distributed in the OSS release and are **not present in this workspace** — verified:
+ * `find /home/svaj/development/arista -name 'SessionCli.py' -o -name 'ConfigSessionCli.py'` returns
+ * nothing, and `_rea_swi/sq2/` holds only eight unrelated modules. Those references were recorded from
+ * an earlier read of the image, and they are kept here because the command grammar they describe is what
+ * the specs script against — but they are **carried claims, not re-verifiable citations**. Before any of
+ * these behaviours is presented as device-verified, M12 (#14) must re-capture them from the image or the
+ * target: session-name length/charset, description quoting depth, `no-commit`, the
+ * `maxOpenSessions` cap, the `configure replace` refusal message, and
+ * `copy running-config startup-config` on 4.28.13.1M (STATUS §3 / DECISIONS open items 5, 10, 11).
+ * Anything in this file that *is* checked is marked as such; it is normally a `pyeapi` `path:line` in the
+ * pinned clone (`develop` `6816d9e`), which is present and readable.
  * ## What is still device-verified only in principle (never asserted here)
  *
  * `commit timer` is implemented by native code below this Python (`CliSession.commitSession`), so

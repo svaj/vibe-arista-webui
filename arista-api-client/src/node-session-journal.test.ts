@@ -1,4 +1,9 @@
 /**
+ * Evidence note: any `*Cli.py:NNN` reference in this file names Arista EOS **image internals**
+ * that are not present in this workspace (see `src/config-session.ts` for the full status);
+ * they are carried claims to re-capture in M12 (#14), not re-verifiable citations here.
+ */
+/**
  * The Node-entry config-session journal — M5 (#7), DR-022/DR-023's recovery record.
  *
  * Every case runs against a `mkdtemp` directory: this suite must never read or write a real home

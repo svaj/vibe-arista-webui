@@ -1,4 +1,9 @@
 /**
+ * Evidence note: any `*Cli.py:NNN` reference in this file names Arista EOS **image internals**
+ * that are not present in this workspace (see `src/config-session.ts` for the full status);
+ * they are carried claims to re-capture in M12 (#14), not re-verifiable citations here.
+ */
+/**
  * Config sessions & change safety — M5 (#7). Offline only: `MockTransport` scripted replies plus the
  * hand-authored `show configuration sessions` sample in `test/fixtures/show/` (DR-034: `npm test` never
  * touches a device, a container or cEOS — which is not installed on this machine).
