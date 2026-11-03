@@ -16,6 +16,12 @@ if (!liveRequested) {
 
 describe.skipIf(!liveRequested)('live project wiring (M0, #2)', () => {
   it('only executes when explicitly opted in', () => {
-    expect(() => createNode()).toThrow(/M0 placeholder/)
+    // This used to assert the M0 placeholder ("createNode() throws"), which M3 (#5) replaced. The
+    // point of the file is unchanged: the `live` project is selectable and never runs without
+    // EAPI_LIVE=1. Building a Node performs no I/O — M2's transport connects on the first `await` —
+    // so the wiring proof stays safe even when a device is configured but the endpoint is not.
+    const host = process.env['EAPI_HOST'] ?? 'invalid.invalid'
+    const node = createNode({ kind: 'https', host })
+    expect(node.connection.address).toBe(`https://${host}:443/command-api`)
   })
 })
