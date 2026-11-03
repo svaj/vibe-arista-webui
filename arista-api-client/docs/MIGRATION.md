@@ -200,9 +200,9 @@ a reviewer must be able to find.
 
 <!--
 Ledger numbering (M5 #7, re-checked in this tree on 2026-11-03): rows 1-38 are on `main` (31-38 = M4 #6,
-merged as PR #22) and rows 39-40 stay skipped; rows 41-53 are M6 (#8, PR #23), numbered by the note above
-this one; **rows 54-60 are reserved for M3 (#5), whose PR #24 sits on PR #23's base exactly as this branch
-does**; **M5 (#7) owns the 61-70 block below**; **rows 71-82 are reserved for M7 (#9)**. Verify in any
+merged as PR #22) and rows 39-40 stay skipped; **rows 41-53 (M6, #8) and 54-60 (M3, #5) merged into `main`
+with PRs #23 and #24 on 2026-11-03**, so every citation below resolves against `main`; **M5 (#7) owns the
+61-70 block below**; **rows 71-82 are M7 (#9), open as PR #26 on the same base**. Verify in any
 checkout with:
     grep -oE "^\| [0-9]+ \| " arista-api-client/docs/MIGRATION.md | tr -d '| ' | sort -n
 and prove every citation resolves in *that* tree before trusting a row number:
