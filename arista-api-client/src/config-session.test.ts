@@ -13,7 +13,7 @@
  * (`client.py:1003-1035`) riding on `_configure_session` (`:676-693`), and upstream exercises none of it.
  *
  * So every case below is **new**, written against the command lists those four methods build, with the
- * divergences recorded in MIGRATION.md §5 rows 54-63. A `[pyeapi …]` tag names the upstream *method*
+ * divergences recorded in MIGRATION.md §5 rows 61-70. A `[pyeapi …]` tag names the upstream *method*
  * whose command list is being pinned, not an upstream test id.
  *
  * Device behaviour that this suite cannot settle — a second `commit` confirming a `commit timer`, name
@@ -122,7 +122,7 @@ async function rejection(promise: Promise<unknown>): Promise<unknown> {
   )
 }
 
-describe('configSession(): naming and laziness (DR-022, DR-047 — §5 row 54)', () => {
+describe('configSession(): naming and laziness (DR-022, DR-047 — §5 row 61)', () => {
   it('sends no request at all: the device-side session is created by the first batch, as in pyeapi (client.py:1003-1006)', async () => {
     const t = scripted()
     const session = await nodeFor(t).configSession({ name: 'ui-x' })
@@ -189,7 +189,7 @@ describe('configSession(): naming and laziness (DR-022, DR-047 — §5 row 54)',
     expect(t.sent()[0]).toEqual(['enable', 'configure session ui-x description "say \\"hi\\""', 'abort'])
   })
 
-  it('noCommit: the hidden keyword rides the opener, and commit() is refused locally (§5 row 57, SessionCli.py:295-311)', async () => {
+  it('noCommit: the hidden keyword rides the opener, and commit() is refused locally (§5 row 64, SessionCli.py:295-311)', async () => {
     const t = scripted()
       .replies('enable\nconfigure session ui-x no-commit\nvlan 20', ack(3))
       .replies('enable\nconfigure session ui-x no-commit\nabort', ack(3))
@@ -281,7 +281,7 @@ describe('every session command re-sends the opener (DR-022 — PLAN §M5 box 2)
   })
 })
 
-describe('diff(): the text-forced read (DR-012 — §5 row 57, PLAN §M5 box 3)', () => {
+describe('diff(): the text-forced read (DR-012 — §5 row 64, PLAN §M5 box 3)', () => {
   it('forces format:text in exactly one round trip, with pyeapi command list (client.py:1013-1014)', async () => {
     const t = scripted().replies('enable\nconfigure session ui-x\nshow session-config diffs', [
       { cmd: 'enable' },
@@ -297,7 +297,7 @@ describe('diff(): the text-forced read (DR-012 — §5 row 57, PLAN §M5 box 3)'
     expect(session.hasDiffBeenRead()).toBe(true)
   })
 
-  it('the same command asked without the forced encoding is answered 1003, which is what the option prevents (§5 row 57)', async () => {
+  it('the same command asked without the forced encoding is answered 1003, which is what the option prevents (§5 row 64)', async () => {
     // The device reality: `show session-config diffs` declares no cliModel
     // (ConfigSessionShowCli.py:66-81), so a JSON ask for it is a 1003. The mock keys on the command list
     // only, which is exactly the point — the encoding knob is the whole difference, and it is visible in
@@ -334,7 +334,7 @@ describe('diff(): the text-forced read (DR-012 — §5 row 57, PLAN §M5 box 3)'
   })
 })
 
-describe('commit / abort / exit, and the transitions nothing survives (DR-025, DR-048 — §5 rows 55-56)', () => {
+describe('commit / abort / exit, and the transitions nothing survives (DR-025, DR-048 — §5 rows 62-63)', () => {
   it('commit(): re-enter, then in-session commit — pyeapi client.py:1021 command list', async () => {
     const t = scripted().replies('enable\nconfigure session ui-x\ncommit', ack(3))
     const session = await nodeFor(t).configSession({ name: 'ui-x' })
@@ -344,7 +344,7 @@ describe('commit / abort / exit, and the transitions nothing survives (DR-025, D
     expect(session.isOpen).toBe(false)
   })
 
-  it('abort(): pyeapi client.py:1026 command list, and unlike upstream the handle ends (§5 row 56)', async () => {
+  it('abort(): pyeapi client.py:1026 command list, and unlike upstream the handle ends (§5 row 63)', async () => {
     const t = scripted().replies('enable\nconfigure session ui-x\nabort', ack(3))
     const session = await nodeFor(t).configSession({ name: 'ui-x' })
     await session.abort()
@@ -399,7 +399,7 @@ describe('commit / abort / exit, and the transitions nothing survives (DR-025, D
   })
 })
 
-describe('commit timer / revert (DR-050 — §5 row 60; the device semantics stay an open item)', () => {
+describe('commit timer / revert (DR-050 — §5 row 67; the device semantics stay an open item)', () => {
   it('sends commit timer hh:mm:ss inside the session, the in-session grammar (SessionCli.py:385-404)', async () => {
     const t = scripted().replies('enable\nconfigure session ui-x\ncommit timer 00:05:00', ack(3))
     const session = await nodeFor(t).configSession({ name: 'ui-x' })
@@ -488,7 +488,7 @@ describe('DR-025: one live session per node, and the verbs it blocks', () => {
   })
 })
 
-describe('1006 COMMAND_CONFIG_LOCKED becomes SessionError (DR-023 — §5 row 59)', () => {
+describe('1006 COMMAND_CONFIG_LOCKED becomes SessionError (DR-023 — §5 row 66)', () => {
   it('carries the offending session, the device code, and the cleanup verbs — and marks the handle lost', async () => {
     const t = scripted().rejects('enable\nconfigure session ui-locked\nvlan 20', {
       code: EapiErrorCode.COMMAND_CONFIG_LOCKED,
@@ -619,7 +619,7 @@ describe('DR-019 in the session path: a rejected command is never re-sent', () =
   })
 })
 
-describe('listSessions / abortSession / recoverOrphans (DR-023 — §5 rows 59, 63)', () => {
+describe('listSessions / abortSession / recoverOrphans (DR-023 — §5 rows 66, 70)', () => {
   it('asks for show configuration sessions in JSON and parses the model (ConfigSessionShowCli.py:84-97, ConfigSessionModel.py:15-41)', async () => {
     const t = scripted().replies('enable\nshow configuration sessions', sessionsReply())
     const list = await nodeFor(t).listSessions()
@@ -818,7 +818,7 @@ describe('listSessions / abortSession / recoverOrphans (DR-023 — §5 rows 59, 
   })
 })
 
-describe('durability and rollback verbs (DR-024 — §5 rows 61, 63)', () => {
+describe('durability and rollback verbs (DR-024 — §5 rows 68, 70)', () => {
   it('copyRunningToStartup() and writeMemory() send the same single command', async () => {
     const t = scripted().replies(`enable\n${COPY_RUNNING_TO_STARTUP}`, ack(2))
     const node = nodeFor(t)
@@ -919,7 +919,7 @@ describe('durability and rollback verbs (DR-024 — §5 rows 61, 63)', () => {
     expect(t.callCount()).toBe(before)
   })
 
-  it('the devices own pending-commit-timer refusal becomes SessionError naming the session (§5 row 62)', async () => {
+  it('the devices own pending-commit-timer refusal becomes SessionError naming the session (§5 row 69)', async () => {
     const t = scripted().rejects('enable\nconfigure replace flash:prod.cfg', {
       code: EapiErrorCode.COMMAND_FAILED,
       message: "CLI command 2 of 2 'configure replace flash:prod.cfg' failed: Cannot configure replace while session ui-sw1-lan-p1004-ffff6666 is pending commit timer",
@@ -931,7 +931,7 @@ describe('durability and rollback verbs (DR-024 — §5 rows 61, 63)', () => {
     expect((failure as InstanceType<typeof SessionError>).cause).toBeInstanceOf(CommandError)
   })
 
-  it('rollbackCleanConfig() stages inside a session and never commits it (§5 row 63)', async () => {
+  it('rollbackCleanConfig() stages inside a session and never commits it (§5 row 70)', async () => {
     const t = scripted().replies('enable\nconfigure session ui-rb\nrollback clean-config', ack(3))
     const node = nodeFor(t)
     const session = await node.rollbackCleanConfig({ name: 'ui-rb' })
@@ -947,7 +947,7 @@ describe('durability and rollback verbs (DR-024 — §5 rows 61, 63)', () => {
     expect(t.sent()).toEqual([['enable', 'configure session ui-rb', 'rollback clean-config { management default }']])
   })
 
-  it('an unsafe group token is refused before any request at all, opener included (§5 row 63 guard)', async () => {
+  it('an unsafe group token is refused before any request at all, opener included (§5 row 70 guard)', async () => {
     const t = scripted()
     expect(await rejection(nodeFor(t).rollbackCleanConfig({ name: 'ui-rb', groups: ['bad group'] }))).toBeInstanceOf(NotSupportedError)
     expect(t.callCount()).toBe(0)
@@ -1027,7 +1027,7 @@ describe('changeset validation mode (PLAN §M5 box 8)', () => {
       data: [{}, { errors: ['invalid command'] }],
     })
     const session = await nodeFor(t).configSession({ name: 'ui-x' })
-    // `configSession()` is lazy (§5 row 54), so the rejection of the *opener* is only observable once a
+    // `configSession()` is lazy (§5 row 61), so the rejection of the *opener* is only observable once a
     // batch has been sent — and that first offer answers as a device failure, not as a `ChangesetOutcome`,
     // because "the session does not exist" is not the same report as "these commands were refused".
     expect(await rejection(session.validateChanges(['vlan 20']))).toBeInstanceOf(CommandError)

@@ -7,19 +7,19 @@
  *
  * | pyeapi | what it does | here |
  * |---|---|---|
- * | `client.py:676-693` `_configure_session` | refuses with `CommandError(-1, 'Not currently in a session')` (`:680-681`), puts `configure session <name>` at `cmds[0]` (`:687`), clears the chunkify cache (`:690`), pops the prepended reply (`:693`) | {@link ConfigSession#run}, with `SessionError` replacing the invented `-1` code (row 58) and no cache to clear (DR-026) |
- * | `client.py:1003-1006` `configure_session` | `self._session_name = self._session_name or uuid4()` — **no command is sent**; the name exists only in the client | {@link ConfigSession} is also lazy, but the name is prefixed, host-scoped and journaled (DR-022/DR-047, row 54) |
- * | `client.py:1008-1016` `diff` | `_configure_session(['show session-config diffs'], encoding='text')` (`:1013-1014`) and `response[0]['output']` | {@link ConfigSession#diff} — same commands, and the same `format:'text'` choice, now *stated in the option* rather than smuggled through `**kwargs` (DR-012, row 57) |
- * | `client.py:1018-1021` `commit` | `_configure_and_exit_session(['commit'])` | {@link ConfigSession#commit} (row 61) |
- * | `client.py:1023-1026` `abort` | `_configure_session(['abort'])` — and **leaves `_session_name` set**, so a later call re-enters a session the device has already destroyed | {@link ConfigSession#abort} ends the state machine (row 56) |
- * | `client.py:635-636` `config` | `cfg_call = self._configure_session if self._session_name else self._configure_terminal` — terminal writes are silently rerouted into the open session | `Node.configure()` **throws** `SessionError` (DR-025, row 55) |
- * | `client.py:1028-1035` `_configure_and_exit_session` | refresh when `autorefresh`, then `_session_name = None` | {@link ConfigSession#commit} refreshes; {@link ConfigSession#exit} only detaches (row 56) |
+ * | `client.py:676-693` `_configure_session` | refuses with `CommandError(-1, 'Not currently in a session')` (`:680-681`), puts `configure session <name>` at `cmds[0]` (`:687`), clears the chunkify cache (`:690`), pops the prepended reply (`:693`) | {@link ConfigSession#run}, with `SessionError` replacing the invented `-1` code (row 65) and no cache to clear (DR-026) |
+ * | `client.py:1003-1006` `configure_session` | `self._session_name = self._session_name or uuid4()` — **no command is sent**; the name exists only in the client | {@link ConfigSession} is also lazy, but the name is prefixed, host-scoped and journaled (DR-022/DR-047, row 61) |
+ * | `client.py:1008-1016` `diff` | `_configure_session(['show session-config diffs'], encoding='text')` (`:1013-1014`) and `response[0]['output']` | {@link ConfigSession#diff} — same commands, and the same `format:'text'` choice, now *stated in the option* rather than smuggled through `**kwargs` (DR-012, row 64) |
+ * | `client.py:1018-1021` `commit` | `_configure_and_exit_session(['commit'])` | {@link ConfigSession#commit} (row 68) |
+ * | `client.py:1023-1026` `abort` | `_configure_session(['abort'])` — and **leaves `_session_name` set**, so a later call re-enters a session the device has already destroyed | {@link ConfigSession#abort} ends the state machine (row 63) |
+ * | `client.py:635-636` `config` | `cfg_call = self._configure_session if self._session_name else self._configure_terminal` — terminal writes are silently rerouted into the open session | `Node.configure()` **throws** `SessionError` (DR-025, row 62) |
+ * | `client.py:1028-1035` `_configure_and_exit_session` | refresh when `autorefresh`, then `_session_name = None` | {@link ConfigSession#commit} refreshes; {@link ConfigSession#exit} only detaches (row 63) |
  *
  * There is **no `ConfigSession` class upstream** (`client.py` is 1067 lines and ends after
  * `connect_to`), and **`eapilib.py` has no session code at all**: `grep -rn retry` over the upstream
  * tree returns nothing, and `1006` appears nowhere in pyeapi. The state machine, the 1006 mapping,
  * `listSessions`/`abortSession`/`recoverOrphans`, the journal, `writeMemory`, `configureReplace` and
- * the rollback verbs are this port's, not a translation — MIGRATION.md §1/§2/§5 rows 54-63 record
+ * the rollback verbs are this port's, not a translation — MIGRATION.md §1/§2/§5 rows 61-70 record
  * each as new.
  *
  * ## EOS 4.28 grammar this models (read out of the 4.28.14M image, not from a manual)
@@ -32,7 +32,7 @@
  *    (`:316-341`, `:385-404`), `configure session <name> abort` / in-session `abort`
  *    (`:345-372`, `:407-418`), and `rollback clean-config [ { <configGroups> } ]`, which is registered
  *    on `ConfigSessionMode` only (`:445-480`) — i.e. it exists **inside** a session, never in exec mode
- *    (row 63).
+ *    (row 70).
  *  - `show session-config …` is model-backed (`cliModel = ShowRunOutputModel.Mode`,
  *    `CliPlugin/ConfigSessionShowCli.py:40-62`, the model line at `:57`), so JSON works;
  *    `show session-config … diffs` declares **no `cliModel`** (`:66-81`), which is exactly why a JSON
@@ -41,15 +41,15 @@
  *  - `show configuration sessions [ detail ]` **is** model-backed
  *    (`cliModel = ConfigSessionModel.Sessions`, `:84-97`, the model line at `:91`) with the field set of
  *    `CliPlugin/ConfigSessionModel.py:15-40`. That model has **no start time**, which is why
- *    {@link Node.recoverOrphans}'s `olderThan` can only be evaluated against a journal entry (row 63).
+ *    {@link Node.recoverOrphans}'s `olderThan` can only be evaluated against a journal entry (row 70).
  *  - `configure replace SURL [ ignore-errors | force ] [ debug-attribute ] [ md5 MD5 ]
  *    [ skip-checkpoint ]` (`CliPlugin/ConfigSessionCli.py:129-155`); `force` implies `ignore-errors`
  *    in the handler (`:141`) and `md5` is matched by `[0-9a-f]{32}` (`:139`). Its
  *    pending-commit-timer refusal is a *message*: `'Cannot configure replace while session %s is
- *    pending commit timer'` (`:77-79`), so row 62 documents our message-based mapping.
+ *    pending commit timer'` (`:77-79`), so row 69 documents our message-based mapping.
  *  - A config lock raises `ConfigMountProhibitedError.CONFIG_LOCKED` (`SessionCli.py:113-115`,
  *    `ConfigSessionCli.py:52-54`), which the CLI layer reports as **1006** (`CliCommon.py:33`).
- *    pyeapi has no handling for it; {@link ConfigSession} turns it into `SessionError` (DR-023, row 59).
+ *    pyeapi has no handling for it; {@link ConfigSession} turns it into `SessionError` (DR-023, row 66).
  *
  * ## What is still device-verified only in principle (never asserted here)
  *
@@ -181,7 +181,7 @@ export interface SessionJournalEntry {
   readonly name: string
   /** The transport address the session was opened against, e.g. `https://sw1:443/command-api`. */
   readonly endpoint: string
-  /** ISO-8601 creation time — the only age a session has, since EOS exposes none (row 63). */
+  /** ISO-8601 creation time — the only age a session has, since EOS exposes none (row 70). */
   readonly startedAt: string
   /** Owning process, where one exists (absent in a browser). */
   readonly pid?: number | undefined
@@ -450,7 +450,7 @@ export interface ConfigurationSessions {
   readonly sessions: readonly ConfigSessionSummary[]
   /** `maxSavedSessions` (`ConfigSessionModel.py:38`) — how many completed sessions are kept. */
   readonly maxSavedSessions?: number | undefined
-  /** `maxOpenSessions` (`:40`) — the pending cap; hitting it is what makes a new session fail (row 59). */
+  /** `maxOpenSessions` (`:40`) — the pending cap; hitting it is what makes a new session fail (row 66). */
   readonly maxOpenSessions?: number | undefined
   /** The device's own reply object, for a screen that needs a field this view has not modelled. */
   readonly raw: CommandResult
@@ -745,7 +745,7 @@ export class ConfigSession {
    * The session's operating configuration as a JSON reply — legal precisely because the command carries a
    * `cliModel` (`ConfigSessionShowCli.py:40-62`), unlike `diffs`. The field set is
    * `ShowRunOutputModel.Mode`, which this milestone has not inspected, so the reply stays a
-   * `CommandResult` rather than an invented interface (MIGRATION.md §5 row 57).
+   * `CommandResult` rather than an invented interface (MIGRATION.md §5 row 64).
    */
   async showSessionConfig(options: SessionRequestOptions = {}): Promise<CommandResult> {
     this.assertLive('read the session configuration')
@@ -836,7 +836,7 @@ export class ConfigSession {
    * verified: that a second `commit` cancels the revert — the timer itself lives in native
    * `CliSession.commitSession`, below this Python — so DECISIONS.md open item 5 and the STATUS.md §3
    * sweep line stay open, and this client exposes `confirmRevertTimer()` as the *intended* call while
-   * claiming nothing about what it does on hardware (DR-050, MIGRATION.md §5 row 60).
+   * claiming nothing about what it does on hardware (DR-050, MIGRATION.md §5 row 67).
    */
   async commitWithRevertTimer(timer: string, options: SessionRequestOptions = {}): Promise<readonly CommandResult[]> {
     this.assertLive('commit with a revert timer')
@@ -859,7 +859,7 @@ export class ConfigSession {
   /**
    * `configure session <name>` then `abort`. pyeapi's `abort()` (`client.py:1023-1026`) forgets to clear
    * `_session_name`, so a later call re-enters — and re-creates — a session EOS already destroyed;
-   * here the transition is terminal (MIGRATION.md §5 row 56). Nothing is refreshed: an aborted session
+   * here the transition is terminal (MIGRATION.md §5 row 63). Nothing is refreshed: an aborted session
    * changed no running-config.
    */
   async abort(): Promise<readonly CommandResult[]> {
@@ -874,7 +874,7 @@ export class ConfigSession {
    * `ConfigSessionMode` and nowhere else (`SessionCli.py:445-480`, `ConfigSessionMode.addCommandClass` at
    * `:480`), which is why this is a session verb rather than the bare `Node` verb PLAN sketches —
    * {@link rollbackCleanConfigOn} is the convenience that opens a session, stages it, and hands the
-   * session back un-committed (row 63).
+   * session back un-committed (row 70).
    */
   async rollbackCleanConfig(groups?: readonly string[]): Promise<readonly CommandResult[]> {
     this.assertLive('roll back to the clean configuration')
@@ -887,7 +887,7 @@ export class ConfigSession {
    * all the roots to this session", `SessionCli.py:43-47`). The `<name>` form's command class is not in
    * the extracted image Python — the header comment at `:38-39` says the rest of these CLIs live in the
    * `ConfigSession` package — so the grammar here rests on that comment, and the paired STATUS.md §3
-   * sweep line is open (row 63).
+   * sweep line is open (row 70).
    */
   async rollbackToSession(sessionName: string): Promise<readonly CommandResult[]> {
     this.assertLive('roll back to a committed session')
@@ -1004,12 +1004,12 @@ export async function createConfigSession(host: SessionCommandTarget, options: C
  *
  * pyeapi instead *reroutes* a terminal write into the open session (`client.py:635-636`), which keeps a
  * script working but means the diff an operator approved is no longer the diff that lands — a UI cannot
- * show both at once. MIGRATION.md §5 row 55.
+ * show both at once. MIGRATION.md §5 row 62.
  */
 export function assertNoSessionConflict(active: ConfigSession | undefined, verb: string, commands?: readonly CommandSpec[]): void {
   if (active === undefined || !active.isOpen) return
   throw new SessionError(
-    `cannot ${verb} while config session ${JSON.stringify(active.name)} is open on this node: EOS drives one configuration context per CLI session, so the staged changes in ${JSON.stringify(active.name)} would no longer be the change an operator reviewed (DR-025). Stage the command in the session (session.run([...])), or end it first (commit() / abort()). pyeapi silently reroutes instead — MIGRATION.md §5 row 55.`,
+    `cannot ${verb} while config session ${JSON.stringify(active.name)} is open on this node: EOS drives one configuration context per CLI session, so the staged changes in ${JSON.stringify(active.name)} would no longer be the change an operator reviewed (DR-025). Stage the command in the session (session.run([...])), or end it first (commit() / abort()). pyeapi silently reroutes instead — MIGRATION.md §5 row 62.`,
     { ...(commands === undefined ? {} : { commands: redactCommands(commands) }) },
   )
 }
@@ -1079,7 +1079,7 @@ export interface RecoverOrphansOptions extends SessionRequestOptions {
   /**
    * Only abort entries at least this many **milliseconds** old. Age comes from the journal:
    * `show configuration sessions` has no start-time field (`ConfigSessionModel.py:21-34`), so an
-   * unlabeled device session has no age and is skipped rather than guessed at (row 63).
+   * unlabeled device session has no age and is skipped rather than guessed at (row 70).
    */
   readonly olderThan?: number | undefined
   /** Which names count as ours. Default {@link SESSION_NAME_PREFIX}. Pass `''` to consider every name. */
@@ -1167,7 +1167,7 @@ export async function recoverOrphansOn(host: SessionCommandTarget, options: Reco
   }
 }
 
-/** `copy running-config startup-config` — DR-024's explicit durability verb, and never called implicitly (row 61). */
+/** `copy running-config startup-config` — DR-024's explicit durability verb, and never called implicitly (row 68). */
 export async function copyRunningToStartupOn(host: SessionCommandTarget, options: SessionRequestOptions = {}): Promise<readonly CommandResult[]> {
   return await runOnHost(host, [copyRunningToStartupCommand()], options)
 }
@@ -1191,7 +1191,7 @@ export interface ConfigureReplaceOptions extends SessionRequestOptions {
  *
  * The pending-commit-timer guard is the device's (`:77-79`) and its rejection is a **message** on a
  * generic `1000 COMMAND_FAILED`, so mapping it to `SessionError` means reading that text — the one place
- * in this milestone where MIGRATION.md §5 row 62 allows it, and only after the code has been checked.
+ * in this milestone where MIGRATION.md §5 row 69 allows it, and only after the code has been checked.
  * A client-side pre-flight (`show configuration sessions` first) is deliberately **not** done: EOS's own
  * check is authoritative and race-free, and a read-then-write pair would be stale the moment another
  * operator commits.

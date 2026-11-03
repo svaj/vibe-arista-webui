@@ -634,7 +634,7 @@ export class Node {
   /**
    * `configure replace <url> […]` (`ConfigSessionCli.py:128-155`) — wholesale running-config replace, refused
    * locally while a session is open on this node (the command exits sessions it finds, `:57`). A device
-   * rejection for a pending commit timer arrives as `SessionError` naming the session (row 62).
+   * rejection for a pending commit timer arrives as `SessionError` naming the session (row 69).
    */
   async configureReplace(url: string, options: ConfigureReplaceOptions = {}): Promise<readonly CommandResult[]> {
     assertNoSessionConflict(this.activeSession, 'configureReplace()', [url])
