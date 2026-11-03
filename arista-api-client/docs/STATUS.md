@@ -4,10 +4,10 @@ Single source for "where are we". Update **in the same commit** that changes cod
 mirrored GitHub issue (see §4). Detailed task lists live in [PLAN.md](./PLAN.md); behaviour changes go
 in [MIGRATION.md §5](./MIGRATION.md#5-semantic-divergences-worth-reviewing).
 
-As of 2026-11-03: **M2, M4 and M6 delivered — every pyeapi transport has a TypeScript equivalent, the
-`Node` command layer exists, and EOS config text has a parity-proven parser.** M6 (#8) branched from the
-M2 branch and M2 has since landed on `main`, so this branch carries a merge of `origin/main` (which now
-includes M4 via PR #22); its review diff is only `src/config/` plus the config ledger rows.
+As of 2026-11-03: **M2, M4 and M6 are delivered — every pyeapi transport has a TypeScript equivalent, the
+`Node` command layer exists, and EOS config text has a parity-proven parser.** M4 (#6) merged as PR #22, so
+`src/command-layer.ts` and §5 rows 31–38 are live on `main`; M6 (#8) is complete and open as PR #23, which
+now carries a merge of `origin/main`, so its review diff is only `src/config/` and the config ledger rows.
 The package (M0) builds, lints, tests and type-checks from the repo root, and `arista-webui` imports it
 by name. The wire core (M1) stays pure: `src/types/eapi.ts` carries the `runCmds` contracts and the
 `WireSender` seam, `src/internal/wire.ts` encodes/decodes envelopes with no I/O, `src/errors.ts` holds
@@ -19,15 +19,11 @@ the codec, `FetchTransport` in the browser entry and the six Node senders (`http
 local-transport warnings, DR-018 cookie sessions, DR-019 retry rules, DR-017 response-id correlation and
 `MockTransport` for offline tests. M4 added `src/command-layer.ts` (pyeapi's `Node` class, minus what
 other milestones own) and `src/internal/variants.ts`: read-only work against a mocked switch is now fully
-usable with no resource module, which is PLAN's M4 exit gate. M6 added `src/config/`: the indent-aware
-`chunkConfig` port of pyeapi's `_chunkify` (plus `section`/`getBlock`, `expandRange`/`collapseRange`, and
-the CPython `splitlines`/`rstrip` primitives it depends on), whose parity is **recorded rather than
-assumed** — `scripts/config-chunkify-oracle.py` runs upstream pyeapi over every fixture and commits the
-answer to `test/fixtures/config/pyeapi-oracle.json`, which `chunk.fixture.test.ts` then diffs entry by
-entry. `createNode()` in `src/index.ts` / `src/node.ts` **still throws** — a `Node` is built from an
-explicit `Transport` until M3 defines the connection/profile bag. **M3 (#5, connection profiles) is the
-next step that `main` alone unblocks**; M5 (#7) and M7 (#9) become actionable the moment this PR (#23)
-lands, since both consume `src/config/`.
+usable with no resource module, which is PLAN's M4 exit gate. `createNode()` in `src/index.ts` /
+`src/node.ts` **still throws** — a `Node` is built from an explicit `Transport` until M3 defines the
+connection/profile bag. **M3 (#5, connection profiles) is the next action** — it is the only open
+milestone `main` unblocks today: M5 (#7) and M7 (#9) both need M6's `src/config/`, which is still waiting
+in PR #23.
 
 **Test infrastructure planning update:** local cEOS-lab **4.28.14M** and vendor install
 instructions are now available under `/home/svaj/development/arista/cEOS/`.
@@ -45,19 +41,19 @@ eAPI readiness, and harness execution are **not yet validated**. Hardware remain
 | M0 | Workspace & package scaffolding | `done` | 2026-11-01 | 2026-11-01 | [#2](https://github.com/svaj/vibe-arista-webui/issues/2) | exit gate green from the repo root (typecheck/lint/test/build + webui imports by name, no path hacks); CI matrix is **22/24** because Vitest 5/jsdom 30 exclude Node 20. Package name still undecided (**DR-020**); `docs` script deferred (no generator chosen — M13 #15); placeholders only in `src/index.ts` / `src/node.ts` |
 | M1 | Wire protocol core | `done` | 2026-11-01 | 2026-11-01 | [#3](https://github.com/svaj/vibe-arista-webui/issues/3) | codec in `src/internal/wire.ts` (pure, no I/O) + `src/errors.ts` + `src/types/eapi.ts`; DR-010/011/012/016/017 in; **27** hand-authored samples in `test/fixtures/wire/` driven by `src/internal/wire.fixture.test.ts` (message prose is synthetic until M12 #14 records captures); client coverage 98.98% stmts / 94.73% branch / 100% lines (thresholds 85/75/60); no transport yet, `WireSender` + `src/testing/fake-sender.ts` are the only send seam; no runtime `show()` yet — the type tests pin the `ShowReply<K>` map M4 (#6) implements it against; codec does not yet correlate the echoed response id with the request id, and `ProtocolError` does not carry an id — M2 (#4) decides both |
 | M2 | Transports | `done` | 2026-11-01 | 2026-11-01 | [#4](https://github.com/svaj/vibe-arista-webui/issues/4) | all seven pyeapi transports ported (`src/transports/`), stacked on #19 for review; DR-002 browser-safety is enforced by `src/browser-safety.test.ts` in the unit project + CI — a **test** gate, not a literal step of `npm run build`; TLS behaviour is verified only against synthetic loopback certs, since the **device** fingerprint/TLS-version capture (STATUS §3, DECISIONS open items 3) is still outstanding |
-| M3 | Connection profiles | `not-started` | — | — | | |
-| M4 | `Node` command layer | `done` | 2026-11-01 | 2026-11-01 | [#6](https://github.com/svaj/vibe-arista-webui/issues/6) | **delivered on an unmerged branch**, stacked on #19 (M2) — merge #19 first. `src/command-layer.ts` (pyeapi's `Node` class; `src/node.ts` stays the Node-runtime **entry**, so the docs' old `src/node.ts` target is corrected in MIGRATION §1) + `src/internal/variants.ts`. In: `runCommands`, `exec` (one entry per command, `{command, result, encoding, fellBack}`, no duplicate `response` key — DR-007), `show`/`showText` over the augmentable `ShowContracts` map, `getConfig` + the async config accessors (DR-005), memoised `getVersion()`, `configure` / `configureVariants` (DR-006), `setEnablePassword` + the `sendEnable: false` priv-15 shortcut (DR-009), `refresh()`, `close()`, config-mode refusal (`NotSupportedError`, `configure all <intf> …` exempt), short-answer pairing that names the command by its `cmd`, and no `MULTILINE:` rewrite (DR-015). **8 new §5 rows (31–38).** Out on purpose: config-session verbs and the DR-025 guard/serialisation (M5 #7), `section()`/`_chunkify` (M6 #8), `api()` (dropped, DR-006), `configSection()`, profiles/`createNode` (M3 #5). Offline only: 75 cases over `MockTransport` + `test/fixtures/show/` (synthetic), no device, no cEOS; client 529 → **618** tests; coverage 96.98% stmts / 90.86% branch / 97.64% lines (`command-layer.ts` 100% stmts/funcs) |
-| M5 | Config sessions & change safety | `not-started` | — | — | | commit-timer semantics unverified; investigate in cEOS, confirm target-sensitive behavior on hardware |
-| M6 | Text-config engine | `done` | 2026-11-02 | 2026-11-02 | [#8](https://github.com/svaj/vibe-arista-webui/issues/8) | `src/config/` (`chunk`/`cache`/`section`/`ranges`/`text`): `_chunkify` port minus the `lru_cache` (DR-026 content-hash memo), `section()` `TypeError`→`NotFoundError` (DR-027), `get_block` → `undefined`, range helpers, CPython text primitives. Parity is **against upstream pyeapi, not a device**: `scripts/config-chunkify-oracle.py` (pyeapi `develop` 6816d9e) generated `test/fixtures/config/pyeapi-oracle.json`, `chunk.fixture.test.ts` diffs ordered entries and guards against oracle drift; the `.conf` inputs are hand-authored, so **device-captured 4.28 config text is still owed to M12 (#14)** and that PLAN box stays unticked (it is also the §3 sweep's config-text line). `src/config` 100% lines / 93.75% branch. Deliberately **no** `Node.chunkConfig`/`Node.section` wiring — that pairing is M7 (#9) |
-| M7 | Resource framework | `not-started` | — | — | | |
-| M8 | `system` | `not-started` | — | — | | |
-| M9 | `vlans` + `switchports` | `not-started` | — | — | | first demoable slice |
-| M10 | `interfaces` (base, ethernet, port-channel) | `not-started` | — | — | | split M10a–c |
-| M11 | Capability probe + dry-run | `not-started` | — | — | | needs M5 + M9 |
-| M12 | Live suite + fixtures + CI | `not-started` | — | — | | local cEOS image available; needs trusted privileged runner, provisioning/readiness/guards/cleanup; hardware lane separate |
-| M13 | Consumption, docs, release | `not-started` | — | — | | includes opt-in Playwright cEOS lane once M12 harness and UI workflow exist |
-| W2 | wave-2 modules | `backlog` | — | — | | 9 modules, 111 upstream unit tests to port |
-| W3 | wave-3 modules | `backlog` | — | — | | `vrrp`/`bgp`/`ospf`/`routemaps`/VXLAN |
+| M3 | Connection profiles | `in-progress` | 2026-11-03 | — | [#5](https://github.com/svaj/vibe-arista-webui/issues/5) | unblocked by M2 (#4, merged) — the only front-door lane that `main` alone supports; lands `createNode()`/`createConnection()` and closes the placeholder that still throws |
+| M4 | `Node` command layer | `done` | 2026-11-01 | 2026-11-02 | [#6](https://github.com/svaj/vibe-arista-webui/issues/6) | merged as PR #22 on 2026-11-03, after stacking on #19/#20 for review. `src/command-layer.ts` (pyeapi's `Node` class; `src/node.ts` stays the Node-runtime **entry**, so the docs' old `src/node.ts` target is corrected in MIGRATION §1) + `src/internal/variants.ts`. In: `runCommands`, `exec` (one entry per command, `{command, result, encoding, fellBack}`, no duplicate `response` key — DR-007), `show`/`showText` over the augmentable `ShowContracts` map, `getConfig` + the async config accessors (DR-005), memoised `getVersion()`, `configure` / `configureVariants` (DR-006), `setEnablePassword` + the `sendEnable: false` priv-15 shortcut (DR-009), `refresh()`, `close()`, config-mode refusal (`NotSupportedError`, `configure all <intf> …` exempt), short-answer pairing that names the command by its `cmd`, and no `MULTILINE:` rewrite (DR-015). **8 new §5 rows (31–38).** Out on purpose: config-session verbs and the DR-025 guard/serialisation (M5 #7), `section()`/`_chunkify` (M6 #8), `api()` (dropped, DR-006), `configSection()`, profiles/`createNode` (M3 #5). Offline only: 75 cases over `MockTransport` + `test/fixtures/show/` (synthetic), no device, no cEOS; client 529 → **618** tests; coverage 96.98% stmts / 90.86% branch / 97.64% lines (`command-layer.ts` 100% stmts/funcs) |
+| M5 | Config sessions & change safety | `not-started` | — | — | [#7](https://github.com/svaj/vibe-arista-webui/issues/7) | **blocked on M6 (#8)** — PLAN deps are M4 + M6, and M6 is still open as PR #23. commit-timer semantics unverified; investigate in cEOS, confirm target-sensitive behavior on hardware |
+| M6 | Text-config engine | `in-progress` | 2026-11-02 | — | [#8](https://github.com/svaj/vibe-arista-webui/issues/8) | implementation complete, **open as PR #23**; it branched off the M2 branch, so #23 now merges `origin/main` (which carries M4) to clear the conflict, and that merge also carries this board's bookkeeping. `src/config/` (`chunk`/`cache`/`section`/`ranges`/`text`): `_chunkify` port minus the `lru_cache` (DR-026 content-hash memo), `section()` `TypeError`→`NotFoundError` (DR-027), `get_block` → `undefined`, range helpers, CPython text primitives. Parity is **against upstream pyeapi, not a device**: `scripts/config-chunkify-oracle.py` (pyeapi `develop` 6816d9e) generated `test/fixtures/config/pyeapi-oracle.json`, `chunk.fixture.test.ts` diffs ordered entries and guards against oracle drift; the `.conf` inputs are hand-authored, so **device-captured 4.28 config text is still owed to M12 (#14)** and that PLAN box stays unticked (it is also the §3 sweep's config-text line). `src/config` 100% lines / 93.75% branch. Deliberately **no** `Node.chunkConfig`/`Node.section` wiring — that pairing is M7 (#9) |
+| M7 | Resource framework | `not-started` | — | — | [#9](https://github.com/svaj/vibe-arista-webui/issues/9) | **blocked on M6 (#8)** — needs `src/config/` (PR #23); the §1 target `src/resources/base.ts` and the §6 wave-2 test-map rows are reviewed there, not here |
+| M8 | `system` | `not-started` | — | — | [#10](https://github.com/svaj/vibe-arista-webui/issues/10) | needs M7 |
+| M9 | `vlans` + `switchports` | `not-started` | — | — | [#11](https://github.com/svaj/vibe-arista-webui/issues/11) | needs M7 + M8; first demoable slice |
+| M10 | `interfaces` (base, ethernet, port-channel) | `not-started` | — | — | [#12](https://github.com/svaj/vibe-arista-webui/issues/12) | needs M7 + M9; split M10a–c |
+| M11 | Capability probe + dry-run | `not-started` | — | — | [#13](https://github.com/svaj/vibe-arista-webui/issues/13) | needs M5 + M9 |
+| M12 | Live suite + fixtures + CI | `not-started` | — | — | [#14](https://github.com/svaj/vibe-arista-webui/issues/14) | local cEOS image available; needs trusted privileged runner, provisioning/readiness/guards/cleanup; hardware lane separate |
+| M13 | Consumption, docs, release | `not-started` | — | — | [#15](https://github.com/svaj/vibe-arista-webui/issues/15) | includes opt-in Playwright cEOS lane once M12 harness and UI workflow exist |
+| W2 | wave-2 modules | `backlog` | — | — | [#16](https://github.com/svaj/vibe-arista-webui/issues/16) | 9 modules; **186** upstream unit tests to port (recounted from the upstream tree — the older "111" figure covered only 3 of the 9 modules); needs M10 |
+| W3 | wave-3 modules | `backlog` | — | — | [#17](https://github.com/svaj/vibe-arista-webui/issues/17) | `vrrp`/`bgp`/`ospf`/`routemaps`/VXLAN |
 
 Status vocabulary: `not-started` · `in-progress` · `blocked:<reason>` · `done` · `backlog` ·
 `dropped:<reason>`.
@@ -129,19 +125,23 @@ Suggested first command batch (no writes):
 
 One issue per milestone + two tracking issues (wave 2, wave 3), each body carrying that milestone's
 task/test checklist from [PLAN.md](./PLAN.md). Labels: `area:api-client`, plus
-`kind:epic` / `kind:module` / `kind:infra` / `kind:question`.
+`kind:epic` / `kind:module` / `kind:infra` / `kind:question`, plus exactly one work-state label —
+`status:in-progress` (an agent has a worktree open on it), `status:ready-for-review` (implementation
+done, PR open, gate green, CI green), `status:blocked` (dependency or decision outstanding). The label
+is the work state; the §1 table `in-progress`/`done` cell mirrors it, and this table mirrors the issue
+*number*, not the state.
 
 | Issue | Milestone | Status |
 |---|---|---|
 | [#1](https://github.com/svaj/vibe-arista-webui/issues/1) | umbrella — plan of record | open |
-| [#2](https://github.com/svaj/vibe-arista-webui/issues/2) | M0 Workspace & package scaffolding | open |
-| [#3](https://github.com/svaj/vibe-arista-webui/issues/3) | M1 Wire protocol core | open |
-| [#4](https://github.com/svaj/vibe-arista-webui/issues/4) | M2 Transports | open |
-| [#5](https://github.com/svaj/vibe-arista-webui/issues/5) | M3 Connection profiles | open |
-| [#6](https://github.com/svaj/vibe-arista-webui/issues/6) | M4 `Node` command layer | open |
-| [#7](https://github.com/svaj/vibe-arista-webui/issues/7) | M5 Config sessions & change safety | open |
-| [#8](https://github.com/svaj/vibe-arista-webui/issues/8) | M6 Text-config engine | open |
-| [#9](https://github.com/svaj/vibe-arista-webui/issues/9) | M7 Resource framework | open |
+| [#2](https://github.com/svaj/vibe-arista-webui/issues/2) | M0 Workspace & package scaffolding | closed (PR #18) |
+| [#3](https://github.com/svaj/vibe-arista-webui/issues/3) | M1 Wire protocol core | closed (PR #19) |
+| [#4](https://github.com/svaj/vibe-arista-webui/issues/4) | M2 Transports | closed (PR #20) |
+| [#5](https://github.com/svaj/vibe-arista-webui/issues/5) | M3 Connection profiles | `status:in-progress` |
+| [#6](https://github.com/svaj/vibe-arista-webui/issues/6) | M4 `Node` command layer | closed (PR #22) |
+| [#7](https://github.com/svaj/vibe-arista-webui/issues/7) | M5 Config sessions & change safety | `status:blocked` (needs #23) |
+| [#8](https://github.com/svaj/vibe-arista-webui/issues/8) | M6 Text-config engine | `status:ready-for-review` (PR #23) |
+| [#9](https://github.com/svaj/vibe-arista-webui/issues/9) | M7 Resource framework | `status:blocked` (needs #23) |
 | [#10](https://github.com/svaj/vibe-arista-webui/issues/10) | M8 `system` | open |
 | [#11](https://github.com/svaj/vibe-arista-webui/issues/11) | M9 `vlans` + `switchports` | open |
 | [#12](https://github.com/svaj/vibe-arista-webui/issues/12) | M10 `interfaces` | open |
