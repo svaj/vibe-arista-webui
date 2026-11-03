@@ -118,8 +118,13 @@ function assertAllowedOptions(options: BuildRequestOptions): void {
   }
 }
 
-function toCommandSpecArray(commands: CommandSpec | readonly CommandSpec[]): readonly CommandSpec[] {
-  // DR-041: pyeapi's implicit `make_iterable` coercion becomes an explicit coercion at the boundary.
+/**
+ * DR-041: pyeapi's implicit `make_iterable` coercion (`eapilib.py:353`, `client.py:913`) becomes an
+ * **explicit** coercion at the boundary. Exported because the command layer (M4, #6) and every
+ * resource module (M7, #9) need the same one coercion — silently coercing inside two layers is how a
+ * `undefined` sneaks onto the wire.
+ */
+export function toCommandSpecArray(commands: CommandSpec | readonly CommandSpec[]): readonly CommandSpec[] {
   return Array.isArray(commands) ? commands : [commands as CommandSpec]
 }
 
@@ -154,7 +159,7 @@ function assertCommandSpec(command: unknown, index: number, commands: readonly C
 }
 
 function assertAllowedFormat(format: unknown): RunCmdsFormat {
-  // pyeapi raises TypeError('encoding must be one of [json, text]') in `execute` (eapilib.py:628).
+  // pyeapi raises TypeError('encoding must be one of [json, text]') in `execute` (`eapilib.py:628-629`).
   if (format !== 'json' && format !== 'text') {
     throw new TypeError(`format must be one of [json, text], got ${JSON.stringify(format)}`)
   }

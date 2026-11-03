@@ -12,8 +12,11 @@
  *    HTTP only — 4.28 has no 8443 listener, so `DEFAULT_HTTPS_LOCAL_PORT` is dropped, DR-014), each
  *    requiring `allowLocalUnauthenticated: true` and printing the DR-014 warning (DR-008).
  *
- * Still ahead: `eapi.conf` profiles M3 (#5 / DR-038), the `Node` command layer M4 (#6), the on-disk
- * config-session journal M5 (#7 / DR-022), and the live/recorded suite M12 (#14).
+ * Still ahead: `eapi.conf` profiles and the `createNode`/`createConnection` factories M3 (#5 /
+ * DR-038), the on-disk config-session journal M5 (#7 / DR-022), the config-text engine M6 (#8) and
+ * the live/recorded suite M12 (#14). The command layer (M4, #6) is shipped: `src/command-layer.ts`
+ * holds `Node`, re-exported from the browser entry below, so this file adds only the Node-only kinds
+ * on top of it — which is where a `Node` over `kind: 'session'` or `kind: 'unix'` can be built.
  *
  * Requires Node >= 20 (`engines`) because `fetch` must be global.
  */
@@ -48,16 +51,27 @@ export { wantsNodeTls } from './transports/create'
 export * from './index'
 
 /**
- * M0 placeholder (#2) — Node sibling of the browser entry's `createNode`.
+ * M0 placeholder (#2), still a placeholder after M4 (#6): the *connection/profile* bag this factory
+ * will take (and `eapi.conf` lookup) is M3 (#5). The command layer it returns is real now — M4 (#6)
+ * shipped `Node` in `src/command-layer.ts`, which `export * from './index'` re-exports here, so a
+ * Node-runtime caller can build one over any of the kinds only this entry can construct:
  *
- * Always throws; the command layer lands in M4 (#6). Kept deliberately separate from `src/index.ts`
- * so the two entry points stay independently buildable and the browser bundle can never absorb Node
- * built-ins.
+ * ```ts
+ * import { createTransport, Node } from '@devhax-heavy-industries/arista-eapi/node'
+ *
+ * const node = new Node(createTransport({ kind: 'session', host, username, password }))
+ * const { versionNumber, modelName } = await node.getVersion()
+ * ```
+ *
+ * Kept deliberately separate from `src/index.ts` so the two entry points stay independently
+ * buildable and the browser bundle can never absorb Node built-ins.
  */
 export function createNode(options: NodeOptions = {}): never {
   throw new Error(
     `@devhax-heavy-industries/arista-eapi/node: createNode() is an M0 placeholder (#2) and has ` +
-      `no implementation yet — Node transports land in M2 (#4), the command layer in M4 (#6). ` +
+      `no implementation yet — Node transports landed in M2 (#4), the command layer landed in ` +
+      `M4 (#6), and connection/profile options land in M3 (#5). Construct a transport with ` +
+      `createTransport({ kind, … }) and pass it to new Node(transport, settings). ` +
       `Received options: ${JSON.stringify(options)}`,
   )
 }

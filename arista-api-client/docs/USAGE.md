@@ -110,6 +110,36 @@ for (const r of rows) {
 `{ tolerateErrors: false }` to have a 1003 surface as a `CommandError` — do that in tests, so a
 command that silently loses structure can't slip through.
 
+### What the command layer ships today (M4, #6)
+
+`createNode()`/`createConnection()` are still M3 (#5) placeholders, so today the working constructor is
+a `Transport` plus a `Node` — the same shape every example below assumes:
+
+```ts
+import { createTransport, Node } from '@devhax-heavy-industries/arista-eapi';        // or '…/node'
+
+const node = new Node(createTransport({ kind: 'https', host, username, password }), {
+  enablePassword: undefined,      // only if the API user is NOT priv-15 (DR-009)
+  autorefresh: true,              // re-read cached configs after a write
+  configDefaults: true,           // `show running-config all`
+});
+// A priv-15 Basic-auth user needs no enable password and no `enable` command at all:
+await node.exec('show version', { sendEnable: false });
+```
+
+| verb | returns | note |
+|---|---|---|
+| `runCommands(cmds, opts)` | `readonly CommandResult[]` | pyeapi `run_commands`: exactly the commands you wrote, `enable` popped; `opts` = `{ format, sendEnable, stopOnError, includeErrorDetail, requestTimeout, … }` |
+| `show(k, { revision })` / `showText(cmd)` | `ShowContracts[k]` / `string` | encoding is chosen by the method, never by the caller |
+| `exec(cmds, { tolerateErrors, sendEnable })` | `ExecResult[]` = `{ command, result, encoding, fellBack }` | no duplicate `response` key (DR-007); refused for any `configure …` except `configure all <intf> …` (row 32) |
+| `getConfig({ config, params, as })` | `string` or `readonly string[]` | `config: 'running-config' \| 'startup-config'`; `as: 'string'` trims, `'lines'` (default) does not |
+| `getRunningConfig()` / `getStartupConfig()` | cached `string` | cleared by `refresh()` or by a write while `autorefresh` is on (row 34) |
+| `getVersion()` | `{ version, versionNumber, model, modelName }` | one memoised `show version`; `refresh()` leaves it (row 35) |
+| `configure(cmds, opts)` | `readonly CommandResult[]` | prepends `configure terminal`, strips both prepended replies, throws on failure — there is no `false` to check |
+| `configureVariants(variants, opts)` | same | first spelling that succeeds wins; last `CommandError` re-raised (row 37). Standalone: `tryVariants(variants, cmds => node.configure(cmds))` |
+| `setEnablePassword(pw)` / `enablePassword` | — | sends `{'cmd':'enable','input':pw}`; `''`/whitespace clears it |
+| `refresh()` → `void`, `close()` → `Promise<void>` | — | `refresh()` is a local cache clear (no request); `close()` releases the transport, so a cookie session logs out (DR-018) |
+
 `show('anything-not-in-the-contract')` returns `unknown`: narrow it yourself, or extend the contract:
 
 ```ts
