@@ -19,7 +19,7 @@
  * | `getall` (`:179-192`): `re.compile(r'(?<=^vlan\s)[\d,\-]+', re.M)` (`:187`) over the **whole** config text, then `response[vid] = self.get(vid)` per hit (`:190-191`) | {@link vlansFromSections} — one pass over the chunked document's **indent-0 section keys**, zero extra reads (DR-030) |
  * | `get` (`:91-113`): `get_block('vlan %s')`, `if not config: return None` (`:105-106`), then four `_parse_*` one-key dicts merged with `dict.update` (`:108-112`) | {@link VlansResource.getAll} / {@link VlansResource.get}; the record is typed, not stringly (MIGRATION.md §4, DR-003), and a missing entry is `undefined` (DR-027) |
  * | `_parse_vlan_id` (`:115-129`): `VLAN_ID_RE.search(config).group('value')` (`:128`) — the first `vlan\s` anywhere in the block, whole remainder | the **section header** of the entry (`vlan 20` → `20`), parsed to numbers — see divergence 1 |
- * | `NAME_RE` / `STATE_RE` / `TRUNK_GROUP_RE` (`:58-60`) + `_parse_name` (`:131-145`), `_parse_state` (`:147-161`), `_parse_trunk_groups` (`:163-177`: `findall`, `[]` when none) | {@link getVlanFields} — `findValue`/`findAllValues` (`config/text.ts`) scoped to the block **body lines**, keyword-anchored |
+ * | `NAME_RE` / `STATE_RE` / `TRUNK_GROUP_RE` (`:58-60`) + `_parse_name` (`:131-145`), `_parse_state` (`:147-161`), `_parse_trunk_groups` (`:163-177`: `findall`, `[]` when none) | {@link getVlanFields} — `valueAfterKeyword`/`valuesAfterKeyword` (`config-block.ts`) scoped to the block **body lines**, cut at the keyword |
  * | `create` / `delete` / `default` (`:194-232`): `'vlan %s'` / `'no vlan %s'` / `'default vlan %s'`, each `return self.configure(command) if isvlan(vid) else False` (`:204`, `:216`, `:232`) | {@link VlansResource.create} / {@link VlansResource.delete} / {@link VlansResource.setDefault} — the same three command texts, with `assertVlanId` and a **throw** instead of `False` (DR-005) |
  * | `configure_vlan` (`:234-246`): `make_iterable` + `commands.insert(0, 'vlan %s')` (`:244-245`) | {@link VlansResource.configureVlan} over `submodeCommands` (`command-builder.ts`, row 71) — never mutates the caller's list |
  * | `set_name` (`:248-265`), `set_state` (`:267-284`): `command_builder('name'\|'state', value=…, default=…, disable=…)` (`:263`, `:282`) | `setVlanName` / `unsetVlanName` / `defaultVlanName`, `setVlanState` / `unsetVlanState` / `defaultVlanState` — the `default=`/`disable=` kwargs become the mode table in `command-builder.ts` (DR-037) |
@@ -91,13 +91,15 @@
  *    whole block, so a value in one field is read by another: `name state test` answers
  *    `{name: 'state test', state: 'test'}` and `name trunk group evil` answers `trunk_groups: ['evil']`
  *    (probe). Here every field is a keyword-anchored lookup over the block's parsed body lines
- *    (`findValue`/`findAllValues`, `config/text.ts`), so `name …` can only answer `name` — which is also
+ *    (`valueAfterKeyword`/`valuesAfterKeyword`, `config-block.ts`), so `name …` can only answer `name` — which is also
  *    the shape `test_api_vlans.py` implicitly assumes and the shape a config diff has to be to be
  *    reviewable.
  * 7. **name values are unquoted and trimmed on the way in.** Upstream keeps the raw remainder of the line
  *    (`NAME_RE` at `:58`, `(?:name\s)(?P<value>.*)$`): probe — `name pad  ` answers `'pad  '`, and
- *    `name "seven"` answers `'"seven"'`. M6's `describeLine` rstrips and `unquote`s (`config/text.ts`,
- *    MIGRATION.md §5 row 49), so this module answers `pad` and `seven`. Round-tripping is why
+ *    `name "seven"` answers `'"seven"'`. The read cuts the value at the keyword, drops the whitespace run
+ *    after it and `unquote`s a balanced pair ({@link valueAfterKeyword} → `describeLine`/`lstrip`/`unquote`,
+ *    `config-block.ts`, `config/text.ts:92`, `:150`, `:235`), so this module answers `pad` and
+ *    `seven`. Round-tripping is why
  *    {@link assertVlanName} refuses a name with outer whitespace or a quote character (divergence 10).
  * 8. **ids outside `1..4094` are reported, not invented.** The read keeps whatever the device wrote
  *    (probe: upstream reads `vlan 99999` back as `'99999'`), because answering nothing about a section the
@@ -141,7 +143,8 @@
 import { ConfigParseError, NotFoundError, NotSupportedError } from '../errors'
 import { pythonRepr } from '../internal/wire'
 import { expandRange } from '../config/ranges'
-import { findAllValues, findValue, parseBlock } from '../config/text'
+import { parseBlock } from '../config/text'
+import { valueAfterKeyword, valuesAfterKeyword } from './config-block'
 import { EntityCollection } from './base'
 import { submodeCommands } from './command-builder'
 import { assertVlanId } from './validators'
@@ -208,7 +211,7 @@ const VLAN_SECTION = /^vlan (\S+)$/u
 const UPSTREAM_ID_CHARSET = /^[\d,-]+$/u
 
 /** A header value this client can enumerate: ids separated by commas, a run written `start-end`. */
-const VLAN_ID_LIST = /^\d+(?:[-,]\d+)*$/u
+const VLAN_ID_LIST = /^\d+(?:-\d+)?(?:,\d+(?:-\d+)?)*$/u
 
 /** One enumerated run inside a header value. */
 const VLAN_RUN = /^(\d+)-(\d+)$/u
@@ -226,9 +229,9 @@ type VlanFields = {
 /** One `vlan …` block's fields: the body's keyword lines only, header excluded (divergence 6). */
 function getVlanFields(block: ConfigBlock): VlanFields {
   return {
-    name: findValue(block.body, 'name'),
-    state: findValue(block.body, 'state'),
-    trunkGroups: findAllValues(block.body, 'trunk group'),
+    name: valueAfterKeyword(block.body, 'name'),
+    state: valueAfterKeyword(block.body, 'state'),
+    trunkGroups: valuesAfterKeyword(block.body, 'trunk group'),
   }
 }
 
@@ -245,7 +248,9 @@ function refuse(label: string, value: unknown, because: string): never {
  * `value=None` fall-through produces the deprecated negation, `abstract.py:160-161`), and a name with a
  * line boundary would be interpolated into a second command line (row 74 — `commandBuilder` refuses that
  * part too). The rules below are this client's round-trip contract, mirroring M8's `assertHostname`: the
- * read side takes the line remainder rstripped and unquoted (`config/text.ts`, row 49), so an outer space
+ * read side takes the text after the `name` keyword, whitespace-trimmed and unquoted
+ * ({@link valueAfterKeyword}, `config-block.ts`; M6 gives it rstripped at `describeLine`, `config/text.ts:150`
+ * and unquoted at `unquote`, `:235` — row 49), so an outer space
  * or a balanced quote pair cannot survive a write/read cycle. Whether EOS itself accepts those characters
  * — or quotes them the way `description " WAN uplink "` is quoted — is unverified on hardware,
  * M12 (#14) to capture.
@@ -256,13 +261,13 @@ function assertVlanName(value: unknown): asserts value is string {
     refuse('vlan name', value, 'an empty VLAN name is refused — clear it with unsetVlanName() (pyeapi `no name`, vlans.py:259) rather than an empty value (DR-037)')
   }
   if (value !== value.trim()) {
-    refuse('vlan name', value, 'leading or trailing whitespace cannot read back: `name …` is read as the line remainder after rstrip (config/text.ts) — pyeapi keeps it verbatim (probe: `name pad  ` answers `pad  `, vlans.py:58)')
+    refuse('vlan name', value, 'leading or trailing whitespace cannot read back: `name …` is read as the text after the keyword, whitespace-trimmed (valueAfterKeyword, config-block.ts) — pyeapi keeps it verbatim (probe: `name pad  ` answers `pad  `, vlans.py:58)')
   }
   if (hasControlCharacter(value)) {
     refuse('vlan name', value, 'a control character would break the config line this client reads back (the same reason command-builder.ts refuses a value with a line boundary, row 74)')
   }
   if (value.includes('"')) {
-    refuse('vlan name', value, 'a name containing a quote cannot round-trip through this reader, which unquotes a balanced pair (config/text.ts, MIGRATION.md §5 row 49). Legality on EOS is unverified on hardware, M12 (#14) to capture — pyeapi would answer `"seven"` with the quotes in it (probe, vlans.py:58)')
+    refuse('vlan name', value, 'a name containing a quote cannot round-trip through this reader, which unquotes a balanced pair (valueAfterKeyword → unquote, config-block.ts / config/text.ts:235, MIGRATION.md §5 row 49). Legality on EOS is unverified on hardware, M12 (#14) to capture — pyeapi would answer `"seven"` with the quotes in it (probe, vlans.py:58)')
   }
 }
 
@@ -362,6 +367,9 @@ function vlanIdsOf(headerValue: string, sectionKey: string): number[] | undefine
       )
     }
   }
+  // `VLAN_ID_LIST` requires at most one `-` per token, so every token here is either `id` or `start-end`
+  // and `expandRange` cannot reach its "not a single range" branch (`config/ranges.ts:95-98`), which is
+  // where a `1-2-3` header used to land before the grammar was tightened.
   const ids = new Set<number>()
   // `expandRange` is M6's (#8) range vocabulary: ',' values, '-' inclusive runs, canonical decimal
   // endpoints (config/ranges.ts, ports of utils.py:175-195 including its documented oddities — row 47 is
@@ -556,7 +564,13 @@ export class VlansResource extends EntityCollection<Vlan, number, VlanAttrs> {
     if (adds.length === 0 && removes.length === 0) return
     await this.configureVlan(id, [
       ...adds.map((group) => this.commandBuilder('trunk group', { value: group })),
-      ...removes.map((group) => this.commandBuilder('trunk group', { value: group, mode: 'no' })),
+    // The name has to sit **inside** the command text for a negation: `commandBuilder(text, { mode: 'no' })`
+    // is pyeapi's `disable=True` arm, which returns `no %s` and drops the value entirely
+    // (`abstract.py:154-155`, pinned in `command-builder.ts`'s table: `{ mode: 'no', value: 'x' }` answers
+    // `no ip routing`). Upstream's `remove_trunk_group` never calls `command_builder` — it formats
+    // `'no trunk group %s' % name` directly (`vlans.py:358`), and `test_api_vlans.py:137` pins
+    // `no trunk group tg1` — so the name goes into the stem here to produce that same text.
+    ...removes.map((group) => this.commandBuilder(`trunk group ${group}`, { mode: 'no' })),
     ])
   }
 
@@ -573,7 +587,7 @@ export class VlansResource extends EntityCollection<Vlan, number, VlanAttrs> {
   /** `no trunk group <name>` — pyeapi's `remove_trunk_group` (`:344-358`, `test_api_vlans.py:155`). */
   async removeTrunkGroup(id: number, group: string): Promise<void> {
     assertTrunkGroupName('removeTrunkGroup', group)
-    await this.configureVlan(id, [this.commandBuilder('trunk group', { value: group, mode: 'no' })])
+    await this.configureVlan(id, [this.commandBuilder(`trunk group ${group}`, { mode: 'no' })])
   }
 
   /** `no trunk group` (every group for this VLAN) — pyeapi's `set_trunk_groups(vid, disable=True)` branch (`:311-312`; `test_api_vlans.py:142`). */

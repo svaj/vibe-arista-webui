@@ -167,7 +167,9 @@ describe('VlansResource reads — vlans.py:91-113 plus the DR-030 read budget', 
   })
 
   it('a state the docs do not name is a parse failure, never a guessed active (vlans.py:41-43)', async () => {
-    await expectError(() => vlansFor(textOf(['vlan 20', '   state banana', 'end'])).getAll(), /unexpected state 'banana' in 'vlan 20'/)
+    const thrown = await outcome(() => vlansFor(textOf(['vlan 20', '   state banana', 'end'])).getAll())
+    expect(thrown).toBeInstanceOf(ConfigParseError)
+    expect((thrown as Error).message).toMatch(/unexpected state 'banana' in 'vlan 20'/)
   })
 
   it('an unknown id answers undefined, the half of pyeapi get that this client keeps (vlans.py:105-106)', async () => {
@@ -212,8 +214,15 @@ describe('VlansResource range forms — vlans.py:187-191 and divergence 2', () =
   })
 
   it('a header that is a malformed id list is reported, not keyed (probe: pyeapi answers the key 1,)', async () => {
-    await expectError(() => vlansFor(textOf(['vlan 1,', '   name trailing-comma', '   state active', 'end'])).getAll(), /cannot enumerate the VLAN ids in 'vlan 1,'/)
-    await expectError(() => vlansFor(textOf(['vlan 1-2-3', 'end'])).getAll(), /cannot enumerate the VLAN ids in 'vlan 1-2-3'/)
+    // Both spellings are inside upstream's own `[\d,-]+` charset (`vlans.py:187`) and outside the grammar
+    // this client can enumerate, so both are a ConfigParseError naming the section — never a key invented
+    // from device text, and never `expandRange`'s own error (`config/ranges.ts:95-98`), which used to
+    // escape this module for the `1-2-3` shape.
+    for (const header of ['vlan 1,', 'vlan 1-2-3']) {
+      const thrown = await outcome(() => vlansFor(textOf([header, '   name trailing-comma', '   state active', 'end'])).getAll())
+      expect(thrown, header).toBeInstanceOf(ConfigParseError)
+      expect((thrown as Error).message).toContain(`cannot enumerate the VLAN ids in '${header}'`)
+    }
   })
 
   it('a run that cannot be expanded safely is reported rather than looped through', async () => {
@@ -377,7 +386,14 @@ describe('VlansResource name and state verbs — vlans.py:248-284', () => {
       [undefined, /expected a string VLAN name/],
     ]
     for (const [value, message] of illegal) {
-      await expectError(() => vlans.setVlanName(10, value as string), new RegExp(`invalid vlan name . ${message.source}`))
+      // M8's pattern for the same guard family (`system.test.ts:355-359`): pin the class, pin the `refuse`
+      // prefix, then pin the reason. The rejected value is rendered by `pythonRepr` (pyeapi's `%r`), so an
+      // empty string arrives in the message as the two characters `''` and a one-character wildcard in the
+      // old pattern could never match it.
+      const thrown = await outcome(() => vlans.setVlanName(10, value as string))
+      expect(thrown, `setVlanName(${String(value)})`).toBeInstanceOf(NotSupportedError)
+      expect((thrown as Error).message).toContain('invalid vlan name')
+      expect((thrown as Error).message).toMatch(message)
     }
     expect(transport.sent()).toEqual([])
     // Probe: upstream sends whatever arrives — `set_name(30, None)` answers True and sends `no name`
@@ -414,7 +430,13 @@ describe('VlansResource name and state verbs — vlans.py:248-284', () => {
     await expectError(() => vlans.setVlanState(20, 'banana' as never), /invalid vlan state 'banana' — expected one of active \/ suspend/)
     // Probe: `set_state(20)` with no value sends the deprecated `no state` (abstract.py:160-161, DR-037);
     // that intent is `unsetVlanState` here, and an omitted argument never reaches the device.
-    await expectError(() => vlans.setVlanState(20, undefined as never), /invalid vlan state undefined/)
+    const thrown = await outcome(() => vlans.setVlanState(20, undefined as never))
+    expect(thrown).toBeInstanceOf(NotSupportedError)
+    // The rejected argument is named in `pythonRepr`, which renders both `undefined` and `null` as `None`
+    // (`internal/wire.ts:219`) — the rendering `validators.test.ts:73-74` already pins for the sibling
+    // guard (`invalid vlan None —`). The JS word `undefined` never appears in any message this client
+    // produces, so the old expectation was wrong, not the guard.
+    expect((thrown as Error).message).toMatch(/invalid vlan state None — expected one of/)
     expect(transport.sent()).toEqual([])
   })
 
@@ -460,7 +482,11 @@ describe('VlansResource trunk groups — vlans.py:286-358 and DR-030', () => {
     const transport = configTransport(LAB_CONFIG)
     transport.replies(writeKey(['vlan 20', 'trunk group green', 'no trunk group blue']), [{}, {}, {}, {}, {}])
     const vlans = new Node(transport).vlans
-    await vlans.setTrunkGroups(20, ['red', 'green', 'blue', 'green'])
+    // The device has `red, blue`; the caller wants `red, green`. So exactly one add and one remove, both in
+    // one transaction — and the caller's repeated `green` must not become two `trunk group green` lines
+    // (dedupe is ours; upstream iterates a `set`, `:319`). A caller list that already contains `blue`
+    // changes nothing at all, which is the next-but-one test below.
+    await vlans.setTrunkGroups(20, ['red', 'green', 'green'])
     expect(transport.sent().map((cmds) => cmds.map(String))).toEqual([
       ['enable', 'show running-config all'],
       ['enable', 'configure terminal', 'vlan 20', 'trunk group green', 'no trunk group blue'],
@@ -514,6 +540,9 @@ describe('VlansResource trunk groups — vlans.py:286-358 and DR-030', () => {
     transport
       .replies(writeKey(['vlan 20', 'trunk group red']), [{}, {}, {}, {}])
       .replies(writeKey(['vlan 20', 'no trunk group red']), [{}, {}, {}, {}])
+      // Every request needs its own script entry (`mock-transport.ts:83-90` matches a joined command list,
+      // never a prefix): the third verb below is a different batch, so it needs its own answer.
+      .replies(writeKey(['vlan 20', 'trunk group brand-new']), [{}, {}, {}, {}])
     const vlans = new Node(transport).vlans
     await vlans.addTrunkGroup(20, 'red')
     await vlans.removeTrunkGroup(20, 'red')
@@ -542,7 +571,9 @@ describe('VlansResource trunk groups — vlans.py:286-358 and DR-030', () => {
   it('group names are validated before the read, so a bad call sends and reads nothing', async () => {
     const transport = configTransport(LAB_CONFIG)
     const vlans = new Node(transport).vlans
-    for (const bad of ['', '   ', 'red blue', 5, undefined]) {
+    // BEL is not `\s`, so a control character reaches the third guard rather than the single-token one —
+    // the same reason `command-builder.ts` refuses a value with a line boundary (row 74).
+    for (const bad of ['', '   ', 'red blue', 'red\x07blue', 5, undefined]) {
       await expectError(() => vlans.setTrunkGroups(20, [bad as string]), /expected a single token|invalid .* trunk group name/)
       await expectError(() => vlans.addTrunkGroup(20, bad as string), /invalid addTrunkGroup trunk group name/)
       await expectError(() => vlans.removeTrunkGroup(20, bad as string), /invalid removeTrunkGroup trunk group name/)
@@ -563,21 +594,36 @@ describe('VlansResource trunk groups — vlans.py:286-358 and DR-030', () => {
     // pyeapi answers False and parks the exception on connection.error (`abstract.py:117-127`, DR-005).
   })
 
-  it('the module is reachable the documented way and works on a startup-config read too', async () => {
-    const transport = mockTransport().replies('enable\nshow startup-config', [{}, { output: textOf(['vlan 40', '   name fourty', 'end']) }])
+  it('the module is reachable the documented way and reads the source the base offers', async () => {
+    const transport = mockTransport().replies('enable\nshow running-config all', [{}, { output: textOf(['vlan 40', '   name fourty', 'end']) }])
     const vlans = new Node(transport).vlans
     expect(vlans).toBeInstanceOf(VlansResource)
     const entry = await vlans.get(40)
     expect(entry?.name).toBe('fourty')
+    expect(transport.sent().map((cmds) => cmds.map(String))).toEqual([['enable', 'show running-config all']])
+    // The collection verbs take no config-source option — `EntityCollection.get(name)` is declared that way
+    // at `base.ts:227` — so `node.vlans` always reads the running-config, which is what DR-030's read budget
+    // assumes. The startup-config seam lives one level up, on `ResourceBase.configSections`
+    // (`base.ts:114`, resolving `{ config: 'startup-config' }` at `base.ts:105`, pinned for the base itself
+    // at `base.test.ts:216-222`), and this asserts it reaches the same section text without inventing a
+    // verb option the abstract class does not declare.
+    const startup = mockTransport().replies('enable\nshow startup-config', [{}, { output: textOf(['vlan 40', '   name fourty', 'end']) }])
+    // `end` is an indent-0 line, so the chunker hands it out as a section key like any other command
+    // (`config/chunk.ts`); the VLAN grammar then ignores it, which is what the read above proves.
+    expect([...(await new Node(startup).vlans.configSections({ config: 'startup-config' })).keys()]).toEqual(['vlan 40', 'end'])
+    expect(startup.sent()).toEqual([['enable', 'show startup-config']])
   })
 })
 
 describe('VlansResource cache seam — DR-026 invalidation on write (command-layer.ts)', () => {
   it('a write drops the memo, so the next read costs one more request and sees fresh text', async () => {
-    const transport = configTransport(LAB_CONFIG)
-    transport
+    // `repliesOnce` for the reads: `MockTransport.script.find` (`mock-transport.ts:242`) takes the first
+    // unconsumed match, and a non-once entry would answer both reads with the same text — making the
+    // "sees fresh text" half of this test unmeasurable, not failed.
+    const transport = mockTransport()
+      .repliesOnce('enable\nshow running-config all', [{}, { output: LAB_CONFIG }])
       .replies('enable\nconfigure terminal\nvlan 20\nname NEW', [{}, {}, {}, {}])
-      .replies('enable\nshow running-config all', [{}, { output: textOf(['vlan 20', '   name NEW', 'end']) }])
+      .repliesOnce('enable\nshow running-config all', [{}, { output: textOf(['vlan 20', '   name NEW', 'end']) }])
     const vlans = new Node(transport).vlans
     expect((await vlans.get(20))?.name).toBe('PROD')
     await vlans.setVlanName(20, 'NEW')

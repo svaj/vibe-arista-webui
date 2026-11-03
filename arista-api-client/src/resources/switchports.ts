@@ -30,8 +30,8 @@
  * |---|---|
  * | `Switchports(EntityCollection)` (`:46`) | {@link SwitchportsResource} extends `EntityCollection<Switchport, string, SwitchportAttrs>` (`base.ts:217`) |
  * | `get` (`:57-89`): `get_block('interface %s')` (`:79`), `if 'no switchport\n' in config: return` (`:80-81`), then `dict(name=name)` (`:83`) plus five `_parse_*` merges (`:84-88`) | {@link switchportsFromSections} + {@link SwitchportsResource.get}; negation is an exact command line, and every parse is one keyword pass over the block body |
- * | `_parse_mode` (`:91-103`): `re.search(r'switchport mode (\w+)', config, re.M)` then `value.group(1)` (`:102-103`) | {@link getSwitchportFields} — `findValue(body, 'switchport mode')`, whole remainder kept (divergence 3) |
- * | `_parse_trunk_groups` (`:105-116`): `re.findall(r'switchport trunk group ([^\s]+)', config, re.M)` (`:115`) | `findAllValues(body, 'switchport trunk group')`; single-token names are enforced on the way **out** ({@link assertTrunkGroupName}) |
+ * | `_parse_mode` (`:91-103`): `re.search(r'switchport mode (\w+)', config, re.M)` then `value.group(1)` (`:102-103`) | {@link getSwitchportFields} — `valueAfterKeyword(body, 'switchport mode')` (`config-block.ts`), whole remainder kept (divergence 3) |
+ * | `_parse_trunk_groups` (`:105-116`): `re.findall(r'switchport trunk group ([^\s]+)', config, re.M)` (`:115`) | `valuesAfterKeyword(body, 'switchport trunk group')`; single-token names are enforced on the way **out** ({@link assertTrunkGroupName}) |
  * | `_parse_access_vlan` (`:118-129`): `switchport access vlan (\d+)`, `… if value else None` (`:128-129`) | `accessVlan?: number` — the one field upstream tolerates when absent, and the one whose **tail** it silently drops (divergence 4) |
  * | `_parse_trunk_native_vlan` (`:131-143`) and `_parse_trunk_allowed_vlans` (`:145-157`): `match.group(1)` with no guard (`:143`, `:157`) | optional fields; absence is a field answer, not a crash (divergence 2) |
  * | `getall` (`:159-176`): `interfaces_re = re.compile(r'(?<=^interface\s)([Et|Po][^.\s]+)$', re.M)` (`:169`), then `self.get(name)` per hit and `if interface:` (`:172-175`) | one pass over the chunked document's indent-0 keys, **one** read (DR-030), kind-checked name (divergence 5) |
@@ -169,8 +169,9 @@
 
 import { ConfigParseError, NotFoundError, NotSupportedError } from '../errors'
 import { pythonRepr } from '../internal/wire'
-import { collapseRangeToString, expandRange, sortedRangeValues } from '../config/ranges'
-import { findAllValues, findValue, parseBlock } from '../config/text'
+import { collapseRangeToString, sortedRangeValues } from '../config/ranges'
+import { parseBlock } from '../config/text'
+import { valueAfterKeyword, valuesAfterKeyword } from './config-block'
 import { EntityCollection } from './base'
 import { assertInterfaceName, assertVlanId, isVlanId } from './validators'
 import type { ConfigBlock } from '../config/text'
@@ -288,11 +289,11 @@ type SwitchportFields = {
  */
 function getSwitchportFields(block: ConfigBlock): SwitchportFields {
   return {
-    mode: findValue(block.body, MODE_KEYWORD),
-    accessVlan: findValue(block.body, ACCESS_VLAN_KEYWORD),
-    trunkNativeVlan: findValue(block.body, TRUNK_NATIVE_VLAN_KEYWORD),
-    trunkAllowedVlans: findValue(block.body, TRUNK_ALLOWED_VLAN_KEYWORD),
-    trunkGroups: findAllValues(block.body, TRUNK_GROUP_KEYWORD),
+    mode: valueAfterKeyword(block.body, MODE_KEYWORD),
+    accessVlan: valueAfterKeyword(block.body, ACCESS_VLAN_KEYWORD),
+    trunkNativeVlan: valueAfterKeyword(block.body, TRUNK_NATIVE_VLAN_KEYWORD),
+    trunkAllowedVlans: valueAfterKeyword(block.body, TRUNK_ALLOWED_VLAN_KEYWORD),
+    trunkGroups: valuesAfterKeyword(block.body, TRUNK_GROUP_KEYWORD),
   }
 }
 
@@ -370,7 +371,9 @@ function hasControlCharacter(value: string): boolean {
 }
 
 /** An allowed-vlan list written as `id` / `id-id` tokens separated by commas. */
-const VLAN_ID_LIST = /^\d+(?:[-,]\d+)*$/u
+const VLAN_ID_LIST = /^\d+(?:-\d+)?(?:,\d+(?:-\d+)?)*$/u
+/** One enumerated run inside such a list. */
+const VLAN_RUN = /^(\d+)-(\d+)$/u
 /**
  * The loose "looks like an id list" shape: only digits, commas and dashes. A value inside it but outside
  * {@link VLAN_ID_LIST} (`1,`, `1-`, `1-2-3`) is a malformed list rather than one of the keyword forms, and
@@ -416,10 +419,17 @@ function allowedVlansValueOf(value: unknown): string {
     refuse('switchport trunk allowed vlan', value, 'that looks like an id list but is not one: expected ids separated by commas with runs written start-end. pyeapi would interpolate it as-is (api/switchports.py:340-342) and its range helper quietly corrupts the same shape (config/ranges.ts, MIGRATION.md §5 row 47 — deliberately not fixed here)')
   }
   if (VLAN_ID_LIST.test(value)) {
-    for (const member of expandRange(value)) {
-      const id = Number(member)
-      if (!isVlanId(id)) {
-        refuse('switchport trunk allowed vlan', value, `the VLAN id ${member} in that list is outside 1..4094 (the bound pyeapi itself uses at api/vlans.py:78; assertVlanId, validators.ts:91)`)
+    // Token by token rather than member by member: `expandRange` would materialise every id in a run, and a
+    // list like `1-999999999` is a caller typo, not something worth a billion pushes for a client-side
+    // "is this in range" answer. Same bounded-work rule `vlans.ts` states for the read side (divergence 8
+    // there, DR-032 for the range itself), applied here to the write side.
+    for (const token of value.split(',')) {
+      const run = VLAN_RUN.exec(token)
+      const endpoints = run === null || run[1] === undefined || run[2] === undefined ? [token] : [run[1], run[2]]
+      for (const endpoint of endpoints) {
+        if (!isVlanId(Number(endpoint))) {
+          refuse('switchport trunk allowed vlan', value, `the VLAN id ${endpoint} in that list is outside 1..4094 (the bound pyeapi itself uses at api/vlans.py:78; assertVlanId, validators.ts:91)`)
+        }
       }
     }
   }
@@ -692,7 +702,12 @@ export class SwitchportsResource extends EntityCollection<Switchport, string, Sw
     if (adds.length === 0 && removes.length === 0) return
     await this.configureInterface(name, [
       ...adds.map((group) => this.commandBuilder(TRUNK_GROUP_KEYWORD, { value: group })),
-      ...removes.map((group) => this.commandBuilder(TRUNK_GROUP_KEYWORD, { value: group, mode: 'no' })),
+      // A negation cannot carry the name through `commandBuilder`: `{ mode: 'no' }` is pyeapi's
+      // `disable=True` arm and returns `no %s` with no value at all (`abstract.py:154-155`, pinned in
+      // `command-builder.ts`'s table). Upstream's `remove_trunk_group` formats
+      // `'no switchport trunk group {}'.format(name)` without `command_builder` (`:402`), and
+      // `test_api_switchports.py:191`/`:205` pin the named form — so the name belongs in the stem.
+      ...removes.map((group) => this.commandBuilder(`${TRUNK_GROUP_KEYWORD} ${group}`, { mode: 'no' })),
     ])
   }
 
@@ -707,7 +722,7 @@ export class SwitchportsResource extends EntityCollection<Switchport, string, Sw
   async removeTrunkGroup(name: string, group: string): Promise<void> {
     assertSwitchportName('removeTrunkGroup', name)
     assertTrunkGroupName('removeTrunkGroup', group)
-    await this.configureInterface(name, [this.commandBuilder(TRUNK_GROUP_KEYWORD, { value: group, mode: 'no' })])
+    await this.configureInterface(name, [this.commandBuilder(`${TRUNK_GROUP_KEYWORD} ${group}`, { mode: 'no' })])
   }
 
   /** `no switchport trunk group` — pyeapi's `set_trunk_groups(disable=True)` branch (`:361-362`; `test_api_switchports.py:177`). */
