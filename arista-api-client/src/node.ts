@@ -12,10 +12,14 @@
  *    HTTP only — 4.28 has no 8443 listener, so `DEFAULT_HTTPS_LOCAL_PORT` is dropped, DR-014), each
  *    requiring `allowLocalUnauthenticated: true` and printing the DR-014 warning (DR-008).
  *
- * Still ahead: the on-disk config-session journal M5 (#7 / DR-022), the resource layer M8-M11 and the
- * live/recorded suite M12 (#14). What has landed here is the command layer (M4, #6 — `Node` lives in
- * `src/command-layer.ts`) and the profile factories M3 (#5) below, which is where a `Node` over
- * `kind: 'session'`, `kind: 'unix'` or a name from a real `eapi.conf` can be built.
+ * Still ahead: the resource modules M8-M10 (#10-#12) and the live/recorded suite M12 (#14). Shipped
+ * since the milestone that planned them: the command layer (M4, #6) in `src/command-layer.ts`, the
+ * config-text engine (M6, #8) in `src/config/`, the connection-profile factories M3 (#5) - which is
+ * where a `Node` over `kind: 'session'`, `kind: 'unix'` or a name from a real `eapi.conf` gets built -
+ * and M5's (#7) config sessions (`src/config-session.ts`), whose **on-disk recovery journal lives
+ * only here** (DR-002/DR-022): `FileSessionJournal` at `SESSION_JOURNAL_PATH`, which no module
+ * reachable from `src/index.ts` may import - `src/browser-safety.test.ts` and `vite.config.ts` both
+ * fail if one ever does.
  *
  * Requires Node >= 20 (`engines`) because `fetch` must be global.
  */
@@ -53,6 +57,24 @@ export { fingerprintAlgorithm, normalizeFingerprint, resolveTlsConnect } from '.
 export type { NodeTlsConnect, ResolvedTlsMaterial, TlsMode, TlsTarget } from './transports/node-tls'
 export { assertCleartextAllowed, assertLocalOptIn, assertNoCredentials } from './transports/local'
 export { wantsNodeTls } from './transports/create'
+
+/**
+ * The M5 (#7) recovery journal, Node only (DR-002/DR-022): `~/.config/arista-eapi/sessions.json`
+ * (XDG-aware, DR-047's path) holds the name/endpoint/start-time of every session this profile opened, so
+ * `node.recoverOrphans({ journal })` can still identify an orphan after the process that made it died.
+ * Pass one to `node.configSession({ journal })`; a browser passes
+ * `createWebStorageJournal(window.localStorage)` from the `.` entry instead. Never contains a password
+ * (DR-011 — the writer re-serialises from an allow-list and refuses secret key names).
+ */
+export {
+  defaultSessionJournal,
+  FileSessionJournal,
+  SESSION_JOURNAL_DIR_NAME,
+  SESSION_JOURNAL_FILE_NAME,
+  SESSION_JOURNAL_PATH,
+  sessionJournalPath,
+} from './node-session-journal'
+export type { SessionJournalPathOptions } from './node-session-journal'
 
 /** The browser-safe surface, so `./node` is a strict superset of `.` (one import per app is enough). */
 export * from './index'

@@ -247,7 +247,11 @@ function walk(entry: string): GraphWalk {
   }
 }
 
-/** The Node-only transports, by source path — none of these may appear in the browser graph. */
+/**
+ * The Node-only transports, by source path — none of these may appear in the browser graph. M5 (#7)
+ * added `node-session-journal.ts` to the same rule: a config session's recovery journal is a file, so it
+ * lives behind `./node` only, while the session logic itself (`config-session.ts`) stays browser-safe.
+ */
 const NODE_ONLY_MODULES: readonly string[] = [
   'transports/node-create.ts',
   'transports/node-https.ts',
@@ -257,6 +261,7 @@ const NODE_ONLY_MODULES: readonly string[] = [
   'transports/node-tls.ts',
   'transports/node-unix.ts',
   'transports/node-http-local.ts',
+  'node-session-journal.ts',
 ]
 
 describe('DR-002 module graph of the browser entry', () => {
@@ -339,6 +344,42 @@ describe('what each entry point exports', () => {
     }
     for (const symbol of nodeOnlySymbols) {
       expect(typeof (nodeEntry as unknown as Record<string, unknown>)[symbol], `src/node.ts must export ${symbol}`).toBe('function')
+    }
+  })
+})
+
+describe('the M5 (#7) session journal stays behind ./node while the session surface stays shared (DR-002/DR-022)', () => {
+  const browserSurface = browserEntry as unknown as Record<string, unknown>
+  const nodeSurface = nodeEntry as unknown as Record<string, unknown>
+
+  it('exports no journal path and no file journal from the browser entry', () => {
+    for (const symbol of ['SESSION_JOURNAL_PATH', 'SESSION_JOURNAL_DIR_NAME', 'SESSION_JOURNAL_FILE_NAME', 'FileSessionJournal', 'sessionJournalPath', 'defaultSessionJournal']) {
+      expect(browserSurface[symbol], `src/index.ts must not export ${symbol}`).toBeUndefined()
+    }
+  })
+
+  it('exports them from the Node entry, where ./node consumers get one default journal for free', () => {
+    expect(typeof nodeSurface.FileSessionJournal, './node must export FileSessionJournal').toBe('function')
+    expect(typeof nodeSurface.SESSION_JOURNAL_PATH, './node must export SESSION_JOURNAL_PATH').toBe('string')
+    expect(nodeSurface.SESSION_JOURNAL_PATH as string).toMatch(/arista-eapi[\\/]sessions\.json$/u)
+  })
+
+  it('does not even spell the journal file name inside a module the browser entry can reach', () => {
+    // A bundle-level tripwire, not a style rule: the leak this guards is a path string surviving
+    // tree-shaking into a browser chunk, which is how a hidden filesystem assumption starts.
+    const graph = walk(fileURLToPath(new URL('./index.ts', import.meta.url)))
+    const offenders = graph.modules
+      .filter((module) => readFileSync(`${SRC_DIR}/${module}`, 'utf8').includes('sessions.json'))
+      .sort()
+    expect(offenders, 'the journal path may only be named behind src/node.ts').toEqual([])
+  })
+
+  it('ships config sessions from both entries — a browser can drive a session, only the journal is Node-only', () => {
+    for (const entry of [browserEntry, nodeEntry] as const) {
+      const surface = entry as unknown as Record<string, unknown>
+      for (const symbol of ['ConfigSession', 'createConfigSession', 'createWebStorageJournal', 'generateSessionName', 'parseConfigurationSessions']) {
+        expect(typeof surface[symbol], `both entries must export ${symbol}`).toBe('function')
+      }
     }
   })
 })
