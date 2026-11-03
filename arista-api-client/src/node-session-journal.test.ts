@@ -192,7 +192,10 @@ describe('DR-011: a journal file must never hold a secret', () => {
   })
 
   it('end to end: a Node that holds an enable password writes a journal file that does not', async () => {
-    const transport = mockTransport({ address: 'https://sw1:443/command-api' }).replies('enable\nconfigure session ui-x\ncommit', ack(3))
+    // The scripted batch spells the opener exactly as the session sends it: a `description` rides on every
+    // re-attach (`SessionCli.py:268-282`), so `commit()`'s request carries it too.
+    const described = 'enable\nconfigure session ui-x description "rotate the switch password"\ncommit'
+    const transport = mockTransport({ address: 'https://sw1:443/command-api' }).replies(described, ack(3))
     const journal = new FileSessionJournal(join(dir, SESSION_JOURNAL_FILE_NAME))
     const node = new Node(transport, { enablePassword: 'sup3rsecret' })
     const session = await node.configSession({ name: 'ui-x', journal, description: 'rotate the switch password' })
@@ -201,6 +204,10 @@ describe('DR-011: a journal file must never hold a secret', () => {
     expect(text).toMatch(/rotate the switch password/u)
     expect(text).not.toMatch(/"password"|enablePassword/u)
     await session.commit()
+    // A committed session is forgotten: the journal must not report it as a pending orphan afterwards.
+    // (The commit's own batch is asserted in `config-session.test.ts` — deliberately not spelled out here,
+    // because with an `enablePassword` set the wire's first command is `{cmd:'enable', input:…}` and
+    // `sent()` is un-redacted cleartext: DR-011 applies to test artifacts too.)
     expect(await journal.read()).toEqual([])
   })
 })

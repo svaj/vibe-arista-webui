@@ -141,6 +141,13 @@ describe('configSession(): naming and laziness (DR-022, DR-047 — §5 row 54)',
     expect(generateSessionName('unix:/var/run/command-api.sock')).toMatch(/^ui-var\.run\.command-api\.sock-p\d+-[0-9a-f]{8}$/u)
     expect(generateSessionName('mock://device')).toMatch(/^ui-device-p\d+-[0-9a-f]{8}$/u)
     expect(generateSessionName('http://127.0.0.1:8080/command-api')).toMatch(/^ui-127\.0\.0\.1-p\d+-[0-9a-f]{8}$/u)
+    // An address with no host at all still gets a name — `device` rather than `ui--p123-abcd1234`, which
+    // would put two dashes where the prefix ends and silently stop matching `recoverOrphans()`'s prefix filter.
+    expect(generateSessionName('')).toMatch(/^ui-device-p\d+-[0-9a-f]{8}$/u)
+    expect(generateSessionName('https://[::1]:443/command-api')).toMatch(/^ui-[a-z0-9.*_-]+-p\d+-[0-9a-f]{8}$/u)
+    for (const endpoint of ['https://sw1.lan:443/command-api', 'https://sw2.lan:443/command-api']) {
+      expect(generateSessionName(endpoint)).toMatch(/^ui-sw[12]\.lan-p/u)
+    }
   })
 
   it('never leaks credentials or a path into a generated name', () => {
@@ -167,14 +174,16 @@ describe('configSession(): naming and laziness (DR-022, DR-047 — §5 row 54)',
   })
 
   it('description: pyeapi has none; the CLI form is rendered with the quoting rules this port owns (SessionCli.py:269, :218-221)', async () => {
-    const t = scripted().replies('enable\nconfigure session ui-x description "webui 42f0"', ack(3))
+    // The script keys the batch the session actually sends: `configure session <name> description "…"` is
+    // cmds[1], never a request of its own, because `abort()` re-attaches with the same opener (`client.py:687`).
+    const t = scripted().replies('enable\nconfigure session ui-x description "webui 42f0"\nabort', ack(3))
     const session = await nodeFor(t).configSession({ name: 'ui-x', description: 'webui 42f0' })
     await session.abort()
     expect(t.sent()).toEqual([['enable', 'configure session ui-x description "webui 42f0"', 'abort']])
   })
 
   it('a quote inside a description is escaped, not terminated', async () => {
-    const t = scripted().replies('enable\nconfigure session ui-x description "say \\"hi\\""', ack(3))
+    const t = scripted().replies('enable\nconfigure session ui-x description "say \\"hi\\""\nabort', ack(3))
     const session = await nodeFor(t).configSession({ name: 'ui-x', description: 'say "hi"' })
     await session.abort()
     expect(t.sent()[0]).toEqual(['enable', 'configure session ui-x description "say \\"hi\\""', 'abort'])
@@ -572,22 +581,28 @@ describe('DR-019 in the session path: a rejected command is never re-sent', () =
     expect(t.callCount()).toBe(1)
   })
 
-  it('the 1003 text repair is off by default inside a session: re-issuing the whole changeset would run it twice', async () => {
-    const unconvertedRequest = 'enable\nconfigure session ui-x\nshow session-config all'
-    const t = scripted().rejects(unconvertedRequest, {
+  it('the 1003 text repair is off inside a session, even when a caller asks: re-issuing the whole changeset would run it twice', async () => {
+    const unconverted = {
       code: EapiErrorCode.COMMAND_UNCONVERTED,
       message: "CLI command 3 of 4 'show session-config all' failed: command has not been converted",
       data: [{}, {}, { errors: ['command has not been converted'] }],
-    })
+    }
+    const t = scripted()
+      .rejects('enable\nconfigure session ui-x\nshow session-config all', unconverted)
+      .rejects('enable\nconfigure session ui-y\nshow session-config all', unconverted)
     const session = await nodeFor(t).configSession({ name: 'ui-x' })
     expect(await rejection(session.run(['show session-config all']))).toBeInstanceOf(CommandError)
     expect(t.callCount()).toBe(1)
-    // A caller who really wants the repair pays for it visibly: the second request is the retry.
+    // Asking for the repair buys nothing here: `send()` forces `tolerateErrors: false` *after* the caller's
+    // options, because `sendRequest` repairs a 1003 by re-issuing the same command list
+    // (internal/wire.ts:521-566) and inside a session that list is `enable` + the opener + the staged
+    // changeset — so a repair would apply every command the device already ran a second time. One request,
+    // still `format: 'json'`; the honest text read is `diff()`, which sends one read command.
     const other = await nodeFor(t).configSession({ name: 'ui-y' })
     expect(await rejection(other.run(['show session-config all'], { tolerateErrors: true }))).toBeInstanceOf(CommandError)
-    expect(t.callCount()).toBe(3)
+    expect(t.callCount()).toBe(2)
     expect(t.sent()[1]).toEqual(['enable', 'configure session ui-y', 'show session-config all'])
-    expect(t.sent()[2]).toEqual(['enable', 'configure session ui-y', 'show session-config all'])
+    expect(t.bodies().every((body) => body.params.format === 'json')).toBe(true)
   })
 
   it('readOnly is forced off for a session batch even when a caller asks, so a ConnectError is not retried', async () => {
@@ -631,7 +646,10 @@ describe('listSessions / abortSession / recoverOrphans (DR-023 — §5 rows 59, 
   })
 
   it('a reply without a sessions object is a ProtocolError, never an empty table: "no pending sessions" would be a lie', async () => {
-    const t = scripted().replies('enable\nshow configuration sessions', [{ hostname: 'sw1' }])
+    // One reply per command, as always: `enable` plus `show configuration sessions`. The device answered
+    // successfully but with an object that has no `sessions` member at all — the model
+    // (ConfigSessionModel.py:36-41) always carries it, so this is a protocol failure, not an empty device.
+    const t = scripted().replies('enable\nshow configuration sessions', [{ cmd: 'enable' }, { hostname: 'sw1', maxSavedSessions: 10, maxOpenSessions: 5 }])
     const failure = await rejection(nodeFor(t).listSessions())
     expect(failure).toBeInstanceOf(ProtocolError)
     expect((failure as InstanceType<typeof ProtocolError>).message).toMatch(/no 'sessions' object/u)
@@ -696,7 +714,14 @@ describe('listSessions / abortSession / recoverOrphans (DR-023 — §5 rows 59, 
     expect(outcome.skipped.find((candidate) => candidate.name === 'ui-sw1-lan-p1004-ffff6666')?.reason).toMatch(/commit timer revert is armed until 2026-11-03T02:00:00/u)
     expect(outcome.skipped.find((candidate) => candidate.name === '2026-11-01-ui-sw1-lan-p1000-eeee5555')?.reason).toMatch(/not matched by the "ui-" prefix/u)
     expect(outcome.skipped.find((candidate) => candidate.name === 'ui-sw1-lan-p1003-cccc3333')?.reason).toMatch(/"conflicted"/u)
-    expect(outcome.remaining.map((session) => session.name)).toEqual(['ui-sw1-lan-p1004-ffff6666'])
+    // `remaining` is the device's answer, foreign names included: recovery only declines to *act* on them,
+    // and the `skipped` reasons are what explain that. A UI clearing a config lock needs the switch's truth,
+    // not a list filtered to what this call considers its own sessions (DR-023: the device is authoritative).
+    expect(outcome.remaining.map((session) => session.name)).toEqual([
+      'crash-recovery-01',
+      'maintenance-window',
+      'ui-sw1-lan-p1004-ffff6666',
+    ])
     expect(outcome.reported).toHaveLength(SESSION_NAMES.length)
     expect(t.callCount()).toBe(4)
   })
@@ -951,10 +976,12 @@ describe('durability and rollback verbs (DR-024 — §5 rows 61, 63)', () => {
 
 describe('changeset validation mode (PLAN §M5 box 8)', () => {
   it('one batch with stopOnError false and includeErrorDetail true — the pair DR-016 opened on the wire', async () => {
+    // One reply per command, whole-batch order: `enable`, the session opener, then the three caller
+    // commands. `vlan 20` answers the empty config-mode object, `vlan 4095` is the one the device refused.
     const t = scripted().replies('enable\nconfigure session ui-x\nvlan 20\nname PROD\nvlan 4095', [
       {},
       {},
-      { name: 'PROD' },
+      {},
       { name: 'PROD' },
       { errors: ['invalid command'] },
     ])
@@ -1000,8 +1027,16 @@ describe('changeset validation mode (PLAN §M5 box 8)', () => {
       data: [{}, { errors: ['invalid command'] }],
     })
     const session = await nodeFor(t).configSession({ name: 'ui-x' })
+    // `configSession()` is lazy (§5 row 54), so the rejection of the *opener* is only observable once a
+    // batch has been sent — and that first offer answers as a device failure, not as a `ChangesetOutcome`,
+    // because "the session does not exist" is not the same report as "these commands were refused".
+    expect(await rejection(session.validateChanges(['vlan 20']))).toBeInstanceOf(CommandError)
     expect(session.state).toBe('lost')
+    expect(t.callCount()).toBe(1)
+    // The second offer never reaches the wire: a dead handle is a `SessionError` (DR-048), never the
+    // `{ ok: false, failures: [], staged: [] }` a UI would render as "nothing to review".
     expect(await rejection(session.validateChanges(['vlan 20']))).toBeInstanceOf(SessionError)
+    expect(t.callCount()).toBe(1)
   })
 })
 
