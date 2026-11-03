@@ -59,7 +59,7 @@ describe('expandRange — orderings and boundary cases (PLAN M6 test list)', () 
     // token (the passthrough branch, utils.py:193-194). A wildcard is NOT expanded by pyeapi —
     // it survives untouched, so `expand_range('Ethernet*') -> ['Ethernet*']` identically. This port
     // requires integers so a UI never renders `Ethernet*` as if it were a member list
-    // (MIGRATION.md §5 row 47). pyeapi itself never calls these functions at all (row 45), so the
+    // (MIGRATION.md §5 row 47). pyeapi itself never calls these functions at all (row 53), so the
     // wildcard "support" was dead code even upstream.
     expect(() => expandRange('*')).toThrowError(NotSupportedError)
     expect(() => expandRange('*')).toThrow('expandRange: "*" is not an integer or a range')

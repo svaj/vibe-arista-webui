@@ -188,7 +188,7 @@ describe('section() — option validation and the pyeapi sentinels (no Node on t
     expect(() => section('anything', { config: broken })).toThrowError(ConfigParseError)
     expect(() => getBlock('anything', { config: broken })).toThrowError(ConfigParseError)
     // getBlock only converts NotFoundError: upstream's catch-all `except TypeError` swallowing a
-    // ConfigParseError-shaped failure is exactly what DR-027 removes (rows 44/50).
+    // ConfigParseError-shaped failure is exactly what DR-027 removes (rows 52/50).
   })
 
   it('the DR-026 memo path: {config, cache} chunks the text exactly once across repeated lookups', () => {

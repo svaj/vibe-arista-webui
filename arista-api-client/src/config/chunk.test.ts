@@ -155,7 +155,7 @@ describe('chunkConfig — EOF-terminated blocks', () => {
   it('terminates on EOF only at column 0, matching upstream — and that is a live hazard for code units', () => {
     // The terminator is compared after rstrip ONLY (client.py:743), so `      EOF` never ends the block
     // at indent 0. pyeapi's own code-unit fixture hides the consequence by putting the block last;
-    // here an `interface` section after it is consumed. Preserved for parity (MIGRATION.md §5 row 41)
+    // here an `interface` section after it is consumed. Preserved for parity (MIGRATION.md §5 row 49)
     // and flagged in docs/STATUS.md §3 for the config-text capture to settle.
     const config = 'router general\n   control-functions\n      code unit U\n         body()\n      EOF\ninterface Ethernet1\n   no shutdown\n!\n'
     expect(entries(config)).toEqual([['router general', config]])
@@ -200,7 +200,7 @@ describe('chunkConfig — explicit failure modes', () => {
   it('raises ConfigParseError with pyeapi\'s wording when a body line is shorter than the block indent', () => {
     // Byte-identical to upstream `client.py:723-726` (`{section_key!r}`, `{line!r}` via pythonRepr;
     // the predicate around it is :720-730): a device log and this message can be diffed. Only the
-    // class differs (row 44).
+    // class differs (row 52).
     const config = 'router unsupported-literal\n      free-form body at indent six\n   !\n!\n'
     const expected =
       "Unable to parse section 'router unsupported-literal' at indent 6 due to short line '   !'; " +
@@ -231,7 +231,7 @@ describe('chunkConfig — explicit failure modes', () => {
   it('names the line when a config begins with an indented line, where pyeapi raises KeyError: None', () => {
     // client.py:763 assumes "key is always expected to be set by now"; for a config whose first line is
     // indented it is not, and Python dies with `KeyError: None` — no line, no section, no explanation.
-    // row 43.
+    // row 51.
     expect(() => chunkConfig('   orphan\nsecond\n')).toThrow(ConfigParseError)
     try {
       chunkConfig('   orphan\nsecond\n')

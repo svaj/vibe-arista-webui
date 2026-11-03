@@ -164,7 +164,7 @@ describe('chunkConfig — ordered-entry parity with the committed pyeapi oracle'
     }
 
     it(`${name}: upstream raises ${fixture.error.type} — we raise ConfigParseError with byte-identical text`, () => {
-      // MIGRATION.md §5 row 44: class ours, wording upstream's, so a device log and this message
+      // MIGRATION.md §5 row 52: class ours, wording upstream's, so a device log and this message
       // still diff cleanly. `expect(…).toThrow(string)` is a substring match — assert FULL equality
       // off the caught instance too.
       let thrown: unknown

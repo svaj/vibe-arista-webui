@@ -187,7 +187,7 @@ describe('parseBlock / describeLine — pyeapi has NO equivalent (each api modul
     // pyeapi's resource regexes treat `!` as an ordinary line inside the block (e.g. the vlans
     // NAME_RE at api/vlans.py:58 searches THROUGH it); parseBlock decorates rather than truncates so
     // M7+ can decide. Nothing here is upstream code — parseBlock is a new-shape helper (its lack of
-    // an upstream twin is why rows 42-44 had to re-derive the chunker's contract).
+    // an upstream twin is why rows 50-52 had to re-derive the chunker's contract).
     const block = parseBlock('router bgp 1\n   vrf T\n      !\n   !\n')
     const terminators = block.body.filter((line) => line.token === '!')
     expect(terminators).toHaveLength(2)

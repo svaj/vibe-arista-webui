@@ -5,9 +5,11 @@
  * DR-011 redaction. M2 (#4) adds the browser-capable transports: `FetchTransport` (`https`) and
  * `HttpTransport` (`http`, loopback-gated). M4 (#6) adds the `Node` command layer
  * (`src/command-layer.ts`): `exec` / `show` / `showText` / `configure` / cached configs / device
- * identity. Connection profiles and the option-bag factories (`createNode`, `createConnection`) —
- * i.e. `eapi.conf` lookup and the transport-plus-settings bag — are M3 (#5), so until then a `Node`
- * is built from an explicit `Transport`.
+ * identity. M3 (#5) adds the connection-profile layer and the option-bag factories (`createNode`,
+ * `createConnection`): an INI parser plus a `ProfileStore` here, with profiles supplied by the
+ * application (`createProfiles`) because **this entry has no filesystem** — reading an `eapi.conf`
+ * from disk is `./node` (`src/node-profiles.ts`, DR-038/DR-044). `new Node(createTransport(…))` still
+ * works for callers who want to hold the transport themselves.
  *
  * Two properties are enforced, not just intended:
  *  - no file reachable from this module imports a `node:` built-in — checked by
@@ -84,11 +86,14 @@ export type {
 } from './types/eapi'
 
 // --- transports (M2 #4, DR-002) -------------------------------------------------------------------
-// The two kinds a browser build may construct, plus the contracts M4's `Node` (#6) and the webui hold.
-// The Node-only kinds are *reachable as type names* here (so a profile object can be typed once) but
-// `createTransport` refuses them at runtime with a `NotSupportedError` that names the `./node` import
-// (DR-002/DR-013/DR-014/DR-018) — asserted in `src/browser-safety.test.ts`.
-export { createTransport } from './transports/create'
+// The two kinds a browser build may construct, plus the contracts M4's `Node` (#6), M3's profile
+// bridge and the webui hold. The Node-only kinds are *reachable as type names* here (so a profile
+// object can be typed once) but `createTransport` refuses them at runtime with a `NotSupportedError`
+// that names the `./node` import (DR-002/DR-013/DR-014/DR-018) — asserted in
+// `src/browser-safety.test.ts`, and again one layer up in `src/profiles.test.ts` for profiles.
+import { createTransport } from './transports/create'
+
+export { createTransport }
 export { EAPI_CONTENT_TYPE, FetchTransport, HttpTransport } from './transports/fetch'
 export { basicAuth, authorizationHeader } from './transports/auth'
 export {
@@ -149,44 +154,91 @@ export type {
 } from './command-layer'
 export type { CliVariant, VariantSender } from './internal/variants'
 
+// --- connection profiles (M3 #5, src/profiles.ts, DR-038/DR-044) --------------------------------
+// pyeapi's `Config` / `config_for` / `hosts_for_tag` (`client.py:127-367`) without the file: an INI
+// parser, a typed store, and the profile → M2 transport-options bridge. The **filesystem** half of
+// DR-038 lives in `src/node-profiles.ts` behind `./node`, so nothing reachable from this entry reads
+// `node:fs`, a browser app's profiles come from its own config (`createProfiles`), and neither the
+// implicit `[connection:localhost]` socket profile nor any default host exists here (DR-008).
+export {
+  acceptedTransportNames,
+  CONNECTION_SECTION_PREFIX,
+  createProfiles,
+  DEFAULT_LOCAL_CONNECTION_NAME,
+  DEFAULT_PROFILE_TRANSPORT,
+  normalizeProfile,
+  parseEapiConf,
+  ProfileStore,
+  profileNodeSettings,
+  profileToTransportOptions,
+  type ConnectionProfile,
+  type ParsedEapiConf,
+  type ParseEapiConfOptions,
+  type ProfileEntry,
+  type ProfileFieldValue,
+  type ProfileFields,
+  type ProfileIssue,
+  type ProfileIssueKind,
+  type ProfileRecord,
+  type ProfileTransportOptions,
+} from './profiles'
+
+// --- the `connect()` / `connect_to()` equivalents (M3 #5) ---------------------------------------
+// pyeapi's `connect(transport=…, host=…, return_node=True)` (`client.py:394-461`) and
+// `connect_to(name)` (`client.py:1040-1067`), rebuilt as validated option bags: M1/M2's allow-lists
+// decide which keys exist, `return_node` disappears because the function name says it, and a
+// pyeapi-spelled profile (`transport = socket`, `http_session`, `https_certs`) still resolves to the
+// right kind through `TRANSPORT_ALIASES`.
+//
+// Two forms, one function each:
+//
+// ```ts
+// // explicit connection bag — what M4's `new Node(createTransport(…))` callers already write
+// const node = createNode({ kind: 'https', host: 'sw1.lan', username: 'ui-ro', password: pw })
+// // a profile from application config (DR-038's browser half)
+// const store = createProfiles({ lab: { transport: 'https', host: '10.0.0.30', tags: 'rack-a' } })
+// const fromName = createNode({ profileName: 'lab', store, configDefaults: false })
+// const fromObject = createNode({ profile: store.get('lab')! })
+// ```
+//
+// A profile-*name* form needs an explicit `store` **here**: this entry has no filesystem to fall
+// back to, so `@devhax-heavy-industries/arista-eapi/node` is where `eapi.conf` lookup lives
+// (DR-002/DR-038). `Transport`/`Node` are re-exported above, so `new Node(createTransport(…))` keeps
+// working for callers who want to hold the transport themselves.
+export {
+  connectionFromOptions,
+  connectionFromProfile,
+  nodeFromOptions,
+  nodeFromProfile,
+  profileNotFound,
+  type ConnectionOptions,
+  type NodeFactoryOptions,
+  type ProfileConnectionOptions,
+  type ProfileObjectOptions,
+  type TransportFactory,
+} from './internal/conf-builder'
+import { connectionFromOptions, nodeFromOptions, type NodeFactoryOptions } from './internal/conf-builder'
+// `Node` and `Transport` are re-exported above for consumers, but `export … from` does **not** put a
+// name in this module's own scope, which is why the two factories below used to fail to compile
+// (TS2304/TS2552). They need their own `import type`, and `verbatimModuleSyntax` requires it to be
+// type-only so nothing extra is emitted into the browser bundle.
+import type { Node } from './command-layer'
+import type { Transport } from './transports/contract'
+
 /**
- * Placeholder for the **connection** options `createNode` will take, i.e. how to reach the switch
- * (transport selection, TLS trust, credentials, profile name). M2 (#4) shipped the real shape for a
- * transport ({@link TransportOptions}); the combined bag — those options plus the per-node settings
- * below — is defined by M3 (#5), which owns profiles and the `client.connect()` equivalent
- * (PLAN.md M3: "`createConnection(profile)` and `createNode(profile)`").
- *
- * The per-`Node` behaviour bag is {@link NodeSettings}, and it is not the same thing: it is the second
- * argument of `new Node(transport, settings)` (pyeapi's `Node(connection, **kwargs)`,
- * `client.py:495-507`).
+ * A transport for one EOS endpoint — pyeapi's `connect()`, browser kinds only (`https`, or `http`
+ * with the loopback/`allowInsecureTransport` rule). An unnamed host is refused rather than defaulted
+ * to `localhost` the way `client.py:394` does (MIGRATION.md §5 row 8).
  */
-export interface NodeOptions {
-  /** Host or address of the switch's eAPI endpoint (`POST /command-api`). */
-  readonly host?: string
+export function createConnection(options: NodeFactoryOptions): Transport {
+  return connectionFromOptions(options, createTransport, 'browser')
 }
 
 /**
- * M0 placeholder (#2), still unimplemented after M4 (#6): building a client from *connection options*
- * is pyeapi's `connect(..., return_node=True)`, and PLAN.md assigns that to M3 (#5), together with
- * `eapi.conf` profiles — a profile is where `transport`/`host`/`enablepwd` come from.
- *
- * What M4 did land is the thing this function would return: construct it from an explicit transport
- * in the meantime —
- *
- * ```ts
- * const node = new Node(createTransport({ kind: 'https', host, username, password }), {
- *   configDefaults: true,
- * })
- * ```
- *
- * Its other job, unchanged since M0, is to make the package resolvable and importable by name from
- * `arista-webui` — see `arista-webui/src/eapi-package.test.ts`.
+ * The command layer over one endpoint — pyeapi's `connect(..., return_node=True)`. Nothing has been
+ * sent yet: a `Node` this builds is connected on the first `await`, and every failure that follows is
+ * a typed error carrying `commands` + `requestId` (M2's rule, ARCHITECTURE §4).
  */
-export function createNode(options: NodeOptions = {}): never {
-  throw new Error(
-    `@devhax-heavy-industries/arista-eapi: createNode() is an M0 placeholder (#2) — connection/profile ` +
-      `options land in M3 (#5). The command layer it would hand back exists now (M4, #6): ` +
-      `new Node(createTransport({ kind, … }), { enablePassword, autorefresh, configDefaults }). ` +
-      `Received options: ${JSON.stringify(options)}`,
-  )
+export function createNode(options: NodeFactoryOptions): Node {
+  return nodeFromOptions(options, createTransport, 'browser')
 }

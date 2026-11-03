@@ -10,7 +10,7 @@
  * only callers in the upstream tree are its own unit tests (`test/unit/test_utils.py:51-81`) — so the
  * "which resource drives which range string" contract in PLAN.md is a claim about *this* port's
  * resources (M9 #11, M10 #12), not an upstream behaviour. Verified by grep over the upstream tree;
- * MIGRATION.md §5 row 45.
+ * MIGRATION.md §5 row 53.
  *
  * Deliberate divergences, recorded in MIGRATION.md §5 rows 46-48:
  *  - `collapseRange` accepts a **list** as well as a delimited string. Upstream's docstring says
