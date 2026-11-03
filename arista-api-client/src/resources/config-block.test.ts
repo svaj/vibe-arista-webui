@@ -1,7 +1,7 @@
 /**
  * `parseConfigBlock` — the shared "one section body in, typed record out" shape, M7 (#9).
  * PLAN.md M7 asks for exactly this helper; pyeapi has no twin, which is the divergence
- * (MIGRATION.md §5 row 74): every upstream api module re-runs its own regexes over the raw block it was
+ * (MIGRATION.md §5 row 81): every upstream api module re-runs its own regexes over the raw block it was
  * handed — `vlans.py:57-60` (`VLAN_ID_RE`/`NAME_RE`/`STATE_RE`/`TRUNK_GROUP_RE`), `interfaces.py:65`
  * (`MIN_LINKS_RE`, whose lookbehind hard-codes three spaces of indent), `interfaces.py:206`
  * (`description (.+)$`) — each merged by a `_parse_*` method returning a one-key dict
@@ -43,7 +43,7 @@ const ETHERNET_1 = [
   '!',
 ].join('\n')
 
-describe('parseConfigBlock — PLAN.md M7 (no upstream twin, §5 row 74)', () => {
+describe('parseConfigBlock — PLAN.md M7 (no upstream twin, §5 row 81)', () => {
   it('assembles one field per parser entry, in the order the parsers are declared', () => {
     const parsed = parseConfigBlock(VLAN_20, {
       name: (block) => findValue(block.body, 'name'),

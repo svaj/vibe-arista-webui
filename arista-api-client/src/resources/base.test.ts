@@ -322,7 +322,7 @@ describe('ResourceBase — pyeapi BaseEntity (abstract.py:49-178)', () => {
     })
   })
 
-  describe('configureInterface — abstract.py:166-178, the mutation bug fixed (row 64)', () => {
+  describe('configureInterface — abstract.py:166-178, the mutation bug fixed (row 71)', () => {
     it('wraps the caller list exactly once and never writes through to it', async () => {
       const t = mockTransport()
         .replies('enable\nconfigure terminal\ninterface Ethernet1\nmtu 1500', [{}, {}, {}, {}])
@@ -364,7 +364,7 @@ describe('ResourceBase — pyeapi BaseEntity (abstract.py:49-178)', () => {
 })
 
 describe('EntityCollection — pyeapi EntityCollection (abstract.py:198-224)', () => {
-  it('keys() costs ONE read, and the ids stay numbers (pyeapi returns a dict, this returns a Map — row 71)', async () => {
+  it('keys() costs ONE read, and the ids stay numbers (pyeapi returns a dict, this returns a Map — row 78)', async () => {
     const t = runningTransport()
     const vlans = new ProbeVlans(new Node(t))
     expect(await vlans.keys()).toEqual([1, 20, 30])

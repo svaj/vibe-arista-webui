@@ -15,7 +15,7 @@
  * * `test_make_iterable_from_iterable` (`:33-36`) → `it('returns a copy of an array it was given')` —
  *   and this is where the port **diverges on purpose**: upstream hands back the caller's own object
  *   (`return value`, `:166`), which is the whole cause of the `configure_interface` mutation bug at
- *   `api/abstract.py:176-177`. Ours copies. MIGRATION.md §5 row 64.
+ *   `api/abstract.py:176-177`. Ours copies. MIGRATION.md §5 row 71.
  * * `test_make_iterable_raises_type_error` (`:39-41`) → the `undefined`/`null` cases below, with a
  *   narrower refusal: pyeapi raises on *any* non-`Iterable` (`:163-164`), including `int` and
  *   `object()`, while a `{ cmd, input }` command object is a legitimate single value here (it is a
@@ -46,7 +46,7 @@ describe('toArray — pyeapi utils.make_iterable (utils.py:147-166)', () => {
     expect(toArray(['name PROD', 'trunk group red'])).toEqual(['name PROD', 'trunk group red'])
   })
 
-  it('copies the caller array instead of handing it back (the fix for abstract.py:176-177 — row 64)', () => {
+  it('copies the caller array instead of handing it back (the fix for abstract.py:176-177 — row 71)', () => {
     const caller = ['mtu 1500']
     const result = toArray(caller)
     expect(result).not.toBe(caller)
@@ -74,7 +74,7 @@ describe('toArray — pyeapi utils.make_iterable (utils.py:147-166)', () => {
     }
   })
 
-  it('wraps a plain value rather than testing "is it iterable" (divergence, row 65: pyeapi raises TypeError for int/object)', () => {
+  it('wraps a plain value rather than testing "is it iterable" (divergence, row 72: pyeapi raises TypeError for int/object)', () => {
     // Upstream: `make_iterable(5)` and `make_iterable(object())` both hit the `not isinstance(value,
     // Iterable)` branch at `utils.py:163-164` and raise. This helper is generic over the value type —
     // it normalises "one or many", it does not validate the element. A `5` in a `CommandSpec` position
@@ -84,7 +84,7 @@ describe('toArray — pyeapi utils.make_iterable (utils.py:147-166)', () => {
     expect(toArray(5 as unknown as CommandSpec)).toHaveLength(1)
   })
 
-  it('does NOT spread a Set or a Map (not ported: pyeapi accepts any Iterable, utils.py:162 — row 65)', () => {
+  it('does NOT spread a Set or a Map (not ported: pyeapi accepts any Iterable, utils.py:162 — row 72)', () => {
     // `toArray(new Set(['a','b']))` is one value, not two commands. Guessing "spread it" here would
     // make the same call mean two different things depending on the argument's class, which is the
     // duck typing DR-004 removes. A caller who means the elements calls `Array.from(x)` first.

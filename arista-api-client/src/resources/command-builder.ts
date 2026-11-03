@@ -21,7 +21,7 @@
  * command-builder.test.ts: a `mode` always wins over a leftover `value`, because a resource verb that
  * forwards both would otherwise change what gets written to a switch.
  *
- * Two upstream fall-throughs are refused rather than reproduced (MIGRATION.md §5 row 66):
+ * Two upstream fall-throughs are refused rather than reproduced (MIGRATION.md §5 row 73):
  *  - `value = false` / `value = 0` / `value = ''` — Python's `elif value:` sends the `no` form, so
  *    `set_mtu(0)` becomes `no mtu` and a UI reads back a config the operator never asked for;
  *  - no `mode` and no `value` at all — upstream's deprecated `return 'no %s'`.
@@ -46,7 +46,7 @@ const COMMAND_MODES: readonly CommandMode[] = ['set', 'no', 'default']
  * into a single `CommandSpec` string — pyeapi interpolates blindly (`:157`), so the device would execute
  * something the caller never named. Not an attack model so much as an "a UI pasted the wrong blob" model.
  * The set matches the line boundaries `src/config/text.ts` splits on, minus `\u001c`-`\u001e`.
- * MIGRATION.md §5 row 67 (a multiline command is a `{ cmd, input }` object — DR-015).
+ * MIGRATION.md §5 row 74 (a multiline command is a `{ cmd, input }` object — DR-015).
  */
 const LINE_BOUNDARY = /[\r\n\v\f\u0085\u2028\u2029]/u
 
@@ -94,7 +94,7 @@ function resolveMode(mode: CommandMode | undefined): CommandMode | undefined {
  * | `{ value: 'WAN access' }` | `name WAN access` | same |
  * | `{}` · `{ mode: 'set' }` | **throws** | `'no %s'` (`:160-161`, deprecated) |
  * | `{ mode: 'set', value: false }` | **throws** | `'no %s'` (`elif value:`) |
- * | `{ value: 0 }` | `mtu 0` | `'no mtu'` — refused, MIGRATION.md §5 row 66 |
+ * | `{ value: 0 }` | `mtu 0` | `'no mtu'` — refused, MIGRATION.md §5 row 73 |
  *
  * `mode` defaults to `'set'`, so a value-only call reads like the pyeapi call it replaces. A `number`
  * `0` is a real value here; `false`, `null`, `undefined`, `NaN`, an object, an array, and an all-whitespace
@@ -144,12 +144,12 @@ export function commandBuilder(command: string, options: CommandOptions = {}): s
  * `Vlans.configure_vlan` (`vlans.py:243-244`), both of which call `make_iterable` (no copy) and then
  * `commands.insert(0, …)`, mutating the caller's array. A caller who reuses a command list therefore
  * gets the parent line spliced once per call on upstream, and the parent line duplicated in later
- * commands. `toArray` (MIGRATION.md §5 row 64) supplies the copy, so this function can never write
+ * commands. `toArray` (MIGRATION.md §5 row 71) supplies the copy, so this function can never write
  * through to a caller's array, and wrapping happens exactly once per call.
  *
  * The parent command's text is validated the same way {@link commandBuilder} validates a command stem,
  * because a bad parent (empty, or carrying a newline) is how a resource would otherwise send
- * `interface` alone or two commands in one string (MIGRATION.md §5 row 67). Element shape is not
+ * `interface` alone or two commands in one string (MIGRATION.md §5 row 74). Element shape is not
  * re-validated: the wire codec (`src/internal/wire.ts` → `buildRequest`) already refuses a command
  * object with an unknown key.
  *

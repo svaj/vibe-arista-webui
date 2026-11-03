@@ -7,8 +7,8 @@
  * |---|---|
  * | `BaseEntity` (`:49`) | {@link ResourceBase} |
  * | `BaseEntity.__init__` (`:67-68`) | `constructor(node)` |
- * | `BaseEntity.version_number` (`:70-72`) | not exposed — call `node.getVersion()` (row 68) |
- * | `BaseEntity.config` property (`:74-76`) | {@link ResourceBase.config} (async, row 68) |
+ * | `BaseEntity.version_number` (`:70-72`) | not exposed — call `node.getVersion()` (row 75) |
+ * | `BaseEntity.config` property (`:74-76`) | {@link ResourceBase.config} (async, row 75) |
  * | `BaseEntity.error` property (`:78-80`) | **dropped** (DR-005) |
  * | `BaseEntity.get_block` (`:82-101`) | {@link ResourceBase.getBlock} |
  * | `BaseEntity.configure` (`:103-127`) | {@link ResourceBase.configure} — throws, no bool |
@@ -95,7 +95,7 @@ export abstract class ResourceBase {
    * every access, which is what MIGRATION.md §5 row 15 flags).
    *
    * Async here because a TS getter cannot await I/O (DR-005), and already cached: `Node` holds the text
-   * until a write invalidates it (`command-layer.ts`, row 73), so ten resource reads in one render pass
+   * until a write invalidates it (`command-layer.ts`, row 80), so ten resource reads in one render pass
    * cost one round trip, not ten. Pass `{ config: 'startup-config' }` for pyeapi's other named source;
    * the `'running_config'`/`'startup_config'` sentinel strings pyeapi resolves against `Node`
    * (`client.py:789-791`) are not accepted — the union is checked by {@link ConfigTarget}.
@@ -156,7 +156,7 @@ export abstract class ResourceBase {
    * `self.error` (`:117-127`); the docstring even has to explain that a `False` return means "look at the
    * error property". Both are removed (DR-005): a failure rejects with the `CommandError` from the wire
    * (device codes, `failedCommand`, redacted text — M1/M4), and there is no `error` property to forget to
-   * check. The `commands` array a caller passes is never mutated (row 64), and `Node.configure` prepends
+   * check. The `commands` array a caller passes is never mutated (row 71), and `Node.configure` prepends
    * `configure terminal` and pops that command's own reply (`command-layer.ts`, pyeapi `client.py:663`,
    * `:672`), so the answer is the per-command replies to what this verb wrote.
    */
@@ -170,7 +170,7 @@ export abstract class ResourceBase {
    * the caller's array. Same for `Vlans.configure_vlan` (`vlans.py:234-244`).
    *
    * The array this verb sends is built fresh by {@link submodeCommands}, so calling it twice with one
-   * list wraps the parent line exactly once per call (row 64, and `base.test.ts` asserts the
+   * list wraps the parent line exactly once per call (row 71, and `base.test.ts` asserts the
    * non-mutation). The name goes through {@link assertInterfaceName} before anything reaches the wire —
    * the equivalent of pyeapi's `interfaces.isvalidinterface` check (`interfaces.py:81-83`) which upstream
    * applies only inside its `marshall` dispatch (`interfaces.py:131`), i.e. only on the dynamic path this
@@ -215,14 +215,14 @@ export abstract class Entity<T> extends ResourceBase {
  * `A` the attribute bag {@link create} accepts (narrow it to a named interface per module).
  */
 export abstract class EntityCollection<T, K extends ResourceKey, A extends ResourceAttrs = ResourceAttrs> extends ResourceBase {
-  /** Every entry, keyed — pyeapi `getall()`'s dict, as a `ResourceTable` (row 71). */
+  /** Every entry, keyed — pyeapi `getall()`'s dict, as a `ResourceTable` (row 78). */
   abstract getAll(): Promise<ResourceTable<K, T>>
 
   /**
    * One entry, or `undefined` when the switch has no such entry — pyeapi `get(name)`
    * (`abstract.py:223-224`). Upstream declares `get(self, name, default=None)` and no module uses that
    * third argument (Vlans.get is `def get(self, value)` at `vlans.py:91`), so the fallback parameter is
-   * not ported: `await vlans.get(20) ?? {}` says the same thing in the caller's code (row 70).
+   * not ported: `await vlans.get(20) ?? {}` says the same thing in the caller's code (row 77).
    */
   abstract get(name: K): Promise<T | undefined>
 
@@ -240,7 +240,7 @@ export abstract class EntityCollection<T, K extends ResourceKey, A extends Resou
   /**
    * Return an entry's configuration to the device defaults — pyeapi's `default(name)`
    * (`vlans.py:218-232`, which builds `'vlan %s'` + `'default …'`). Named `setDefault` here so the verb
-   * reads as an action and does not collide with the keyword (row 70).
+   * reads as an action and does not collide with the keyword (row 77).
    */
   abstract setDefault(name: K): Promise<void>
 

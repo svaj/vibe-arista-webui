@@ -76,7 +76,7 @@ describe('ResourceRegistry — DR-006 replaces pyeapi node.api() (client.py:927-
   })
 
   it('a typed key with no factory is refused too (declaration merging can add a row the map lacks)', () => {
-    // The dangerous case MIGRATION.md §5 row 72 calls out: `ResourceKinds` gains a type row while
+    // The dangerous case MIGRATION.md §5 row 79 calls out: `ResourceKinds` gains a type row while
     // RESOURCE_FACTORIES does not gain the factory, so TypeScript reports a resource and the caller
     // would receive undefined. The runtime check turns that into an error naming the name.
     const { node } = nodeWith()
@@ -148,7 +148,7 @@ describe('Node.resource / Node.hasResource — the typed replacement for node.ap
   it('asking for an unregistered resource throws with the "no module has shipped yet" answer, not undefined', () => {
     const { node } = nodeWith()
     // `ResourceName` is `never` at M7, so this call cannot be written type-correctly from TS — which is
-    // the point. The cast is the JS/table-column path the runtime check exists for (row 72).
+    // the point. The cast is the JS/table-column path the runtime check exists for (row 79).
     const untyped = 'vlans' as never
     expect(() => node.resource(untyped)).toThrow(NotSupportedError)
     expect(() => node.resource(untyped)).toThrow(/No resource module has shipped yet \(M8 #10, M9 #11, M10 #12\)/)

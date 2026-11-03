@@ -16,7 +16,7 @@
  * {@link parseBlock} once, hand the parsed block to each field extractor, and assemble the record. The
  * extractors themselves stay per-module and pure — usually one call to `findValue`/`findAllValues` from
  * `src/config/text.ts`, which is where the keyword matching and EOS quote handling (`unquote`, row 49)
- * already live. MIGRATION.md §5 row 74 records that there is no upstream twin.
+ * already live. MIGRATION.md §5 row 81 records that there is no upstream twin.
  */
 
 import { parseBlock, type ConfigBlock } from '../config/text'

@@ -23,7 +23,7 @@
  *   `marshall` (`interfaces.py:131`), i.e. only on the dynamic-dispatch path DR-006 does not port — a
  *   static call to `vlans.set_name(…)` with a bad interface name is never checked at all.
  *
- * Everything marked "stricter" below is MIGRATION.md §5 row 70; M10 (#12) owns the per-kind parser that
+ * Everything marked "stricter" below is MIGRATION.md §5 row 76; M10 (#12) owns the per-kind parser that
  * widens {@link assertInterfaceName} to subinterfaces, and this suite pins the boundary it starts from.
  */
 
@@ -96,7 +96,7 @@ describe('assertInterfaceName / isInterfaceName — pyeapi interfaces.isvalidint
     }
   })
 
-  it('requires an index — stricter than upstream, whose unanchored re.match answers True for a bare kind (row 70)', () => {
+  it('requires an index — stricter than upstream, whose unanchored re.match answers True for a bare kind (row 76)', () => {
     // Verified upstream: `isvalidinterface('Vlan')` is True, because re.match yields 'Vlan' and that is
     // in VALID_INTERFACES. `interface Vlan` is not a command an operator can send, so it is refused here.
     for (const bare of ['Vlan', 'Ethernet', 'interface Ethernet1', 'vlan 20', 'Port-Channel']) {

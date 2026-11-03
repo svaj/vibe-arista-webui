@@ -17,7 +17,7 @@
  *    (`src/config/`), with pyeapi's `_chunkify.cache_clear()` calls (`client.py:665-666`, `:689-690`)
  *    realised as DR-026's per-source memos — {@link Node.chunkConfig}, {@link Node.section};
  *  - MIGRATION.md §2 promised the method name `configSection()`; as built it is `section()`, matching
- *    pyeapi and M6's own function name (row 73).
+ *    pyeapi and M6's own function name (row 80).
  *
  * Layering (docs/ARCHITECTURE.md §1): this file is the `Node` box — it holds a `Transport`
  * **interface** and nothing else at the runtime seam, so the same command layer runs over `fetch`
@@ -635,7 +635,7 @@ export class Node {
     const trip = await this.roundTrip(['configure terminal', ...specs], options)
     // pyeapi clears the `_chunkify` lru_cache unconditionally here (`client.py:665-666`), *before* the
     // `autorefresh` gate at `:668-669`. The same seam, so the ordering is not free to drift: a derived
-    // parse must never outlive a write even for an operator who turned `autorefresh` off (row 73).
+    // parse must never outlive a write even for an operator who turned `autorefresh` off (row 80).
     this.clearConfigChunks()
     if (this.autorefresh) this.refresh()
     return trip.result.slice(1)

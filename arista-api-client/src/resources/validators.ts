@@ -24,7 +24,7 @@
  *
  * These are **input guards, not platform claims**: DR-032/DR-033 keep feature support on the device, and
  * M10 (#12) replaces {@link assertInterfaceName} with the per-kind parser returning a discriminated
- * union (`docs/PLAN.md` M10, "validation split"). MIGRATION.md §5 row 70 records what is stricter here
+ * union (`docs/PLAN.md` M10, "validation split"). MIGRATION.md §5 row 76 records what is stricter here
  * than upstream and what M10 will widen.
  */
 
@@ -81,7 +81,7 @@ export function isVlanId(value: unknown): value is number {
 /**
  * Require a usable VLAN id: an integer `1..4094`.
  *
- * Stricter than upstream by design (row 70): pyeapi's `int()` accepts `'20'`, `'0020'` and truncates
+ * Stricter than upstream by design (row 76): pyeapi's `int()` accepts `'20'`, `'0020'` and truncates
  * `20.5`; a TS caller passes a `number`, and a string reaching this point means a UI forgot to parse
  * what a form field gave it — so `assertVlanId(20)` is fine and `assertVlanId('20')` throws naming it.
  *
@@ -103,7 +103,7 @@ export function isInterfaceName(value: unknown): value is string {
  * `Loopback12`, `Vxlan1`).
  *
  * Upstream accepts a bare kind with no index and rejects the `Po1`/`Et1` shorthands; both answers are
- * reproduced here (row 70), plus one tightening: the regex is anchored and `<kind><digits>` is required,
+ * reproduced here (row 76), plus one tightening: the regex is anchored and `<kind><digits>` is required,
  * because `interface Vlan` is not a command an operator can send and pyeapi's unanchored `re.match` also
  * lets a full command line through as a name.
  *

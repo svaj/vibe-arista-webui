@@ -49,7 +49,7 @@ export type ResourceKey = string | number
 
 /**
  * A device table: `getAll()`'s answer. pyeapi returns a Python `dict`
- * (`EntityCollection.getall`, `abstract.py:220`) and this port returns a `Map` — MIGRATION.md §5 row 71
+ * (`EntityCollection.getall`, `abstract.py:220`) and this port returns a `Map` — MIGRATION.md §5 row 78
  * — because a numeric VLAN id must stay a number and DR-004's explicit membership verbs (`has`, `keys`,
  * `entries`) fall out of the same shape instead of being re-derived from an object's key list.
  */

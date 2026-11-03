@@ -91,7 +91,7 @@ describe('commandBuilder — pyeapi BaseEntity.command_builder (abstract.py:129-
     })
   })
 
-  describe('refusals where upstream answers a command (MIGRATION.md §5 row 66)', () => {
+  describe('refusals where upstream answers a command (MIGRATION.md §5 row 73)', () => {
     const refusals: ReadonlyArray<readonly [string, string, CommandOptions | undefined, RegExp]> = [
       // upstream: `else: return 'no %s'` (:160-161), marked "to be deprecated" (:162) with the
       // replacement `raise ValueError` sitting commented out beside it (:163-164).
@@ -126,7 +126,7 @@ describe('commandBuilder — pyeapi BaseEntity.command_builder (abstract.py:129-
     }
   })
 
-  describe('the command stem itself (row 67)', () => {
+  describe('the command stem itself (row 74)', () => {
     it('refuses an empty or whitespace-only command, naming what arrived', () => {
       expect(() => commandBuilder('', { value: 1 })).toThrow(/expects a non-empty command string, received ''/)
       expect(() => commandBuilder('   ', { value: 1 })).toThrow(/non-empty command string/)

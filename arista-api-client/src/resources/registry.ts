@@ -13,7 +13,7 @@
  *    second case is the dangerous one: TypeScript would report a resource, and the caller would get
  *    `undefined`. It throws a `NotSupportedError` listing the registered names instead.
  *
- * MIGRATION.md §5 row 72 records the shape, including what M7 deliberately leaves empty: **no wave-1
+ * MIGRATION.md §5 row 79 records the shape, including what M7 deliberately leaves empty: **no wave-1
  * resource module exists yet** (M8 #10, M9 #11, M10 #12 own `system`/`vlans`/`switchports`/`interfaces`),
  * so `node.vlans` is not a thing today and `node.resource('vlans')` throws both statically and at
  * runtime. The registry lands now because the framework, not the modules, is what needs the plumbing —
@@ -47,7 +47,7 @@ export type ResourceFactory<T> = (node: Node) => T
  *
  * **Empty at M7 (#9)** — the built-in rows arrive with M8 (#10), M9 (#11) and M10 (#12), each in
  * {@link RESOURCE_FACTORIES}. A name in this interface without a factory there is a bug in this package,
- * and {@link ResourceRegistry.get} throws rather than returning `undefined` (row 72).
+ * and {@link ResourceRegistry.get} throws rather than returning `undefined` (row 79).
  */
 export interface ResourceKinds {
   // Intentionally no members: no resource module has landed yet. Keeping this empty is what makes the

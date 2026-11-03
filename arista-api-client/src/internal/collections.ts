@@ -13,7 +13,7 @@
  * So the port keeps the coercion and drops the aliasing: an array in, a **new** array out. DR-041 asks
  * for exactly that ("`make_iterable`'s implicit coercion becomes explicit `toArray()` at the boundary"),
  * and MIGRATION.md §1 already listed `src/internal/collections.ts` as the planned home. MIGRATION.md
- * §5 row 64 records the copy; row 65 records what was deliberately not ported.
+ * §5 row 71 records the copy; row 72 records what was deliberately not ported.
  */
 
 import { NotSupportedError } from '../errors'
@@ -30,7 +30,7 @@ function isValueArray<T>(value: T | readonly T[]): value is readonly T[] {
  * The copy is not a style choice — every command-list helper in this package is allowed to prepend or
  * append freely (see the module header), and a caller's array must never be one of the things it mutates.
  *
- * **Not ported (MIGRATION.md §5 row 65):** pyeapi also accepts any Python `Iterable`, so a generator,
+ * **Not ported (MIGRATION.md §5 row 72):** pyeapi also accepts any Python `Iterable`, so a generator,
  * `set` or dict-of-keys passes through `make_iterable` untouched and silently keeps whatever element
  * shape it had. JS has two iterable families that are not arrays (`Set`, `Map`, generators), and
  * accepting them here would mean guessing whether `toArray(new Set([...]))` means "one value" or
@@ -45,7 +45,7 @@ export function toArray<T>(value: T | readonly T[]): T[] {
   if (isValueArray(value)) return [...value]
   if (value === undefined || value === null) {
     throw new NotSupportedError(
-      'expected a value or an array of values, received nothing — pass the single command, not undefined (pyeapi raises TypeError from utils.make_iterable; MIGRATION.md §5 row 65)',
+      'expected a value or an array of values, received nothing — pass the single command, not undefined (pyeapi raises TypeError from utils.make_iterable; MIGRATION.md §5 row 72)',
       { cause: value },
     )
   }
