@@ -322,7 +322,7 @@ graph LR
 - [ ] Shared parsing base: `parseConfigBlock(body, fieldParsers)` — the shape every wave-1/wave-2 module needs (they read running-config, not dedicated `show` commands).
 
 **Tests:**
-- [ ] Command-builder truth table (set/no/default/`value===true`) — 12 cases, mirroring pyeapi's `test_abstract`-style assertions embedded in each module's tests.
+- [ ] Command-builder truth table (set/no/default/`value===true`) — 12 cases, mirroring the `command_builder` expectations embedded in each module's tests (`test_api_system.py:31-58`, `test_api_switchports.py:67-116`). *(There is no `pyeapi/test/unit/test_abstract.py` — the file this bullet implied does not exist; verified against the pinned tree `6816d9e`.)*
 - [ ] `configureInterface` wraps in `interface X` exactly once and doesn't mutate the input array (regression vs pyeapi).
 - [ ] Throwing: a failing write rejects with `CommandError` (no silent `false`), with `.failedCommand` set.
 - [ ] Registry: `node.vlans` returns the same instance twice; `node.resource('bogus')` throws.
