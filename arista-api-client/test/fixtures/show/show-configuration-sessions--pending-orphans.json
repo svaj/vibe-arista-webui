@@ -1,0 +1,62 @@
+{
+  "sessions": {
+    "ui-sw1-lan-p1001-aaaa1111": {
+      "state": "pending",
+      "description": "webui change: create vlan 40 (tab closed before commit)",
+      "instances": {
+        "1001": {
+          "user": "ui-ro",
+          "terminal": "unknown",
+          "currentTerminal": false
+        }
+      }
+    },
+    "ui-sw1-lan-p1002-bbbb2222": {
+      "state": "pending",
+      "description": "",
+      "instances": {}
+    },
+    "ui-sw1-lan-p1003-cccc3333": {
+      "state": "conflicted",
+      "description": "state value this port has not seen in the image Python, so recovery must report it and not abort it",
+      "instances": {
+        "1003": {
+          "user": "ui-ro",
+          "terminal": "vty2",
+          "currentTerminal": false
+        }
+      }
+    },
+    "maintenance-window": {
+      "state": "pending",
+      "description": "opened by another tool: not matched by the ui- prefix",
+      "instances": {
+        "2202": {
+          "user": "admin",
+          "terminal": "vty0",
+          "currentTerminal": true
+        }
+      }
+    },
+    "crash-recovery-01": {
+      "state": "pending",
+      "description": "foreign name, but journaled by this profile, so a journal widens the candidate set",
+      "instances": {}
+    },
+    "2026-11-01-ui-sw1-lan-p1000-eeee5555": {
+      "state": "completed",
+      "completedTime": 1793577600,
+      "commitUser": "ui-ro",
+      "description": "already committed: not a lock holder, so never aborted",
+      "instances": {}
+    },
+    "ui-sw1-lan-p1004-ffff6666": {
+      "state": "pending",
+      "commitBy": 1793671200,
+      "description": "a commit timer revert is armed: reported with its deadline",
+      "instances": {}
+    }
+  },
+  "maxSavedSessions": 10,
+  "maxOpenSessions": 5
+}

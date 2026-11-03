@@ -483,12 +483,98 @@ keep working. **Follow-up:** wave-1 runtime validators (`assertInterfaceName`, `
 follow the same derive-don't-duplicate rule.
 **Related:** DR-008, DR-014, DR-002, DR-009, §5 rows 55/59.
 
+---
+### DR-047 — session names are prefixed and endpoint-scoped, and the journal path is ours (M5 #7)
+pyeapi fabricates `uuid4()` inside `configure_session()` and keeps it only in `Node._session_name`
+(`client.py:1003-1006`, re-verified): nothing is sent, nothing is stored, and grepping the pinned tree for
+`session_name` shows no other consumer. EOS keeps a pending session until something commits or aborts it,
+so the one artefact a **restarted** client needs in order to clean up after a crashed one is exactly the
+value pyeapi generates randomly and discards. **Decision:** `generateSessionName` builds
+`ui-<host>-p<pid>-<hex8>` from `Transport#address` — hostname only, because an explicit port, path or
+userinfo cannot be spelled in a token the CLI matches with `\S+`; userinfo is dropped so a generated name
+stays secret-free (DR-011); no `p<pid>` segment where there is no process (a browser). `{ name }` still
+overrides it. The prefix (`SESSION_NAME_PREFIX = 'ui-'`, spelled with its trailing dash) is also
+`recoverOrphans()`'s default name filter, and `MAX_SESSION_NAME_LENGTH = 64` plus the unsafe-token refusal
+exist because the name is spliced into `cmds[0]` of every batch — `x abort` would inject a second CLI
+verb. This refines DR-022's sketched `arista-ui-<host>-<uuid8>` rather than contradicting it.
+**Consequence:** sessions are recognisable in `show configuration sessions`, which is what makes an
+operator willing to let the UI hold one; and the recovery file needs a location, so
+`sessionJournalPath()` → `$XDG_CONFIG_HOME/arista-eapi/sessions.json`, else
+`~/.config/arista-eapi/sessions.json`, exported as `SESSION_JOURNAL_PATH` from `./node` only (DR-002) —
+a path **we** chose; EOS defines no such file, and it must never be described as one. Any EOS limit on
+session-name length or charset is *referenced from the 4.28 image notes — NOT re-verified in this tree*
+(`CliPlugin/SessionCli.py` is absent here), which is why the refusal message says the bound is ours and
+open item 7 exists.
+
+### DR-048 — the `ConfigSession` handle is a state machine that ends (M5 #7)
+`abort()` is `_configure_session(['abort'])` and **leaves `_session_name` set** (`client.py:1023-1026`),
+while only `_configure_and_exit_session` clears it (`:1028-1035`); because `_configure_session` prepends
+`configure session <name>` (`:687`) and `config()` picks its callee off that one string (`:635-636`), a
+later terminal write re-enters — or re-creates — a session the device has already destroyed. That is not a
+wrong answer, it is a command written into a session nobody reviewed. **Decision:** (b) of the options
+considered — each handle is terminal. `open | diffed | committed | aborted | lost`; the terminal verbs end
+the handle and every later verb refuses with a `SessionError` **naming the state** (pyeapi's invented
+`CommandError(-1, 'Not currently in a session')` at `:680-681` is not reproduced: `-1` is outside DR-010's
+frozen set, so a caller could not `switch (e.code)` on it honestly). `exit()` deliberately sends **nothing**
+and leaves the journal record, because the *device* still holds the session — that is the case
+`recoverOrphans()` exists for. Re-attaching is an explicit `node.configSession({ name })`; pyeapi's silent
+re-routing is not ported (§7). `assertNoSessionConflict`/`assertTerminalModeAllowed` refuse `configure()`,
+`configureReplace()` and a second live `configSession()` on the same `Node`, realising the guard DR-025
+planned.
+**Consequence:** `diffed` is cleared by the next staged write (`diffed → open`, and
+`hasDiffBeenRead()` goes false with it), so a Commit button cannot approve a diff that stopped being
+current; one promise in the future transaction UI (M13 #15) owns one handle. Every promise-returning verb
+is `async`, refusals included — `Node.configureReplace` had to change from a sync guard to an async one so
+a pre-flight `SessionError` rejects like every other failure on the path instead of walking past a caller's
+`.catch` (and leaving the `session.abort()` promise already built in front of it unhandled).
+
+### DR-049 — the session journal: one interface, two implementations, allow-listed fields (M5 #7)
+Neither pyeapi nor EOS keeps a session journal, and `olderThan`-style questions cannot be answered from
+the device either, because the model `show configuration sessions` answers reports `state`,
+`description`, `commitBy`, `completedTime`, `commitUser` and `instances` and **no start time** — that
+field set is *image-note sourced* (`ConfigSessionModel.py` is absent from this workspace) and is exactly
+what the §3 sweep captures; the TS type `ConfigSessionSummary` carries only those members and keeps the
+raw reply in `raw`. **Decision:** a `SessionJournal` interface (`read`/`record`/`forget`) with two
+implementations behind the entries the package already separates (DR-002): `FileSessionJournal` on Node,
+exported only from `./node` at the path DR-047 defines, and `createWebStorageJournal(storage)` in the
+browser over an injected storage object (so the spec runs without a DOM) under
+`SESSION_JOURNAL_STORAGE_KEY`. Records are rebuilt field by field (`name`, `endpoint`, `startedAt`,
+`pid?`, `description?`) — an unknown key is dropped, never copied — because the obvious
+`JSON.stringify(record)` would carry an `enablePassword` from a JS caller straight onto disk (DR-011).
+**Consequence:** `recoverOrphans()` reconciles journal **against** `listSessions()`, so a machine whose
+journal was deleted or never written is still cleanable (DR-023's fallback stays real); `olderThan`
+applies to journaled names only, and an un-journaled pending name has no age, so it is skipped rather than
+guessed at — and `olderThan` without a journal aborts nothing. Corruption degrades to "no entries" with a
+`console.warn`, never to a failed recovery. Only the Node half touches the filesystem, and in tests only a
+temp directory.
+
+### DR-050 — attribute every session claim, and never call a staged write a preview (M5 #7)
+This milestone rests on a device we are not allowed to touch **and** on Arista's image, whose CLI-plugin
+Python is not in this workspace (`SessionCli.py`, `ConfigSessionCli.py`, `ConfigSessionShowCli.py`,
+`ConfigSessionModel.py`, `CliCommon.py`, `DateTimeRule.py` — `find` turns up nothing; the older DRs quote
+them from an out-of-tree `Base.sqsh` extraction no reviewer can open). It is easy for names and comments
+in this area to imply the device agreed. **Decision:** (b) of the options considered — ship the verbs and
+label the evidence boundary in code, ledger and STATUS instead of laundering it: each §5 row states which
+side was read (`pyeapi/…:LINE` re-opened, or "image notes, NOT re-verified here"), no CLI-plugin line
+number is printed as fact, the unverified behaviours are STATUS §3 sweep lines with DECISIONS open items
+5/7/8, and the tests pin **command lists and reply shapes** rather than device outcomes (the `commit
+timer` `describe` title says the device semantics stay an open item on purpose). Extending DR-033's
+promise: **no** `dryRun()` is exposed and `validateChanges` is documented as "the device applied these;
+here is the per-command detail", since a real preview needs `verifyConfig` (M11 #13).
+**Consequence:** `commitWithRevertTimer` and `configureReplace` ship with named gaps rather than not
+shipping, and `confirmRevertTimer()` is named *as intent* (`ConfigSessionSummary.commitBy` tells a UI a
+revert is armed; the client states nothing about what cancels it). A later sweep converts the gaps into
+assertions instead of deleting capability a UI needs. Risk accepted: a reader may still over-trust a verb,
+which is why the wording is repeated in USAGE §5 and in the code comments that make a claim.
+
+---
+
 ## Open items (need the device)
 
 Use cEOS first for software behavior and schema exploration, recording its model/version;
 repeat target-sensitive checks on the physical 7050TX-64 / 4.28.13.1M. The physical
-read-only items can be swept with `runCmds`; item 5 needs a separate authorized scratch
-config session and is **not read-only**:
+read-only items can be swept with `runCmds`; items 5, 7 and 8 need a separate authorized scratch
+config session and are **not read-only**:
 
 1. `modelName` exact string on this unit (`DCS-7050TX-64` vs `-SSD`) and `version`; drives DR-032.
 2. `show license features` + `show license all` + ArToggle state: whether VXLAN / VRF routing / MLAG are
@@ -512,6 +598,23 @@ config session and is **not read-only**:
    kind upstream omits. Needs a `show interfaces description` (or equivalent) capture from the M12 (#14)
    sweep; M10 (#12) will widen the parser to the discriminated union PLAN asks for only once that
    evidence exists. Same class of open identifier question as item 1's `modelName`.
+
+7. **Config-session name grammar on the 4.28.13.1M target and in cEOS** (DR-047): the longest
+   `configure session <name>` EOS accepts and the character set it matches. `MAX_SESSION_NAME_LENGTH = 64`
+   and the unsafe-token refusals are **this port's** bounds, chosen because the name is spliced into
+   `cmds[0]`; they are not a captured device limit, and `CliPlugin/SessionCli.py` is not present anywhere
+   in this workspace to read the parser from. Decide by capturing `show configuration sessions` after
+   attempts at the boundary, not by reading our own constant back as evidence.
+8. **Sessions grammar and which verbs answer `1002` where** (DR-050): `configure session <name>
+   description <d>` — how deep the quoting goes, and what an embedded `"` does to the one-token rule this
+   port's `quoteDescription` assumes; `configure session <name> no-commit` — accepted, or refused with
+   `1002`/hidden-and-therefore-unusable over eAPI; and `copy running-config startup-config`,
+   `rollback clean-config [ { <configGroups> } ]` and `rollback <name>` on the 7050TX-64 (platform
+   dependency of exactly the kind DR-042 warns about). Add a related known-unknown: whether
+   `show configuration sessions` reports `maxOpenSessions`/`maxSavedSessions` and any start-time field,
+   since `olderThan` and the "pending sessions consume the cap" reasoning in DR-023 both currently rest
+   on image notes. Capture each answer as a fixture in `test/fixtures/show/` during M12 (#14) **before**
+   M13 (#15)'s transaction UI offers the verbs.
 
 MLAG (`mlag` module, 21 upstream system tests): investigate supported control-plane
 behavior in an isolated two-node cEOS topology. Physical 7050TX-64 MLAG/forwarding

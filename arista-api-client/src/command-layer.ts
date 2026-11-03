@@ -4,8 +4,13 @@
  * renaming the **shape** per DR-003.
  *
  * Deliberately absent here, because other milestones own them:
- *  - `configure_session` / `diff` / `commit` / `abort` — M5 (#7). The DR-025 guard ("`configure()`
- *    while a config session is open") belongs at the top of {@link Node.configure}.
+ *  - `section()` / `_chunkify()` — the config-text engine, M6 (#8). pyeapi clears an `lru_cache` on
+ *    `_chunkify` after every write (`client.py:666`); DR-026 replaces that with a hash-keyed memo, so
+ *    a parse cannot outlive the config text it was derived from and needs no invalidation hook here.
+ *  - `configure_session` / `diff` / `commit` / `abort` — landed in **M5 (#7)** as `src/config-session.ts`
+ *    (`node.configSession()` → a `ConfigSession` state machine, DR-025's guard at the top of
+ *    {@link Node.configure}, plus the durability/recovery verbs pyeapi never had). This file keeps only the
+ *    thin delegators, so the session semantics live in one reviewed place and the `Node` surface stays flat.
  *  - `api()` module autoload — dropped outright (DR-006, MIGRATION.md §7), so its upstream test
  *    (`test_client.py::test_api_autoloader`) has nothing to port to. {@link Node.resource} is the typed
  *    replacement (M7 #9):
@@ -30,6 +35,23 @@
  * already carries `commands` + `requestId` + redacted text from M1/M2).
  */
 
+import {
+  abortSessionOn,
+  assertNoSessionConflict,
+  assertTerminalModeAllowed,
+  configureReplaceOn,
+  copyRunningToStartupOn,
+  createConfigSession,
+  listSessionsOn,
+  recoverOrphansOn,
+  type ConfigSession,
+  type ConfigurationSessions,
+  type ConfigSessionOptions,
+  type ConfigureReplaceOptions,
+  type ListSessionsOptions,
+  type RecoverOrphansOptions,
+  type RecoverOrphansOutcome,
+} from './config-session'
 import { NotSupportedError, ProtocolError } from './errors'
 import { createConfigChunkCache } from './config/cache'
 import { getBlock as blockOfSection, section as matchSection } from './config/section'
@@ -326,6 +348,13 @@ export class Node {
   private runningConfig: string | undefined
   private startupConfig: string | undefined
   private versionInfo: VersionProperties | undefined
+  /**
+   * The one config session this `Node` is responsible for (DR-025: one open session per node, because
+   * EOS drives one configuration context per CLI session). Held, not cached: {@link configure} and
+   * {@link configureReplace} refuse to interleave with it, and {@link configSession} refuses to open a
+   * second one over the same switch.
+   */
+  private activeSession: ConfigSession | undefined
 
   /**
    * The DR-026 chunk memos, one per config cache (M7, #9 — the pairing PR #23 deferred here).
@@ -630,7 +659,8 @@ export class Node {
    * boolean return to check.
    */
   async configure(commands: CommandSpec | readonly CommandSpec[], options: NodeRequestOptions = {}): Promise<readonly CommandResult[]> {
-    // M5 (#7) guard goes here: a config session open on this Node must block terminal mode (DR-025).
+    // M5 (#7, DR-025): a live config session on this Node blocks terminal mode, before any request.
+    assertTerminalModeAllowed(this.activeSession, ['configure terminal'])
     const specs = toCommandSpecArray(commands)
     const trip = await this.roundTrip(['configure terminal', ...specs], options)
     // pyeapi clears the `_chunkify` lru_cache unconditionally here (`client.py:665-666`), *before* the
@@ -676,5 +706,92 @@ export class Node {
   private clearConfigChunks(): void {
     this.runningChunks.invalidate()
     this.startupChunks.invalidate()
+  }
+
+  // --- M5 (#7): config sessions and change safety -------------------------------------------------
+  // Every verb below is a thin delegator to `src/config-session.ts`, where the state machine, the
+  // `configure session <name>` re-attach rule (DR-022) and the EOS grammar evidence live. Kept thin on
+  // purpose: this file is the surface, that file is the policy.
+
+  /**
+   * Open (or re-attach to) a config session. Sends **no** request: like pyeapi's `configure_session()`
+   * (`client.py:1003-1006`, which only makes a `uuid4`), the device-side session is created by the first
+   * batch's `configure session <name>` opener. The promise is the journal write, when a journal is
+   * supplied — that record is what lets a later process find this session after a crash (DR-022/DR-023).
+   *
+   * Refuses to open a second live session on this `Node` (DR-025).
+   */
+  async configSession(options: ConfigSessionOptions = {}): Promise<ConfigSession> {
+    assertTerminalModeAllowed(this.activeSession)
+    const session = await createConfigSession(this, options)
+    this.activeSession = session
+    return session
+  }
+
+  /** The session this `Node` is responsible for, if any — read-only handle for a UI's "you have pending changes" banner. */
+  get activeConfigSession(): ConfigSession | undefined {
+    return this.activeSession
+  }
+
+  /** `show configuration sessions [detail]`, parsed and validated (DR-023). A malformed reply is a `ProtocolError`, never an empty table. */
+  listSessions(options: ListSessionsOptions = {}): Promise<ConfigurationSessions> {
+    return listSessionsOn(this, options)
+  }
+
+  /**
+   * Abort a session by name from exec mode — the cleanup verb for a session this client has no handle
+   * for. pyeapi has nothing equivalent; EOS answers "Cannot abort non-existent session %s." for a stale
+   * name, so the caller learns which names were real (`SessionCli.py:358-360`).
+   */
+  abortSession(name: string, options: NodeRequestOptions = {}): Promise<readonly CommandResult[]> {
+    return abortSessionOn(this, name, options)
+  }
+
+  /** Find and abort the pending sessions that hold the config lock and produce the next client's 1006 (DR-023). */
+  recoverOrphans(options: RecoverOrphansOptions = {}): Promise<RecoverOrphansOutcome> {
+    return recoverOrphansOn(this, options)
+  }
+
+  /**
+   * `copy running-config startup-config` — durability is explicit (DR-024): a committed config session
+   * changes running-config only, and nothing in this package ever saves it implicitly. pyeapi has no
+   * such verb at all, which is why a pyeapi-driven change disappears on reboot.
+   */
+  copyRunningToStartup(options: NodeRequestOptions = {}): Promise<readonly CommandResult[]> {
+    return copyRunningToStartupOn(this, options)
+  }
+
+  /** {@link copyRunningToStartup} under the name operators use. Same command, same explicitness. */
+  writeMemory(options: NodeRequestOptions = {}): Promise<readonly CommandResult[]> {
+    return this.copyRunningToStartup(options)
+  }
+
+  /**
+   * `configure replace <url> […]` (`ConfigSessionCli.py:128-155`) — wholesale running-config replace, refused
+   * locally while a session is open on this node (the command exits sessions it finds, `:57`). A device
+   * rejection for a pending commit timer arrives as `SessionError` naming the session (row 69).
+   */
+  async configureReplace(url: string, options: ConfigureReplaceOptions = {}): Promise<readonly CommandResult[]> {
+    assertNoSessionConflict(this.activeSession, 'configureReplace()', [url])
+    return await configureReplaceOn(this, url, options)
+  }
+
+  /**
+   * Open a session and stage `rollback clean-config [ { groups } ]` in it, returning the session
+   * **un-committed**. The command only exists inside a config session
+   * (`SessionCli.py:445-480`), and DR-024's rule says a destructive change is staged, shown as a diff,
+   * then committed on purpose — never applied by the verb that requested it.
+   */
+  async rollbackCleanConfig(options: ConfigSessionOptions & { readonly groups?: readonly string[] | undefined } = {}): Promise<ConfigSession> {
+    const session = await this.configSession(options)
+    await session.rollbackCleanConfig(options.groups)
+    return session
+  }
+
+  /** {@link rollbackCleanConfig} for a previously committed session name instead of the clean config. */
+  async rollbackToSession(name: string, options: ConfigSessionOptions = {}): Promise<ConfigSession> {
+    const session = await this.configSession(options)
+    await session.rollbackToSession(name)
+    return session
   }
 }

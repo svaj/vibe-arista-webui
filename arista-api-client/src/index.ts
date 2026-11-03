@@ -5,6 +5,12 @@
  * DR-011 redaction. M2 (#4) adds the browser-capable transports: `FetchTransport` (`https`) and
  * `HttpTransport` (`http`, loopback-gated). M4 (#6) adds the `Node` command layer
  * (`src/command-layer.ts`): `exec` / `show` / `showText` / `configure` / cached configs / device
+ * identity. M5 (#7) adds config sessions (`src/config-session.ts`): `node.configSession()` with the
+ * DR-025 state machine, `diff()`/`commit()`/`abort()`, orphan discovery and the explicit durability
+ * verbs — all browser-safe, with the journal itself behind an injected interface (the file
+ * implementation is in `./node`). Connection profiles and the option-bag factories (`createNode`,
+ * `createConnection`) — i.e. `eapi.conf` lookup and the transport-plus-settings bag — are M3 (#5), so
+ * until then a `Node` is built from an explicit `Transport`.
  * identity. M3 (#5) adds the connection-profile layer and the option-bag factories (`createNode`,
  * `createConnection`): an INI parser plus a `ProfileStore` here, with profiles supplied by the
  * application (`createProfiles`) because **this entry has no filesystem** — reading an `eapi.conf`
@@ -153,6 +159,46 @@ export type {
   VersionProperties,
 } from './command-layer'
 export type { CliVariant, VariantSender } from './internal/variants'
+
+// --- config sessions & change safety (M5 #7, src/config-session.ts) ------------------------------
+// `node.configSession()` and the verbs above it are the usual way in; the free functions and the parsed
+// `show configuration sessions` view are exported because a UI renders them directly (a pending-session
+// table, a diff review screen) and because the journal seam is an interface with two implementations:
+// `FileSessionJournal` behind `./node` (DR-002) and `createWebStorageJournal(localStorage)` here.
+// `parseConfigurationSessions`/`generateSessionName` are exported for the same reason M4 exported
+// `parseVersionProperties`: pure, testable without a device (TESTING.md §6).
+export {
+  assertNoSessionConflict,
+  assertTerminalModeAllowed,
+  ConfigSession,
+  COPY_RUNNING_TO_STARTUP,
+  createConfigSession,
+  createWebStorageJournal,
+  generateSessionName,
+  MAX_SESSION_NAME_LENGTH,
+  parseConfigurationSessions,
+  SESSION_JOURNAL_STORAGE_KEY,
+  SESSION_NAME_PREFIX,
+} from './config-session'
+export type {
+  ChangesetOutcome,
+  ConfigSessionInstance,
+  ConfigSessionOptions,
+  ConfigSessionState,
+  ConfigSessionSummary,
+  ConfigurationSessions,
+  ConfigureReplaceOptions,
+  ListSessionsOptions,
+  RecoveryCandidate,
+  RecoverOrphansOptions,
+  RecoverOrphansOutcome,
+  SessionCommandTarget,
+  SessionCommitOptions,
+  SessionJournal,
+  SessionJournalEntry,
+  SessionRequestOptions,
+  WebStorageLike,
+} from './config-session'
 
 // --- connection profiles (M3 #5, src/profiles.ts, DR-038/DR-044) --------------------------------
 // pyeapi's `Config` / `config_for` / `hosts_for_tag` (`client.py:127-367`) without the file: an INI
