@@ -322,7 +322,7 @@ describe('normalizeProfile — meaning', () => {
     expect((profile as unknown as Record<string, unknown>)['deafult']).toBeUndefined()
   })
 
-  it('keeps a present-but-empty host from tripping the name default (row 8/43, verified against a run)', () => {
+  it('keeps a present-but-empty host from tripping the name default (row 8/51, verified against a run)', () => {
     // pyeapi substitutes only when the `host` **key** is absent; `host:` (empty, key present) stays
     // empty there and posts to `https://:443/command-api`. Here the empty value coerces to no value
     // at all, and the missing-host refusal (row 8) is what the operator sees instead.

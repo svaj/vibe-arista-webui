@@ -20,7 +20,7 @@
  *    and DR-013 trust material out of a browser bundle (DR-002/DR-008/DR-013/DR-014/DR-018).
  *
  * pyeapi quirks kept, each pinned by `src/profiles.test.ts` and reviewed in
- * [MIGRATION.md §5 row 54-60](../docs/MIGRATION.md#5-semantic-divergences-worth-reviewing):
+ * [MIGRATION.md §5 rows 54-60](../docs/MIGRATION.md#5-semantic-divergences-worth-reviewing):
  *  - a `[connection:<name>]` section with no `host` **key** gets `host = <section name>`
  *    (`client.py:207-211`) — how upstream's `nohost.conf` fixture yields `host: 'test'`
  *    (`test_client.py::test_config_for_replaces_host_w_name`). Row 51.
@@ -614,7 +614,7 @@ function bareSectionName(name: string): string {
  *    `load_config`, because configparser interpolates at the `items()` call on `client.py:207`. Here:
  *    no interpolation at all, so `p%s` stays a password (row 57).
  *  - a UTF-8 BOM, or a section that is not a connection: pyeapi discards the file / crashes in
- *    `generate_tags` (`client.py:233`); here both are reported and reading continues (rows 56/58).
+ *    `generate_tags` (`client.py:233`); here both are reported and reading continues (row 56/58).
  *
  * Option keys are lowercased and section names are not, exactly as configparser does it (row 58), and
  * every issue carries a 1-based line number.
