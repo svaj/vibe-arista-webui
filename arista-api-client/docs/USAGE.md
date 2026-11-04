@@ -441,8 +441,8 @@ Then parse with M6's primitives, not your own regex (this is PLAN's M6 exit gate
 ```ts
 const body = (await vlans.getBlock(20)) ?? '';
 const parsed = parseConfigBlock(body, {
-  name: (block) => findValue(block.body, 'name'),
-  trunkGroups: (block) => findAllValues(block.body, 'trunk group'),
+  name: (block) => valueAfterKeyword(block.body, 'name'),                 // 'WAN' — run gone, quotes off
+  trunkGroups: (block) => valuesAfterKeyword(block.body, 'trunk group'),  // ['red','blue'] — no ' group' tail
   header: (block) => block.header,               // the section header, for the key it matched on
 });
 // parsed's TYPE comes from the map: { readonly name: string | undefined,
@@ -459,13 +459,17 @@ It defines no error class of its own — a `ConfigParseError` (MIGRATION rows 43
 `chunkConfig`/`getBlock` call that produced the text, and a parse failure is reported rather than
 answered with a missing field.
 
-**The caveat a module must know today** (pinned in `text.test.ts` and `config-block.test.ts`, decided in
-MIGRATION row 81): M6's `describeLine` does not `lstrip` the whitespace run after the first token, so
-`findValue(block.body, 'name')` answers `' PROD'` (leading space, and therefore the quotes on
-`description "WAN uplink"` are never stripped), and a two-word keyword leaves its own tail —
-`findAllValues(block.body, 'trunk group')` answers `' group red'`. So today read `line.text` and slice,
-rather than pretending the contract is clean (M9 (#11), the first real reader, owns the one-line fix —
-not the framework milestone, which has nothing to validate the new contract against):
+**Why the keyword extractors exist (settled by M9, #11 — DR-058, §5 row 91):** M6's `describeLine`
+builds `ConfigLine.value` from the line's **first token**, and as pinned does not `lstrip` the run after
+it — so `findValue(block.body, 'name')` answers `' PROD'` (and the quotes on `description "WAN uplink"`
+are never even reached by `unquote`), while a two-word keyword keeps its own tail:
+`findAllValues(block.body, 'trunk group')` answers `' group red'`. M9 was that first real reader, and it
+deliberately did **not** patch M6's pinned primitive (a first-token lstrip would still leave the
+two-word-keyword tail, and the oracle-pinned contract has no device-validated reason to move). The fix
+lands at the keyword: `valueAfterKeyword` / `valuesAfterKeyword` apply the whole-command word rule
+(`no name shadowed` never answers; `nameplate` never answers), collapse only the keyword/value run so
+**inner** whitespace survives, and reach `unquote` for a balanced pair (row 49). A module reads fields
+through them; `findValue` stays available for its actual first-token contract, and the manual pattern —
 
 ```ts
 const trunkAllowed = (block: ConfigBlock): string[] =>
@@ -473,6 +477,10 @@ const trunkAllowed = (block: ConfigBlock): string[] =>
     .filter((line) => line.text.startsWith('switchport trunk allowed vlan '))
     .map((line) => line.text.slice('switchport trunk allowed vlan '.length));
 ```
+
+— is what the extractor generalises, kept here to show the shape by hand (it is also what
+`switchports.ts` semantically does for the deliberately raw-passed `allowed vlan` vocabulary, open
+item 4).
 
 And after any write: `configure()` and `refresh()` drop the chunk memos unconditionally (pyeapi clears
 its `_chunkify` cache before the `autorefresh` test, `client.py:665-669`), so a re-read really is a read.

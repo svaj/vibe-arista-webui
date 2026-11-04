@@ -343,9 +343,9 @@ physical forwarding parity.
 <!--
 Numbering note (updated on the M8 branch, 2026-11-04): DR-001..043 are on `main`. Since this branch
 was cut, the other reserved bands landed too — **DR-044..046 (M3, PR #24), DR-047..050 (M5, PR #25)
-and DR-051..054 (M7, PR #26) are all on `main`**, below in this file's order. **M8 (#10) claims its
-reserved band DR-055..057** (also below). Still reserved, untouched, and NOT yet in any tree:
-DR-058..060 = M9 (#11), DR-061..063 = M11 (#13), DR-064..066 = M12 (#14). DR-003 and DR-031 are not
+and DR-051..054 (M7, PR #26) are all on `main`**, below in this file's order. **M8 (#10) claimed its
+reserved band DR-055..057 and M9 (#11) claims DR-058..060** (all below). Still reserved, untouched,
+and NOT yet in any tree: DR-061..063 = M11 (#13), DR-064..066 = M12 (#14). DR-003 and DR-031 are not
 gaps — both exist above — but no entry in this log is ever renumbered, so the bands stay
 visible here rather than in a table (this file has no index section; the milestone index is
 STATUS.md §1 and the decision-to-milestone trail is each entry's `Related:` line).
@@ -512,6 +512,77 @@ already retired M5's unverifiable `*Cli.py` citations to demoted carried claims;
 pattern for wave 1, including M10's interface grammar (DECISIONS open item 7).
 **Related:** DR-053, DR-032, DR-043, DR-029 (recorded as upstream defect, not quietly fixed); §5 rows
 83 / 89.
+
+### DR-058 — the keyword gap is settled at the keyword: a shared extractor, not a pinned-primitive rewrite
+Rows 49 and 81 left a chain of promises: `describeLine` does not `lstrip` the run between the first
+token and the value (so `findValue` answers `' PROD'` and `unquote` can never fire), a two-word keyword
+keeps its own tail, and `text.test.ts:204-211` calls it "a one-line implementation fix" deferred to the
+first real reader — M9. That reader arrived in two modules at once (`vlans`, `switchports`), both needing
+the same normalisation at DIFFERENT keywords (`name`, `trunk group`, `switchport mode`, …).
+**Decision:** neither of the two obvious moves. Not "edit `describeLine`": a first-token `lstrip` is the
+wrong scalpel — the tail of `trunk group` survives any lstrip, a resource that ever wants the raw
+remainder loses it, and the primitive is pinned by M6's suite AND by the pyeapi oracle-parity harness
+(`scripts/config-chunkify-oracle.py`); a device-validated reason could reopen it, mid-stream convenience
+could not. Not "each module re-splits": that is two copies of one rule and a breach of PLAN's M6 exit
+gate. The fix is **extraction at the keyword**: `valueAfterKeyword` / `valuesAfterKeyword`
+(`src/resources/config-block.ts`) compose M6's own pieces — the whole-command word-boundary rule
+(`text.ts:215`) + `lstrip` (`:92`) + `unquote` (`:235`) — over the parsed body lines. `src/config/**` is
+untouched by this branch; its pins stay green; the primitive's doc gap is reported upward, not patched
+under cover.
+**Consequence:** the two modules read through ONE implementation and cannot drift. Direct specs land in
+`config-block.test.ts` (13 new cases incl. mutation-proofed word-boundary, whitespace-run, two-word
+keyword, balanced/unbalanced quoting, bare-keyword skip), keeping the file at 100% lines/branches as M7
+shipped it. As-built honesty pins two edges rather than blessing them: an explicitly empty quoted value
+(`name ""`) joins the "no value" bucket (unquote runs before the emptiness test — the quoting DEPTH is
+row 49's M12 #14 capture anyway), and `vlans.py:60`'s `(?:trunk\sgroup\s)(?P<value>.*)$` turns out to
+allow an EMPTY value (the ≥1-char claim rests on `switchports.py:115` alone) — unreachable from
+device-shaped text because `describeLine` rstrips, pinned as such. Row 81's forward promise and row 49's
+pointer now tell this story; a module that wants `findValue`'s raw contract must justify it, not default
+to it.
+**Related:** DR-055 (chunker authority), DR-027; §5 rows 49 / 81 / 91.
+
+### DR-059 — a collection read reports, keeps, or fans out — it never invents, truncates, or strands
+pyeapi treats read validity and write validity as one question and answers both badly: `isvlan` gates the
+writes (and swallows refusals into `False`), while the readers invent (`vlan 10x` → `'10'`), truncate
+(`access vlan 20 extra` → `'20'`), and key ranged headers as ONE string entry (`'200-202,204'`) that
+`isvlan` then refuses — so a range section exists in `getall` but can **never be deleted through pyeapi at
+all** (probe: `create`/`delete` return `False` and send nothing). A UI cannot render "a VLAN you can see
+but cannot touch".
+**Decision:** split the question. The read answers three ways: a well-formed value → typed field; a value
+the grammar cannot parse (`vlan 1,`, `vlan 1-`, `switchport access vlan 20 extra`) → `ConfigParseError`
+naming the section (rows 43/44's rule: a parse failure is never answered as a missing field); a value
+inside the grammar but outside the client's write range (`vlan 99999`) → **kept** (the switch wrote it;
+answering nothing would be the lie) while `delete(99999)` refuses via `assertVlanId`. And a
+ranged/enumerated header **fans out** through M6's `expandRange` so every member id is addressable —
+`delete(201)` on a `vlan 200-202` section sends `no vlan 201`, what EOS makes of that is a labeled M12
+(#14) capture, not a documentary refusal. A run whose endpoints exceed the expansion bound is refused as a
+`ConfigParseError` rather than expanded: unbounded client-side work is refused for the same reason
+DR-032 refuses invented platform ceilings, not because a number is sacred.
+**Consequence:** write-side `1..4094` stays pyeapi's own figure (`range(1, 4095)`, `vlans.py:78`); nothing
+in this decision claims what EOS stores. The parity board says "all 15 + 21 upstream methods ported"
+truthfully: their COMMAND texts are reproduced, their malformed-value ANSWERS deliberately are not.
+**Related:** DR-027, DR-032, DR-053, DR-057, DR-029 (name-fallback half closed at the key, §5 row 96);
+§5 rows 95 / 96.
+
+### DR-060 — set-diff writes are ONE transaction in a deterministic order; Python's hash order is not ported
+`set_trunk_groups` (`vlans.py:314-325`, `switchports.py:364-375`) computes `set(...).difference(...)` for
+adds and removes and sends a **separate `configure` per element** — with more than one change the wire
+order is Python's per-process hash order (not caller order, not reproducible in a log or an audit), a
+refusal mid-list leaves the device **partially applied**, and reading current state through
+`self.get(…)['trunk_groups']` raises `TypeError: 'NoneType' is not subscriptable` for an absent VLAN
+(probe).
+**Decision:** one read, a set-diff, **one** `configure()`: adds in the caller's order, removals in device
+order, mode line first inside `setTrunk`'s combined write. The ordering is explicitly **this client's**
+choice — the CLI applies the lines sequentially and the members are independent, so the final state does
+not depend on it — but a deterministic cmds[] is what a diff-before-commit UI and a recording fixture can
+show and promise; upstream's is what a replayed capture cannot. Empty diff → nothing goes out (upstream
+agrees, probe); absent entry → `NotFoundError` (DR-027's required-lookup arm), never `TypeError`, never a
+silent pass.
+**Consequence:** every multi-change verb in wave 1 has the same shape to be tested against (exact `cmds`
+arrays), and `setTrunk` lands as PLAN §M9's one verb where upstream needs three calls. If M11 (#13)'s
+probe finds `switchport trunk group` unsupported on the target (open item 4), that changes the
+CAPABILITY table, not these verbs' spellings.
+**Related:** DR-037, DR-027, DR-005, DR-050 (never call a staged write a preview); §5 row 97.
 
 ---
 
