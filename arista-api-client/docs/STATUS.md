@@ -23,13 +23,15 @@ local-transport warnings, DR-018 cookie sessions, DR-019 retry rules, DR-017 res
 other milestones own) and `src/internal/variants.ts`: read-only work against a mocked switch is now fully
 usable with no resource module, which is PLAN's M4 exit gate. M3 (#5, merged as [PR #24](https://github.com/svaj/vibe-arista-webui/pull/24)) landed that bag: `createNode()`/`createConnection()` in `src/index.ts` take an explicit connection or a profile plus `store`, and `./node` adds the `eapi.conf` file search (DR-038).
 **PR #26 (M7, #9) merged into `main` on 2026-11-03 (`a2785c7`)** — the `src/resources/` framework sits on
-top of the merged sessions layer, and **M8 (#10) is now the open lane**, holding [PR #27](https://github.com/svaj/vibe-arista-webui/pull/27):
-the first wave-1 module (`system`) built on that framework. The MIGRATION §5 ledger is contiguous
-**1-38 + 41-90** (rows 39-40, DR-003 and DR-031 stay deliberately unused); the reserved bands held —
-**41-53 M6, 54-60 M3, 61-70 M5, 71-82 M7, 83-90 M8**, with 91-98 reserved for M9 (#11) and 99-114 for
-the M11/M12 lanes — and every `§5 row N` citation in this branch's `src` resolves here: the cited set is
-1, 5, 8, 12, 13, 15-38, 41-81 plus **83-90** (the eight divergences `src/resources/system.ts` owns).
-M7 and M8 both edited `command-layer.ts`/`index.ts`/`node.ts`/`registry.ts` additively.
+top of the merged sessions layer. Two PRs are open, stacked: **[PR #27](https://github.com/svaj/vibe-arista-webui/pull/27)
+(M8, #10, `system`) targets `main`**, and **[PR #28](https://github.com/svaj/vibe-arista-webui/pull/28)
+(M9, #11, `vlans` + `switchports`) targets the M8 branch** — merge #27 first, then retarget #28's base
+to `main`. The MIGRATION §5 ledger is contiguous **1-38 + 41-98** (rows 39-40, DR-003 and DR-031 stay
+deliberately unused); the reserved bands held — **41-53 M6, 54-60 M3, 61-70 M5, 71-82 M7, 83-90 M8,
+91-98 M9**, with 99-114 reserved for the M10/M11/M12 lanes — and every `§5 row N` citation in this
+branch's `src` resolves here: the cited set is 1, 5, 8, 12, 13, 15-38, 41-81 plus **83-98** (the
+divergences `system.ts`, `vlans.ts`, `switchports.ts` and the `config-block.ts` extractors own, rows
+91-98). M7, M8 and M9 all edited `command-layer.ts`/`index.ts`/`node.ts`/`registry.ts` additively.
 
 **Test infrastructure planning update:** local cEOS-lab **4.28.14M** and vendor install
 instructions are now available under `/home/svaj/development/arista/cEOS/`.
@@ -53,7 +55,7 @@ eAPI readiness, and harness execution are **not yet validated**. Hardware remain
 | M6 | Text-config engine | `done` | 2026-11-02 | 2026-11-03 | [#8](https://github.com/svaj/vibe-arista-webui/issues/8) | merged as [PR #23](https://github.com/svaj/vibe-arista-webui/pull/23) on 2026-11-03 (`6426756`): `src/config/` (chunkify, section, cache, text) and §5 rows 41-53 are on `main`. |
 | M7 | Resource framework | `done` | 2026-11-03 | 2026-11-03 | [#9](https://github.com/svaj/vibe-arista-webui/issues/9) | merged as [PR #26](https://github.com/svaj/vibe-arista-webui/pull/26) on 2026-11-03 (`a2785c7`): the `src/resources/` framework (entities, command builder, config-block parser, validators, registry) + §5 rows 71-82 and DR-051-054 are on `main`. PLAN's **"Entry point wiring"** bullet shipped with it: the framework re-exports from `src/index.ts` and reaches `./node` through `src/node.ts`, pinned by `src/index.test.ts`. Merged offline suite on `main`: **42 files / 1,086 tests**, coverage 97.66 st / 91.31 br / 99.15 fn / 98.49 ln. |
 | M8 | `system` | `in-progress` | 2026-11-03 | — | [#10](https://github.com/svaj/vibe-arista-webui/issues/10) | the first wave-1 module on the M7 framework: `src/resources/system.ts` (hostname / `ip routing` / EOF-terminated banners) + 41 specs, the first `ResourceKinds` row + `RESOURCE_FACTORIES.system` + the first static accessor `node.system` (closing DR-006's deferred half), exports through both entries. **Open as [PR #27](https://github.com/svaj/vibe-arista-webui/pull/27)** against `main` with §5 rows 83-90 and DR-055-057. Branch gate: **43 files / 1,127 client tests** (+41 over merged `main`), coverage 97.75 st / 91.55 br / 99.19 fn / 98.54 ln. Every rule EOS could contradict ships labelled "client-side, unverified on hardware, M12 (#14) to capture" (DR-057). |
-| M9 | `vlans` + `switchports` | `not-started` | — | — | [#11](https://github.com/svaj/vibe-arista-webui/issues/11) | needs M7 + M8; first demoable slice |
+| M9 | `vlans` + `switchports` | `in-progress` | 2026-11-03 | — | [#11](https://github.com/svaj/vibe-arista-webui/issues/11) | `vlans` + `switchports` + two shared keyword extractors in `config-block.ts` (DR-058 settles the rows 49/81 gap at the keyword; `src/config/**` untouched). **Stacked as [PR #28](https://github.com/svaj/vibe-arista-webui/pull/28)** against the M8 branch (`agents/issue-10-m8-system-resource`) — retarget base to `main` after #27 merges. §5 rows 91-98, DR-058-060. Branch gate: **45 files / 1,228 client tests** (+101 over merged `main`: 45 vlans, 43 switchports, 13 extractors), coverage 98.02 st / 92.20 br / 99.30 fn / 98.71 ln; `config-block.ts` back to 100/100 as M7 shipped it. **Exit gate, honestly:** the client half (list VLANs, assign an access port, diff-before-commit *data*) is delivered; the **webui half is recorded as M13 (#15) consumption work** in the PR body, not claimed. PLAN's `trunk groups` capability-probe gate stays unticked with reason — M11 (#13) is unimplemented; the verbs ship, the capability claim waits for the probe. |
 | M10 | `interfaces` (base, ethernet, port-channel) | `not-started` | — | — | [#12](https://github.com/svaj/vibe-arista-webui/issues/12) | needs M7 + M9; split M10a–c |
 | M11 | Capability probe + dry-run | `not-started` | — | — | [#13](https://github.com/svaj/vibe-arista-webui/issues/13) | needs M5 + M9 |
 | M12 | Live suite + fixtures + CI | `not-started` | — | — | [#14](https://github.com/svaj/vibe-arista-webui/issues/14) | local cEOS image available; needs trusted privileged runner, provisioning/readiness/guards/cleanup; hardware lane separate |
@@ -73,8 +75,8 @@ Parity = "all pyeapi verbs exist, generate the same commands, and the ported uni
 | Module | pyeapi LOC | upstream unit tests | planned ours | parity | fixtures recorded | live suite |
 |---|---|---|---|---|---|---|
 | `system` | 186 | 5 | 12 → **41 landed** (M8, #10) | `complete (offline)` — all 5 upstream methods ported with their command texts verbatim; the divergences are owned at §5 rows 83-90 | none yet — M12 (#14) owns any capture; unit evidence only | — |
-| `vlans` | 372 | 15 | 22 | — | — | — |
-| `switchports` | 417 | 21 | 26 | — | — | — |
+| `vlans` | 372 | 15 | 22 → **45 landed** (M9, #11) | `complete (offline)` — all 15 ported, command texts verbatim; malformed-value *answers* deliberately not ported (DR-059); ranged headers fan out (row 96) | none yet — M12 (#14) | — |
+| `switchports` | 417 | 21 | 26 → **43 landed** (M9, #11) | `complete (offline)` — all 21 ported verbatim incl. the `allowed vlan 1,2,3-5,6,7` pin; divergence rows 91/94-98; DR-029 closed at the key (row 96) | none yet — M12 (#14); `show interfaces switchport` json model blocked on open item 4 | — |
 | `interfaces` | 1,101 | 72 | ~75 | — | — | — |
 | `users` | 328 | 22 | ~28 | — | — | — |
 | `acl` | 303 | 32 | ~35 | — | — | — |
@@ -168,7 +170,7 @@ is the work state; the §1 table `in-progress`/`done` cell mirrors it, and this 
 | [#8](https://github.com/svaj/vibe-arista-webui/issues/8) | M6 Text-config engine | closed (PR #23) |
 | [#9](https://github.com/svaj/vibe-arista-webui/issues/9) | M7 Resource framework | closed (PR #26) |
 | [#10](https://github.com/svaj/vibe-arista-webui/issues/10) | M8 `system` | `status:ready-for-review` ([PR #27](https://github.com/svaj/vibe-arista-webui/pull/27)) |
-| [#11](https://github.com/svaj/vibe-arista-webui/issues/11) | M9 `vlans` + `switchports` | open |
+| [#11](https://github.com/svaj/vibe-arista-webui/issues/11) | M9 `vlans` + `switchports` | `status:ready-for-review` ([PR #28](https://github.com/svaj/vibe-arista-webui/pull/28), base = the M8 branch) |
 | [#12](https://github.com/svaj/vibe-arista-webui/issues/12) | M10 `interfaces` | open |
 | [#13](https://github.com/svaj/vibe-arista-webui/issues/13) | M11 Capability probe + dry-run | open |
 | [#14](https://github.com/svaj/vibe-arista-webui/issues/14) | M12 Live suite + fixtures + CI | open |

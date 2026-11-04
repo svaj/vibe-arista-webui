@@ -202,14 +202,22 @@ describe('what the browser entry exports', () => {
       // M8 (#10): the first wave-1 module rides the same entry, so `node.system`/`new SystemResource(node)`
       // are both reachable from `.` (and through `export *` from `./node`) without a deep import.
       'SystemResource',
+      // M9 (#11): same for the two collection modules — the webui's VLAN/access-port slice (PLAN.md §M9's
+      // exit gate) consumes `node.vlans` / `node.switchports` and the mode vocabulary from `.` only.
+      'VlansResource', 'SwitchportsResource', 'isSwitchportMode',
     ] as const
     for (const name of functions) {
       expect(typeof surface[name], name).toBe('function')
     }
-    // The registry is no longer empty: M8 (#10) registered `system`, and `SystemResource` is what its
-    // factory builds. `vlans`/`switchports`/`interfaces` are still owed by M9 #11 / M10 #12 (§5 row 79).
-    expect(Object.keys(surface.RESOURCE_FACTORIES)).toEqual(['system'])
+    expect(surface.SWITCHPORT_MODES).toEqual(['access', 'trunk', 'dot1q-tunnel', 'private-vlan'])
+    expect(surface.isSwitchportMode('private-vlan')).toBe(true)
+    expect(surface.isSwitchportMode('private')).toBe(false)
+    // The registry has three rows now: M8's `system` plus M9's `vlans`/`switchports`; `interfaces` is
+    // still owed by M10 #12 (§5 row 79).
+    expect(Object.keys(surface.RESOURCE_FACTORIES)).toEqual(['system', 'vlans', 'switchports'])
     expect(new Node(mockTransport()).system).toBeInstanceOf(surface.SystemResource)
+    expect(new Node(mockTransport()).vlans).toBeInstanceOf(surface.VlansResource)
+    expect(new Node(mockTransport()).switchports).toBeInstanceOf(surface.SwitchportsResource)
     // `assertVlanId` is an assertion function (returns void); the range is pyeapi's —
     // `value in range(1, 4095)`, i.e. VLANs 1..4094 (pyeapi/api/vlans.py:78). M9 (#12) re-checks that
     // bound against the switch's own `switchport access vlan` range on a device.
