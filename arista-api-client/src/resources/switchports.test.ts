@@ -468,7 +468,9 @@ describe('SwitchportsResource mode and VLAN fields — switchports.py:242-342 an
     // The rejected argument is named in `pythonRepr`, which quotes a string (`internal/wire.ts:216`) — the
     // rendering `validators.test.ts:55` pins for the same guard, and the reason a string id is a separate
     // mistake from an out-of-range number (upstream's `int('20')` accepts it; `assertVlanId` does not).
-    await expectRefusal(() => switchports.setAccessVlan('Ethernet1', '20' as number), "invalid vlan '20'")
+    // The string is a runtime-only caller mistake, so it reaches the guard through `unknown` rather than a
+    // sound-looking `'20' as number` (the form `base.test.ts:418` uses for the same `assertVlanId` refusal).
+    await expectRefusal(() => switchports.setAccessVlan('Ethernet1', '20' as unknown as number), "invalid vlan '20'")
     expect(sentAsText(transport)).toHaveLength(1)
   })
 
