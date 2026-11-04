@@ -15,7 +15,7 @@ import { request as httpRequest, type IncomingHttpHeaders, type IncomingMessage 
 import { request as httpsRequest, type RequestOptions } from 'node:https'
 import { Buffer } from 'node:buffer'
 
-import type { JsonRpcRequest } from '../types/eapi'
+import type { RawWireRequest } from '../types/eapi'
 import { authorizationHeader } from './auth'
 import { idPolicyFrom, type RawSend, type TransportKernel } from './base'
 import type { CredentialOptions, TlsMaterialOptions, TransportBaseOptions, TransportKind } from './contract'
@@ -149,7 +149,7 @@ export function createNodeSender(params: {
   readonly extraHeaders?: (() => Readonly<Record<string, string>>) | undefined
 }): RawSend {
   const { endpoint, credentials, socketPath, tls } = params
-  return async function send(request: JsonRpcRequest, ctx): Promise<string> {
+  return async function send(request: RawWireRequest, ctx): Promise<string> {
     const context: WireErrorContext = { endpoint: endpoint.address, request, timeoutMs: ctx.timeoutMs }
     const response = await nodeCall(
       {

@@ -22,14 +22,25 @@ import type {
   CommandSpec,
   ErrorDetailData,
   ErrorDetailEntry,
+  GetCommandCompletionsParams,
+  GetCommandCompletionsRequest,
+  GetCommandHelpRequest,
   JsonRpcFailure,
   JsonRpcId,
+  JsonRpcMethodRequest,
+  JsonRpcObjectSuccess,
   JsonRpcRequest,
   JsonRpcSuccess,
+  MethodWireSender,
+  NonRunCmdsMethodName,
+  RequestIdPolicy,
   RunCmdsFormat,
   RunCmdsParams,
   RunCmdsVersion,
-  RequestIdPolicy,
+  VerifyConfigParams,
+  VerifyConfigRequest,
+  WireMethodCall,
+  WireMethodResultOf,
   WireSender,
 } from '../types/eapi'
 
@@ -415,23 +426,35 @@ function errorDataEntries(data: unknown): readonly unknown[] {
 export type ParsedResponse = { readonly ok: true; readonly envelope: JsonRpcSuccess } | { readonly ok: false; readonly envelope?: JsonRpcFailure; readonly error: CommandError | ProtocolError }
 
 /**
- * Decode one eAPI response body. **Never throws for an error envelope** — it returns the failure
- * and lets the caller decide (PLAN M1). Only a body that is not a usable envelope fails, and it
- * fails as a `ProtocolError` carrying the redacted, truncated raw text.
+ * What the shared envelope reader found, before the method-specific gate on the shape of `result`.
+ * `invalid` means the body is not a usable envelope at all; `error` is a device failure envelope,
+ * already turned into the typed error M1's codec produces.
  */
-export function parseResponse(text: string, context: ResponseContext = {}): ParsedResponse {
+type EnvelopeReading =
+  | { readonly kind: 'invalid'; readonly error: ProtocolError }
+  | { readonly kind: 'error'; readonly envelope: JsonRpcFailure; readonly error: CommandError }
+  /** `result` is deliberately **unvalidated** — array or object is the caller's method-dependent decision. */
+  | { readonly kind: 'success'; readonly result: unknown; readonly id: JsonRpcId | undefined }
+
+/**
+ * The one place an eAPI body is checked for being an envelope: JSON, an object, a `2.0` version, an
+ * optional scalar `id`, and **exactly one** of `result`/`error` (a `result`-and-`error` body is
+ * pyeapi's duplicate-key shape, DR-007, and is refused). Shared by {@link parseResponse} and
+ * {@link parseMethodResponse} so the two gates cannot drift apart.
+ */
+function readEnvelope(text: string, context: ResponseContext): EnvelopeReading {
   let decoded: unknown
   try {
     decoded = JSON.parse(text)
   } catch {
-    return { ok: false, error: protocolError('eAPI response is not valid JSON', text, context, EapiErrorCode.PARSE_ERROR) }
+    return { kind: 'invalid', error: protocolError('eAPI response is not valid JSON', text, context, EapiErrorCode.PARSE_ERROR) }
   }
 
   if (!isRecord(decoded)) {
-    return { ok: false, error: protocolError('eAPI response must be a JSON object', text, context, EapiErrorCode.INVALID_REQUEST) }
+    return { kind: 'invalid', error: protocolError('eAPI response must be a JSON object', text, context, EapiErrorCode.INVALID_REQUEST) }
   }
   if ('jsonrpc' in decoded && decoded['jsonrpc'] !== '2.0') {
-    return { ok: false, error: protocolError(`unsupported jsonrpc version ${pythonRepr(decoded['jsonrpc'])}`, text, context, EapiErrorCode.INVALID_REQUEST) }
+    return { kind: 'invalid', error: protocolError(`unsupported jsonrpc version ${pythonRepr(decoded['jsonrpc'])}`, text, context, EapiErrorCode.INVALID_REQUEST) }
   }
 
   const id = readId(decoded['id'])
@@ -439,7 +462,7 @@ export function parseResponse(text: string, context: ResponseContext = {}): Pars
   const hasResult = 'result' in decoded
   if (hasError === hasResult) {
     return {
-      ok: false,
+      kind: 'invalid',
       error: protocolError(
         `eAPI response must carry exactly one of result/error (got result=${String(hasResult)}, error=${String(hasError)})`,
         text,
@@ -452,10 +475,10 @@ export function parseResponse(text: string, context: ResponseContext = {}): Pars
   if (hasError) {
     const error = decoded['error']
     if (!isRecord(error) || typeof error['code'] !== 'number' || !Number.isFinite(error['code'])) {
-      return { ok: false, error: protocolError('eAPI error envelope is missing a numeric code', text, context, EapiErrorCode.INVALID_REQUEST) }
+      return { kind: 'invalid', error: protocolError('eAPI error envelope is missing a numeric code', text, context, EapiErrorCode.INVALID_REQUEST) }
     }
     if (typeof error['message'] !== 'string') {
-      return { ok: false, error: protocolError('eAPI error envelope is missing a message', text, context, EapiErrorCode.INVALID_REQUEST) }
+      return { kind: 'invalid', error: protocolError('eAPI error envelope is missing a message', text, context, EapiErrorCode.INVALID_REQUEST) }
     }
     const envelope: JsonRpcFailure = {
       jsonrpc: '2.0',
@@ -466,14 +489,31 @@ export function parseResponse(text: string, context: ResponseContext = {}): Pars
       },
       ...(id === undefined ? {} : { id }),
     }
-    return { ok: false, envelope, error: parseErrorEnvelope(envelope, context) }
+    return { kind: 'error', envelope, error: parseErrorEnvelope(envelope, context) }
   }
 
-  const result = decoded['result']
+  return { kind: 'success', result: decoded['result'], id }
+}
+
+/**
+ * Decode one eAPI response body. **Never throws for an error envelope** — it returns the failure
+ * and lets the caller decide (PLAN M1). Only a body that is not a usable envelope fails, and it
+ * fails as a `ProtocolError` carrying the redacted, truncated raw text.
+ *
+ * The `result` gate here is runCmds' shape: an array of per-command objects. That is right for
+ * `runCmds` and for `verifyConfig` (both server procedures return a list, `JsonRpcBase.py:160`), and wrong
+ * for the dict-returning methods — those go through {@link parseMethodResponse}.
+ */
+export function parseResponse(text: string, context: ResponseContext = {}): ParsedResponse {
+  const reading = readEnvelope(text, context)
+  if (reading.kind === 'invalid') return { ok: false, error: reading.error }
+  if (reading.kind === 'error') return { ok: false, envelope: reading.envelope, error: reading.error }
+
+  const result = reading.result
   if (!Array.isArray(result) || !result.every(isRecord)) {
     return { ok: false, error: protocolError('eAPI result must be an array of per-command objects', text, context, EapiErrorCode.INVALID_REQUEST) }
   }
-  const envelope: JsonRpcSuccess = { jsonrpc: '2.0', result: result as readonly CommandResult[], ...(id === undefined ? {} : { id }) }
+  const envelope: JsonRpcSuccess = { jsonrpc: '2.0', result: result as readonly CommandResult[], ...(reading.id === undefined ? {} : { id: reading.id }) }
   return { ok: true, envelope }
 }
 
@@ -584,4 +624,390 @@ export async function runRequest(
  */
 export function isUnconvertedCommandFailure(error: unknown): error is CommandError {
   return error instanceof CommandError && error.code === EapiErrorCode.COMMAND_UNCONVERTED
+}
+
+// --- the non-`runCmds` methods (M11, #13) -----------------------------------------------------------
+//
+// `runCmds` is the only method pyeapi speaks (`eapilib.py:326-327`, `:362`), so this section has no
+// upstream twin: the parameter names, the required parameter, and the shape of each reply were read
+// out of Arista's own server-side Python for **EOS 4.28.13.1M** (`JsonCli.py`, extracted from
+// `/home/svaj/development/arista/_rea_swi/Base.sqsh`; the JSON-RPC dispatch and envelope writer are in
+// `JsonRpcBase.py` next to it). The rules that matter here:
+//
+//  - an unknown *named* parameter is not rejected by the parameter validator — it reaches
+//    `procedure(**params)` and Python raises, which the dispatcher reports as **`-32603`**
+//    `INTERNAL_ERROR` with the text `got an unexpected keyword argument 'x'`
+//    (`JsonRpcBase.py:163-166`, `:311-314`). pyeapi only decorates that text (`eapilib.py:459-466`).
+//    A missing mandatory parameter is **`-32602`** (`JsonRpcBase.py:288-293`).
+//  - the envelope is written from the procedure's **return value verbatim** (`JsonRpcBase.py:156-160`),
+//    so a method that returns a dict answers with a `result` **object**. `verifyConfig` returns a list
+//    and therefore answers like `runCmds`. That one fact is why this file has two result gates.
+//
+// Same DR-016 rule as `buildRequest`: anything outside a method's declared parameters is refused here,
+// before a byte is sent, because the device's answer for a typo is an opaque `-32603`.
+
+/** `verifyConfig(configList, format, timestamps, stopOnError, version)` — `JsonCli.py:275-279`. */
+export const VERIFY_CONFIG_PARAM_KEYS: readonly string[] = ['configList', 'format', 'timestamps', 'stopOnError', 'version']
+
+/** `getCommandCompletions(command, preamble)` — `JsonCli.py:174`. */
+export const GET_COMMAND_COMPLETIONS_PARAM_KEYS: readonly string[] = ['command', 'preamble']
+
+/** `getCommandHelp(command)` — `JsonCli.py:200`. */
+export const GET_COMMAND_HELP_PARAM_KEYS: readonly string[] = ['command']
+
+/** What the codec needs to know about one non-`runCmds` method. */
+export interface WireMethodSpec {
+  readonly method: NonRunCmdsMethodName
+  /** The parameters the server's own signature declares. Anything else is refused locally. */
+  readonly paramKeys: readonly string[]
+  /** The parameter `JsonRpcBase.py:288-293` requires, i.e. the one with no server-side default. */
+  readonly requiredParam: keyof VerifyConfigParams | keyof GetCommandCompletionsParams | 'command'
+  /** `'array'`: `result` is a per-command list. `'object'`: `result` is one object. See `WireMethodResultOf`. */
+  readonly resultShape: 'array' | 'object'
+}
+
+/** The method table {@link buildMethodRequest} and {@link sendMethodRequest} both read, so they cannot disagree. */
+export const WIRE_METHODS: Readonly<Record<NonRunCmdsMethodName, WireMethodSpec>> = Object.freeze({
+  verifyConfig: {
+    method: 'verifyConfig',
+    paramKeys: VERIFY_CONFIG_PARAM_KEYS,
+    requiredParam: 'configList',
+    resultShape: 'array',
+  },
+  getCommandCompletions: {
+    method: 'getCommandCompletions',
+    paramKeys: GET_COMMAND_COMPLETIONS_PARAM_KEYS,
+    requiredParam: 'command',
+    resultShape: 'object',
+  },
+  getCommandHelp: {
+    method: 'getCommandHelp',
+    paramKeys: GET_COMMAND_HELP_PARAM_KEYS,
+    requiredParam: 'command',
+    resultShape: 'object',
+  },
+})
+
+/** Envelope-level build options: the same two keys `buildRequest` reserves (`DR-017`). */
+const METHOD_ENVELOPE_KEYS: readonly string[] = ['id', 'ids']
+
+export interface BuildMethodRequestOptions {
+  /** Pin a specific id (replays, fixture matching). Otherwise the `ids` policy decides. */
+  readonly id?: JsonRpcId | undefined
+  /** The per-connection id policy (DR-017). Supplied by the transport, which owns the sequence. */
+  readonly ids?: RequestIdPolicy | undefined
+}
+
+/** The `verifyConfig` parameters, without the envelope knobs. Deliberately **no**
+ * `includeErrorDetail`: the server hard-codes it off for this method (`JsonCli.py:326`), so
+ * `error.data` is always the plain per-command-array shape. */
+export interface BuildVerifyConfigParamsOptions {
+  readonly format?: RunCmdsFormat | undefined
+  readonly timestamps?: boolean | undefined
+  readonly stopOnError?: boolean | undefined
+  readonly version?: RunCmdsVersion | undefined
+}
+
+/** Options for {@link buildVerifyConfigRequest}: the method's parameters plus the envelope knobs. */
+export interface BuildVerifyConfigRequestOptions extends BuildVerifyConfigParamsOptions, BuildMethodRequestOptions {}
+
+/** The `getCommandCompletions` parameters, without the envelope knobs. */
+export interface BuildCompletionsParamsOptions {
+  /**
+   * CLI commands the device **executes** before completing the partial line, to enter the mode it
+   * belongs in (`CliApi.py:656-668`, the loop at `:659-663`), e.g. `['interface Ethernet1']`. They run
+   * in the caller's privilege, so this is not a read-only-looking option: it is a command list in
+   * disguise (DR-032).
+   */
+  readonly preamble?: readonly string[] | undefined
+}
+
+/** Options for {@link buildGetCommandCompletionsRequest}. */
+export interface BuildCompletionsRequestOptions extends BuildCompletionsParamsOptions, BuildMethodRequestOptions {}
+
+function assertAllowedMethodOptions(method: NonRunCmdsMethodName, options: Record<string, unknown>): void {
+  const spec = WIRE_METHODS[method]
+  for (const key of Object.keys(options)) {
+    if (METHOD_ENVELOPE_KEYS.includes(key) || spec.paramKeys.includes(key)) continue
+    throw new NotSupportedError(
+      `unsupported ${method} parameter '${key}': the server declares ${spec.paramKeys.join(', ')} (JsonCli.py), and an undeclared named parameter is answered -32603 'got an unexpected keyword argument' (JsonRpcBase.py:163-166) — refusing before sending (DR-016)`,
+    )
+  }
+}
+
+function assertMethodBoolean(method: string, key: string, value: unknown): boolean {
+  // The server would accept any truthy/falsy Python object; a JSON caller means `true`/`false`.
+  if (typeof value !== 'boolean') {
+    throw new TypeError(`${method} parameter '${key}' must be a boolean, got ${JSON.stringify(value)}`)
+  }
+  return value
+}
+
+/**
+ * A configlet list. The device requires a **list** (`JsonCli.py:291-292`) and each element becomes the
+ * `input` of a `copy terminal: session-config` command (`JsonCli.py:309-310`), where
+ * `COMMAND_ATTRIBUTES` requires a string (`JsonCli.py:36-39`, enforced at `:397-423`).
+ * Refusing an empty list is **ours**, not the device's: zero configlets is a review screen that shows
+ * nothing and could be mistaken for a clean answer.
+ */
+function assertConfigList(configList: string | readonly string[]): readonly string[] {
+  const list = Array.isArray(configList) ? (configList as readonly string[]) : [configList as string]
+  if (list.length === 0) {
+    throw new TypeError(
+      'verifyConfig needs at least one configlet — an empty configList stages nothing (our rule, not the device\'s: JsonCli.py:291-292 only requires a list)',
+    )
+  }
+  for (const [index, configlet] of list.entries()) {
+    if (typeof configlet !== 'string') {
+      throw new TypeError(
+        `verifyConfig configlet ${String(index)} must be a string of configuration text, got ${JSON.stringify(configlet)} — the server puts it in a command object's 'input', which must be a string (JsonCli.py:36-39)`,
+      )
+    }
+    if (configlet === '') {
+      throw new TypeError(`verifyConfig configlet ${String(index)} is empty — pass the config text, or drop the entry`)
+    }
+  }
+  return list
+}
+
+/** A `command` parameter. Unlike a config session name this is a JSON **value**, not a spliced CLI token. */
+function assertMethodCommand(method: string, command: unknown): string {
+  if (typeof command !== 'string') {
+    // `_validateStringOption` (`JsonCli.py:48-55`) raises `InvalidParamsError` for exactly this, i.e. -32602.
+    throw new TypeError(`${method} parameter 'command' must be a string, got ${JSON.stringify(command)}`)
+  }
+  return command
+}
+
+/**
+ * A preamble entry **is** a CLI command line (`CliApi.py:659-663`), so a newline in it would be the
+ * end of that line and the start of another. Refused outright — same reasoning as a session name.
+ */
+function assertPreamble(preamble: readonly string[] | undefined): readonly string[] | undefined {
+  if (preamble === undefined) return undefined
+  if (!Array.isArray(preamble)) {
+    throw new TypeError(`getCommandCompletions parameter 'preamble' must be an array of command strings, got ${JSON.stringify(preamble)}`)
+  }
+  for (const [index, command] of preamble.entries()) {
+    if (typeof command !== 'string' || command.trim() === '') {
+      throw new TypeError(`getCommandCompletions preamble ${String(index)} must be a non-empty command string, got ${JSON.stringify(command)}`)
+    }
+    if (/[\u0000-\u001f\u007f]/u.test(command)) {
+      throw new NotSupportedError(
+        `getCommandCompletions preamble ${String(index)} contains a control character — the device executes each preamble entry as one CLI command line (CliApi.py:659-663), and a newline ends it`,
+      )
+    }
+  }
+  return preamble
+}
+
+function methodId(options: BuildMethodRequestOptions): JsonRpcId {
+  return options.id ?? (options.ids ?? createRequestIds()).next()
+}
+
+/**
+ * The validated `params` for `verifyConfig`, without the envelope. Exported because
+ * {@link Node.verifyConfig} sends the `{method, params}` pair through `Transport#callMethod` and then
+ * parses the reply **against these same configlets** — so the pairing rule and the wire rule are
+ * decided once, not twice (`JsonCli.py:307-311` is what makes the reply positions mean what this
+ * parser says they mean).
+ */
+export function buildVerifyConfigParams(
+  configList: string | readonly string[],
+  options: BuildVerifyConfigParamsOptions = {},
+): VerifyConfigParams {
+  assertAllowedMethodOptions('verifyConfig', options as Record<string, unknown>)
+  const params: { -readonly [K in keyof VerifyConfigParams]: VerifyConfigParams[K] } = {
+    configList: assertConfigList(configList),
+  }
+  // The server's own defaults (`JsonCli.py:276-279`) stay the server's: only send what was asked for.
+  if (options.format !== undefined) params.format = assertAllowedFormat(options.format)
+  if (options.timestamps !== undefined) params.timestamps = assertMethodBoolean('verifyConfig', 'timestamps', options.timestamps)
+  if (options.stopOnError !== undefined) params.stopOnError = assertMethodBoolean('verifyConfig', 'stopOnError', options.stopOnError)
+  if (options.version !== undefined) params.version = assertAllowedVersion(options.version)
+  return params
+}
+
+/**
+ * Build a `verifyConfig` request (M11 #13, PLAN §M11 box 1). The dry run the M5 note in
+ * `config-session.ts` points here for: the device applies each configlet inside its own `no-commit`
+ * config session, reads `show session-config` after each application, and **aborts** that session
+ * (`JsonCli.py:293-326`), so running-config is untouched. Note what that is *not*: the server's
+ * pre-commands send a bare `enable` with **no** input (`JsonCli.py:296`), so unlike `runCmds` this
+ * method cannot carry an enable password — a non-priv-15 API user gets a privilege failure.
+ */
+export function buildVerifyConfigRequest(
+  configList: string | readonly string[],
+  options: BuildVerifyConfigRequestOptions = {},
+): VerifyConfigRequest {
+  assertAllowedMethodOptions('verifyConfig', options as Record<string, unknown>)
+  return { jsonrpc: '2.0', method: 'verifyConfig', id: methodId(options), params: buildVerifyConfigParams(configList, options) }
+}
+
+/** The validated `params` for `getCommandCompletions` — see {@link buildVerifyConfigParams}. */
+export function buildGetCommandCompletionsParams(
+  command: string,
+  options: BuildCompletionsParamsOptions = {},
+): GetCommandCompletionsParams {
+  assertAllowedMethodOptions('getCommandCompletions', options as Record<string, unknown>)
+  const params: { -readonly [K in keyof GetCommandCompletionsParams]: GetCommandCompletionsParams[K] } = {
+    command: assertMethodCommand('getCommandCompletions', command),
+  }
+  const preamble = assertPreamble(options.preamble)
+  if (preamble !== undefined) params.preamble = preamble
+  return params
+}
+
+/**
+ * Build a `getCommandCompletions` request. `command` may be empty — completing `''` is how a UI asks
+ * for the command set of the current mode; the device answers with a `completions` object
+ * (`JsonCli.py:174-192`).
+ */
+export function buildGetCommandCompletionsRequest(
+  command: string,
+  options: BuildCompletionsRequestOptions = {},
+): GetCommandCompletionsRequest {
+  assertAllowedMethodOptions('getCommandCompletions', options as Record<string, unknown>)
+  return {
+    jsonrpc: '2.0',
+    method: 'getCommandCompletions',
+    id: methodId(options),
+    params: buildGetCommandCompletionsParams(command, options),
+  }
+}
+
+/** Build a `getCommandHelp` request (`JsonCli.py:199-203`; the answer is a token → help object). */
+export function buildGetCommandHelpRequest(command: string, options: BuildMethodRequestOptions = {}): GetCommandHelpRequest {
+  assertAllowedMethodOptions('getCommandHelp', options as Record<string, unknown>)
+  const params = { command: assertMethodCommand('getCommandHelp', command) }
+  return { jsonrpc: '2.0', method: 'getCommandHelp', id: methodId(options), params }
+}
+
+/**
+ * Build any non-`runCmds` request from a `{method, params}` pair — the shape `Transport#callMethod`
+ * stamps with the connection's id policy, exactly as `execute()` stamps `buildRequest` (DR-017).
+ * Every parameter check above still runs, because the allow-list is what makes this the last chance
+ * to refuse a bad call.
+ */
+export function buildMethodRequest(call: WireMethodCall, options: BuildMethodRequestOptions = {}): JsonRpcMethodRequest {
+  const spec = WIRE_METHODS[call.method]
+  if (!(spec.requiredParam in call.params)) {
+    // The device answers -32602 for this (`JsonRpcBase.py:290-293`); it costs nothing to say it earlier.
+    throw new TypeError(`${call.method} requires the '${spec.requiredParam}' parameter (JsonCli.py)`)
+  }
+  switch (call.method) {
+    case 'verifyConfig': {
+      const { configList, ...rest } = call.params
+      return buildVerifyConfigRequest(configList, { ...rest, ...options })
+    }
+    case 'getCommandCompletions': {
+      const { command, ...rest } = call.params
+      return buildGetCommandCompletionsRequest(command, { ...rest, ...options })
+    }
+    case 'getCommandHelp':
+      return buildGetCommandHelpRequest(call.params.command, options)
+  }
+}
+
+/** The `commands` an error from a method call should carry, redacted (DR-011). Never a lie about `cmds`. */
+function methodErrorCommands(request: JsonRpcMethodRequest): readonly CommandSpec[] {
+  const params = request.params
+  if ('configList' in params) {
+    // A configlet is CLI text and routinely contains credentials (`username … secret …`).
+    return redactCommands(params.configList)
+  }
+  if ('command' in params) {
+    // A half-typed CLI line: it is what the operator was typing, and DR-011 still applies to it.
+    return [redactCommandText(params.command)]
+  }
+  return []
+}
+
+/** Context for {@link parseMethodResponse}: the shared response context plus the method being answered. */
+export type MethodResponseContext = ResponseContext & { readonly method: NonRunCmdsMethodName }
+
+export type ParsedMethodResponse =
+  | { readonly ok: true; readonly envelope: JsonRpcObjectSuccess }
+  | { readonly ok: false; readonly envelope?: JsonRpcFailure; readonly error: CommandError | ProtocolError }
+
+/** How to name an unexpected `result` value in a refusal, without printing the device's whole body. */
+function shapeOf(value: unknown): string {
+  if (Array.isArray(value)) return 'an array'
+  if (value === null) return 'null'
+  return `a ${typeof value}`
+}
+
+/**
+ * Decode a reply whose `result` is a **single object** — the dict-returning methods
+ * (`getCommandCompletions`, `getCommandHelp`, `getPrompt`). Same envelope rules as
+ * {@link parseResponse}, which shares {@link readEnvelope} with it, and the same rule that an error
+ * envelope never throws.
+ *
+ * `verifyConfig` does **not** come through here: the method returns a list, so its reply is an
+ * array-shaped success and `parseResponse` is the correct gate (`JsonCli.py:321-326`,
+ * `JsonRpcBase.py:156-160`).
+ */
+export function parseMethodResponse(text: string, context: MethodResponseContext): ParsedMethodResponse {
+  const reading = readEnvelope(text, context)
+  if (reading.kind === 'invalid') return { ok: false, error: reading.error }
+  if (reading.kind === 'error') return { ok: false, envelope: reading.envelope, error: reading.error }
+  if (!isRecord(reading.result)) {
+    return {
+      ok: false,
+      error: protocolError(
+        `eAPI result for '${context.method}' must be a single JSON object, not ${shapeOf(reading.result)} — this client refuses to guess a shape it cannot verify (DR-032)`,
+        text,
+        context,
+        EapiErrorCode.INVALID_REQUEST,
+      ),
+    }
+  }
+  const envelope: JsonRpcObjectSuccess = { jsonrpc: '2.0', result: reading.result, ...(reading.id === undefined ? {} : { id: reading.id }) }
+  return { ok: true, envelope }
+}
+
+/** A method round trip: the request that was built, plus either the typed reply or the typed failure. */
+export type SentMethodCall<R = CommandResult | readonly CommandResult[]> =
+  | { readonly ok: true; readonly request: JsonRpcMethodRequest; readonly result: R }
+  | { readonly ok: false; readonly request: JsonRpcMethodRequest; readonly error: CommandError | ProtocolError }
+
+/**
+ * build → send → parse for one non-`runCmds` method.
+ *
+ * There is **no** `tolerateErrors` here, deliberately: DR-012's repair re-issues a *command list* with
+ * `format:'text'`, and none of these methods takes a command list — `verifyConfig` has its own `format`
+ * parameter the caller chose, and the completion/help methods have no encoding at all. Inventing a
+ * retry for a method whose failure modes are unmeasured would be the kind of claim DR-050 refuses.
+ */
+export async function sendMethodRequest<C extends WireMethodCall>(
+  sender: MethodWireSender,
+  call: C,
+  options: BuildMethodRequestOptions = {},
+): Promise<SentMethodCall<WireMethodResultOf<C>>> {
+  const request = buildMethodRequest(call, options)
+  const context: ResponseContext = { requestId: request.id, commands: methodErrorCommands(request) }
+  const text = await sender.sendMethod(request)
+  if (WIRE_METHODS[request.method].resultShape === 'array') {
+    const parsed = parseResponse(text, context)
+    if (parsed.ok) {
+      return { ok: true, request, result: parsed.envelope.result as WireMethodResultOf<C> }
+    }
+    return { ok: false, request, error: parsed.error }
+  }
+  const parsed = parseMethodResponse(text, { ...context, method: request.method })
+  if (parsed.ok) {
+    return { ok: true, request, result: parsed.envelope.result as WireMethodResultOf<C> }
+  }
+  return { ok: false, request, error: parsed.error }
+}
+
+/** {@link sendMethodRequest}, but a failure throws instead of being returned — what `Node` calls. */
+export async function runMethodRequest<R = CommandResult | readonly CommandResult[]>(
+  sender: MethodWireSender,
+  call: WireMethodCall,
+  options: BuildMethodRequestOptions = {},
+): Promise<R> {
+  const outcome = await sendMethodRequest(sender, call, options)
+  if (!outcome.ok) throw outcome.error
+  return outcome.result as R
 }

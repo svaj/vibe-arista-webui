@@ -154,3 +154,151 @@ export interface RequestIdPolicy {
   /** `next()` is called once per request by `buildRequest`; the 1003 text retry takes a fresh one. */
   next(): JsonRpcId
 }
+// --- the JSON-RPC methods beyond `runCmds` (M11, #13) ---------------------------------------------
+//
+// pyeapi implements **only** `runCmds`: `grep -rn "verifyConfig\|editConfig\|getCommandCompletions"
+// pyeapi/pyeapi/` in the pinned clone (`develop` `6816d9e`) produces no hit, and the only request
+// bodies it builds are `{"method": "runCmds"}` (`eapilib.py:326-327`, `:362`). So nothing below is a
+// port — the parameter names, defaults and reply shapes were read out of Arista's own server-side
+// Python in the **EOS-4.28.13.1M** image, `usr/lib/python3.9/site-packages/JsonCli.py` extracted from
+// `/home/svaj/development/arista/_rea_swi/Base.sqsh` (the dispatch/envelope rules are in
+// `JsonRpcBase.py` beside it). Those files are vendor-proprietary build content, read for
+// interoperability only; no code below was copied from them.
+//
+// What that extraction does **not** give us is a round trip. The reply shapes below are what the
+// server's `return` statements produce, which is the strongest evidence available offline; the
+// wording of any error text and every field a native layer fills stay open items for the M12 (#14)
+// capture (DR-033/DR-043). Every fixture and parser for these methods says so at its definition.
+
+/** Every JSON-RPC method this package sends. */
+export type WireMethodName = 'runCmds' | NonRunCmdsMethodName
+
+/** The methods M11 (#13) adds next to `runCmds`. pyeapi has no twin for any of them. */
+export type NonRunCmdsMethodName = 'verifyConfig' | 'getCommandCompletions' | 'getCommandHelp'
+
+/**
+ * `verifyConfig(configList, format, timestamps, stopOnError, version)` — `JsonCli.py:275-330`.
+ *
+ * `configList` is a list of **configlet strings**: the server applies each one in turn inside its own
+ * `configure session capiVerify-<pid>-<uuid>` session (`JsonCli.py:293`, opened `no-commit` at
+ * `:297-298` on top of `rollback clean-config` at `:299`), reads `show session-config` after each
+ * (`:310`), and **aborts that session** when the batch ends (`postCommandsFn`, `:302-305`). The
+ * docstring's own example is the contract: `configList=[c1, c2]` returns
+ * `[normalized(c1), normalized(c1+c2)]`.
+ *
+ * There is deliberately no `includeErrorDetail` here: the server hard-codes it to `False` for this
+ * method (`JsonCli.py:326`), so `error.data` always answers in the plain per-command-array shape.
+ */
+export interface VerifyConfigParams {
+  /** One entry per configlet; each becomes `{"cmd":"copy terminal: session-config","input":<entry>}`. */
+  readonly configList: readonly string[]
+  /** `'json'` (default server-side) or `'text'`. Validated client-side exactly as `JsonCli.py:290` does. */
+  readonly format?: RunCmdsFormat
+  readonly timestamps?: boolean
+  /** Defaults to `true` **on the device** (`JsonCli.py:278`); `buildVerifyConfigRequest` invents nothing. */
+  readonly stopOnError?: boolean
+  readonly version?: RunCmdsVersion
+}
+
+/**
+ * `getCommandCompletions(command, preamble)` — `JsonCli.py:173-192`.
+ *
+ * `preamble` is a list of CLI command strings the server executes **before** completing, to move the
+ * CLI into the mode the partial line belongs in (`CliApi.py:656-668`, the loop at `:659-663`,
+ * e.g. `['interface Ethernet1']`).
+ */
+export interface GetCommandCompletionsParams {
+  readonly command: string
+  readonly preamble?: readonly string[]
+}
+
+/** `getCommandHelp(command)` — `JsonCli.py:199-203`, answered by `CliApi.py:442-462`. */
+export interface GetCommandHelpParams {
+  readonly command: string
+}
+
+/** The `params` object for any non-`runCmds` method. */
+export type WireMethodParams = VerifyConfigParams | GetCommandCompletionsParams | GetCommandHelpParams
+
+/** A JSON-RPC envelope for a non-`runCmds` method. `params` is per-method, so read the two together. */
+export interface JsonRpcMethodRequest {
+  readonly jsonrpc: '2.0'
+  readonly method: NonRunCmdsMethodName
+  readonly id: JsonRpcId
+  readonly params: WireMethodParams
+}
+
+/** The `verifyConfig` envelope. */
+export interface VerifyConfigRequest extends JsonRpcMethodRequest {
+  readonly method: 'verifyConfig'
+  readonly params: VerifyConfigParams
+}
+
+/** The `getCommandCompletions` envelope. */
+export interface GetCommandCompletionsRequest extends JsonRpcMethodRequest {
+  readonly method: 'getCommandCompletions'
+  readonly params: GetCommandCompletionsParams
+}
+
+/** The `getCommandHelp` envelope. */
+export interface GetCommandHelpRequest extends JsonRpcMethodRequest {
+  readonly method: 'getCommandHelp'
+  readonly params: GetCommandHelpParams
+}
+
+/**
+ * A `{method, params}` pair *before* the envelope exists — the input `Transport#callMethod` takes,
+ * exactly as `execute()` takes a command list and builds the `runCmds` envelope itself with the
+ * connection's id policy (DR-017). {@link buildMethodRequest} is the function that stamps it.
+ */
+export type WireMethodCall =
+  | { readonly method: 'verifyConfig'; readonly params: VerifyConfigParams }
+  | { readonly method: 'getCommandCompletions'; readonly params: GetCommandCompletionsParams }
+  | { readonly method: 'getCommandHelp'; readonly params: GetCommandHelpParams }
+
+/**
+ * One member of {@link WireMethodCall}, named. A caller that wants {@link WireMethodResultOf} to
+ * resolve to the right reply shape pins the call to one of these, because a bare object literal widens
+ * `method` to the whole union.
+ */
+export type VerifyConfigCall = Extract<WireMethodCall, { readonly method: 'verifyConfig' }>
+
+/** See {@link VerifyConfigCall}. */
+export type GetCommandCompletionsCall = Extract<WireMethodCall, { readonly method: 'getCommandCompletions' }>
+
+/** See {@link VerifyConfigCall}. */
+export type GetCommandHelpCall = Extract<WireMethodCall, { readonly method: 'getCommandHelp' }>
+
+/**
+ * Which reply shape a method produces. **Not a style choice:** `JsonRpcBase.py:156-160` writes
+ * `"result": <json of whatever the procedure returned>`, so `verifyConfig` (whose procedure returns a
+ * list, `JsonCli.py:321-326`) answers with an **array** while `getCommandCompletions` and
+ * `getCommandHelp` return a **dict** and therefore answer with an **object**. M1's `parseResponse`
+ * requires an array, which is why the object-shaped methods need {@link JsonRpcObjectSuccess}.
+ */
+export type WireMethodResultOf<C extends WireMethodCall> = C['method'] extends 'verifyConfig'
+  ? readonly CommandResult[]
+  : CommandResult
+
+/** A success envelope whose `result` is one object rather than a per-command array. */
+export interface JsonRpcObjectSuccess {
+  readonly jsonrpc: '2.0'
+  readonly result: CommandResult
+  readonly id?: JsonRpcId
+}
+
+/**
+ * Either envelope the transport composition sends: `runCmds` (M1) or one of M11's (#13) non-`runCmds`
+ * methods. Both go to the same `/command-api` listener with the same headers, deadline, tracing and id
+ * pairing, and differ only inside `params` — which is why the byte-level senders take this union rather
+ * than a parallel second sender per kind.
+ */
+export type RawWireRequest = JsonRpcRequest | JsonRpcMethodRequest
+
+/**
+ * The byte-level seam for a non-`runCmds` request: same contract as {@link WireSender} (raw text in,
+ * raw text out, `parseResponse`/`parseMethodResponse` the only validators) with a wider request type.
+ */
+export interface MethodWireSender {
+  sendMethod(request: JsonRpcMethodRequest): Promise<string> | string
+}

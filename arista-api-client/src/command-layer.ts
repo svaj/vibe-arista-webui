@@ -57,7 +57,8 @@ import { createConfigChunkCache } from './config/cache'
 import { getBlock as blockOfSection, section as matchSection } from './config/section'
 import { RESOURCE_FACTORIES, ResourceRegistry } from './resources/registry'
 import { redactCommands } from './internal/redact'
-import { toCommandSpecArray } from './internal/wire'
+import { buildGetCommandCompletionsParams, buildVerifyConfigParams, toCommandSpecArray } from './internal/wire'
+import type { BuildCompletionsParamsOptions, BuildVerifyConfigParamsOptions } from './internal/wire'
 import { tryVariants } from './internal/variants'
 import type { CliVariant } from './internal/variants'
 import type { ConfigSections } from './config/chunk'
@@ -66,8 +67,9 @@ import type { SystemResource } from './resources/system'
 import type { SwitchportsResource } from './resources/switchports'
 import type { VlansResource } from './resources/vlans'
 import type { ResourceKinds, ResourceName } from './resources/registry'
-import type { Transport, TransportExecOptions } from './transports/contract'
+import type { MethodCallOptions, Transport, TransportExecOptions } from './transports/contract'
 import type { CommandResult, CommandSpec, RunCmdsFormat, ShowContracts, ShowReply } from './types/eapi'
+import type { GetCommandCompletionsCall, GetCommandHelpCall, VerifyConfigCall, WireMethodCall, WireMethodResultOf } from './types/eapi'
 
 /** How this `Node` behaves, pyeapi's `Node.__init__` kwargs (`client.py:495-507`) minus `connection`. */
 export interface NodeSettings {
@@ -319,6 +321,220 @@ function assertTransport(connection: Transport): void {
       'Node requires a Transport: an object with execute(commands, options) and close(). Build one with createTransport(options), or MockTransport from the ./testing entry for tests.',
     )
   }
+}
+
+// --- M11 (#13): the non-`runCmds` methods ----------------------------------------------------------
+//
+// `verifyConfig`, `getCommandCompletions` and `getCommandHelp` are real eAPI methods that pyeapi never
+// exposed (`eapilib.py:326-327` is its only body), so there is no upstream behaviour row for them:
+// what is verified below is Arista's own Python in the **EOS-4.28.13.1M** image (`JsonCli.py`,
+// `CliApi.py`, `JsonRpcBase.py`, extracted from `Base.sqsh`), and every parse rule cites it. What is
+// **not** verified is still what only a round trip gives — the prose of an error message, and whether a
+// 7050TX-64 running 4.28.13.1M answers these behind its own AAA/privilege rules. That stays an
+// [M12 (#14) capture](../../docs/STATUS.md), so the synthetic sample envelopes in
+// `command-layer.methods.test.ts` are labelled as such rather than presented as device output.
+
+/**
+ * Options for {@link Node.verifyConfig}: the method's own parameters plus the transport knobs
+ * (`MethodCallOptions`). There is no `sendEnable` — this is not a command list, and the `enable` the
+ * server runs for itself takes no password argument (`JsonCli.py:296`), so an `enablePassword` set on
+ * this `Node` is **not** sent here. A non-priv-15 API user therefore fails with a privilege error
+ * rather than being silently upgraded.
+ */
+export type VerifyConfigOptions = MethodCallOptions & BuildVerifyConfigParamsOptions
+
+/** Options for {@link Node.getCompletions}. */
+export type GetCompletionsOptions = MethodCallOptions & BuildCompletionsParamsOptions
+
+/** Options for {@link Node.getCommandHelp} — the method takes one parameter, so this is only transport knobs. */
+export type GetCommandHelpOptions = MethodCallOptions
+
+/**
+ * One configlet's place in a {@link Node.verifyConfig} answer.
+ *
+ * The pairing is not a guess: the server stages, for each configlet in order, the
+ * `copy terminal: session-config` command and then `show session-config`
+ * (`configCmds += [cmd, showSessionCmd]`, `JsonCli.py:307-311`), and `result` is one reply object per
+ * command. So reply `2i` belongs to configlet `i`'s `copy` and reply `2i + 1` is the session's
+ * **aggregated** configuration after `i` — which is the "normalised(c1), normalised(c1+c2)" behaviour
+ * the method's docstring promises (`JsonCli.py:281-286`).
+ */
+export interface VerifyConfigEntry {
+  /** Which configlet this is, in the order they were sent. */
+  readonly index: number
+  /** The configlet text as the caller wrote it — the diff a review screen shows beside the result. */
+  readonly configlet: string
+  /** The `copy terminal: session-config` reply. Absent when the device answered fewer commands than that. */
+  readonly copyReply?: CommandResult | undefined
+  /**
+   * The `show session-config` reply after this configlet: the normalised state, i.e. what would land
+   * if this configlet were committed on top of the current running-config. Its field set is
+   * `ShowRunOutputModel.Mode`, which this package has **not** inspected, so it stays a
+   * `CommandResult` rather than an invented interface (same rule as M5's `showSessionConfig`, row 64).
+   */
+  readonly sessionConfig?: CommandResult | undefined
+  /** The same answer in `format: 'text'` mode, where the reply is `{output}`. */
+  readonly sessionConfigText?: string | undefined
+}
+
+/** A parsed {@link Node.verifyConfig} answer. Nothing is dropped: `raw` and `unmatched` keep the reply. */
+export interface VerifyConfigOutcome {
+  /** The encoding this call asked for. `'json'` when the caller said nothing, as on the device. */
+  readonly format: RunCmdsFormat
+  /** One entry per configlet, in send order. A short reply leaves the later fields absent rather than empty. */
+  readonly entries: readonly VerifyConfigEntry[]
+  /** Reply objects beyond the last configlet pair — reported, never silently trimmed. */
+  readonly unmatched: readonly CommandResult[]
+  /** The device's array verbatim (redaction applies upstream, in the codec — DR-011). */
+  readonly raw: readonly CommandResult[]
+}
+
+/**
+ * Pair a `verifyConfig` reply with the configlets it answers. Pure and exported for the same reason
+ * `parseVersionProperties` is (TESTING.md §6): the pairing rule is the part worth pinning offline.
+ */
+export function parseVerifyConfigReply(
+  result: readonly CommandResult[],
+  request: { readonly configList: readonly string[]; readonly format?: RunCmdsFormat | undefined },
+): VerifyConfigOutcome {
+  const format = request.format ?? 'json'
+  const entries: VerifyConfigEntry[] = []
+  const consumed = new Set<number>()
+  for (const [index, configlet] of request.configList.entries()) {
+    const copyReply = result[index * 2]
+    const sessionConfig = result[index * 2 + 1]
+    if (copyReply !== undefined) consumed.add(index * 2)
+    if (sessionConfig !== undefined) consumed.add(index * 2 + 1)
+    const sessionConfigText = typeof sessionConfig?.['output'] === 'string' ? (sessionConfig['output'] as string) : undefined
+    entries.push({
+      index,
+      configlet,
+      ...(copyReply === undefined ? {} : { copyReply }),
+      ...(sessionConfig === undefined ? {} : { sessionConfig }),
+      ...(sessionConfigText === undefined ? {} : { sessionConfigText }),
+    })
+  }
+  return {
+    format,
+    entries,
+    unmatched: result.filter((_reply, position) => !consumed.has(position)),
+    raw: [...result],
+  }
+}
+
+/** One completion the CLI offered: the token and the help text beside it (`JsonCli.py:192`). */
+export interface CommandCompletion {
+  readonly name: string
+  readonly help: string
+}
+
+/** A parsed `getCommandCompletions` answer. The envelope is `{errors, complete, completions}` (`JsonCli.py:188-192`). */
+export interface CommandCompletions {
+  /**
+   * `true` when the partial line is itself a complete command — the device computes it from a `<cr>`
+   * completion (`JsonCli.py:190`). Absent when the reply did not answer a boolean, rather than
+   * defaulted to `false`, because "the command is complete" and "we cannot tell" are different answers.
+   */
+  readonly complete?: boolean | undefined
+  /** The offered tokens, in the device's order, as `{name, help}` pairs. */
+  readonly completions: readonly CommandCompletion[]
+  /**
+   * The device's own `errors` member: an empty object for a normal answer, and the CLI's error list
+   * when a `preamble` command was rejected (`CliApi.py:659-663`). Un-modelled on purpose — its two
+   * shapes are both vendor-side.
+   */
+  readonly errors?: unknown
+  /**
+   * Keys of the reply this view does not model. Kept rather than dropped (PLAN: unknown fields survive
+   * as data) so a future field is visible in `toJSON()` instead of invisible in a table.
+   */
+  readonly extra: Readonly<Record<string, unknown>>
+  /** Completion keys whose value was not a help string — named, not coerced (compare pyeapi's `str()`). */
+  readonly unparsed: readonly string[]
+  /** The device's reply object verbatim. */
+  readonly raw: CommandResult
+}
+
+/** The three keys `getCommandCompletions` writes (`JsonCli.py:188-192`); everything else is `extra`. */
+const COMPLETION_KEYS: readonly string[] = ['errors', 'complete', 'completions']
+
+/**
+ * Validate + read a `getCommandCompletions` reply. A `completions` member that is missing or is not an
+ * object is a `ProtocolError`: an empty completion list is a real answer ("nothing matches `sh xq`"),
+ * and reporting one for a malformed reply would make a device surprise look like an empty command set.
+ */
+export function parseCommandCompletions(reply: CommandResult): CommandCompletions {
+  const holder = reply['completions']
+  if (typeof holder !== 'object' || holder === null || Array.isArray(holder)) {
+    throw new ProtocolError(
+      `getCommandCompletions reply has no 'completions' object (got ${shapeOfReplyValue(holder)}) — an empty completion list is a real answer, so this client refuses to report one for a reply it cannot read (JsonCli.py:188-192)`,
+      { commands: ['getCommandCompletions'] },
+    )
+  }
+  const completions: CommandCompletion[] = []
+  const unparsed: string[] = []
+  for (const [name, help] of Object.entries(holder as Record<string, unknown>)) {
+    if (typeof help === 'string') completions.push({ name, help })
+    else unparsed.push(name)
+  }
+  const complete = typeof reply['complete'] === 'boolean' ? reply['complete'] : undefined
+  const errors = 'errors' in reply ? reply['errors'] : undefined
+  const extra = Object.fromEntries(Object.entries(reply).filter(([key]) => !COMPLETION_KEYS.includes(key)))
+  return {
+    ...(complete === undefined ? {} : { complete }),
+    completions,
+    ...(errors === undefined ? {} : { errors }),
+    extra,
+    unparsed,
+    raw: reply,
+  }
+}
+
+/** One token's help line from `getCommandHelp` (`CliApi.py:452`, `{c.name: c.help}`). */
+export interface CommandHelpEntry {
+  readonly token: string
+  readonly help: string
+}
+
+/** A parsed `getCommandHelp` answer: the device's `{token: help}` object, ordered, plus the reply itself. */
+export interface CommandHelp {
+  readonly entries: readonly CommandHelpEntry[]
+  /** The same data as a record, for a lookup-by-token screen. */
+  readonly byToken: Readonly<Record<string, string>>
+  /**
+   * Tokens whose value was not a string, so a caller can see what was skipped. Not a curiosity: the
+   * CLI assigns a **guard code** to `help` for some commands (`CliApi.py:650`, whose own comment calls
+   * that a bug), so a non-string here is the device being honest about "not available".
+   */
+  readonly unparsed: readonly string[]
+  readonly raw: CommandResult
+}
+
+/**
+ * Validate + read a `getCommandHelp` reply, whose whole `result` **is** the `{token: help}` object
+ * (`JsonCli.py:199-203` → `CliApi.py:442-462`). An empty object is a real answer, so only a
+ * non-object is a parse failure.
+ */
+export function parseCommandHelp(reply: CommandResult): CommandHelp {
+  const entries: CommandHelpEntry[] = []
+  const unparsed: string[] = []
+  const byToken: Record<string, string> = {}
+  for (const [token, help] of Object.entries(reply)) {
+    if (typeof help === 'string') {
+      entries.push({ token, help })
+      byToken[token] = help
+    } else {
+      unparsed.push(token)
+    }
+  }
+  return { entries, byToken, unparsed, raw: reply }
+}
+
+/** How a `result` member that is not what a method produces should be named in a refusal. */
+function shapeOfReplyValue(value: unknown): string {
+  if (Array.isArray(value)) return 'an array'
+  if (value === null) return 'null'
+  return typeof value
 }
 
 /**
@@ -827,5 +1043,86 @@ export class Node {
     const session = await this.configSession(options)
     await session.rollbackToSession(name)
     return session
+  }
+
+  // --- M11 (#13): the non-`runCmds` methods -------------------------------------------------------
+  //
+  // The three verbs below send a JSON-RPC method the command layer has never sent before. The seam is
+  // `Transport#callMethod` (contract.ts), which exists because `execute()` is `runCmds`-shaped by
+  // construction and **no amount of command-list gymnastics turns into another method** — the
+  // alternatives were a second HTTP stack (duplicating DR-013's TLS trust plumbing) or a verb that
+  // only works in tests. Neither is honest for a call the review screen depends on.
+
+  /**
+   * One JSON-RPC call that is not `runCmds`, through the transport's method seam.
+   *
+   * `async` and refusing **inside** the promise: a device-facing verb that throws synchronously breaks
+   * every caller's error channel at once (the rule M5 learned, recorded in `config-session.ts`).
+   */
+  private async callDeviceMethod<C extends WireMethodCall>(call: C, options: MethodCallOptions): Promise<WireMethodResultOf<C>> {
+    const transport = this.connection
+    if (typeof transport.callMethod !== 'function') {
+      throw new NotSupportedError(
+        `cannot call ${call.method}(): the transport at ${transport.address} does not implement Transport#callMethod, the M11 (#13) seam for the non-runCmds eAPI methods. Every transport createTransport() builds provides it, and so does MockTransport; a hand-rolled Transport written before #13 needs that one member. This client will not fake the call with runCmds: a configlet sent as a command batch is a configlet that gets applied, whereas verifyConfig runs in a session the device opens and aborts itself (JsonCli.py:293-305).`,
+      )
+    }
+    const outcome = await transport.callMethod(call, options)
+    if (!outcome.ok) throw outcome.error
+    return outcome.result
+  }
+
+  /**
+   * `verifyConfig` — the dry run PLAN §M11 asks for, and the reason M5's `validateChanges` is
+   * documented as "the device applied these" rather than a preview (DR-050).
+   *
+   * What the device does, from its own code (`JsonCli.py:275-330`): one `copy terminal: session-config`
+   * per configlet inside a server-owned `configure session capiVerify-… no-commit` opened on top of
+   * `rollback clean-config`, `show session-config` after each application, and `abort` at the end.
+   * So the answer is the **aggregated normalised configlet** for each step, and running-config is
+   * untouched — but note `rollback clean-config`: the review starts from the *clean* configuration, not
+   * the current running-config, so it answers "what does this configlet text normalise to", not "what
+   * would my change do to this switch". That distinction belongs on any UI built over this verb.
+   *
+   * The device opens and aborts that session itself, so this call leaves no pending session for
+   * {@link recoverOrphans} — unlike `probeCommands` in `src/capabilities.ts`, which uses a session this
+   * client owns and therefore guarantees its own `abort` on every path.
+   */
+  async verifyConfig(configlets: string | readonly string[], options: VerifyConfigOptions = {}): Promise<VerifyConfigOutcome> {
+    const { timeoutMs, signal, readOnly, ...parameters } = options
+    const params = buildVerifyConfigParams(configlets, parameters)
+    const call: VerifyConfigCall = { method: 'verifyConfig', params }
+    const result = await this.callDeviceMethod(call, { timeoutMs, signal, readOnly })
+    return parseVerifyConfigReply(result, { configList: params.configList, ...(params.format === undefined ? {} : { format: params.format }) })
+  }
+
+  /**
+   * What could the partial line `partial` still become? `getCommandCompletions` (`JsonCli.py:173-192`),
+   * for the webui's command input (PLAN §M11 box 3). Pass `preamble` to complete inside a config mode —
+   * those commands are **executed** by the device first (`CliApi.py:659-663`), so they run with the
+   * caller's privilege and are not a hint.
+   *
+   * Read-only in the sense that it changes nothing on the device, yet `readOnly` still defaults to
+   * `false` (DR-019): the preamble is a command list, and "this call is safe to re-send" is a claim the
+   * caller has to make about their own preamble.
+   */
+  async getCompletions(partial: string, options: GetCompletionsOptions = {}): Promise<CommandCompletions> {
+    const { timeoutMs, signal, readOnly, ...parameters } = options
+    const params = buildGetCommandCompletionsParams(partial, parameters)
+    const call: GetCommandCompletionsCall = { method: 'getCommandCompletions', params }
+    const reply = await this.callDeviceMethod(call, { timeoutMs, signal, readOnly })
+    return parseCommandCompletions(reply)
+  }
+
+  /**
+   * The help text beside each token of `command` — `getCommandHelp` (`JsonCli.py:199-203`), whose
+   * answer is the device's `{token: help}` object (`CliApi.py:452`). A value here can be a guard code
+   * rather than prose on some commands (`CliApi.py:650`, flagged as a bug by Arista's own comment), and
+   * anything non-string is reported in {@link CommandHelp.unparsed} rather than softened into ''.
+   */
+  async getCommandHelp(command: string, options: GetCommandHelpOptions = {}): Promise<CommandHelp> {
+    const { timeoutMs, signal, readOnly } = options
+    const call: GetCommandHelpCall = { method: 'getCommandHelp', params: { command } }
+    const reply = await this.callDeviceMethod(call, { timeoutMs, signal, readOnly })
+    return parseCommandHelp(reply)
   }
 }

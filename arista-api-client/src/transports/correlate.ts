@@ -29,7 +29,7 @@
 import { EapiErrorCode, ProtocolError } from '../errors'
 import { MAX_RAW_BODY } from '../internal/wire'
 import { redactCommands, redactWireText } from '../internal/redact'
-import type { CommandSpec, JsonRpcId, JsonRpcRequest } from '../types/eapi'
+import type { CommandSpec, JsonRpcId, JsonRpcMethodRequest, JsonRpcRequest } from '../types/eapi'
 
 /** The echoed id, when the body is a JSON object with a scalar `id`. `undefined` = cannot tell. */
 function echoedId(text: string): JsonRpcId | undefined {
@@ -50,16 +50,27 @@ function truncate(text: string): string {
   return `${redacted.slice(0, MAX_RAW_BODY)}… [truncated ${String(redacted.length - MAX_RAW_BODY)} chars]`
 }
 
+/**
+ * What the pairing check needs from a request: the id it answered, and — when the request is a
+ * `runCmds` — the commands to attach to a failure. M11's (#13) non-`runCmds` requests have no
+ * `params.cmds` at all (`verifyConfig` carries `configList`), and an id mismatch on those still has to
+ * be reported, so the two envelope types are taken as the union the composition actually holds.
+ */
+export type PairableRequest = JsonRpcRequest | JsonRpcMethodRequest
+
 /** Commands attached to the error, redacted — an `enable` input must never reach an error object (DR-011). */
-function attached(request: JsonRpcRequest): { commands: readonly CommandSpec[]; requestId: JsonRpcId } {
-  return { commands: redactCommands(request.params.cmds), requestId: request.id }
+function attached(request: PairableRequest): { commands: readonly CommandSpec[]; requestId: JsonRpcId } {
+  return {
+    commands: request.method === 'runCmds' ? redactCommands(request.params.cmds) : [],
+    requestId: request.id,
+  }
 }
 
 /**
  * Throw `ProtocolError` when the reply's `id` is present and disagrees with the request it answered.
  * Called once per byte-level round trip, so the DR-012 text retry gets its own fresh id checked too.
  */
-export function assertResponseIdMatches(request: JsonRpcRequest, text: string): void {
+export function assertResponseIdMatches(request: PairableRequest, text: string): void {
   const actual = echoedId(text)
   if (actual === undefined || String(actual) === String(request.id)) return
   throw new ProtocolError(
