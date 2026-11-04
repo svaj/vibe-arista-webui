@@ -29,6 +29,7 @@ import {
   ProfileStore,
   type ConnectionProfile,
 } from './index'
+import { mockTransport } from './testing/mock-transport'
 
 /** The message of the error a call throws, so several assertions can inspect one failure. */
 function failureMessage(fn: () => unknown): string {
@@ -198,12 +199,17 @@ describe('what the browser entry exports', () => {
       'ResourceBase', 'Entity', 'EntityCollection', 'ResourceRegistry', 'createResourceRegistry',
       'commandBuilder', 'submodeCommands', 'parseConfigBlock', 'toArray',
       'assertInterfaceName', 'assertVlanId', 'isInterfaceName', 'isVlanId',
+      // M8 (#10): the first wave-1 module rides the same entry, so `node.system`/`new SystemResource(node)`
+      // are both reachable from `.` (and through `export *` from `./node`) without a deep import.
+      'SystemResource',
     ] as const
     for (const name of functions) {
       expect(typeof surface[name], name).toBe('function')
     }
-    // The registry ships, but empty: M8-M10 (#10-#12) register the modules (§5 row 79).
-    expect(Object.keys(surface.RESOURCE_FACTORIES)).toEqual([])
+    // The registry is no longer empty: M8 (#10) registered `system`, and `SystemResource` is what its
+    // factory builds. `vlans`/`switchports`/`interfaces` are still owed by M9 #11 / M10 #12 (§5 row 79).
+    expect(Object.keys(surface.RESOURCE_FACTORIES)).toEqual(['system'])
+    expect(new Node(mockTransport()).system).toBeInstanceOf(surface.SystemResource)
     // `assertVlanId` is an assertion function (returns void); the range is pyeapi's —
     // `value in range(1, 4095)`, i.e. VLANs 1..4094 (pyeapi/api/vlans.py:78). M9 (#12) re-checks that
     // bound against the switch's own `switchport access vlan` range on a device.

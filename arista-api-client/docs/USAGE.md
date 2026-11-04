@@ -316,16 +316,42 @@ if (!outcome.ok) {
 
 ## 6. The resource framework (M7, #9), and how a wave-1 module reads config
 
-**Reachability, stated honestly first.** M7 ships the framework — `ResourceBase`, `Entity`,
+**Reachability, stated honestly first.** M7 shipped the framework — `ResourceBase`, `Entity`,
 `EntityCollection`, `commandBuilder`, `submodeCommands`, `toArray`, `parseConfigBlock`, the validators,
 `ResourceRegistry`/`createResourceRegistry`, and the `Node`↔`src/config/` pairing (`chunkConfig`,
-`section`, `getBlock`, `resource`, `hasResource`) — but `src/index.ts`/`src/node.ts` do **not** re-export
-the framework classes yet, and the `exports` map has only `.` and `./node`. So a package consumer cannot
-`import { Entity } …` until that wiring lands (STATUS §1's M7 row carries it as the one open piece; M8
-(#10) is its first real consumer). And **no wave-1 module exists**: `node.vlans`, `node.system`,
-`node.switchports` are still future tense (M8 #10, M9 #11, M10 #12), because `ResourceKinds` is
-deliberately empty (DR-052). Everything below is what the shipped code does today and what a module
-writes against it — `src/resources/base.test.ts` drives exactly this shape over `MockTransport`.
+`section`, `getBlock`, `resource`, `hasResource`) — and since [PR #26](https://github.com/svaj/vibe-arista-webui/pull/26)
+it is re-exported from `src/index.ts` and carried to `./node`, pinned by `src/index.test.ts`. And the
+first wave-1 module has landed: **`node.system` is real (M8, #10)** — the first `ResourceKinds` row,
+the first `RESOURCE_FACTORIES` entry and the first static accessor (closing the half of DR-006 M7 left
+open). `node.vlans`/`node.switchports` join it with M9 (#11) and `node.interfaces` with M10 (#12);
+until then a `node.resource('vlans')` call throws a `NotSupportedError` naming what IS registered
+(DR-052). Everything below is what the shipped code does today and what a module writes against it —
+`src/resources/base.test.ts` drives exactly this shape over `MockTransport`.
+
+### The first built-in: `node.system` (M8, #10)
+
+```ts
+const { hostname, ipRouting, banner } = await node.system.get();
+// ONE `show running-config all` serves all three fields — pyeapi pays one config read per field (§5 row 15),
+// and its values come from chunked top-level sections, so a banner body cannot impersonate a command (row 84).
+// A config with nothing global still answers: hostname `''`, ipRouting `true`, banner `{}` —
+// never pyeapi's invented `'localhost'` (row 83).
+
+await node.system.setHostname('lab-sw1');   // '1sw1', 'sw 1', names with quotes/controls: refused locally,
+                                            // naming the value, at zero round trips (DR-053/DR-057, row 89)
+await node.system.unsetHostname();          // `no hostname` — pyeapi spells this set_hostname(disable=True)
+await node.system.setIpRouting(false);      // `no ip routing`; only true|false — falsy-as-value is refused (DR-037)
+
+await node.system.setBanner('motd', 'Authorized access only.');
+// wire:  { cmd: 'banner motd', input: 'Authorized access only.\nEOF\n' }
+// The client owns the EOF terminator (DR-015 + DR-056, row 88): one caller-supplied trailing newline
+// folds into it, and a body containing a line that reads `EOF` or a CR is refused because this client
+// could not read such a body back. unsetBanner/defaultBanner are `no banner <kind>`/`default banner <kind>`.
+```
+
+`node.system` is `node.resource('system')` — the same instance, memoised per `Node` (DR-052). Hostname
+rules and banner-body refusals are **client-side policy with the EOS figures owed to M12 (#14)**
+(DR-057); device-side refusals stay the `CommandError` of §7, never a `False`.
 
 ### The two base classes
 
@@ -464,7 +490,9 @@ registry.has('other');            // false — and get('other') throws naming wh
 
 `node.resource(...)`/`node.hasResource(...)` use this same registry type; extend `ResourceKinds` by
 declaration merging (the form in `arista-webui/src/eapi-show-contracts.test.ts`) — but remember a merged
-type row with no factory throws by design, and that the framework's own re-export is still pending.
+type row with no factory throws by design. The framework itself is re-exported from both package entries
+since PR #26, and `system` (#10) is the one built-in row so far — the registry lookup it registers is
+the same seam `createResourceRegistry` exposes to apps.
 
 ---
 

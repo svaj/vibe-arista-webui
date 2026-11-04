@@ -13,12 +13,14 @@
  *    second case is the dangerous one: TypeScript would report a resource, and the caller would get
  *    `undefined`. It throws a `NotSupportedError` listing the registered names instead.
  *
- * MIGRATION.md §5 row 79 records the shape, including what M7 deliberately leaves empty: **no wave-1
- * resource module exists yet** (M8 #10, M9 #11, M10 #12 own `system`/`vlans`/`switchports`/`interfaces`),
- * so `node.vlans` is not a thing today and `node.resource('vlans')` throws both statically and at
- * runtime. The registry lands now because the framework, not the modules, is what needs the plumbing —
- * PLAN.md M7's exit gate is "the first resource module (M8) requires ~30 lines of new plumbing at most",
- * and `base.test.ts` measures that cost against a throwaway entity.
+ * MIGRATION.md §5 row 79 records the shape, including what M7 deliberately left empty: **no wave-1
+ * resource module existed yet** at M7, so `node.vlans` was not a thing and `node.resource('vlans')`
+ * threw both statically and at runtime. The registry landed then because the framework, not the modules,
+ * is what needs the plumbing — PLAN.md M7's exit gate is "the first resource module (M8) requires ~30
+ * lines of new plumbing at most", and `base.test.ts` measures that cost against a throwaway entity.
+ * **M8 (#10) claimed the first row:** `system` is registered below, which is also the first live use of
+ * `Node`'s static accessor (`node.system`) over that memo. `vlans`/`switchports`/`interfaces` still
+ * arrive with M9 (#11) and M10 (#12).
  *
  * Instances are memoised **per `Node`**, not globally: `ResourceRegistry` is constructed with the `Node`
  * it drives, so two switches get two resource objects and no module-level mutable singleton exists
@@ -26,6 +28,7 @@
  */
 
 import { NotSupportedError } from '../errors'
+import { SystemResource } from './system'
 import type { Node } from '../command-layer'
 
 /** A resource constructor: the `Node` it operates on in, the resource instance out (pyeapi's `instance(node)`). */
@@ -45,16 +48,16 @@ export type ResourceFactory<T> = (node: Node) => T
  * }
  * ```
  *
- * **Empty at M7 (#9)** — the built-in rows arrive with M8 (#10), M9 (#11) and M10 (#12), each in
- * {@link RESOURCE_FACTORIES}. A name in this interface without a factory there is a bug in this package,
- * and {@link ResourceRegistry.get} throws rather than returning `undefined` (row 79).
+ * The first row is M8's (`system`, #10); `vlans`/`switchports` (#11) and `interfaces` (#12) follow.
+ * A name in this interface without a factory in {@link RESOURCE_FACTORIES} is a bug in this package, and
+ * {@link ResourceRegistry.get} throws rather than returning `undefined` (row 79).
  */
 export interface ResourceKinds {
-  // Intentionally no members: no resource module has landed yet. Keeping this empty is what makes the
-  // exit-gate proof honest — M8 adds one row here plus one factory below.
+  /** The global system settings — `src/resources/system.ts`, port of pyeapi `api/system.py`. */
+  system: SystemResource
 }
 
-/** Any name `node.resource()` may be asked for. `never` while {@link ResourceKinds} is empty. */
+/** Any name `node.resource()` may be asked for. Grows by one row per resource module (M8-M10). */
 export type ResourceName = keyof ResourceKinds
 
 /** The factory map implied by a kinds map — exhaustive, so a kind without a factory is a compile error. */
@@ -69,8 +72,15 @@ type AnyResource = unknown
  * The built-in factories. Frozen, because a mutable module-level registry is what ARCHITECTURE.md §7
  * forbids and what would let one screen's registration change another's behaviour.
  * App-defined resources go in their own {@link ResourceRegistry} instead.
+ *
+ * One row per shipped module — pyeapi's `instance(api)` factories (`system.py:183-186`,
+ * `vlans.py:370-372`, …) are the thing this table replaces, and pyeapi resolves the **name** to a module
+ * path at call time (`client.py:927-950`), which is what DR-006 removes. `ResourceFactories<ResourceKinds>`
+ * is exhaustive, so a `ResourceKinds` row without a factory here is a compile error (row 79).
  */
-export const RESOURCE_FACTORIES: ResourceFactories<ResourceKinds> = Object.freeze({})
+export const RESOURCE_FACTORIES: ResourceFactories<ResourceKinds> = Object.freeze({
+  system: (node) => new SystemResource(node),
+})
 
 /**
  * A per-`Node` resource cache over a factory map. One instance is held by each `Node`
@@ -119,7 +129,7 @@ export class ResourceRegistry<K extends object = ResourceKinds> {
       const known = this.names().map(String)
       throw new NotSupportedError(
         `unknown resource ${String(name)} — no factory is registered for it${
-          known.length === 0 ? '. No resource module has shipped yet (M8 #10, M9 #11, M10 #12), so only a custom ResourceRegistry can answer one today.' : `; registered: ${known.join(', ')}`
+          known.length === 0 ? '. This registry holds no factories at all, which for the built-in map would mean no resource module has been registered (M8 #10 shipped `system`; M9 #11 and M10 #12 owe the rest) — an app-defined registry is created with createResourceRegistry(factories, node).' : `; registered: ${known.join(', ')}`
         }`,
         { cause: name },
       )

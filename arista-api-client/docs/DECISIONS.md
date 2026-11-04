@@ -341,10 +341,12 @@ can be investigated for supported MLAG/routing control-plane tests without claim
 physical forwarding parity.
 
 <!--
-Numbering note (M7, #9, 2026-11-03): DR-001..043 are on `main`/PR #23. The bands reserved across the
-branches stacked on PR #23 are DR-044..046 = M3 (#5, PR #24, not in this tree), DR-047..050 = M5 (#7,
-agents/issue-7-m5-config-sessions, not in this tree), DR-051..054 = M7 (#9, below). DR-003 and DR-031
-are not gaps — both exist above — but no entry in this log is ever renumbered, so the bands stay
+Numbering note (updated on the M8 branch, 2026-11-04): DR-001..043 are on `main`. Since this branch
+was cut, the other reserved bands landed too — **DR-044..046 (M3, PR #24), DR-047..050 (M5, PR #25)
+and DR-051..054 (M7, PR #26) are all on `main`**, below in this file's order. **M8 (#10) claims its
+reserved band DR-055..057** (also below). Still reserved, untouched, and NOT yet in any tree:
+DR-058..060 = M9 (#11), DR-061..063 = M11 (#13), DR-064..066 = M12 (#14). DR-003 and DR-031 are not
+gaps — both exist above — but no entry in this log is ever renumbered, so the bands stay
 visible here rather than in a table (this file has no index section; the milestone index is
 STATUS.md §1 and the decision-to-milestone trail is each entry's `Related:` line).
 -->
@@ -442,6 +444,74 @@ caller's explicit step, since guessing "one value or its spread?" is exactly the
 removes. DR-041's rule ("`make_iterable`'s implicit coercion becomes explicit `toArray()` at the
 boundary") now has a second, concrete justification beyond typing: aliasing corrupts a caller's state.
 **Related:** DR-041, DR-004, DR-003; §5 rows 71 / 72 / 74.
+
+### DR-055 — wave-1 global reads go through the chunker; `parseConfigBlock` is the exception, not the rule
+A wave-1 module reads device config, and M6 + M7 shipped two engines for that: the `Node` chunker
+(`configSections()` over the DR-026 memo) and `parseConfigBlock` (row 81). pyeapi had neither: each
+`_parse_*` re-read `self.config` — one `show running-config` **per field** (rows 15/75) — and matched
+over the whole flat document, so a `hostname …` line inside a banner body answers as the hostname and a
+banner reciting `no ip routing` turns routing off (probes, `system.py:82`/`:94`; §5 row 84).
+**Decision:** the first module settles the pattern: reads that describe **global scope** anchor on the
+chunker's indent-0 section keys — the one structure in the package where "this line is a top-level
+command" is decided by M6's reviewed rules, not by a module regex — and cost ONE request off the memo
+(pinned in `system.test.ts` by the transport's command list). `parseConfigBlock` is deliberately NOT
+used there or by any byte-fidelity body: its extractors run over `parseBlock`, which strips indent and
+unquotes per line (`config/text.ts` `describeLine`, row 81) — right for `name PROD`, wrong for a banner
+body that must survive verbatim (upstream's own fixture keeps a 9-space line inside `banner login`,
+`test/fixtures/running_config.text:410`), and for a global entity the block header `parseBlock` drops
+would be the `hostname` line itself.
+**Consequence:** PLAN's M6 exit gate ("every wave-1 resource can be parsed from text config with no
+bespoke regex") is now observable in a shipped module: `src/resources/system.ts` contains no config-text
+regex beyond exact section-key matches. M9/M10 follow the same split — scalars anchor on chunk keys,
+sub-mode bodies use `parseConfigBlock`, EOF-delimited bodies read the section text verbatim. The
+known `describeLine` whitespace gap (row 81: `' PROD'`, `' group red'`) is M9's to settle as its first
+real reader, exactly as M7 recorded rather than silently widening a pinned primitive.
+**Related:** DR-026, DR-030, DR-005; §5 rows 15 / 75 / 81 / 84 / 85 / 86 / 87.
+
+### DR-056 — the `EOF` terminator is part of the banner verb's contract: strict write, lenient read
+pyeapi never sends the terminator: `set_banner` writes `input = value` plus at most one appended newline
+(`system.py:177-178`) and nothing closes the block (`:179`, pinned verbatim by `test_api_system.py:88`),
+while its reader demands a newline **after** `EOF` (`\nEOF$\n`, `:108`) and silently drops a trailing
+banner that lacks one (probe). DR-015 made multiline payloads `{cmd, input}` objects; nothing yet said
+whose job the terminator is.
+**Decision:** the client owns it. `setBanner` always sends `{ cmd: 'banner <kind>', input: body +
+'\nEOF\n' }`; exactly one caller-supplied trailing newline **folds into** the terminator (so `'x'` and
+`'x\n'` are byte-identical on the wire — the inverse of upstream, which appends toward a form that never
+closes). The write is refused locally, before any request, for bodies this client could not read back: an
+empty body, a line reading `EOF` after `rstrip` (the chunker's own comparison, `client.py:743`), or a CR
+(a line boundary for `splitLines`, so the read would not round-trip). The read side is deliberately
+more lenient — `EOF` accepted as the document's last line, opener spaces `rstrip`ped. Which rules EOS
+itself applies (terminator case, CR handling, whether it writes `banner exec`) is unverified on
+hardware, M12 (#14) to capture.
+**Consequence:** no banner write can leave an open input mode on the wire, and the payload a mock
+asserts is exactly the payload a device needs. Redaction keeps working: only `enable` **inputs** are
+secrets (DR-011, `internal/redact.ts`'s `ENABLE_COMMAND`), so a refused banner write still carries its
+body in `CommandError.commands` — pinned, because banner text is operator content, not a credential.
+**Related:** DR-015, DR-011, DR-032, DR-055; §5 rows 16 / 86 / 87 / 88.
+
+### DR-057 — an unverifiable device rule ships as named client policy, never as an invented EOS fact
+PLAN's M8 box asks for `setHostname` "with EOS name rules validated (length, no leading digit/space)."
+Those rules are **not knowable in this workspace**: no device in unit tests, no readable CLI sources in
+the image split (`arista/_rea_swi` yields one `.py*` file; the `*Cli.py` files M5 had to demote are not
+here), and pyeapi itself validates nothing on this path (`system.py:118-134` interpolates straight into
+the command; whole-file check 2026-11-03). Inventing numbers and calling them EOS behaviour is exactly
+the failure this project's evidence discipline exists to prevent.
+**Decision:** encode only (a) refusals derivable from **this client's own reader** — a single token with
+no whitespace or control characters (the reader reads one token, `:82` is upstream's version of the same
+fact), no `"` (the reader unquotes a balanced pair, so such a name could not round-trip), non-empty (the
+builder refuses a trailing-space command; `unsetHostname()` is the spelled-out negation, DR-037) — and
+(b) clearly-labelled **policy** for the rest: a generous `≤ 128` bound and a no-leading-digit
+convention, each refusal message stating "client-side rule … unverified on hardware, M12 (#14) to
+capture." The device keeps the authority: every verb has a pinned `CommandError` path (DR-005 — the
+device's refusal, `failedCommand` intact, never a `False`).
+**Consequence:** no line of docs or code asserts an unsourced EOS fact; the open questions ride along
+where they can be answered — M12 (#14)'s capture list grows hostname charset/length/leading-digit
+ behaviour, whether config text ever quotes a hostname, and the `banner exec` write form — and a later
+capture revises a *policy* row without contradicting a claimed *fact*. The same labelling discipline
+already retired M5's unverifiable `*Cli.py` citations to demoted carried claims; this makes it the
+pattern for wave 1, including M10's interface grammar (DECISIONS open item 7).
+**Related:** DR-053, DR-032, DR-043, DR-029 (recorded as upstream defect, not quietly fixed); §5 rows
+83 / 89.
 
 ---
 
