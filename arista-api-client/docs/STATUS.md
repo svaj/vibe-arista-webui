@@ -22,13 +22,14 @@ local-transport warnings, DR-018 cookie sessions, DR-019 retry rules, DR-017 res
 `MockTransport` for offline tests. M4 added `src/command-layer.ts` (pyeapi's `Node` class, minus what
 other milestones own) and `src/internal/variants.ts`: read-only work against a mocked switch is now fully
 usable with no resource module, which is PLAN's M4 exit gate. M3 (#5, merged as [PR #24](https://github.com/svaj/vibe-arista-webui/pull/24)) landed that bag: `createNode()`/`createConnection()` in `src/index.ts` take an explicit connection or a profile plus `store`, and `./node` adds the `eapi.conf` file search (DR-038).
-**Only #26 (M7, #9) is open now**: PR #23 (M6, #8), #24 (M3, #5) and #25 (M5, #7) all merged into `main`
-on 2026-11-03 (`6426756`, `cbf37a4`, `67a1485`), and this branch re-merges `origin/main`, so #26's base is
-plain `main`. The MIGRATION §5 ledger's reserved bands are intact - **41-53 M6, 54-60 M3, 61-70 M5 and
-71-82 M7** (rows 39-40, DR-003 and DR-031 stay deliberately unused) - and every `§5 row N` citation in
-`src` resolves here: the cited set is 1, 5, 8, 12, 13, 15-38, 41-81 against rows 1-38 + 41-82. M7 adds
-`src/resources/*` on top of the merged sessions layer; both edited `command-layer.ts`/`index.ts`/`node.ts`
-additively, so the merges kept both sides.
+**PR #26 (M7, #9) merged into `main` on 2026-11-03 (`a2785c7`)** — the `src/resources/` framework sits on
+top of the merged sessions layer, and **M8 (#10) is now the open lane**, holding [PR #27](https://github.com/svaj/vibe-arista-webui/pull/27):
+the first wave-1 module (`system`) built on that framework. The MIGRATION §5 ledger is contiguous
+**1-38 + 41-90** (rows 39-40, DR-003 and DR-031 stay deliberately unused); the reserved bands held —
+**41-53 M6, 54-60 M3, 61-70 M5, 71-82 M7, 83-90 M8**, with 91-98 reserved for M9 (#11) and 99-114 for
+the M11/M12 lanes — and every `§5 row N` citation in this branch's `src` resolves here: the cited set is
+1, 5, 8, 12, 13, 15-38, 41-81 plus **83-90** (the eight divergences `src/resources/system.ts` owns).
+M7 and M8 both edited `command-layer.ts`/`index.ts`/`node.ts`/`registry.ts` additively.
 
 **Test infrastructure planning update:** local cEOS-lab **4.28.14M** and vendor install
 instructions are now available under `/home/svaj/development/arista/cEOS/`.
@@ -50,8 +51,8 @@ eAPI readiness, and harness execution are **not yet validated**. Hardware remain
 | M4 | `Node` command layer | `done` | 2026-11-01 | 2026-11-02 | [#6](https://github.com/svaj/vibe-arista-webui/issues/6) | merged as PR #22 on 2026-11-03, after stacking on #19/#20 for review. `src/command-layer.ts` (pyeapi's `Node` class; `src/node.ts` stays the Node-runtime **entry**, so the docs' old `src/node.ts` target is corrected in MIGRATION §1) + `src/internal/variants.ts`. In: `runCommands`, `exec` (one entry per command, `{command, result, encoding, fellBack}`, no duplicate `response` key — DR-007), `show`/`showText` over the augmentable `ShowContracts` map, `getConfig` + the async config accessors (DR-005), memoised `getVersion()`, `configure` / `configureVariants` (DR-006), `setEnablePassword` + the `sendEnable: false` priv-15 shortcut (DR-009), `refresh()`, `close()`, config-mode refusal (`NotSupportedError`, `configure all <intf> …` exempt), short-answer pairing that names the command by its `cmd`, and no `MULTILINE:` rewrite (DR-015). **8 new §5 rows (31–38).** Out on purpose: config-session verbs and the DR-025 guard/serialisation (M5 #7), `section()`/`_chunkify` (M6 #8), `api()` (dropped, DR-006), `configSection()`, profiles/`createNode` (M3 #5). Offline only: 75 cases over `MockTransport` + `test/fixtures/show/` (synthetic), no device, no cEOS; client 529 → **618** tests; coverage 96.98% stmts / 90.86% branch / 97.64% lines (`command-layer.ts` 100% stmts/funcs) |
 | M5 | Config sessions & change safety | `done` | 2026-11-03 | 2026-11-03 | [#7](https://github.com/svaj/vibe-arista-webui/issues/7) | merged as [PR #25](https://github.com/svaj/vibe-arista-webui/pull/25) on 2026-11-03 (`67a1485`): `src/config-session.ts` (the DR-025 state machine, diff, commit/abort, orphan recovery, durability verbs) + `src/node-session-journal.ts` behind `./node`, §5 rows 61-70 and DR-047-050 are on `main`. |
 | M6 | Text-config engine | `done` | 2026-11-02 | 2026-11-03 | [#8](https://github.com/svaj/vibe-arista-webui/issues/8) | merged as [PR #23](https://github.com/svaj/vibe-arista-webui/pull/23) on 2026-11-03 (`6426756`): `src/config/` (chunkify, section, cache, text) and §5 rows 41-53 are on `main`. |
-| M7 | Resource framework | `in-progress` | 2026-11-03 | — | [#9](https://github.com/svaj/vibe-arista-webui/issues/9) | unblocked by merged M6; the `src/resources/` framework (entities, command builder, config-block parser, validators, registry) is complete and **open as [PR #26](https://github.com/svaj/vibe-arista-webui/pull/26)** against `main`, with §5 rows 71-82 and DR-051-054. `RESOURCE_FACTORIES` ships empty until M8-M10. | PLAN's **"Entry point wiring"** bullet is delivered here too: the framework is re-exported from `src/index.ts:274-297` and reaches `./node` through `src/node.ts:80` (`export * from './index'`), pinned by `src/index.test.ts`. Merged offline suite on this branch: **42 files / 1,086 tests**, coverage 97.66 st / 91.31 br / 99.15 fn / 98.49 ln.
-| M8 | `system` | `not-started` | — | — | [#10](https://github.com/svaj/vibe-arista-webui/issues/10) | needs M7 |
+| M7 | Resource framework | `done` | 2026-11-03 | 2026-11-03 | [#9](https://github.com/svaj/vibe-arista-webui/issues/9) | merged as [PR #26](https://github.com/svaj/vibe-arista-webui/pull/26) on 2026-11-03 (`a2785c7`): the `src/resources/` framework (entities, command builder, config-block parser, validators, registry) + §5 rows 71-82 and DR-051-054 are on `main`. PLAN's **"Entry point wiring"** bullet shipped with it: the framework re-exports from `src/index.ts` and reaches `./node` through `src/node.ts`, pinned by `src/index.test.ts`. Merged offline suite on `main`: **42 files / 1,086 tests**, coverage 97.66 st / 91.31 br / 99.15 fn / 98.49 ln. |
+| M8 | `system` | `in-progress` | 2026-11-03 | — | [#10](https://github.com/svaj/vibe-arista-webui/issues/10) | the first wave-1 module on the M7 framework: `src/resources/system.ts` (hostname / `ip routing` / EOF-terminated banners) + 41 specs, the first `ResourceKinds` row + `RESOURCE_FACTORIES.system` + the first static accessor `node.system` (closing DR-006's deferred half), exports through both entries. **Open as [PR #27](https://github.com/svaj/vibe-arista-webui/pull/27)** against `main` with §5 rows 83-90 and DR-055-057. Branch gate: **43 files / 1,127 client tests** (+41 over merged `main`), coverage 97.75 st / 91.55 br / 99.19 fn / 98.54 ln. Every rule EOS could contradict ships labelled "client-side, unverified on hardware, M12 (#14) to capture" (DR-057). |
 | M9 | `vlans` + `switchports` | `not-started` | — | — | [#11](https://github.com/svaj/vibe-arista-webui/issues/11) | needs M7 + M8; first demoable slice |
 | M10 | `interfaces` (base, ethernet, port-channel) | `not-started` | — | — | [#12](https://github.com/svaj/vibe-arista-webui/issues/12) | needs M7 + M9; split M10a–c |
 | M11 | Capability probe + dry-run | `not-started` | — | — | [#13](https://github.com/svaj/vibe-arista-webui/issues/13) | needs M5 + M9 |
@@ -71,7 +72,7 @@ Parity = "all pyeapi verbs exist, generate the same commands, and the ported uni
 
 | Module | pyeapi LOC | upstream unit tests | planned ours | parity | fixtures recorded | live suite |
 |---|---|---|---|---|---|---|
-| `system` | 186 | 5 | 12 | — | — | — |
+| `system` | 186 | 5 | 12 → **41 landed** (M8, #10) | `complete (offline)` — all 5 upstream methods ported with their command texts verbatim; the divergences are owned at §5 rows 83-90 | none yet — M12 (#14) owns any capture; unit evidence only | — |
 | `vlans` | 372 | 15 | 22 | — | — | — |
 | `switchports` | 417 | 21 | 26 | — | — | — |
 | `interfaces` | 1,101 | 72 | ~75 | — | — | — |
@@ -88,7 +89,7 @@ Parity = "all pyeapi verbs exist, generate the same commands, and the ported uni
 | `bgp` | 341 | 22 | ~28 | — | — | — |
 | `routemaps` | 357 | 18 | ~22 | — | — | — |
 | `vrrp` | 1,493 | 23 | ~40 | — | — | — |
-| *(framework)* | 224+304 | 10 loose upstream checks, none of them a spec: `abstract.py` has **no** suite (no `test/unit/test_abstract.py` in the clone), and the only upstream assertions touching framework behaviour are `test_api_autoloader` (`test_client.py:210-212`, asserts only non-`None`), 4 `test_make_iterable_*` (`test_utils.py:23-41`, none asserting a copy), 3 `isvlan` + 2 `isvalidinterface` (`test_api_vlans.py:51-58`, `test_api_interfaces.py:50-58`); **nothing** upstream calls `Node.section` or `get_block` | ~66 → **139 landed** (M7, #9) | `partial` — the framework itself (verbs, builders, registry, validators, `toArray`, the `Node` config reads) is shipped and pinned; it has no wave-1 consumer until M8 (#10), and it is not re-exported from the package entries yet | n/a | n/a |
+| *(framework)* | 224+304 | 10 loose upstream checks, none of them a spec: `abstract.py` has **no** suite (no `test/unit/test_abstract.py` in the clone), and the only upstream assertions touching framework behaviour are `test_api_autoloader` (`test_client.py:210-212`, asserts only non-`None`), 4 `test_make_iterable_*` (`test_utils.py:23-41`, none asserting a copy), 3 `isvlan` + 2 `isvalidinterface` (`test_api_vlans.py:51-58`, `test_api_interfaces.py:50-58`); **nothing** upstream calls `Node.section` or `get_block` | ~66 → **139 landed** (M7, #9) | `complete (offline)` — the framework itself (verbs, builders, registry, validators, `toArray`, the `Node` config reads) is shipped, pinned, re-exported from both package entries (PR #26), and has its **first consumer**: M8's `system` (#10) landed inside the measured 19-line entity plumbing budget | n/a | n/a |
 
 Upstream totals for reference: **436 unit** test methods, **284 system** test methods, ~9.0 k LOC of
 source (pyeapi 1.0.4-rc0).
@@ -165,8 +166,8 @@ is the work state; the §1 table `in-progress`/`done` cell mirrors it, and this 
 | [#6](https://github.com/svaj/vibe-arista-webui/issues/6) | M4 `Node` command layer | closed (PR #22) |
 | [#7](https://github.com/svaj/vibe-arista-webui/issues/7) | M5 Config sessions & change safety | closed (PR #25) |
 | [#8](https://github.com/svaj/vibe-arista-webui/issues/8) | M6 Text-config engine | closed (PR #23) |
-| [#9](https://github.com/svaj/vibe-arista-webui/issues/9) | M7 Resource framework | `status:ready-for-review` ([PR #26](https://github.com/svaj/vibe-arista-webui/pull/26)) |
-| [#10](https://github.com/svaj/vibe-arista-webui/issues/10) | M8 `system` | open |
+| [#9](https://github.com/svaj/vibe-arista-webui/issues/9) | M7 Resource framework | closed (PR #26) |
+| [#10](https://github.com/svaj/vibe-arista-webui/issues/10) | M8 `system` | `status:ready-for-review` ([PR #27](https://github.com/svaj/vibe-arista-webui/pull/27)) |
 | [#11](https://github.com/svaj/vibe-arista-webui/issues/11) | M9 `vlans` + `switchports` | open |
 | [#12](https://github.com/svaj/vibe-arista-webui/issues/12) | M10 `interfaces` | open |
 | [#13](https://github.com/svaj/vibe-arista-webui/issues/13) | M11 Capability probe + dry-run | open |
