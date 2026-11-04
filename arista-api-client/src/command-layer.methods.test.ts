@@ -39,7 +39,7 @@ import {
 import { AuthError, CommandError, ConnectError, EapiErrorCode, NotSupportedError, ProtocolError } from './errors'
 import { mockTransport, type MockReply, type MockTransport } from './testing/mock-transport'
 import type { Transport } from './transports/contract'
-import type { CommandResult, CommandSpec } from './types/eapi'
+import type { CommandResult, CommandSpec, JsonRpcRequest } from './types/eapi'
 
 const ADDRESS = 'https://sw1.lan:443/command-api'
 
@@ -77,9 +77,12 @@ function legacyTransport(): { readonly transport: Transport; readonly calls: rea
   const transport: Transport = {
     kind: 'mock',
     address: ADDRESS,
-    async execute(commands, options) {
+    async execute(commands) {
       calls.push(Array.isArray(commands) ? [...commands] : [commands])
-      return { ok: true, result: [], encoding: 'json', viaTextRetry: false }
+      // `SendRequestResult` carries the request it sent (M1 wire.ts); a stand-in suffices — the two
+      // uses of this helper only count `execute` calls, never the reply.
+      const request: JsonRpcRequest = { jsonrpc: '2.0', method: 'runCmds', id: 'legacy-1', params: { version: 1, format: 'json', cmds: [] } }
+      return { ok: true, request, result: [], encoding: 'json', viaTextRetry: false }
     },
     close: () => Promise.resolve(),
     toString: () => ADDRESS,

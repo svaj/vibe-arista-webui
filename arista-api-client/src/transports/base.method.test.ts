@@ -187,9 +187,12 @@ describe('createCodecTransport().callMethod — one composition, two envelope ki
     const outcome = await transport.callMethod(HELP_CALL)
     expect(outcome.ok).toBe(false)
     if (outcome.ok) throw new Error('expected a failure')
-    expect(outcome.error).toBeInstanceOf(ProtocolError)
-    expect(outcome.error.code).toBe(EapiErrorCode.PARSE_ERROR)
-    expect(outcome.error.rawBody).toContain('502 Bad Gateway')
+    const error = outcome.error
+    expect(error).toBeInstanceOf(ProtocolError)
+    // narrowing, not a cast: `rawBody` exists on ProtocolError only, which is itself the assertion.
+    if (!(error instanceof ProtocolError)) throw new Error('expected a ProtocolError')
+    expect(error.code).toBe(EapiErrorCode.PARSE_ERROR)
+    expect(error.rawBody).toContain('502 Bad Gateway')
   })
 
   it('answers an error envelope as a failure result rather than throwing out of the composition', async () => {
