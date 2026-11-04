@@ -75,6 +75,18 @@ describe('ResourceRegistry — DR-006 replaces pyeapi node.api() (client.py:927-
     expect(() => registry.get(bogus)).toThrow(/registered: probe/)
   })
 
+  it('a registry holding no factories at all says that, instead of listing an empty name set', () => {
+    // M8 (#10) filled the built-in map, so the "nothing registered anywhere" wording is now reachable only
+    // through an app-defined registry that has not registered anything yet — the case a UI hits when it
+    // wires its own table of resources before adding rows.
+    const { node } = nodeWith()
+    const empty = createResourceRegistry<Record<string, never>>({}, node)
+    expect(empty.names()).toEqual([])
+    expect(() => empty.get('anything' as never)).toThrow(NotSupportedError)
+    expect(() => empty.get('anything' as never)).toThrow(/This registry holds no factories at all/)
+    expect(() => empty.get('anything' as never)).toThrow(/createResourceRegistry\(factories, node\)/)
+  })
+
   it('a typed key with no factory is refused too (declaration merging can add a row the map lacks)', () => {
     // The dangerous case MIGRATION.md §5 row 79 calls out: `ResourceKinds` gains a type row while
     // RESOURCE_FACTORIES does not gain the factory, so TypeScript reports a resource and the caller
@@ -127,36 +139,60 @@ describe('ResourceRegistry — DR-006 replaces pyeapi node.api() (client.py:927-
     expect(registry.get('probe')).toBe(before)
   })
 
-  it('the built-in factory table is empty at M7 (#9) and frozen', () => {
-    // Honest empty: no wave-1 module exists yet (M8 #10, M9 #11, M10 #12 own system/vlans/
-    // switchports/interfaces), and a mutable module-level registry is what ARCHITECTURE.md §7 forbids.
+  it('the built-in factory table is frozen and holds exactly the rows shipped so far (M8 #10 `system`, M9 #11 `vlans`/`switchports`)', () => {
+    // M7 (#9) shipped this table honest-but-empty; M8 (#10) claimed the first row and M9 (#11) claimed
+    // the next two, so the assertion names what exists. `interfaces` is still owed by M10 (#12); a name
+    // in `ResourceKinds` without a row here would be a package bug (row 79). A mutable module-level
+    // registry is what ARCHITECTURE.md §7 forbids.
     expect(Object.isFrozen(RESOURCE_FACTORIES)).toBe(true)
     const { node } = nodeWith()
-    expect(new ResourceRegistry(RESOURCE_FACTORIES, node).names()).toEqual([])
+    expect(new ResourceRegistry(RESOURCE_FACTORIES, node).names()).toEqual(['system', 'vlans', 'switchports'])
+    expect(new ResourceRegistry(RESOURCE_FACTORIES, node).has('vlans')).toBe(true)
+    expect(new ResourceRegistry(RESOURCE_FACTORIES, node).has('interfaces')).toBe(false)
   })
 })
 
 describe('Node.resource / Node.hasResource — the typed replacement for node.api(name)', () => {
-  it('hasResource answers false for every name while the built-in map is empty', () => {
+  it('hasResource answers true for every shipped row and false for the name a later milestone owes', () => {
     const { node } = nodeWith()
-    expect(node.hasResource('vlans')).toBe(false)
-    expect(node.hasResource('system')).toBe(false)
+    expect(node.hasResource('system')).toBe(true)
+    expect(node.hasResource('vlans')).toBe(true)
+    expect(node.hasResource('switchports')).toBe(true)
     expect(node.hasResource('interfaces')).toBe(false)
     expect(node.hasResource('probe')).toBe(false)
   })
 
-  it('asking for an unregistered resource throws with the "no module has shipped yet" answer, not undefined', () => {
+  it('M8/M9\'s static accessors are the memoised registry instances, not a second cache (DR-052)', () => {
     const { node } = nodeWith()
-    // `ResourceName` is `never` at M7, so this call cannot be written type-correctly from TS — which is
-    // the point. The cast is the JS/table-column path the runtime check exists for (row 79).
-    const untyped = 'vlans' as never
+    // PLAN.md M7's "static accessors instead of node.api('vlans')" box was left unticked because a
+    // getter needs a module class to name; `system` is the first one (M8 #10) and `vlans`/`switchports`
+    // are the next two (M9 #11). The values have to come from the per-Node registry, so an accessor, its
+    // `node.resource(name)` twin and a second read of the getter are one object — pyeapi builds a new one
+    // per `node.api()` call (`client.py:946-949`).
+    expect(node.system).toBe(node.system)
+    expect(node.resource('system')).toBe(node.system)
+    expect(node.system.constructor.name).toBe('SystemResource')
+    expect(node.vlans).toBe(node.vlans)
+    expect(node.vlans).toBe(node.resource('vlans'))
+    expect(node.vlans.constructor.name).toBe('VlansResource')
+    expect(node.switchports).toBe(node.switchports)
+    expect(node.switchports).toBe(node.resource('switchports'))
+    expect(node.switchports.constructor.name).toBe('SwitchportsResource')
+  })
+
+  it('asking for an unregistered resource throws, listing the rows that DO exist', () => {
+    const { node } = nodeWith()
+    // `ResourceName` is the closed map key union, so this call cannot be written type-correctly from TS —
+    // which is the point. The cast is the JS/table-column path the runtime check exists for (row 79).
+    const untyped = 'interfaces' as never
     expect(() => node.resource(untyped)).toThrow(NotSupportedError)
-    expect(() => node.resource(untyped)).toThrow(/No resource module has shipped yet \(M8 #10, M9 #11, M10 #12\)/)
+    expect(() => node.resource(untyped)).toThrow(/unknown resource interfaces — no factory is registered/)
+    expect(() => node.resource(untyped)).toThrow(/registered: system, vlans, switchports/)
   })
 
   it('every failed resource call sends nothing to the device (a registry miss is not a device error)', () => {
     const { node, transport } = nodeWith()
-    expect(() => node.resource('vlans' as never)).toThrow(NotSupportedError)
+    expect(() => node.resource('interfaces' as never)).toThrow(NotSupportedError)
     expect(transport.sent()).toEqual([])
     expect(transport.callCount()).toBe(0)
   })
@@ -164,8 +200,8 @@ describe('Node.resource / Node.hasResource — the typed replacement for node.ap
   it('two Nodes do not share a resource memo (ARCHITECTURE.md §7, pyeapi DR-038 counter-example)', () => {
     const first = nodeWith()
     const second = nodeWith()
-    expect(first.node.hasResource('vlans')).toBe(false)
-    expect(second.node.hasResource('vlans')).toBe(false)
-    expect(() => first.node.resource('vlans' as never)).toThrow(/no factory is registered/)
+    expect(first.node.vlans).not.toBe(second.node.vlans)
+    expect(first.node.switchports).not.toBe(second.node.switchports)
+    expect(() => first.node.resource('interfaces' as never)).toThrow(/no factory is registered/)
   })
 })

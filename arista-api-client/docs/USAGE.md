@@ -316,16 +316,42 @@ if (!outcome.ok) {
 
 ## 6. The resource framework (M7, #9), and how a wave-1 module reads config
 
-**Reachability, stated honestly first.** M7 ships the framework — `ResourceBase`, `Entity`,
+**Reachability, stated honestly first.** M7 shipped the framework — `ResourceBase`, `Entity`,
 `EntityCollection`, `commandBuilder`, `submodeCommands`, `toArray`, `parseConfigBlock`, the validators,
 `ResourceRegistry`/`createResourceRegistry`, and the `Node`↔`src/config/` pairing (`chunkConfig`,
-`section`, `getBlock`, `resource`, `hasResource`) — but `src/index.ts`/`src/node.ts` do **not** re-export
-the framework classes yet, and the `exports` map has only `.` and `./node`. So a package consumer cannot
-`import { Entity } …` until that wiring lands (STATUS §1's M7 row carries it as the one open piece; M8
-(#10) is its first real consumer). And **no wave-1 module exists**: `node.vlans`, `node.system`,
-`node.switchports` are still future tense (M8 #10, M9 #11, M10 #12), because `ResourceKinds` is
-deliberately empty (DR-052). Everything below is what the shipped code does today and what a module
-writes against it — `src/resources/base.test.ts` drives exactly this shape over `MockTransport`.
+`section`, `getBlock`, `resource`, `hasResource`) — and since [PR #26](https://github.com/svaj/vibe-arista-webui/pull/26)
+it is re-exported from `src/index.ts` and carried to `./node`, pinned by `src/index.test.ts`. And the
+first wave-1 module has landed: **`node.system` is real (M8, #10)** — the first `ResourceKinds` row,
+the first `RESOURCE_FACTORIES` entry and the first static accessor (closing the half of DR-006 M7 left
+open). `node.vlans`/`node.switchports` join it with M9 (#11) and `node.interfaces` with M10 (#12);
+until then a `node.resource('vlans')` call throws a `NotSupportedError` naming what IS registered
+(DR-052). Everything below is what the shipped code does today and what a module writes against it —
+`src/resources/base.test.ts` drives exactly this shape over `MockTransport`.
+
+### The first built-in: `node.system` (M8, #10)
+
+```ts
+const { hostname, ipRouting, banner } = await node.system.get();
+// ONE `show running-config all` serves all three fields — pyeapi pays one config read per field (§5 row 15),
+// and its values come from chunked top-level sections, so a banner body cannot impersonate a command (row 84).
+// A config with nothing global still answers: hostname `''`, ipRouting `true`, banner `{}` —
+// never pyeapi's invented `'localhost'` (row 83).
+
+await node.system.setHostname('lab-sw1');   // '1sw1', 'sw 1', names with quotes/controls: refused locally,
+                                            // naming the value, at zero round trips (DR-053/DR-057, row 89)
+await node.system.unsetHostname();          // `no hostname` — pyeapi spells this set_hostname(disable=True)
+await node.system.setIpRouting(false);      // `no ip routing`; only true|false — falsy-as-value is refused (DR-037)
+
+await node.system.setBanner('motd', 'Authorized access only.');
+// wire:  { cmd: 'banner motd', input: 'Authorized access only.\nEOF\n' }
+// The client owns the EOF terminator (DR-015 + DR-056, row 88): one caller-supplied trailing newline
+// folds into it, and a body containing a line that reads `EOF` or a CR is refused because this client
+// could not read such a body back. unsetBanner/defaultBanner are `no banner <kind>`/`default banner <kind>`.
+```
+
+`node.system` is `node.resource('system')` — the same instance, memoised per `Node` (DR-052). Hostname
+rules and banner-body refusals are **client-side policy with the EOS figures owed to M12 (#14)**
+(DR-057); device-side refusals stay the `CommandError` of §7, never a `False`.
 
 ### The two base classes
 
@@ -415,8 +441,8 @@ Then parse with M6's primitives, not your own regex (this is PLAN's M6 exit gate
 ```ts
 const body = (await vlans.getBlock(20)) ?? '';
 const parsed = parseConfigBlock(body, {
-  name: (block) => findValue(block.body, 'name'),
-  trunkGroups: (block) => findAllValues(block.body, 'trunk group'),
+  name: (block) => valueAfterKeyword(block.body, 'name'),                 // 'WAN' — run gone, quotes off
+  trunkGroups: (block) => valuesAfterKeyword(block.body, 'trunk group'),  // ['red','blue'] — no ' group' tail
   header: (block) => block.header,               // the section header, for the key it matched on
 });
 // parsed's TYPE comes from the map: { readonly name: string | undefined,
@@ -433,13 +459,17 @@ It defines no error class of its own — a `ConfigParseError` (MIGRATION rows 43
 `chunkConfig`/`getBlock` call that produced the text, and a parse failure is reported rather than
 answered with a missing field.
 
-**The caveat a module must know today** (pinned in `text.test.ts` and `config-block.test.ts`, decided in
-MIGRATION row 81): M6's `describeLine` does not `lstrip` the whitespace run after the first token, so
-`findValue(block.body, 'name')` answers `' PROD'` (leading space, and therefore the quotes on
-`description "WAN uplink"` are never stripped), and a two-word keyword leaves its own tail —
-`findAllValues(block.body, 'trunk group')` answers `' group red'`. So today read `line.text` and slice,
-rather than pretending the contract is clean (M9 (#11), the first real reader, owns the one-line fix —
-not the framework milestone, which has nothing to validate the new contract against):
+**Why the keyword extractors exist (settled by M9, #11 — DR-058, §5 row 91):** M6's `describeLine`
+builds `ConfigLine.value` from the line's **first token**, and as pinned does not `lstrip` the run after
+it — so `findValue(block.body, 'name')` answers `' PROD'` (and the quotes on `description "WAN uplink"`
+are never even reached by `unquote`), while a two-word keyword keeps its own tail:
+`findAllValues(block.body, 'trunk group')` answers `' group red'`. M9 was that first real reader, and it
+deliberately did **not** patch M6's pinned primitive (a first-token lstrip would still leave the
+two-word-keyword tail, and the oracle-pinned contract has no device-validated reason to move). The fix
+lands at the keyword: `valueAfterKeyword` / `valuesAfterKeyword` apply the whole-command word rule
+(`no name shadowed` never answers; `nameplate` never answers), collapse only the keyword/value run so
+**inner** whitespace survives, and reach `unquote` for a balanced pair (row 49). A module reads fields
+through them; `findValue` stays available for its actual first-token contract, and the manual pattern —
 
 ```ts
 const trunkAllowed = (block: ConfigBlock): string[] =>
@@ -447,6 +477,10 @@ const trunkAllowed = (block: ConfigBlock): string[] =>
     .filter((line) => line.text.startsWith('switchport trunk allowed vlan '))
     .map((line) => line.text.slice('switchport trunk allowed vlan '.length));
 ```
+
+— is what the extractor generalises, kept here to show the shape by hand (it is also what
+`switchports.ts` semantically does for the deliberately raw-passed `allowed vlan` vocabulary, open
+item 4).
 
 And after any write: `configure()` and `refresh()` drop the chunk memos unconditionally (pyeapi clears
 its `_chunkify` cache before the `autorefresh` test, `client.py:665-669`), so a re-read really is a read.
@@ -464,7 +498,9 @@ registry.has('other');            // false — and get('other') throws naming wh
 
 `node.resource(...)`/`node.hasResource(...)` use this same registry type; extend `ResourceKinds` by
 declaration merging (the form in `arista-webui/src/eapi-show-contracts.test.ts`) — but remember a merged
-type row with no factory throws by design, and that the framework's own re-export is still pending.
+type row with no factory throws by design. The framework itself is re-exported from both package entries
+since PR #26, and `system` (#10) is the one built-in row so far — the registry lookup it registers is
+the same seam `createResourceRegistry` exposes to apps.
 
 ---
 

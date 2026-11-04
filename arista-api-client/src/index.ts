@@ -271,18 +271,22 @@ import { connectionFromOptions, nodeFromOptions, type NodeFactoryOptions } from 
 import type { Node } from './command-layer'
 import type { Transport } from './transports/contract'
 
-// --- the M7 (#9) resource framework: the primitives every wave-1 module builds on -----------------
+// --- the M7 (#9) resource framework and the M8 (#10) / M9 (#11) modules built on it ----------------
 // PLAN.md assigned the public-surface wiring to M7, so the framework is exported even though no
 // resource module ships with it: an app (or the webui's dynamic tables) has to be able to write a
 // resource against `ResourceBase`/`Entity`/`EntityCollection` and the registry without importing
 // `src/resources/*` by path. `ResourceKinds` is augmentable exactly like `ShowContracts`, so a
-// consumer adds a name and gets a typed `node.resource(name)`; nothing is registered by default, and
-// `RESOURCE_FACTORIES` stays empty until M8-M10 (#10-#12) — MIGRATION §5 row 79.
+// consumer adds a name and gets a typed `node.resource(name)`. M8 (#10) registered the first built-in
+// row (`system`, with `Node.system` for it) and M9 (#11) registered `vlans` + `switchports` (with
+// `Node.vlans` / `Node.switchports`); `interfaces` follows in M10 #12 — MIGRATION §5 row 79.
 export { Entity, EntityCollection, ResourceBase } from './resources/base'
 export { commandBuilder, submodeCommands } from './resources/command-builder'
 export { parseConfigBlock } from './resources/config-block'
 export { assertInterfaceName, assertVlanId, isInterfaceName, isVlanId } from './resources/validators'
 export { createResourceRegistry, RESOURCE_FACTORIES, ResourceRegistry } from './resources/registry'
+export { SwitchportsResource, SWITCHPORT_MODES, isSwitchportMode } from './resources/switchports'
+export { SystemResource } from './resources/system'
+export { VlansResource } from './resources/vlans'
 export { toArray } from './internal/collections'
 export type {
   CommandInput,
@@ -295,6 +299,9 @@ export type {
 } from './resources/types'
 export type { ConfigFieldExtractor, ConfigFieldMap, ParsedFields } from './resources/config-block'
 export type { ResourceFactories, ResourceFactory, ResourceKinds, ResourceName } from './resources/registry'
+export type { Switchport, SwitchportAttrs, SwitchportMode, TrunkAttrs } from './resources/switchports'
+export type { SystemBanner, SystemBannerKind, SystemSettings } from './resources/system'
+export type { Vlan, VlanAttrs, VlanState } from './resources/vlans'
 
 /**
  * A transport for one EOS endpoint — pyeapi's `connect()`, browser kinds only (`https`, or `http`

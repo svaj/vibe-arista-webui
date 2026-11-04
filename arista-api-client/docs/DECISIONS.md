@@ -341,15 +341,7 @@ can be investigated for supported MLAG/routing control-plane tests without claim
 physical forwarding parity.
 
 <!--
-Numbering note (updated on the M12 branch, 2026-11-04): DR-001..054 are on `main` (through PR #26).
-The bands stayed reserved across the three lanes that opened after it: **DR-055..057 (M8, #10) are
-open in PR #27** and **DR-058..060 (M9, #11) in #28** — not in THIS tree — while **M12 (#14) claims
-its own reserved band DR-064..066 below**. DR-061..063 stay reserved for M11 (#13) specifically, so
-the bands remain disjoint whatever the merge order; merging **#27 → #28 → #29** appends all entries
-in numeric order. DR-003 and DR-031 are not gaps — both exist above — but no entry in this log is
-ever renumbered, so the bands stay visible here rather than in a table (this file has no index
-section; the milestone index is STATUS.md §1 and the decision-to-milestone trail is each entry's
-`Related:` line).
+Numbering note (updated on the M12 branch after merging post-M8/M9 `main`, 2026-11-04): **DR-001..060 are on `main`** (through PRs #26/#27/#28, in file order above). This branch claims its reserved band **DR-064..066 (M12, #14)** below. **DR-061..063 stay reserved for M11 (#13)** and are in no tree yet. DR-003 and DR-031 are not gaps — both exist above — but no entry in this log is ever renumbered, so the bands stay visible here rather than in a table (this file has no index section; the milestone index is STATUS.md §1 and the decision-to-milestone trail is each entry's `Related:` line).
 -->
 
 ### DR-051 — a command builder answers with a string, or it refuses
@@ -446,6 +438,145 @@ removes. DR-041's rule ("`make_iterable`'s implicit coercion becomes explicit `t
 boundary") now has a second, concrete justification beyond typing: aliasing corrupts a caller's state.
 **Related:** DR-041, DR-004, DR-003; §5 rows 71 / 72 / 74.
 
+### DR-055 — wave-1 global reads go through the chunker; `parseConfigBlock` is the exception, not the rule
+A wave-1 module reads device config, and M6 + M7 shipped two engines for that: the `Node` chunker
+(`configSections()` over the DR-026 memo) and `parseConfigBlock` (row 81). pyeapi had neither: each
+`_parse_*` re-read `self.config` — one `show running-config` **per field** (rows 15/75) — and matched
+over the whole flat document, so a `hostname …` line inside a banner body answers as the hostname and a
+banner reciting `no ip routing` turns routing off (probes, `system.py:82`/`:94`; §5 row 84).
+**Decision:** the first module settles the pattern: reads that describe **global scope** anchor on the
+chunker's indent-0 section keys — the one structure in the package where "this line is a top-level
+command" is decided by M6's reviewed rules, not by a module regex — and cost ONE request off the memo
+(pinned in `system.test.ts` by the transport's command list). `parseConfigBlock` is deliberately NOT
+used there or by any byte-fidelity body: its extractors run over `parseBlock`, which strips indent and
+unquotes per line (`config/text.ts` `describeLine`, row 81) — right for `name PROD`, wrong for a banner
+body that must survive verbatim (upstream's own fixture keeps a 9-space line inside `banner login`,
+`test/fixtures/running_config.text:410`), and for a global entity the block header `parseBlock` drops
+would be the `hostname` line itself.
+**Consequence:** PLAN's M6 exit gate ("every wave-1 resource can be parsed from text config with no
+bespoke regex") is now observable in a shipped module: `src/resources/system.ts` contains no config-text
+regex beyond exact section-key matches. M9/M10 follow the same split — scalars anchor on chunk keys,
+sub-mode bodies use `parseConfigBlock`, EOF-delimited bodies read the section text verbatim. The
+known `describeLine` whitespace gap (row 81: `' PROD'`, `' group red'`) is M9's to settle as its first
+real reader, exactly as M7 recorded rather than silently widening a pinned primitive.
+**Related:** DR-026, DR-030, DR-005; §5 rows 15 / 75 / 81 / 84 / 85 / 86 / 87.
+
+### DR-056 — the `EOF` terminator is part of the banner verb's contract: strict write, lenient read
+pyeapi never sends the terminator: `set_banner` writes `input = value` plus at most one appended newline
+(`system.py:177-178`) and nothing closes the block (`:179`, pinned verbatim by `test_api_system.py:88`),
+while its reader demands a newline **after** `EOF` (`\nEOF$\n`, `:108`) and silently drops a trailing
+banner that lacks one (probe). DR-015 made multiline payloads `{cmd, input}` objects; nothing yet said
+whose job the terminator is.
+**Decision:** the client owns it. `setBanner` always sends `{ cmd: 'banner <kind>', input: body +
+'\nEOF\n' }`; exactly one caller-supplied trailing newline **folds into** the terminator (so `'x'` and
+`'x\n'` are byte-identical on the wire — the inverse of upstream, which appends toward a form that never
+closes). The write is refused locally, before any request, for bodies this client could not read back: an
+empty body, a line reading `EOF` after `rstrip` (the chunker's own comparison, `client.py:743`), or a CR
+(a line boundary for `splitLines`, so the read would not round-trip). The read side is deliberately
+more lenient — `EOF` accepted as the document's last line, opener spaces `rstrip`ped. Which rules EOS
+itself applies (terminator case, CR handling, whether it writes `banner exec`) is unverified on
+hardware, M12 (#14) to capture.
+**Consequence:** no banner write can leave an open input mode on the wire, and the payload a mock
+asserts is exactly the payload a device needs. Redaction keeps working: only `enable` **inputs** are
+secrets (DR-011, `internal/redact.ts`'s `ENABLE_COMMAND`), so a refused banner write still carries its
+body in `CommandError.commands` — pinned, because banner text is operator content, not a credential.
+**Related:** DR-015, DR-011, DR-032, DR-055; §5 rows 16 / 86 / 87 / 88.
+
+### DR-057 — an unverifiable device rule ships as named client policy, never as an invented EOS fact
+PLAN's M8 box asks for `setHostname` "with EOS name rules validated (length, no leading digit/space)."
+Those rules are **not knowable in this workspace**: no device in unit tests, no readable CLI sources in
+the image split (`arista/_rea_swi` yields one `.py*` file; the `*Cli.py` files M5 had to demote are not
+here), and pyeapi itself validates nothing on this path (`system.py:118-134` interpolates straight into
+the command; whole-file check 2026-11-03). Inventing numbers and calling them EOS behaviour is exactly
+the failure this project's evidence discipline exists to prevent.
+**Decision:** encode only (a) refusals derivable from **this client's own reader** — a single token with
+no whitespace or control characters (the reader reads one token, `:82` is upstream's version of the same
+fact), no `"` (the reader unquotes a balanced pair, so such a name could not round-trip), non-empty (the
+builder refuses a trailing-space command; `unsetHostname()` is the spelled-out negation, DR-037) — and
+(b) clearly-labelled **policy** for the rest: a generous `≤ 128` bound and a no-leading-digit
+convention, each refusal message stating "client-side rule … unverified on hardware, M12 (#14) to
+capture." The device keeps the authority: every verb has a pinned `CommandError` path (DR-005 — the
+device's refusal, `failedCommand` intact, never a `False`).
+**Consequence:** no line of docs or code asserts an unsourced EOS fact; the open questions ride along
+where they can be answered — M12 (#14)'s capture list grows hostname charset/length/leading-digit
+ behaviour, whether config text ever quotes a hostname, and the `banner exec` write form — and a later
+capture revises a *policy* row without contradicting a claimed *fact*. The same labelling discipline
+already retired M5's unverifiable `*Cli.py` citations to demoted carried claims; this makes it the
+pattern for wave 1, including M10's interface grammar (DECISIONS open item 7).
+**Related:** DR-053, DR-032, DR-043, DR-029 (recorded as upstream defect, not quietly fixed); §5 rows
+83 / 89.
+
+### DR-058 — the keyword gap is settled at the keyword: a shared extractor, not a pinned-primitive rewrite
+Rows 49 and 81 left a chain of promises: `describeLine` does not `lstrip` the run between the first
+token and the value (so `findValue` answers `' PROD'` and `unquote` can never fire), a two-word keyword
+keeps its own tail, and `text.test.ts:204-211` calls it "a one-line implementation fix" deferred to the
+first real reader — M9. That reader arrived in two modules at once (`vlans`, `switchports`), both needing
+the same normalisation at DIFFERENT keywords (`name`, `trunk group`, `switchport mode`, …).
+**Decision:** neither of the two obvious moves. Not "edit `describeLine`": a first-token `lstrip` is the
+wrong scalpel — the tail of `trunk group` survives any lstrip, a resource that ever wants the raw
+remainder loses it, and the primitive is pinned by M6's suite AND by the pyeapi oracle-parity harness
+(`scripts/config-chunkify-oracle.py`); a device-validated reason could reopen it, mid-stream convenience
+could not. Not "each module re-splits": that is two copies of one rule and a breach of PLAN's M6 exit
+gate. The fix is **extraction at the keyword**: `valueAfterKeyword` / `valuesAfterKeyword`
+(`src/resources/config-block.ts`) compose M6's own pieces — the whole-command word-boundary rule
+(`text.ts:215`) + `lstrip` (`:92`) + `unquote` (`:235`) — over the parsed body lines. `src/config/**` is
+untouched by this branch; its pins stay green; the primitive's doc gap is reported upward, not patched
+under cover.
+**Consequence:** the two modules read through ONE implementation and cannot drift. Direct specs land in
+`config-block.test.ts` (13 new cases incl. mutation-proofed word-boundary, whitespace-run, two-word
+keyword, balanced/unbalanced quoting, bare-keyword skip), keeping the file at 100% lines/branches as M7
+shipped it. As-built honesty pins two edges rather than blessing them: an explicitly empty quoted value
+(`name ""`) joins the "no value" bucket (unquote runs before the emptiness test — the quoting DEPTH is
+row 49's M12 #14 capture anyway), and `vlans.py:60`'s `(?:trunk\sgroup\s)(?P<value>.*)$` turns out to
+allow an EMPTY value (the ≥1-char claim rests on `switchports.py:115` alone) — unreachable from
+device-shaped text because `describeLine` rstrips, pinned as such. Row 81's forward promise and row 49's
+pointer now tell this story; a module that wants `findValue`'s raw contract must justify it, not default
+to it.
+**Related:** DR-055 (chunker authority), DR-027; §5 rows 49 / 81 / 91.
+
+### DR-059 — a collection read reports, keeps, or fans out — it never invents, truncates, or strands
+pyeapi treats read validity and write validity as one question and answers both badly: `isvlan` gates the
+writes (and swallows refusals into `False`), while the readers invent (`vlan 10x` → `'10'`), truncate
+(`access vlan 20 extra` → `'20'`), and key ranged headers as ONE string entry (`'200-202,204'`) that
+`isvlan` then refuses — so a range section exists in `getall` but can **never be deleted through pyeapi at
+all** (probe: `create`/`delete` return `False` and send nothing). A UI cannot render "a VLAN you can see
+but cannot touch".
+**Decision:** split the question. The read answers three ways: a well-formed value → typed field; a value
+the grammar cannot parse (`vlan 1,`, `vlan 1-`, `switchport access vlan 20 extra`) → `ConfigParseError`
+naming the section (rows 43/44's rule: a parse failure is never answered as a missing field); a value
+inside the grammar but outside the client's write range (`vlan 99999`) → **kept** (the switch wrote it;
+answering nothing would be the lie) while `delete(99999)` refuses via `assertVlanId`. And a
+ranged/enumerated header **fans out** through M6's `expandRange` so every member id is addressable —
+`delete(201)` on a `vlan 200-202` section sends `no vlan 201`, what EOS makes of that is a labeled M12
+(#14) capture, not a documentary refusal. A run whose endpoints exceed the expansion bound is refused as a
+`ConfigParseError` rather than expanded: unbounded client-side work is refused for the same reason
+DR-032 refuses invented platform ceilings, not because a number is sacred.
+**Consequence:** write-side `1..4094` stays pyeapi's own figure (`range(1, 4095)`, `vlans.py:78`); nothing
+in this decision claims what EOS stores. The parity board says "all 15 + 21 upstream methods ported"
+truthfully: their COMMAND texts are reproduced, their malformed-value ANSWERS deliberately are not.
+**Related:** DR-027, DR-032, DR-053, DR-057, DR-029 (name-fallback half closed at the key, §5 row 96);
+§5 rows 95 / 96.
+
+### DR-060 — set-diff writes are ONE transaction in a deterministic order; Python's hash order is not ported
+`set_trunk_groups` (`vlans.py:314-325`, `switchports.py:364-375`) computes `set(...).difference(...)` for
+adds and removes and sends a **separate `configure` per element** — with more than one change the wire
+order is Python's per-process hash order (not caller order, not reproducible in a log or an audit), a
+refusal mid-list leaves the device **partially applied**, and reading current state through
+`self.get(…)['trunk_groups']` raises `TypeError: 'NoneType' is not subscriptable` for an absent VLAN
+(probe).
+**Decision:** one read, a set-diff, **one** `configure()`: adds in the caller's order, removals in device
+order, mode line first inside `setTrunk`'s combined write. The ordering is explicitly **this client's**
+choice — the CLI applies the lines sequentially and the members are independent, so the final state does
+not depend on it — but a deterministic cmds[] is what a diff-before-commit UI and a recording fixture can
+show and promise; upstream's is what a replayed capture cannot. Empty diff → nothing goes out (upstream
+agrees, probe); absent entry → `NotFoundError` (DR-027's required-lookup arm), never `TypeError`, never a
+silent pass.
+**Consequence:** every multi-change verb in wave 1 has the same shape to be tested against (exact `cmds`
+arrays), and `setTrunk` lands as PLAN §M9's one verb where upstream needs three calls. If M11 (#13)'s
+probe finds `switchport trunk group` unsupported on the target (open item 4), that changes the
+CAPABILITY table, not these verbs' spellings.
+**Related:** DR-037, DR-027, DR-005, DR-050 (never call a staged write a preview); §5 row 97.
+
 ### DR-064 — recordings are wire artefacts taken at the transport seam, redacted before they exist
 Fixture harnesses usually sit above the client ("capture what the code sent"), which means a
 recording file is built from already-parsed, already-transformed data — anything the harness author
@@ -516,6 +647,7 @@ be cited with class limits visible; the physical sweep (§3) stays visibly open 
 quietly answers it. Harness claims (readiness/cleanup/no-secrets) are checkable artefacts, and the
 coin-flip mode of publishing multi-NIC containers is dead history.
 **Related:** DR-043, DR-011, DR-035, DR-032; §5 rows 108 / 112 / 113.
+
 
 ---
 
