@@ -142,7 +142,11 @@ export function createCodecTransport(kernel: TransportKernel): ComposedTransport
     }
   }
 
-  const transport: Transport = {
+  // `ComposedTransport`, not `Transport`: the literal below always provides `callMethod`, and since
+  // `Transport#callMethod` is *optional* (that optionality is the point — a pre-M11 third-party
+  // transport need not have it), annotating this as `Transport` would widen the return type and make
+  // `createCodecTransport` fail to satisfy its own signature.
+  const transport: ComposedTransport = {
     kind: kernel.kind,
     address: kernel.address,
     async execute(commands, options: TransportExecOptions = {}) {
