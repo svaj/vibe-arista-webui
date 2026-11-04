@@ -22,13 +22,16 @@ local-transport warnings, DR-018 cookie sessions, DR-019 retry rules, DR-017 res
 `MockTransport` for offline tests. M4 added `src/command-layer.ts` (pyeapi's `Node` class, minus what
 other milestones own) and `src/internal/variants.ts`: read-only work against a mocked switch is now fully
 usable with no resource module, which is PLAN's M4 exit gate. M3 (#5, merged as [PR #24](https://github.com/svaj/vibe-arista-webui/pull/24)) landed that bag: `createNode()`/`createConnection()` in `src/index.ts` take an explicit connection or a profile plus `store`, and `./node` adds the `eapi.conf` file search (DR-038).
-**Only #26 (M7, #9) is open now**: PR #23 (M6, #8), #24 (M3, #5) and #25 (M5, #7) all merged into `main`
-on 2026-11-03 (`6426756`, `cbf37a4`, `67a1485`), and this branch re-merges `origin/main`, so #26's base is
-plain `main`. The MIGRATION §5 ledger's reserved bands are intact - **41-53 M6, 54-60 M3, 61-70 M5 and
-71-82 M7** (rows 39-40, DR-003 and DR-031 stay deliberately unused) - and every `§5 row N` citation in
-`src` resolves here: the cited set is 1, 5, 8, 12, 13, 15-38, 41-81 against rows 1-38 + 41-82. M7 adds
-`src/resources/*` on top of the merged sessions layer; both edited `command-layer.ts`/`index.ts`/`node.ts`
-additively, so the merges kept both sides.
+**M7 merged on 2026-11-03 (PR #26, `a2785c7`); this M12 branch sits on that `main`.** Three PRs are
+open and independent of each other by construction (reserve bands were disjoint): **#27 (M8 #10) ->
+`main`**, **#28 (M9 #11) -> the M8 branch**, and **#29 (this lane)** recording §5 rows 107-114 +
+DR-064-066. Merge order #27 -> #28 -> #29 appends both the ledger and the DR log contiguously;
+merging in any order only ever means keep-both at the §6 entrance. `src` in THIS tree cites rows
+1-38 + 41-81 only — every one resolves here (rows 83-98 live in #27/#28, rows 107-114 in this branch).
+The cEOS harness was re-verified after a fresh boot on 2026-11-04: `lab:up -> lab:probe -> lab:down`
+exit 0, authenticated eAPI on the published port, zero leftovers (a multi-NIC endpoint-selection flake
+surfacing as 30/30 ECONNRESET was diagnosed and single-attached at the patch site — see
+`scripts/ceos-lab.mjs` and §5 row 112).
 
 **Test infrastructure planning update:** local cEOS-lab **4.28.14M** and vendor install
 instructions are now available under `/home/svaj/development/arista/cEOS/`.
@@ -55,7 +58,7 @@ eAPI readiness, and harness execution are **not yet validated**. Hardware remain
 | M9 | `vlans` + `switchports` | `not-started` | — | — | [#11](https://github.com/svaj/vibe-arista-webui/issues/11) | needs M7 + M8; first demoable slice |
 | M10 | `interfaces` (base, ethernet, port-channel) | `not-started` | — | — | [#12](https://github.com/svaj/vibe-arista-webui/issues/12) | needs M7 + M9; split M10a–c |
 | M11 | Capability probe + dry-run | `not-started` | — | — | [#13](https://github.com/svaj/vibe-arista-webui/issues/13) | needs M5 + M9 |
-| M12 | Live suite + fixtures + CI | `not-started` | — | — | [#14](https://github.com/svaj/vibe-arista-webui/issues/14) | local cEOS image available; needs trusted privileged runner, provisioning/readiness/guards/cleanup; hardware lane separate |
+| M12 | Live suite + fixtures + CI | `in-progress` | 2026-11-03 | — | [#14](https://github.com/svaj/vibe-arista-webui/issues/14) | **Partial delivery as [PR #29](https://github.com/svaj/vibe-arista-webui/pull/29)** — #14 stays open. Shipped: recorder seam at the transport with double-pass redaction + write/load leakage assertion (`src/testing/recording.ts`/`recorder-node.ts`, DR-064), the live-guard consent matrix with mutation-tested refusals incl. the 9 new non-lab-target cases (DR-065, §5 rows 110/111), the cEOS harness lifecycle (`scripts/ceos-lab*.mjs`, `lab:*` scripts, DR-066) verified end-to-end post-reboot incl. the TLS-pin cross-check, and the repo's first 9 REAL redacted cEOS captures with provenance envelopes (§5 row 113). **Still owed on #14:** the `*.live.test.ts` port of pyeapi `test/system/*` (read-mostly ~60 + scratch-write cycles, device policy incl. named sessions), the `fixtures:refresh` script wiring, the trusted `workflow_dispatch` CI job, and EVERYTHING §3's hardware sweep asks. Container evidence ≠ 7050TX evidence (DR-043) — unchanged and enforced in file metadata. |
 | M13 | Consumption, docs, release | `not-started` | — | — | [#15](https://github.com/svaj/vibe-arista-webui/issues/15) | includes opt-in Playwright cEOS lane once M12 harness and UI workflow exist |
 | W2 | wave-2 modules | `backlog` | — | — | [#16](https://github.com/svaj/vibe-arista-webui/issues/16) | 9 modules, **139** upstream unit tests (users 22, acl 32, stp 21, mlag 7, varp 17, ipinterfaces 11, vrfs 10, staticroute 8, ntp 11 — AST count, superseding the stale 186/111 figures in older notes); needs M10 |
 | W3 | wave-3 modules | `backlog` | — | — | [#17](https://github.com/svaj/vibe-arista-webui/issues/17) | 4 upstream test files, **78** methods (vrrp 23, bgp 22, routemaps 18, ospf 15); VXLAN deferred (the 7050TX-64 capability is unverified — open item) |
@@ -105,6 +108,17 @@ LAG limits, or hardware feature support. This feeds M6 fixtures and
 [DECISIONS.md open items](./DECISIONS.md#open-items-need-the-device).
 All discovery below is read-only **except the final scratch-session experiment**,
 which needs explicit authorization on hardware and unconditional cleanup.
+
+> **2026-11-04 (M12, PR #29).** The *read-only discovery batch on cEOS* now runs for real and is
+> captured: `scripts/ceos-lab.mjs` provisions run-scoped, guards target-class/lab, polls EOS (not
+> Docker) readiness, cross-checks the TLS pin endpoint-vs-container, and records nine redacted
+> captures with the identity+redaction envelope of §5 rows 108/113 under
+> `arista-api-client/test/fixtures/live/ceos-4.28.14M/` (`show version[+text]`,
+> `interfaces status[+text]`, `vlan`, `mlag`, `lldp neighbors`, `management api
+> http-commands[+text]` — covering the listener/version half of the third bullet below **for the
+> container only**). None of that checks a box here: every line under this section asks the
+> 7050TX-64, and DR-043 is enforced inside each file (`hardwareEvidence:"none"`). The write-cycle
+> cases and the `test/system/*` port also stay open with #14.
 
 - [ ] `show version` → exact `modelName`, `version`, `serialNum`, image
 - [ ] `show license features` · `show license all` → which features are licensed (VXLAN/VRF/MLAG)
@@ -170,7 +184,7 @@ is the work state; the §1 table `in-progress`/`done` cell mirrors it, and this 
 | [#11](https://github.com/svaj/vibe-arista-webui/issues/11) | M9 `vlans` + `switchports` | open |
 | [#12](https://github.com/svaj/vibe-arista-webui/issues/12) | M10 `interfaces` | open |
 | [#13](https://github.com/svaj/vibe-arista-webui/issues/13) | M11 Capability probe + dry-run | open |
-| [#14](https://github.com/svaj/vibe-arista-webui/issues/14) | M12 Live suite + fixtures + CI | open |
+| [#14](https://github.com/svaj/vibe-arista-webui/issues/14) | M12 Live suite + fixtures + CI | `status:in-progress` — partial: recorder + live-guard + cEOS harness + 9 captures as [PR #29](https://github.com/svaj/vibe-arista-webui/pull/29); the `test/system/*` live port, CI live job and hardware sweep remain |
 | [#15](https://github.com/svaj/vibe-arista-webui/issues/15) | M13 Consumption, docs, release | open |
 | [#16](https://github.com/svaj/vibe-arista-webui/issues/16) | W2 wave-2 module backlog | open |
 | [#17](https://github.com/svaj/vibe-arista-webui/issues/17) | W3 wave-3 module backlog | open |

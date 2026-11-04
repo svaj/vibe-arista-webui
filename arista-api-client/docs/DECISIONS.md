@@ -341,12 +341,15 @@ can be investigated for supported MLAG/routing control-plane tests without claim
 physical forwarding parity.
 
 <!--
-Numbering note (M7, #9, 2026-11-03): DR-001..043 are on `main`/PR #23. The bands reserved across the
-branches stacked on PR #23 are DR-044..046 = M3 (#5, PR #24, not in this tree), DR-047..050 = M5 (#7,
-agents/issue-7-m5-config-sessions, not in this tree), DR-051..054 = M7 (#9, below). DR-003 and DR-031
-are not gaps — both exist above — but no entry in this log is ever renumbered, so the bands stay
-visible here rather than in a table (this file has no index section; the milestone index is
-STATUS.md §1 and the decision-to-milestone trail is each entry's `Related:` line).
+Numbering note (updated on the M12 branch, 2026-11-04): DR-001..054 are on `main` (through PR #26).
+The bands stayed reserved across the three lanes that opened after it: **DR-055..057 (M8, #10) are
+open in PR #27** and **DR-058..060 (M9, #11) in #28** — not in THIS tree — while **M12 (#14) claims
+its own reserved band DR-064..066 below**. DR-061..063 stay reserved for M11 (#13) specifically, so
+the bands remain disjoint whatever the merge order; merging **#27 → #28 → #29** appends all entries
+in numeric order. DR-003 and DR-031 are not gaps — both exist above — but no entry in this log is
+ever renumbered, so the bands stay visible here rather than in a table (this file has no index
+section; the milestone index is STATUS.md §1 and the decision-to-milestone trail is each entry's
+`Related:` line).
 -->
 
 ### DR-051 — a command builder answers with a string, or it refuses
@@ -442,6 +445,77 @@ caller's explicit step, since guessing "one value or its spread?" is exactly the
 removes. DR-041's rule ("`make_iterable`'s implicit coercion becomes explicit `toArray()` at the
 boundary") now has a second, concrete justification beyond typing: aliasing corrupts a caller's state.
 **Related:** DR-041, DR-004, DR-003; §5 rows 71 / 72 / 74.
+
+### DR-064 — recordings are wire artefacts taken at the transport seam, redacted before they exist
+Fixture harnesses usually sit above the client ("capture what the code sent"), which means a
+recording file is built from already-parsed, already-transformed data — anything the harness author
+forgot to redact at that level is committed forever, and enable inputs must survive to the wire
+un-redacted (M1's carried note) so SOMETHING in the path is secret-bearing. pyeapi ships no
+harness at all: its system tests lean on a live device with no capture, no replay and no provenance.
+**Decision:** the recorder wraps the transport's `trace` seam (`src/testing/recording.ts`), where
+`src/transports/base.ts` already runs every body through `redactWireText` — redaction happens on
+CAPTURE, before a value is ever held for later, and `buildRecording` re-runs the same rules on the
+way OUT, so even a caller who bypassed `trace` cannot write an unredacted fixture.
+`findUnredactedEnableInput` is asserted on WRITE **and** LOAD, so repository review is not the
+protection. The browser/Node split holds: `recording.ts` is browser-safe (DR-002) and webui tests
+may record/replay; only `recorder-node.ts` touches the filesystem, behind `./node`. Replay targets
+`MockTransport` verbatim (`replayRecording`), making a committed fixture the offline contract for
+the command layer.
+**Consequence:** the fixture directory becomes reviewable evidence (`{cmds → reply}` + identity
+envelope + the redaction lists of DR-066), and TESTING.md §4's "redacted on write" is now enforced
+by code on both ends rather than by convention. `recorder.ts` as PLAN named it does not exist —
+the seam landed as `recording.ts` + `recorder-node.ts` precisely so the fs half cannot leak into the
+browser entry; PLAN's §M12 box records the rename.
+**Related:** DR-011, DR-017 (exchanges key by request id), DR-002; §5 rows 107 / 109.
+
+### DR-065 — a live target is a set of independent consents; a loopback address is never consent by itself
+The obvious guard — "host is loopback ⇒ must be the lab" — is false on this very project: the
+**physical switch's** local eAPI is a unix socket plus `localhost:8080` plain HTTP, unauthenticated
+priv-15 on the device itself (verified image evidence, DECISIONS open items). A developer with a
+mis-set environment could write to real hardware through a guard that only checks the host.
+**Decision:** `resolveLiveEnv(env)` composes independent gates, all of which must pass, none of
+which can vouch for another: `EAPI_LIVE=1`; an explicit endpoint (profile inheritance is refused);
+`EAPI_TARGET_CLASS=lab` — checked FIRST, so `prod`/`hardware`/blank refuses even when host and port
+both spell lab; an allow-listed loopback HOST *and* the run-owned published port 8443 — so
+`localhost:8080` (the physical switch's own port) is refused by the port gate **before** any
+cleartext opt-in can reach the transport gate; the expected model + exact `4.28.14M` image version.
+Refusals are **data** (`{ok:false, code, reason}`), never exceptions — a guard refusal is not a wire
+condition (DR-010's taxonomy stays clean) — and no reason ever echoes a secret value, only the
+variable name. The whole matrix — 27 distinct refusal codes — is unit-tested offline (injected env, zero real
+`process.env`, 63 cases), and the tests were mutation-verified: disabling the target-class gate
+fails 7 named cases. The known
+over-strictness (`::1` never reaches the allow-list because a bare IPv6 host is parsed as host+port)
+is deliberately NOT widened (§5 row 111): under-refusal is the dangerous direction.
+**Consequence:** there is no env spelling this guard accepts that could address the physical switch;
+DR-035's "lab class" plus a run-scoped published port is what makes an accidental `EAPI_PASS`
+against real hardware unexpressible. Future gates follow the asymmetry rule recorded in row 111:
+refuse-with-a-reason when unverified, and make every widening a deliberate, separately-reviewed act.
+**Related:** DR-034, DR-035, DR-043, DR-032, DR-010, DR-011; §5 rows 110 / 111 / 114.
+
+### DR-066 — every capture records its own evidence class, and the lifecycle proves it reached a device
+A fixture with no provenance is a guess someone committed. DR-043 already forbids container
+results from establishing hardware behaviour — but a rule nobody can check after the fact decays
+fast, and the first harness run on this repo proved the failure is real: a published-port mapping
+looked attached while every connect reset (30/30 ECONNRESET) — the docker-side "it's running" said
+one thing and the device-side "eAPI answers" another.
+**Decision:** (a) every recording/fixture carries a **metadata envelope** — `targetClass`,
+`targetKind`, `imageTag` + `imageId` digest, exact `aristaVersion`, `modelName`, `runId`,
+`capturedAt`, endpoint, TLS pin fingerprint, and explicit `redactionApplied` + `hardwareEvidence`
+fields; the hardware field for a container capture states `none — … not DCS-7050TX-64 / 4.28.13.1M
+evidence (DR-043)` **inside the file**, not in a README someone will stop reading.
+(b) the filename path enforces the class split (`targetSlugFor` separates model from version, so
+cEOS and hardware directories can never collide or merge). (c) readiness is proven through the
+device's own answers, never the runtime's: TLS identity cross-checked endpoint-vs-container file
+before an authenticated call; EOS polled through `Cli`, not `docker ps`; credentials random per
+run, 0600 state, printed once; fixture writes refuse overwrite without `--fixtures-force`; teardown
+label-verified and always — and post-reboot verification is part of the lane's definition of done
+(this branch re-ran up→probe→down after a fresh boot, found the dual-network endpoint-selection
+bug, and the fix comment at the patch site carries the isolation matrix).
+**Consequence:** the nine committed cEOS captures are the repo's first real device evidence and can
+be cited with class limits visible; the physical sweep (§3) stays visibly open — no container file
+quietly answers it. Harness claims (readiness/cleanup/no-secrets) are checkable artefacts, and the
+coin-flip mode of publishing multi-NIC containers is dead history.
+**Related:** DR-043, DR-011, DR-035, DR-032; §5 rows 108 / 112 / 113.
 
 ---
 
