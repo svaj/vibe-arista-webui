@@ -1,0 +1,12 @@
+# Run-owned lab state for scripts/ceos-lab.mjs (M12, #14).
+#
+# `scripts/.state/` holds, per lab run:
+#   session-<runId>.json  — 0600 file containing the **random lab-only eAPI
+#                           credentials** for the currently running disposable cEOS
+#                           container, plus its container/network/port identity.
+#   cert-<runId>.pem      — 0600 copy of the container's *public* API certificate
+#                           (trust anchor for child processes). Never key material.
+#   lock-<port>.json      — per-endpoint single-flight lock (docs/CEOS.md).
+# All are deleted by `lab:down` (including on SIGINT/SIGTERM via the finally path),
+# but they must never be committable even if a run is interrupted mid-flight.
+.state/
