@@ -462,8 +462,12 @@ describe('SwitchportsResource mode and VLAN fields — switchports.py:242-342 an
     expect(sentAsText(transport)).toEqual([['enable', 'configure terminal', 'interface Ethernet1', 'switchport access vlan 20']])
     // `test_api_switchports.py:107-111` pins the text over a random vlan; upstream never range-checks the
     // value it interpolates at `:288`, so probe answers `switchport access vlan 99999` for that id.
-    for (const bad of [0, 4095, 20.5, '20']) {
-      await expectRefusal(() => switchports.setAccessVlan('Ethernet1', bad as number), 'invalid vlan', 'expected an integer VLAN id 1..4094')
+    const illegalIds: readonly unknown[] = [0, 4095, 20.5, '20']
+    for (const bad of illegalIds) {
+      // Runtime-only caller mistakes reach the guard through `unknown` — a bare `as number` compiled
+      // here only because the array's inferred element union kept `string` alive (row 76's guard takes
+      // `unknown` for exactly this reason). The `'20'` case below is the same story, spelled out.
+      await expectRefusal(() => switchports.setAccessVlan('Ethernet1', bad as unknown as number), 'invalid vlan', 'expected an integer VLAN id 1..4094')
     }
     // The rejected argument is named in `pythonRepr`, which quotes a string (`internal/wire.ts:216`) — the
     // rendering `validators.test.ts:55` pins for the same guard, and the reason a string id is a separate
