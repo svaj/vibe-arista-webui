@@ -716,7 +716,17 @@ async function cmdUp(cfg) {
     )
     port = await allocateEndpoint(cfg.hostIp, runId, cfg.port)
     log(`[up] run ${runId} · endpoint ${cfg.hostIp}:${port} -> ${names.container}:${cfg.containerApiPort}`)
-    for (const net of [names.mgmt, names.data]) {
+    // ONE network attached — evidence 2026-11-04 (post-reboot verification of the 2026-11-03 runs).
+    // Attaching `-mgmt` AND `-data` made the published port flap: `docker run -p` resolves the
+    // container endpoint among the attachments with no documented tie-break, and bare cEOS (this
+    // harness's ZTP-free boot) only plumbs a kernel route/address on the FIRST attachment — the
+    // second NIC answers nothing on its docker-side IP, so whenever the picker chose that endpoint
+    // every TCP+TLS connect to the published port died ECONNRESET (30/30 probe attempts) while
+    // `docker exec` curl of the container's own eth0 returned 405. Detaching the second network at
+    // runtime made the published path work instantly (405 = method, not transport). The data NIC has
+    // no consumer yet — two-node MLAG topologies (DR-043) belong to a later lane, and when they come,
+    // attach-then-publish must name the endpoint explicitly instead of relying on the picker.
+    for (const net of [names.mgmt]) {
       docker(['network', 'create', `--label=${LABEL_RUN}=${runId}`, `--label=${LABEL_MANAGER}=${MANAGER}`, net])
     }
     const createArgs = [
@@ -726,7 +736,6 @@ async function cmdUp(cfg) {
       `--label=${LABEL_RUN}=${runId}`,
       `--label=${LABEL_MANAGER}=${MANAGER}`,
       `--network=${names.mgmt}`,
-      `--network=${names.data}`,
       `-p=${cfg.hostIp}:${port}:${cfg.containerApiPort}`,
     ]
     for (const [k, v] of VENDOR_ENV) createArgs.push('-e', `${k}=${v}`)
@@ -785,7 +794,7 @@ async function cmdUp(cfg) {
       schema: 1,
       container: names.container,
       containerId: cid,
-      networks: { mgmt: names.mgmt, data: names.data },
+      networks: { mgmt: names.mgmt },
       hostIp: cfg.hostIp,
       port,
       containerApiPort: cfg.containerApiPort,
