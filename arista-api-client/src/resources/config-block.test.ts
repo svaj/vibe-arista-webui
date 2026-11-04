@@ -25,12 +25,20 @@
  * and the follow-up (M7's second commit, or M9 when `vlans` needs it) flips the primitive plus these
  * expectations in one step. A wave-1 module that needs a clean value today strips or re-splits in its
  * own extractor, which is the escape hatch row 49 implies.
+ *
+ * M9 (#11) is the first real reader and took that escape hatch exactly once rather than per module:
+ * {@link valueAfterKeyword} / {@link valuesAfterKeyword} (exported from this file) cut the value **at the
+ * keyword** — `lstrip` plus `unquote` applied there instead of in `describeLine` — and are what
+ * `vlans.ts:232-234` and `switchports.ts:292-296` call. `src/config/**` is untouched, so every as-built
+ * pin above stays as it shipped. Because those two extractors are exports of the file this suite belongs
+ * to, they get direct specs below (MIGRATION.md's `_parse_*` row: extractors are "pure, unit-tested
+ * directly") instead of riding only on the indirect exercise through `switchports.test.ts` / `vlans.test.ts`.
  */
 
 import { describe, expect, expectTypeOf, it } from 'vitest'
 
-import { findAllValues, findValue } from '../config/text'
-import { parseConfigBlock } from './config-block'
+import { findAllValues, findValue, parseBlock } from '../config/text'
+import { parseConfigBlock, valueAfterKeyword, valuesAfterKeyword } from './config-block'
 import type { ConfigBlock, ConfigLine } from '../config/text'
 
 const VLAN_20 = 'vlan 20\n   name PROD\n   trunk group red\n   trunk group blue\n!\n'
@@ -166,5 +174,117 @@ describe('parseConfigBlock — PLAN.md M7 (no upstream twin, §5 row 81)', () =>
     })
     expect(calls).toBe(2)
     expect(parsed).toEqual({ first: 'always', second: 'vlan 20' })
+  })
+})
+
+describe('valueAfterKeyword / valuesAfterKeyword — M9 (#11) keyword-position reads, the reader row 81 deferred to this milestone (vlans.ts:232-234, switchports.ts:292-296)', () => {
+  // Both extractors take a **parsed body**, which is what `parseConfigBlock` hands its extractors; going
+  // through `parseBlock` here keeps the lines device-shaped (dedented, rstripped by `describeLine`,
+  // `config/text.ts:150`) instead of hand-built `ConfigLine` objects that could drift from it.
+  const lines = (section: string): readonly ConfigLine[] => parseBlock(section).body
+
+  it('a keyword with one value answers that value, and nothing else on the line (vlans.py:58 NAME_RE, :59 STATE_RE)', () => {
+    const body = lines('vlan 20\n   name WAN\n   state active\n!\n')
+    expect(valueAfterKeyword(body, 'name')).toBe('WAN')
+    expect(valueAfterKeyword(body, 'state')).toBe('active')
+  })
+
+  it('valuesAfterKeyword answers every repeat of the keyword in device order, ignoring the lines between (vlans.py:176 findall)', () => {
+    const body = lines('vlan 20\n   trunk group red\n   name PROD\n   trunk group blue\n!\n')
+    expect(valuesAfterKeyword(body, 'trunk group')).toEqual(['red', 'blue'])
+  })
+
+  it('a two-word keyword keeps no tail of itself — the gap findValue leaves (row 49, pinned at text.test.ts:279-281)', () => {
+    // M6's as-behaviour, unchanged: `ConfigLine.value` is everything past the line's FIRST token, so the
+    // two-word keyword carries its own second word (`findValue(body, 'trunk group')` → `' group red'`)
+    // and the same happens for the interface spelling, whose first token is `switchport`.
+    const vlanBody = lines('vlan 20\n   trunk group red\n!\n')
+    expect(findValue(vlanBody, 'trunk group')).toBe(' group red')
+    expect(valuesAfterKeyword(vlanBody, 'trunk group')).toEqual(['red'])
+    const ethernetBody = lines('interface Ethernet1\n   switchport trunk group red\n!\n')
+    expect(findValue(ethernetBody, 'switchport trunk group')).toBe(' trunk group red')
+    expect(valueAfterKeyword(ethernetBody, 'switchport trunk group')).toBe('red')
+  })
+
+  it('collapses only the whitespace run between keyword and value, so inner whitespace survives (lstrip, text.ts:92)', () => {
+    const body = lines('vlan 30\n   name    WAN\n   description WAN uplink\n!\n')
+    // `describeLine` keeps the leading run in `value` (`name    ten` → `'    ten'`, text.test.ts:224),
+    // which is the half of the gap a VLAN name cannot afford:
+    expect(findValue(body, 'name')).toBe('    WAN')
+    expect(valueAfterKeyword(body, 'name')).toBe('WAN')
+    expect(valueAfterKeyword(body, 'description')).toBe('WAN uplink')
+    expect(valuesAfterKeyword(body, 'description')).toEqual(['WAN uplink'])
+  })
+
+  it('reaches unquote at the keyword, where describeLine never can — a balanced pair comes off (text.ts:235, row 49)', () => {
+    const body = lines('interface Ethernet1\n   description "WAN uplink"\n!\n')
+    // The leading space is what makes `value`'s unquote unreachable (`startsWith('"')` sees a space), so
+    // the quote handling only ever fires for a reader that strips the run first:
+    expect(findValue(body, 'description')).toBe(' "WAN uplink"')
+    expect(valueAfterKeyword(body, 'description')).toBe('WAN uplink')
+  })
+
+  it('leaves an unbalanced quote verbatim rather than repairing the device\'s quoting (unquote rule, row 49)', () => {
+    expect(valueAfterKeyword(lines('interface Ethernet1\n   description "WAN uplink\n!\n'), 'description')).toBe('"WAN uplink')
+    expect(valueAfterKeyword(lines('interface Ethernet1\n   description WAN uplink"\n!\n'), 'description')).toBe('WAN uplink"')
+  })
+
+  it('refuses a keyword that merely prefixes the token, or that appears after `no` — whole-word rule (matchesKeyword, text.ts:215)', () => {
+    const body = lines('vlan 40\n   nameplate nope\n   no name shadowed\n!\n')
+    expect(valueAfterKeyword(body, 'name')).toBeUndefined()
+    expect(valuesAfterKeyword(body, 'name')).toEqual([])
+    // the refusal is the boundary, not the line being skipped altogether:
+    expect(valueAfterKeyword(body, 'nameplate')).toBe('nope')
+  })
+
+  it('a bare keyword line contributes nothing — the keyword alone names no value (switchports.py:115 `[^\\s]+` needs one)', () => {
+    // NB: `parseBlock` spends the section's first line on `header`, so the bare keyword has to be a body
+    // line here — a fixture that put it first would silently test nothing.
+    // (`vlans.py:60` is looser than the JSDoc's "both agree": its `\s` demands a separator but the capture
+    // is `.*`, so a raw `trunk group ` with a trailing space would answer `''` there. `describeLine`
+    // rstrips, so no device-shaped body reaches that case here — reported, not re-decided.)
+    const body = lines('vlan 20\n   name\n!\n')
+    expect(valueAfterKeyword(body, 'name')).toBeUndefined()
+    expect(valuesAfterKeyword(body, 'name')).toEqual([])
+  })
+
+  it('a bare keyword among real ones is skipped, not answered as undefined — later lines still answer (switchports.py:115)', () => {
+    const body = lines('vlan 20\n   trunk group\n   trunk group red\n!\n')
+    expect(valuesAfterKeyword(body, 'trunk group')).toEqual(['red'])
+    expect(valueAfterKeyword(body, 'trunk group')).toBe('red')
+  })
+
+  it('a keyword the block never uses answers undefined / an empty list — never a throw, never an empty string (vlans.py:176-177)', () => {
+    const body = lines('interface Ethernet1\n   mtu 1500\n   description link\n!\n')
+    expect(valueAfterKeyword(body, 'name')).toBeUndefined()
+    expect(valuesAfterKeyword(body, 'name')).toEqual([])
+    expect(valueAfterKeyword(body, 'trunk group')).toBeUndefined()
+    expect(valuesAfterKeyword(body, 'trunk group')).toEqual([])
+  })
+
+  it('a block whose every matching line is valueless answers nothing at all (no empty-string entry leaks out)', () => {
+    const body = lines('interface Ethernet1\n   switchport trunk group\n   switchport trunk group\n!\n')
+    expect(valueAfterKeyword(body, 'switchport trunk group')).toBeUndefined()
+    expect(valuesAfterKeyword(body, 'switchport trunk group')).toEqual([])
+  })
+
+  it('reads an explicitly empty quoted value as no value at all — as-built pin, not blessed (reported for #11)', () => {
+    // `keywordValue` (config-block.ts) unquotes first and only then asks whether anything is left, so
+    // `name ""` empties into the same "valueless" bucket as a bare `name`. The JSDoc's rule is about a
+    // keyword that "stands alone on the line", which does not obviously cover a pair the device wrote;
+    // reported upward rather than re-decided here. The quoting depth EOS actually emits is M12 (#14)'s
+    // capture, per row 49.
+    const body = lines('vlan 20\n   name ""\n!\n')
+    expect(valueAfterKeyword(body, 'name')).toBeUndefined()
+    expect(valuesAfterKeyword(body, 'name')).toEqual([])
+  })
+
+  it('composes with parseConfigBlock exactly as the module parsers do — a bare repeat drops out of the record', () => {
+    const parsed = parseConfigBlock('vlan 20\n   name WAN\n   trunk group\n   trunk group red\n   trunk group blue\n!\n', {
+      name: (block) => valueAfterKeyword(block.body, 'name'),
+      trunkGroups: (block) => valuesAfterKeyword(block.body, 'trunk group'),
+    })
+    expectTypeOf(parsed).toEqualTypeOf<{ readonly name: string | undefined; readonly trunkGroups: string[] }>()
+    expect(parsed).toEqual({ name: 'WAN', trunkGroups: ['red', 'blue'] })
   })
 })
