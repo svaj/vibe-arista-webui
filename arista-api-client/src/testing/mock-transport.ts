@@ -130,6 +130,20 @@ function methodMatches(entry: MethodScriptEntry, request: JsonRpcMethodRequest):
   return match === request.method
 }
 
+/**
+ * A **wire-level** failure (`httpStatus` / `connectFailure` / `tlsFailure` / `timeoutAfter` /
+ * `wireFailure`) is scripted with the `'*'` matcher, which means *every* request — M11's (#13)
+ * non-`runCmds` calls included. Without this fallback, `mockTransport().httpStatus(401)` would be
+ * answered to a `verifyConfig` call with a loud-but-wrong "no scripted answer for the verifyConfig
+ * call" instead of the `AuthError` the real transports produce, i.e. the status-mapping path would be
+ * untestable through the mock. Replies are deliberately excluded: `.replies('*', …)` scripts a
+ * `runCmds`-shaped body and cannot describe a method reply, and an unmatched method call must stay the
+ * loud failure docs/TESTING.md §3 demands.
+ */
+function wireLevelFailure(script: readonly ScriptEntry[]): ScriptEntry | undefined {
+  return script.find((entry) => !entry.consumed && entry.match === '*' && entry.action.kind === 'fail')
+}
+
 /** Serialize a scripted answer into response text, echoing the request id when the script does not pin one. */
 function replyBody(reply: MockReply, request: RawRequest): string {
   if (typeof reply === 'string') return reply
@@ -337,7 +351,9 @@ export class MockTransport implements Transport {
     const entry =
       method === undefined
         ? this.script.find((candidate) => !candidate.consumed && matches(candidate, (request as JsonRpcRequest).params.cmds))
-        : this.methodScript.find((candidate) => !candidate.consumed && methodMatches(candidate, method))
+        // Method script first (it is the only place a method *reply* can come from), then a `'*'`
+        // wire-level failure, which by contract applies to every request — see `wireLevelFailure`.
+        : this.methodScript.find((candidate) => !candidate.consumed && methodMatches(candidate, method)) ?? wireLevelFailure(this.script)
     if (entry === undefined) {
       throw new NotSupportedError(
         method === undefined

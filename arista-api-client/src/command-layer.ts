@@ -69,7 +69,7 @@ import type { VlansResource } from './resources/vlans'
 import type { ResourceKinds, ResourceName } from './resources/registry'
 import type { MethodCallOptions, Transport, TransportExecOptions } from './transports/contract'
 import type { CommandResult, CommandSpec, RunCmdsFormat, ShowContracts, ShowReply } from './types/eapi'
-import type { GetCommandCompletionsCall, GetCommandHelpCall, VerifyConfigCall, WireMethodCall, WireMethodResultOf } from './types/eapi'
+import type { GetCommandCompletionsCall, GetCommandHelpCall, GetCommandHelpParams, VerifyConfigCall, WireMethodCall, WireMethodResultOf } from './types/eapi'
 
 /** How this `Node` behaves, pyeapi's `Node.__init__` kwargs (`client.py:495-507`) minus `connection`. */
 export interface NodeSettings {
@@ -1120,8 +1120,11 @@ export class Node {
    * anything non-string is reported in {@link CommandHelp.unparsed} rather than softened into ''.
    */
   async getCommandHelp(command: string, options: GetCommandHelpOptions = {}): Promise<CommandHelp> {
-    const { timeoutMs, signal, readOnly } = options
-    const call: GetCommandHelpCall = { method: 'getCommandHelp', params: { command } }
+    const { timeoutMs, signal, readOnly, ...parameters } = options
+    // The method has one parameter, so anything else in `options` is a typo for a parameter it does not
+    // have — and DR-016 refuses that rather than ignoring it. Forwarded through `params`, where
+    // `buildMethodRequest` runs the allow-list; the positional `command` always wins.
+    const call: GetCommandHelpCall = { method: 'getCommandHelp', params: { ...parameters, command } as unknown as GetCommandHelpParams }
     const reply = await this.callDeviceMethod(call, { timeoutMs, signal, readOnly })
     return parseCommandHelp(reply)
   }

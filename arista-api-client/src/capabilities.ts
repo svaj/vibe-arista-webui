@@ -51,6 +51,7 @@
  */
 
 import { CommandError, EapiErrorCode, NotSupportedError, SessionError, eapiErrorName } from './errors'
+import { assertNoSessionConflict } from './config-session'
 import type { ChangesetOutcome, ConfigSession, ConfigSessionOptions, ConfigSessionState, SessionCommandTarget, SessionJournal, SessionRequestOptions } from './config-session'
 import { warnOnce } from './internal/warn'
 import type { ErrorDetailEntry } from './types/eapi'
@@ -326,6 +327,11 @@ export async function probeCommands(target: CapabilityProbeTarget, commands: rea
   const candidates = assertCandidateList(commands)
   const labels = buildFeatureLabels(options.featureProbeCommands, candidates)
   const batchSize = assertBatchSize(options.batchSize, candidates.length)
+  // DR-025: the probe owns its session for the whole candidate list, so it cannot share a node with a
+  // caller's live session — that is the whole reason `CapabilityProbeTarget` asks for
+  // `activeConfigSession`. Refused here, before the opener, exactly as M5 refuses `configure()` in
+  // terminal mode for the same reason.
+  assertNoSessionConflict(target.activeConfigSession, 'probeCommands()')
   const now = options.now ?? Date.now
   const startedAt = now()
 
@@ -398,7 +404,14 @@ export async function probeCommands(target: CapabilityProbeTarget, commands: rea
   }
 
   const finishedAt = now()
-  if (probeError !== undefined) {
+  // A `1006` is the one device failure that is an *answer* rather than a probe failure: the config lock
+  // means "nothing could be probed", which the candidate table above reports verdict-by-verdict
+  // (`config-locked`) and {@link ProbeCommandsOutcome.configLocked} says out loud. Rethrowing it would
+  // make that table, the `configLocked` flag, path 4 of the no-orphan guarantee below ("the outcome says
+  // so instead of pretending") and the cache's never-store-a-locked-run rule (`isCacheable`) all
+  // unreachable, and would replace a machine-readable verdict with an exception class the caller cannot
+  // tell apart from our own bookkeeping failure. The device error still travels as `outcome.error`.
+  if (lockFailure === undefined && probeError !== undefined) {
     if (cleanupFailure !== undefined) {
       const failure = cleanupFailureReport(session.name, cleanupFailure, probeError)
       const report = options.onCleanupFailure ?? defaultCleanupReporter
@@ -409,6 +422,10 @@ export async function probeCommands(target: CapabilityProbeTarget, commands: rea
     // hide "the switch was unreachable" behind "could not abort".
     throw probeError
   }
+  if (lockFailure !== undefined) batchError ??= lockFailure
+  // A lock never reaches the cleanup branch with a live handle: `classifyFailure` marks the session
+  // `lost` (DR-023), so `session.isOpen` was false and no `abort` was attempted. The guard is written
+  // out anyway so an orphan can never be reported as a clean locked answer.
   if (cleanupFailure !== undefined) {
     // Nothing else went wrong, so this *is* the failure: returning a happy verdict table while a
     // pending session holds the config lock is the DR-023 bug this function exists to prevent.

@@ -904,8 +904,14 @@ export function buildMethodRequest(call: WireMethodCall, options: BuildMethodReq
       const { command, ...rest } = call.params
       return buildGetCommandCompletionsRequest(command, { ...rest, ...options })
     }
-    case 'getCommandHelp':
-      return buildGetCommandHelpRequest(call.params.command, options)
+    case 'getCommandHelp': {
+      const { command, ...rest } = call.params
+      // Forward the siblings of `command` rather than dropping them: the allow-list is the last chance to
+      // refuse a typo'd parameter, and silently discarding one would answer with help for a line the
+      // caller did not ask about. `rest` is typed away here because `getCommandHelp` declares no
+      // parameter beyond `command`, so anything in it is by definition refused downstream.
+      return buildGetCommandHelpRequest(command, { ...rest, ...options } as BuildMethodRequestOptions & Record<string, unknown>)
+    }
   }
 }
 
