@@ -31,7 +31,7 @@
  * (`interfaces.py:81-83`) to become *a parser per kind returning a discriminated union*. That parser is
  * {@link parseInterfaceName} below: one anchored pattern per kind, each arm carrying the kind and its
  * numeric index, and only the two kinds upstream allows a `.<n>` suffix on
- * (`interfaces.py:272-277`, and its own fixture section header `interface Ethernet48.2044`,
+ * (`interfaces.py:271-277`, and its own fixture section header `interface Ethernet48.2044`,
  * `test/fixtures/running_config.text:1468`) carrying {@link ParsedInterfaceName.subinterface}. A module
  * that needs to know what a name *is* — which kinds can be created, which carry an L2 state, which takes
  * a subinterface encapsulation — switches on `kind` instead of re-reading prefixes, which is the whole
@@ -82,8 +82,16 @@ export const INTERFACE_KINDS: readonly InterfaceKind[] = [
 export type InterfaceKind = 'Ethernet' | 'Management' | 'Loopback' | 'Port-Channel' | 'Vlan' | 'Vxlan'
 
 /**
- * A parsed `<kind><index>` name. The `{ subinterface?: undefined }` arm marker is what lets a consumer
- * read `parsed.subinterface` off the union without a cast — the plain kinds genuinely have no such part.
+ * A parsed `<kind><index>` name. The `subinterface` **marker** is what lets a consumer read
+ * `parsed.subinterface` off the union without a cast: the plain kinds genuinely never populate it, so the
+ * value is `undefined` at runtime for every one of them.
+ *
+ * The marker's declared type has to be the union's (`number | undefined`) and not `undefined`, because
+ * {@link SubinterfaceCapableInterfaceName} extends this shape for the two kinds that *do* populate it —
+ * and TypeScript rightly rejects a subtype widening a property the supertype promises is always absent.
+ * Saying `undefined` here would therefore be a lie about the capable arms, not a stronger guarantee; the
+ * guarantee that is actually load-bearing lives in {@link isInterfaceName}, which refuses any parsed name
+ * whose marker is populated.
  */
 export interface PlainInterfaceName<K extends InterfaceKind> {
   /** Which kind's pattern read the name — the discriminator every per-kind rule switches on. */
@@ -96,7 +104,8 @@ export interface PlainInterfaceName<K extends InterfaceKind> {
   readonly index: number
   /** The name exactly as it was handed in — this parser does not normalise spelling or case. */
   readonly name: string
-  readonly subinterface?: undefined
+  /** Always `undefined` for these kinds — see this interface's header for why the marker exists. */
+  readonly subinterface?: number | undefined
 }
 
 /** A parsed name for a kind that may carry a `.<n>` subinterface suffix (Ethernet, Port-Channel). */
@@ -104,7 +113,7 @@ export interface SubinterfaceCapableInterfaceName<K extends InterfaceKind> exten
   /**
    * The decimal after the dot (`Ethernet1.100` → `100`), or `undefined` for the plain form. Only these two
    * kinds have that form anywhere in pyeapi: `set_encapsulation` demands a `.` and an `Et`/`Po` prefix
-   * (`interfaces.py:272-277`) and `EthernetInterface.create` names the subinterface form in its docstring
+   * (`interfaces.py:271-277`) and `EthernetInterface.create` names the subinterface form in its docstring
    * (`:415-425`, "Ex: Ethernet1.1"). Whether a VLAN or Loopback can carry one on this unit is open item 7,
    * so the grammar says `false` for those kinds rather than answering the question.
    */
@@ -266,18 +275,19 @@ export function isInterfaceName(value: unknown): value is string {
  * `re.match` also lets a full command line through as a name.
  *
  * A **subinterface** name still fails this guard. It is not that the spelled form is unknown — pyeapi
- * writes `interface Ethernet1.1` in its own tests (`test/unit/test_api_interfaces.py:156-176`) and its
+ * writes `interface Ethernet1.1` in its own tests (`test/unit/test_api_interfaces.py:156-171`) and its
  * fixture has an `interface Ethernet48.2044` section (`test/fixtures/running_config.text:1468`) — it is
  * that this is the guard *every* verb shares, and which of the six kinds accepts a dotted header on
  * 4.28.13.1M is DECISIONS.md open item 7 ("refused here rather than guessed"). The two verbs that can
  * legitimately name a subinterface say so themselves and check the narrower rule:
  * `interfaces.ts`'s `setEncapsulation` (upstream allows it on Ethernet/Port-Channel subinterfaces only,
- * `interfaces.py:272-277`) and nothing else. {@link parseInterfaceName} does read the suffix, so widening
+ * `interfaces.py:271-277`) and nothing else. {@link parseInterfaceName} does read the suffix, so widening
  * this guard is a one-line change once M12 (#14) captures the answer, not a parser rewrite.
  *
  * @throws {NotSupportedError} any other string, naming it. pyeapi raises `ValueError('invalid interface
- *   {}')` from `marshall` (`interfaces.py:131`) — but only for the dynamic-dispatch path, which this port
- *   does not have (DR-006), so every resource verb that takes a name calls this guard explicitly instead.
+ *   {}')` from `marshall` (`interfaces.py:131-132`, the test plus its raise) — but only for the
+ *   dynamic-dispatch path, which this port does not have (DR-006), so every resource verb that takes a
+ *   name calls this guard explicitly instead.
  */
 export function assertInterfaceName(value: unknown): asserts value is string {
   if (isInterfaceName(value)) return

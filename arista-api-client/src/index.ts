@@ -278,12 +278,14 @@ import type { Transport } from './transports/contract'
 // `src/resources/*` by path. `ResourceKinds` is augmentable exactly like `ShowContracts`, so a
 // consumer adds a name and gets a typed `node.resource(name)`. M8 (#10) registered the first built-in
 // row (`system`, with `Node.system` for it) and M9 (#11) registered `vlans` + `switchports` (with
-// `Node.vlans` / `Node.switchports`); `interfaces` follows in M10 #12 — MIGRATION §5 row 79.
+// `Node.vlans` / `Node.switchports`); M10a (#12) registered `interfaces` (with `Node.interfaces`) and
+// the per-kind interface-name parser that row 76 promised — MIGRATION §5 row 79.
 export { Entity, EntityCollection, ResourceBase } from './resources/base'
 export { commandBuilder, submodeCommands } from './resources/command-builder'
 export { parseConfigBlock } from './resources/config-block'
-export { assertInterfaceName, assertVlanId, isInterfaceName, isVlanId } from './resources/validators'
+export { assertInterfaceName, assertVlanId, INTERFACE_KINDS, isInterfaceName, isVlanId, parseInterfaceName } from './resources/validators'
 export { createResourceRegistry, RESOURCE_FACTORIES, ResourceRegistry } from './resources/registry'
+export { InterfacesResource, INTERFACE_STATUS_COMMAND } from './resources/interfaces'
 export { SwitchportsResource, SWITCHPORT_MODES, isSwitchportMode } from './resources/switchports'
 export { SystemResource } from './resources/system'
 export { VlansResource } from './resources/vlans'
@@ -299,9 +301,28 @@ export type {
 } from './resources/types'
 export type { ConfigFieldExtractor, ConfigFieldMap, ParsedFields } from './resources/config-block'
 export type { ResourceFactories, ResourceFactory, ResourceKinds, ResourceName } from './resources/registry'
+export type {
+  Interface,
+  InterfaceAttrs,
+  InterfacesReadOptions,
+  InterfaceStatus,
+  InterfaceStatusMode,
+} from './resources/interfaces'
 export type { Switchport, SwitchportAttrs, SwitchportMode, TrunkAttrs } from './resources/switchports'
 export type { SystemBanner, SystemBannerKind, SystemSettings } from './resources/system'
 export type { Vlan, VlanAttrs, VlanState } from './resources/vlans'
+export type {
+  EthernetInterfaceName,
+  InterfaceKind,
+  LoopbackInterfaceName,
+  ManagementInterfaceName,
+  ParsedInterfaceName,
+  PlainInterfaceName,
+  PortChannelInterfaceName,
+  SubinterfaceCapableInterfaceName,
+  VlanInterfaceName,
+  VxlanInterfaceName,
+} from './resources/validators'
 
 /**
  * A transport for one EOS endpoint — pyeapi's `connect()`, browser kinds only (`https`, or `http`

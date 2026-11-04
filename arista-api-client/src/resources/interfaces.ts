@@ -22,26 +22,26 @@
  * | `Interfaces(EntityCollection)` (`:86-140`), whose `__getattr__`/`marshall` (`:117-139`) dispatch a method name to a per-kind instance chosen by `interface[0:2]` (`:120-127`, `INTERFACE_CLASS_MAP` `:1093-1097`) | {@link InterfacesResource} — one class, explicit verbs, and the per-kind question answered by {@link parseInterfaceName}'s `kind` (DR-006 does not port the dynamic dispatch; `validators.ts:11-19` records why) |
  * | `isvalidinterface` (`:81-83`): `re.match(r'([EPVLM][a-z-C]+)', value)` ∩ `VALID_INTERFACES` (`:71-78`) | `parseInterfaceName` / `isInterfaceName` / `assertInterfaceName` (`validators.ts`) — one anchored pattern per kind returning a discriminated union (PLAN.md §M10 "validation split") |
  * | `Interfaces.get` (`:92-93`) → `get_instance(name)[name]`, i.e. `__getitem__` → `get` (`abstract.py:211-212`) | {@link InterfacesResource.get} — a lookup in the same one-read table, so `get`/`getAll()` cannot disagree |
- * | `Interfaces.getall` (`:95-115`): `re.compile(r'(?<=^interface\s)(.+)$', re.M)` (`:108`) over the whole config, then `self.get(name)` per hit with an `if interface:` filter (`:110-113`) | {@link interfacesFromSections} over the chunked document's section keys (DR-055: the chunker, not a module regex, decides what is a top-level command) — divergence 1 |
+ * | `Interfaces.getall` (`:95-115`): `re.compile(r'(?<=^interface\s)(.+)$', re.M)` (`:108`) over the whole config, then `self.get(name)` per hit with an `if interface:` filter (`:111-114`) | {@link interfacesFromSections} over the chunked document's section keys (DR-055: the chunker, not a module regex, decides what is a top-level command) — divergence 1 |
  * | `BaseInterface.get` (`:147-177`): `get_block('^interface %s')` (`:170`), `if not config: return None` (`:171-172`), then `name` / `type='generic'` (`:174`) + two `_parse_*` merged with `dict.update` (`:175-176`) | {@link interfaceFromSection}; `type` (the answering **class**) is replaced by `kind` (what the name **is**) — divergence 2 |
  * | `_parse_shutdown` (`:179-191`): `'no shutdown' not in config` (`:190`) | {@link shutdownFromBlock} — a parsed body **command line**, three answers instead of two — divergence 3 |
  * | `_parse_description` (`:193-209`): `re.search(r'description (.+)$', config, re.M)` (`:206`), raw remainder, first match wins | {@link valueAfterKeyword} (`config-block.ts`) over the block body — the shared keyword extractor, so a value can no longer answer for another field (row 91's rule) — divergence 4 |
  * | `create` / `delete` / `default` (`:211-254`): `return self.configure('interface %s')` (`:226`) / `'no interface %s'` (`:243`) / `'default interface %s'` (`:254`) | {@link InterfacesResource.create} / {@link delete} / {@link setDefault} — same three command texts, no `True` to check (DR-005), plus the Ethernet refusal M10b owns — divergence 5 |
  * | `EthernetInterface.create` / `delete` (`:415-445`): `raise NotImplementedError` unless the name has a `.` (`:425-428`, `:441-444`); `test_api_interfaces.py:211-224` pins both | the refusal inside {@link assertPresentName} (divergence 5) |
  * | `set_encapsulation` (`:256-282`): `NotImplementedError` unless `'.' in name` (`:271-273`) and `name[0:2] in ['Et','Po']` (`:274-277`); `['interface %s']` (`:278`) + `command_builder('encapsulation dot1q vlan', str(vid), default, disable)` (`:279-281`) then `configure` (`:282`) | {@link setEncapsulation} / {@link unsetEncapsulation} / {@link defaultEncapsulation} — the prefix test becomes a consequence of the grammar, and there is no upstream reader for this field — divergence 6 |
- * | `set_description` (`:284-303`): `command_builder('description', …)` (`:300-302`) + `configure_interface` (`:303`) | `setDescription` / `unsetDescription` / `defaultDescription` (DR-037's mode table; `test_api_interfaces.py:107-124` pins all three texts) |
+ * | `set_description` (`:284-303`): `command_builder('description', …)` (`:301-302`) + `configure_interface` (`:303`) | `setDescription` / `unsetDescription` / `defaultDescription` (DR-037's mode table; `test_api_interfaces.py:107-124` pins all three texts) |
  * | `set_shutdown` (`:305-327`): `['interface %s']` (`:324`) + `command_builder('shutdown', value=True, default, disable)` (`:325-326`), with **`disable=True` as the default** (`:305`) | {@link shutdown} / {@link noShutdown} / {@link defaultShutdown} — PLAN's "`noShutdown` semantics via `disable`" box: upstream's no-argument call is the `no shutdown` arm, so the two intents are two named verbs |
  * | `EntityCollection` (`abstract.py:198-224`) `Mapping`/`__call__`/`__len__`/`__iter__`/`__getitem__` | `has` / `keys` / `entries` on `EntityCollection` (`base.ts`), one `getAll()` round trip each (DR-004, row 78) |
- * | `instance(api)` (`:1100-1102`), which `Node.api('interfaces')` reaches through a filesystem import (`client.py:927-950`) | the `RESOURCE_FACTORIES.interfaces` row plus `Node.interfaces` (DR-006/DR-052) |
+ * | `instance(api)` (`:1100-1101`), which `Node.api('interfaces')` reaches through a filesystem import (`client.py:927-950`) | the `RESOURCE_FACTORIES.interfaces` row plus `Node.interfaces` (DR-006/DR-052) |
  * | **no upstream twin** | {@link getStatus} and the `show interfaces status` half of {@link InterfacesResource.getAll} (DR-031's hybrid read) — divergence 8 |
  * | **no upstream twin** | the `mtu` field on the read and `setMtu` / `unsetMtu` / `defaultMtu` — the closest upstream code is a *different module and a different command*, `ipinterfaces.py:113-127` / `:222-256` — divergence 7 |
  *
- * Upstream's own suite is `test/unit/test_api_interfaces.py` — **72** test methods (counted by AST on
- * 2026-11-04), of which the M10a scope is `TestFunctions` (`:48-63`), `TestApiInterfaces` (`:65-92`) and
- * `TestApiBaseInterface` (`:94-172`): `test_isvalidinterface_returns_true` (`:50-53`),
- * `_returns_false` (`:55-58`), `test_instance` (`:60-63`), `test_get_interface_generic` (`:72-75`),
+ * Upstream's own suite is `test/unit/test_api_interfaces.py` — **72** test methods (re-counted by AST on
+ * 2026-11-04), of which the M10a scope is `TestFunctions` (`:48-62`), `TestApiInterfaces` (`:65-91`) and
+ * `TestApiBaseInterface` (`:94-171`): `test_isvalidinterface_returns_true` (`:50-53`),
+ * `_returns_false` (`:55-58`), `test_instance` (`:60-62`), `test_get_interface_generic` (`:72-75`),
  * `test_get_interface_ethernet` (`:77-79`), `test_get_invalid_interface` (`:81-83`),
- * `test_proxy_method_success` (`:85-87`), `test_proxy_method_raises_attribute_error` (`:89-92`),
+ * `test_proxy_method_success` (`:85-87`), `test_proxy_method_raises_attribute_error` (`:89-91`),
  * `test_get` (`:101-105`), `test_set_description_with_value` / `_with_no_value` / `_with_default`
  * (`:107-124`), `test_set_shutdown` / `_with_disable` / `_with_default` (`:126-142`) and the five
  * `test_set_encapsulation_*` (`:144-171`). Every command text they pin is reproduced verbatim in
@@ -56,14 +56,16 @@
  * ## Divergences this file owns (raw material for MIGRATION.md §5; the rows are the orchestrator's)
  *
  * 1. **membership comes from the chunker, and a name must be one token.** Upstream regex-scans the whole
- *    config text with `(?<=^interface\s)(.+)$` (`:108`), so an indented copy of the word — a `banner` body
- *    line reading `interface Ethernet99`, which M9 proved is written at column 0 and therefore also
- *    matches (`vlans.ts` divergence 3, `running_config.text:411`) — becomes an entry, and `(.+)` keeps the
- *    **whole remainder**, so `interface link tracking group 1` is a name upstream will look up. Here only a
- *    real section key counts (DR-055) and the identifier must be a single token, because a name this client
- *    cannot put into `interface <name>` cannot be an entry a UI can act on. Cost stated plainly: a header
- *    whose identifier is multi-token is **skipped**, and `show running-config` forms of that shape have
- *    never been captured here (DECISIONS.md open item 7, M12 #14).
+ *    config text with `(?<=^interface\s)(.+)$` (`:108`) under `re.M`, so *any* line that begins with the word
+ *    is a name — a `banner` body line reading `interface Ethernet99` included, and M9 verified banner bodies
+ *    are written at column 0 (its `vlans.ts` divergence 3, with upstream's own `vlan 1` banner line at
+ *    `running_config.text:411`). Here the source is the chunked document (DR-055), whose banner handling
+ *    swallows everything after a column-0 `banner …` until `EOF` (`src/config/chunk.ts:97-102`), so no banner
+ *    body line is ever a section key. `(.+)` also keeps the **whole remainder**, so
+ *    `interface link tracking group 1` is a name upstream will look up; here the identifier must be a single
+ *    token, because a name this client cannot put into `interface <name>` cannot be an entry a UI can act on.
+ *    Cost stated plainly: a header whose identifier is multi-token is **skipped**, and `show running-config`
+ *    forms of that shape have never been captured here (DECISIONS.md open item 7, M12 #14).
  * 2. **`kind` replaces `type`, and the facade reads every kind the same way.** Upstream answers
  *    `type: 'generic'` / `'ethernet'` / `'portchannel'` / `'vxlan'` — the *class* that answered
  *    (`:174`, `:361`, `:609`, `:851`) — and `Interfaces.get` routes by `name[0:2]` (`:121`), a substring
@@ -104,7 +106,7 @@
  *    because the shared name guard still refuses the dotted form (open item 7) — so this client can create
  *    a Port-Channel / Vlan / Management / Loopback / Vxlan interface and cannot create any Ethernet form
  *    until M10b (#12) owns `EthernetInterface`. Upstream's `default interface Ethernet1` **is** ported
- *    (`:245-254`, pinned positive at `test_api_interfaces.py:191-210`).
+ *    (`:245-254`, pinned positive at `test_api_interfaces.py:191-209`).
  * 6. **`encapsulation` is read as well as written, and the kind rule is free.** Upstream writes
  *    `encapsulation dot1q vlan <vid>` with an `Et`/`Po`-prefix test (`:274-277`) and never reads the field
  *    back. The prefix test is what the per-kind grammar makes unnecessary: only the Ethernet and
@@ -132,15 +134,17 @@
  *    {@link ConfigParseError} rather than a truncation (contrast `ipinterfaces.py:126`).
  * 8. **the hybrid read never lets the enrichment decide existence.** {@link getAll} keys its table from
  *    the running-config sections, then *attaches* a `show interfaces status` row when the device answers
- *    the model. Reading the show first and driving from it would (a) inherit a field-name set that is
- *    **hand-authored and unverified** on this unit — DR-031's confirmed model-backed list does not include
- *    `show interfaces status` — and (b) strand a port the model lists but the config has no block for,
+ *    the model. Reading the show first and driving from it would (a) inherit a field-name set whose
+ *    **spellings come from a capture of the sibling `show interfaces` command** (`pyeapi/test/fixtures/`
+ *    `show_interfaces.json`, vendor-shipped) while **this** command's model membership is unverified —
+ *    DR-031's confirmed model-backed list does not include `show interfaces status` — and (b) strand a
+ *    port the model lists but the config has no block for,
  *    for which this client has no honest `shutdown` answer. So: config = existence + configuration, status
  *    = operational enrichment, and a status failure of any kind (1003 with no JSON model and a text-only
  *    retry, 1002 on a unit without the command, a shape this reader cannot use) leaves the config table
  *    intact ({@link InterfaceStatusMode} `'auto'`). The shape rules in {@link statusRowsFrom} are
- *    client-side and unverified on hardware, M12 (#14) to capture; `getStatus()` is the verb for a UI that
- *    wants to say "status unavailable" instead of showing nothing.
+ *    client-side and unverified for this command, M12 (#14) to capture; `getStatus()` is the verb for a UI
+ *    that wants to say "status unavailable" instead of showing nothing.
  * 9. **`getAll()` is 2-3 requests, not 1 — and `{ status: 'skip' }` is the way back to 1.** pyeapi pays a
  *    `section()` key scan plus two regex passes per interface (`:110-113` → `get` → `get_block`);
  *    M9's modules cost exactly one `show running-config`. Two reads here is the price of DR-031's hybrid,
@@ -178,7 +182,6 @@ import { submodeCommands } from './command-builder'
 import { assertInterfaceName, assertVlanId, INTERFACE_KINDS, parseInterfaceName } from './validators'
 import type { ConfigBlock } from '../config/text'
 import type { ConfigSections } from '../config/chunk'
-import type { CommandResult } from '../types/eapi'
 import type { InterfaceKind, ParsedInterfaceName } from './validators'
 import type { ResourceTable } from './types'
 
@@ -211,7 +214,7 @@ export interface InterfacesReadOptions {
 
 /**
  * One interface, as this client reads it: the shared `BaseInterface` field set
- * (`name` / `shutdown` / `description`, `interfaces.py:155-177`) plus the `mtu` and `encapsulation` lines
+ * (`name` / `shutdown` / `description`, `interfaces.py:174-176`) plus the `mtu` and `encapsulation` lines
  * the module reads for the UI (divergences 6/7), plus the optional status enrichment.
  *
  * Absent means "the section does not carry that line" — DR-027's ordinary control flow, and the reason
@@ -245,26 +248,43 @@ export interface Interface {
 /**
  * One `show interfaces status` row, as {@link statusRowsFrom} reads it.
  *
- * **Every field name here is hand-authored and unverified on hardware** — the sample in
- * `test/fixtures/show/show-interfaces-status--mixed-l2.json` is synthetic (see that directory's README),
- * DR-031's model-backed list does not cover this command, and pyeapi never reads it (its only `show
- * interfaces` use is `get_members`' text scrape, `interfaces.py:660-674`). Absent means "the answer did not
- * carry that column in a type this client can use", which is why {@link InterfaceStatus.status} is a raw
- * string rather than an enum: the vocabulary of a status column is a device question, and inventing the
- * set of spellings is exactly what DR-032/DR-057 forbid. M12 (#14) replaces this shape with a capture.
+ * **The column names come from a capture of a sibling command, not of this one.** The only EOS
+ * `show interfaces`-shaped JSON anywhere in the evidence set is vendor-shipped:
+ * `pyeapi/test/fixtures/show_interfaces.json`, whose per-interface records carry `name`, `description`,
+ * `mtu`, `interfaceStatus`, `lineProtocolStatus`, `hardware`, `bandwidth`, `forwardingModel`, `duplex`,
+ * `autoNegotiate`, `lastStatusChangeTimestamp`, `physicalAddress`, `burnedInAddress`, `interfaceAddress[]`
+ * and `interfaceCounters{}` (all re-read from that file on 2026-11-04: `interfaceStatus` at `:63`,
+ * `lineProtocolStatus` at `:65`, `mtu` at `:66`, `hardware` on `Ethernet1`). This client reads five of
+ * those names and **no** name that file does not carry: `show interfaces status`'s own model is not
+ * captured here, is not in DR-031's confirmed model-backed list, and is never read by pyeapi (its only
+ * `show interfaces` use is `get_members`' text scrape, `interfaces.py:660-675`). A column this client
+ * cannot find therefore reads as **absent** — which is honest — rather than as a value guessed from a
+ * similar-sounding key, and M12 (#14) replaces both these names and {@link InterfaceStatus.status}'s raw
+ * string with this command's captured spellings and vocabulary (a status column's set of values is a
+ * device question; DR-032/DR-057).
+ *
+ * The sample in `test/fixtures/show/show-interfaces-status--mixed-l2.json` is **synthetic** in exactly
+ * this sense: its values are authored here, its key spellings are the capture's (that directory's README
+ * records the same values/names split for its session-model sample).
+ *
+ * Absent means "the answer did not carry that column in a type this client can use" (divergence 11).
  */
 export interface InterfaceStatus {
   /** The interface this row is for: the member key of the `interfaces` map. */
   readonly name: string
-  /** The front-panel port, for a management or subinterface row that names one. */
-  readonly frontPort?: string
-  /** The status table's description column — kept verbatim, including any quotes the device wrote. */
+  /**
+   * The `description` column, verbatim — quotes and all, and an empty string when the device wrote one
+   * (the capture carries an empty description on `Management1`). {@link Interface.description} is the
+   * configured half, which this client refuses to write empty.
+   */
   readonly description?: string
-  /** The link-status column ({@link Interface.shutdown} is the configured half of the same story). */
+  /** The `interfaceStatus` column ({@link Interface.shutdown} is the configured half of the same story). */
   readonly status?: string
-  /** The protocol-status column. */
+  /** The `lineProtocolStatus` column. */
   readonly protocol?: string
-  /** The MTU column, when the answer carries it as a number. */
+  /** The `hardware` column (`ethernet`, `loopback`, …) — the capture's port-type spelling. */
+  readonly hardware?: string
+  /** The `mtu` column, when the answer carries it as a number. */
   readonly mtu?: number
 }
 
@@ -323,7 +343,7 @@ function assertPresentName(verb: 'create' | 'delete', value: unknown): void {
  * Require the one name form `encapsulation dot1q vlan <vid>` can be sent on.
  *
  * Upstream states the rule as two tests — `'.' not in name` and `name[0:2] not in ['Et','Po']` both raise
- * `NotImplementedError` (`interfaces.py:272-277`, pinned by `test_api_interfaces.py:144-155`) — and the
+ * `NotImplementedError` (`interfaces.py:271-277`, pinned by `test_api_interfaces.py:144-154`) — and the
  * per-kind grammar makes the second one unnecessary: Ethernet and Port-Channel are the only arms that can
  * carry a suffix at all, so "it parsed and it has a subinterface" *is* the pair of conditions. The refusal
  * is a {@link NotSupportedError}, not a `NotImplementedError`, because that is what "this client refuses an
@@ -335,7 +355,7 @@ function assertEncapsulationName(verb: string, value: unknown): asserts value is
   refuse(
     `${verb} interface`,
     value,
-    'expected an Ethernet or Port-Channel subinterface (`Ethernet1.100`, `Port-Channel1.1`): pyeapi raises NotImplementedError for a name with no dot and for any other kind (api/interfaces.py:272-277). Every other verb still goes through assertInterfaceName, which refuses the dotted form until M12 #14 captures the grammar (DECISIONS.md open item 7)',
+    'expected an Ethernet or Port-Channel subinterface (`Ethernet1.100`, `Port-Channel1.1`): pyeapi raises NotImplementedError for a name with no dot and for any other kind (api/interfaces.py:271-277). Every other verb still goes through assertInterfaceName, which refuses the dotted form until M12 #14 captures the grammar (DECISIONS.md open item 7)',
   )
 }
 
@@ -351,7 +371,7 @@ function assertEncapsulationName(verb: string, value: unknown): asserts value is
  */
 function assertInterfaceDescription(value: unknown): asserts value is string {
   if (typeof value !== 'string') refuse('interface description', value, 'expected a string description — pyeapi checks nothing (api/interfaces.py:284-303)')
-  if (value.trim() === '') refuse('interface description', value, 'an empty description is refused — clear it with unsetDescription() (pyeapi `no description`, api/interfaces.py:299; test/unit/test_api_interfaces.py:116) rather than an empty value (DR-037)')
+  if (value.trim() === '') refuse('interface description', value, 'an empty description is refused — clear it with unsetDescription() (pyeapi `no description`, abstract.py:154-155 reached via api/interfaces.py:301; test/unit/test_api_interfaces.py:114-118) rather than an empty value (DR-037)')
   if (value !== value.trim()) refuse('interface description', value, 'leading or trailing whitespace cannot read back: `description …` is read as the text after the keyword, whitespace-trimmed and unquoted (valueAfterKeyword, config-block.ts) — pyeapi keeps it verbatim (api/interfaces.py:206)')
   if (CONTROL_CHARACTER.test(value)) refuse('interface description', value, 'a control character would break the config line this client reads back (the same reason command-builder.ts refuses a value with a line boundary, row 74)')
   if (value.includes('"')) refuse('interface description', value, 'a description containing a quote cannot round-trip through this reader, which unquotes a balanced pair (config/text.ts:235, MIGRATION.md §5 row 49). Legality on EOS is unverified on hardware, M12 (#14) to capture — pyeapi would answer the quotes as part of the value (api/interfaces.py:206)')
@@ -473,21 +493,30 @@ function numberColumn(row: Record<string, unknown>, key: string): number | undef
 /**
  * The rows of a `show interfaces status` reply, keyed by interface name.
  *
- * **The whole shape is this client's guess, unverified on hardware** (see {@link InterfaceStatus}): the
- * member key is taken as the identity, and each column is read only when its type matches. That split is
- * deliberate — a missing column is ordinary (a manager port has no L2 columns), but a reply with no
- * usable `interfaces` map means the device did not answer this command's model at all, which the caller
+ * **The column names follow the only captured EOS interfaces JSON in the evidence set; this command's own
+ * model shape is still unverified on hardware** (see {@link InterfaceStatus}): the member key is taken as
+ * the identity, and each column is read only when its type matches. That split is deliberate — a missing
+ * column is ordinary (the capture's `Loopback0` row carries no `duplex`, `physicalAddress` or
+ * `autoNegotiate` at all), but a reply with no usable `interfaces` map means the device did not answer
+ * this command's model at all, which the caller
  * has to be able to distinguish from "every column is empty" (DR-027).
  *
  * @throws {ProtocolError} the reply is not a `show interfaces status` model, including the `format:'text'`
  *   answer M2's codec produces for a `1003 COMMAND_UNCONVERTED` (`internal/wire.ts:544-562`): an
  *   `{ output: … }` block is not this map, and silently reading nothing from it would look like a switch
  *   with no interfaces.
+ *
+ * The parameter is `unknown`, not `CommandResult`, because that is what the seam actually hands
+ * back: `Node.show` types an unmodelled command as `unknown` rather than `any`
+ * (`src/types/eapi.ts:142-145`, `ShowReply`), so this is the edge where a device reply has to be
+ * shape-checked instead of asserted. `CommandResult` is `Record<string, unknown>`, i.e. a *claim* that the
+ * reply is an object — and a reply that is not an object is precisely the {@link ProtocolError} case below,
+ * which an asserted parameter type would turn into a `TypeError` reading a property off `null`.
  */
-function statusRowsFrom(reply: CommandResult): Map<string, InterfaceStatus> {
-  const table = asRecord(reply['interfaces'])
+function statusRowsFrom(reply: unknown): Map<string, InterfaceStatus> {
+  const table = asRecord(asRecord(reply)?.['interfaces'])
   if (table === undefined) {
-    const text = typeof reply['output'] === 'string'
+    const text = typeof asRecord(reply)?.['output'] === 'string'
       ? ' — the reply is a `format: \'text\'` output block, i.e. the CLI has no JSON model for this command (DR-012/DR-031)'
       : ''
     throw new ProtocolError(
@@ -501,17 +530,17 @@ function statusRowsFrom(reply: CommandResult): Map<string, InterfaceStatus> {
     // A member that is not an object is not a row. Skipping keeps the good rows readable; the map as a
     // whole was already required to exist above.
     if (row === undefined) continue
-    const frontPort = textColumn(row, 'frontPort')
     const description = textColumn(row, 'description')
-    const status = textColumn(row, 'status')
-    const protocol = textColumn(row, 'protocol')
-    const mtu = numberColumn(row, 'mTu')
+    const status = textColumn(row, 'interfaceStatus')
+    const protocol = textColumn(row, 'lineProtocolStatus')
+    const hardware = textColumn(row, 'hardware')
+    const mtu = numberColumn(row, 'mtu')
     rows.set(key, {
       name: key,
-      ...(frontPort === undefined ? {} : { frontPort }),
       ...(description === undefined ? {} : { description }),
       ...(status === undefined ? {} : { status }),
       ...(protocol === undefined ? {} : { protocol }),
+      ...(hardware === undefined ? {} : { hardware }),
       ...(mtu === undefined ? {} : { mtu }),
     })
   }
@@ -569,7 +598,7 @@ export class InterfacesResource extends EntityCollection<Interface, string, Inte
    * panel, and the one that reports a status problem instead of hiding it (divergence 8).
    *
    * Upstream's only `show interfaces`-shaped read is `PortchannelInterface.get_members`
-   * (`interfaces.py:660-674`), which scrapes a **text** output with
+   * (`interfaces.py:660-675`), which scrapes a **text** output with
    * `re.findall(r'\b(?!Peer)Ethernet[\d/]*\b', …)` — M10c's problem, not a twin of this.
    *
    * @throws {ProtocolError} the device answered something that is not this command's model.
@@ -634,7 +663,7 @@ export class InterfacesResource extends EntityCollection<Interface, string, Inte
   }
 
   /**
-   * `default interface <name>` — pyeapi's `default` (`:245-254`; `test_api_interfaces.py:191-210` pins the
+   * `default interface <name>` — pyeapi's `default` (`:245-254`; `test_api_interfaces.py:191-209` pins the
    * text for `Ethernet1` **and** `Ethernet1/1`, which the shared name guard still refuses — open item 7).
    * Renamed per `base.ts`'s verb table, because `default` reads as a keyword in a call chain (row 77).
    * Unlike {@link create}/{@link delete} this verb is available for every kind, Ethernet included.
@@ -648,7 +677,7 @@ export class InterfacesResource extends EntityCollection<Interface, string, Inte
    * `description <value>` — pyeapi's `set_description` (`:284-303`), which reaches the wire through
    * `configure_interface` (`abstract.py:166-178`); `test_api_interfaces.py:107-112` pins the pair
    * `interface <name>` / `description <value>` for every kind upstream lists
-   * (`:45-48`: Ethernet, Ethernet1/1, Vlan, Management, Port-Channel, Vxlan — the chassis form is the one
+   * (`:44-45`: Ethernet, Ethernet1/1, Vlan, Management, Port-Channel, Vxlan — the chassis form is the one
    * this client still refuses, row 76).
    */
   async setDescription(name: string, value: string): Promise<void> {
@@ -657,13 +686,13 @@ export class InterfacesResource extends EntityCollection<Interface, string, Inte
     await this.configureInterface(name, [this.commandBuilder(DESCRIPTION_KEYWORD, { value })])
   }
 
-  /** `no description` — pyeapi's `set_description(name, disable=True)` (`:299`; `test_api_interfaces.py:116`). */
+  /** `no description` — pyeapi's `set_description(name, disable=True)` (`:301-302` → `no` at abstract.py:154-155; `test_api_interfaces.py:114-118`). */
   async unsetDescription(name: string): Promise<void> {
     assertInterfaceName(name)
     await this.configureInterface(name, [this.commandBuilder(DESCRIPTION_KEYWORD, { mode: 'no' })])
   }
 
-  /** `default description` — pyeapi's `set_description(name, default=True)` (`:301`; `test_api_interfaces.py:122`). */
+  /** `default description` — pyeapi's `set_description(name, default=True)` (`:301-302` → `default` at abstract.py:152-153; `test_api_interfaces.py:120-124`). */
   async defaultDescription(name: string): Promise<void> {
     assertInterfaceName(name)
     await this.configureInterface(name, [this.commandBuilder(DESCRIPTION_KEYWORD, { mode: 'default' })])
@@ -671,7 +700,7 @@ export class InterfacesResource extends EntityCollection<Interface, string, Inte
 
   /**
    * `shutdown` — pyeapi's `set_shutdown(name, default=False, disable=False)` (`:305-327`,
-   * `test_api_interfaces.py:126-131`). Note upstream's **default is the opposite** (`disable=True`, `:305`),
+   * `test_api_interfaces.py:126-130`). Note upstream's **default is the opposite** (`disable=True`, `:305`),
    * which is why this family has no `setShutdown(…, { disable })` twin: the two intents are
    * {@link shutdown} and {@link noShutdown} (DR-037, PLAN's "`noShutdown` semantics via `disable`").
    */
@@ -680,13 +709,13 @@ export class InterfacesResource extends EntityCollection<Interface, string, Inte
     await this.configureInterface(name, [this.commandBuilder('shutdown', { value: true })])
   }
 
-  /** `no shutdown` — pyeapi's `set_shutdown(name)` with its default `disable=True` (`:305`, `:322-326`; `test_api_interfaces.py:132-137`). */
+  /** `no shutdown` — pyeapi's `set_shutdown(name)` with its default `disable=True` (`:305`, `:324-326`; `test_api_interfaces.py:132-136`). */
   async noShutdown(name: string): Promise<void> {
     assertInterfaceName(name)
     await this.configureInterface(name, [this.commandBuilder('shutdown', { mode: 'no' })])
   }
 
-  /** `default shutdown` — pyeapi's `set_shutdown(name, default=True)` (`:320`; `test_api_interfaces.py:138-142`). */
+  /** `default shutdown` — pyeapi's `set_shutdown(name, default=True)` (`:324-326`; `test_api_interfaces.py:138-142`). */
   async defaultShutdown(name: string): Promise<void> {
     assertInterfaceName(name)
     await this.configureInterface(name, [this.commandBuilder('shutdown', { mode: 'default' })])
@@ -694,7 +723,7 @@ export class InterfacesResource extends EntityCollection<Interface, string, Inte
 
   /**
    * `mtu <value>` — no upstream twin in this module (divergence 7). `configure_interface`-shaped like
-   * pyeapi's own `ipinterfaces.set_mtu` does it (`:251-256`), with {@link assertInterfaceMtu}'s
+   * pyeapi's own `ipinterfaces.set_mtu` does it (`:251-254`), with {@link assertInterfaceMtu}'s
    * client-policy bound instead of upstream's `68..65535` IP-MTU check (`:248-249`).
    */
   async setMtu(name: string, value: number): Promise<void> {
@@ -717,7 +746,7 @@ export class InterfacesResource extends EntityCollection<Interface, string, Inte
 
   /**
    * `encapsulation dot1q vlan <vid>` on a subinterface — pyeapi's `set_encapsulation` (`:256-282`,
-   * `test_api_interfaces.py:156-160`), including its two refusals, which the grammar makes structural
+   * `test_api_interfaces.py:156-159`), including its two refusals, which the grammar makes structural
    * ({@link assertEncapsulationName}). The vid goes through `assertVlanId`: pyeapi calls `str(vid)` and
    * validates nothing (`:280`), so `set_encapsulation('Ethernet1.1', 'abc')` sends
    * `encapsulation dot1q vlan abc`, and a float reaches the wire as `str(20.5)`.
@@ -728,13 +757,13 @@ export class InterfacesResource extends EntityCollection<Interface, string, Inte
     await this.configure(submodeCommands(`interface ${name}`, [this.commandBuilder(ENCAPSULATION_KEYWORD, { value: vlanId })]))
   }
 
-  /** `no encapsulation dot1q vlan` — pyeapi's `set_encapsulation(name, vid, disable=True)` (`:279`; `test_api_interfaces.py:161-166`). The vid is not part of the negation upstream itself emits. */
+  /** `no encapsulation dot1q vlan` — pyeapi's `set_encapsulation(name, vid, disable=True)` (`:279`; `test_api_interfaces.py:161-165`). The vid is not part of the negation upstream itself emits. */
   async unsetEncapsulation(name: string): Promise<void> {
     assertEncapsulationName('unsetEncapsulation', name)
     await this.configure(submodeCommands(`interface ${name}`, [this.commandBuilder(ENCAPSULATION_KEYWORD, { mode: 'no' })]))
   }
 
-  /** `default encapsulation dot1q vlan` — pyeapi's `set_encapsulation(name, vid, default=True)` (`:278`; `test_api_interfaces.py:167-172`). */
+  /** `default encapsulation dot1q vlan` — pyeapi's `set_encapsulation(name, vid, default=True)` (`:278`; `test_api_interfaces.py:167-171`). */
   async defaultEncapsulation(name: string): Promise<void> {
     assertEncapsulationName('defaultEncapsulation', name)
     await this.configure(submodeCommands(`interface ${name}`, [this.commandBuilder(ENCAPSULATION_KEYWORD, { mode: 'default' })]))

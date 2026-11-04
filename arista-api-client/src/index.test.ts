@@ -205,6 +205,9 @@ describe('what the browser entry exports', () => {
       // M9 (#11): same for the two collection modules — the webui's VLAN/access-port slice (PLAN.md §M9's
       // exit gate) consumes `node.vlans` / `node.switchports` and the mode vocabulary from `.` only.
       'VlansResource', 'SwitchportsResource', 'isSwitchportMode',
+      // M10a (#12): the interfaces facade and the per-kind name parser that §5 row 76 promised, both from
+      // `.` (and through `export *` from `./node`) without a deep import.
+      'InterfacesResource', 'parseInterfaceName',
     ] as const
     for (const name of functions) {
       expect(typeof surface[name], name).toBe('function')
@@ -212,12 +215,18 @@ describe('what the browser entry exports', () => {
     expect(surface.SWITCHPORT_MODES).toEqual(['access', 'trunk', 'dot1q-tunnel', 'private-vlan'])
     expect(surface.isSwitchportMode('private-vlan')).toBe(true)
     expect(surface.isSwitchportMode('private')).toBe(false)
-    // The registry has three rows now: M8's `system` plus M9's `vlans`/`switchports`; `interfaces` is
-    // still owed by M10 #12 (§5 row 79).
-    expect(Object.keys(surface.RESOURCE_FACTORIES)).toEqual(['system', 'vlans', 'switchports'])
+    // `INTERFACE_KINDS` is a frozen list and `INTERFACE_STATUS_COMMAND` the command literal the hybrid
+    // read uses — both pin the same spelling the module header claims (M12 #14 owns the device question).
+    expect(surface.INTERFACE_KINDS).toEqual(['Ethernet', 'Management', 'Loopback', 'Port-Channel', 'Vlan', 'Vxlan'])
+    expect(surface.INTERFACE_STATUS_COMMAND).toBe('show interfaces status')
+    expect(surface.parseInterfaceName('Ethernet1.100')).toEqual({ kind: 'Ethernet', index: 1, name: 'Ethernet1.100', subinterface: 100 })
+    // The registry has four rows now: M8's `system`, M9's `vlans`/`switchports` and M10a's `interfaces`
+    // (§5 row 79).
+    expect(Object.keys(surface.RESOURCE_FACTORIES)).toEqual(['system', 'vlans', 'switchports', 'interfaces'])
     expect(new Node(mockTransport()).system).toBeInstanceOf(surface.SystemResource)
     expect(new Node(mockTransport()).vlans).toBeInstanceOf(surface.VlansResource)
     expect(new Node(mockTransport()).switchports).toBeInstanceOf(surface.SwitchportsResource)
+    expect(new Node(mockTransport()).interfaces).toBeInstanceOf(surface.InterfacesResource)
     // `assertVlanId` is an assertion function (returns void); the range is pyeapi's —
     // `value in range(1, 4095)`, i.e. VLANs 1..4094 (pyeapi/api/vlans.py:78). M9 (#12) re-checks that
     // bound against the switch's own `switchport access vlan` range on a device.
