@@ -6,12 +6,17 @@
  * case for each distinct refusal (PLAN.md:393: "test refusal paths"), and the secret-hygiene rules the
  * printed reason has to keep (DR-011 applies to console output too).
  *
+ * Because the physical 7050TX-64 also answers eAPI on `localhost:8080`, the block
+ * `refusal: a loopback host is never consent by itself` pins the DR-035(e) half specifically: an
+ * otherwise-complete environment aimed at loopback is refused for its target class, its host or its port,
+ * in that order, and no list-widening variable rescues it.
+ *
  * These live in the **unit** project, not the `live` project, deliberately: if a guard self-check ran in
  * `live`, then `npm run test:live` on an unconfigured machine would report executed tests and DR-034's
  * "loudly skipping" signal would be lost. A green `test:live` must keep meaning "no device ran".
  *
  * The values are lab-ish on purpose (`cEOS`, `4.28.14M`, `8443`, `eapi-test`) because that is what
- * docs/CEOS.md:109/113/121-131 pins; the credential is an obvious placeholder, and two cases prove it
+ * docs/CEOS.md:109/113/121-131 pins; the credential is an obvious placeholder, and several cases prove it
  * never reaches a printed reason.
  */
 
@@ -288,6 +293,129 @@ describe('refusal: exact endpoint allow-listing (docs/CEOS.md:127-129)', () => {
   it('accepts a CA file instead of a pin', () => {
     const target = accepted(labEnv({ EAPI_FINGERPRINT: undefined, EAPI_CA_FILE: '/persist/lab-ca.pem' }))
     expect(target.ca).toBe('/persist/lab-ca.pem')
+  })
+})
+
+/**
+ * DR-035(e) in its sharpest form: **a loopback host is never consent on its own.**
+ *
+ * The physical 7050TX-64 serves its own eAPI on `localhost:8080` (plain HTTP) plus the unix socket, so
+ * every host in {@link LAB_LOOPBACK_HOSTS} is also a spelling the switch can answer. What separates a
+ * lab run from a run against hardware is therefore *not* the host — it is `EAPI_TARGET_CLASS=lab`
+ * (DR-035/PLAN.md:394) and the exact published port (docs/CEOS.md:127-128). The cases below feed the
+ * guard a complete, otherwise-valid environment whose only sin is the target class, the host or the
+ * port, and pin the ordering of the checks: a prod/hardware declaration must be refused **before**
+ * anything about the endpoint is trusted, and neither list-widening (`EAPI_ALLOW_HOSTS`,
+ * `EAPI_ALLOW_PORTS`) nor `EAPI_ALLOW_INSECURE_HTTP=1` may rescue it.
+ *
+ * Deliberately not repeated here: an **unset** class on this same endpoint (`localhost` + `8443`) is
+ * already asserted by `refuses a missing target class` above, and a switch *hostname* by
+ * `refuses a switch hostname`.
+ */
+describe('refusal: a loopback host is never consent by itself (DR-035/DR-043)', () => {
+  /** The placeholder credential {@link labEnv} carries, spelled here so these cases can prove it stays unprinted (DR-011). */
+  const SECRET_SENTINEL = 'lab-placeholder-not-a-secret'
+
+  it('refuses EAPI_TARGET_CLASS=prod on the lab loopback at the lab port', () => {
+    // localhost:8443 is the runbook's lab endpoint, so the endpoint is not what this run is refused for.
+    const { code, reason } = refused(labEnv({ EAPI_TARGET_CLASS: 'prod' }))
+    expect(code).toBe('EAPI_TARGET_CLASS_NOT_LAB')
+    expect(reason).toContain('prod')
+    expect(reason).toMatch(/disposable lab target/u)
+    expect(reason).toMatch(/DR-035/u)
+    expect(reason).not.toContain(SECRET_SENTINEL)
+  })
+
+  it('refuses the whole physical-switch spelling at the target-class gate, before host, port or model', () => {
+    // The dangerous paste: everything pointed at the switch itself — loopback, its local port 8080,
+    // cleartext, its model name and its image — with the target class admitting it. One refusal has to
+    // win, and it has to be the class: that is the check that runs before `resolveLiveEnv` trusts any
+    // part of the endpoint (sections 3 → 4 → 5 → 6), so the run never reaches the "is this port
+    // allow-listed" reasoning where a widened list could talk it into dialling the switch.
+    const env = labEnv({
+      EAPI_TARGET_CLASS: 'prod',
+      EAPI_HOST: '127.0.0.1',
+      EAPI_PORT: '8080',
+      EAPI_TRANSPORT: 'http',
+      EAPI_ALLOW_INSECURE_HTTP: '1',
+      EAPI_ALLOW_MODEL: 'DCS-7050TX-64',
+      EAPI_ALLOW_VERSION: '4.28.13.1M',
+      EAPI_FINGERPRINT: undefined,
+    })
+    const { code, reason } = refused(env)
+    expect(code).toBe('EAPI_TARGET_CLASS_NOT_LAB')
+    expect(reason).not.toContain(SECRET_SENTINEL)
+    // Ordering, stated positively: had the class been "lab", the same environment would have been refused
+    // further down the chain instead — by the endpoint gates first, then the hardware model/image pins.
+    expect(refused({ ...env, EAPI_TARGET_CLASS: 'lab' }).code).not.toBe('EAPI_TARGET_CLASS_NOT_LAB')
+  })
+
+  it('refuses a blank EAPI_TARGET_CLASS the same as an unset one', () => {
+    // Same blank-is-unset rule the guard applies to EAPI_LIVE and EAPI_HOST: `EAPI_TARGET_CLASS=""` from
+    // a CI matrix slot must not read as a declared disposable target.
+    expect(refused(labEnv({ EAPI_TARGET_CLASS: '   ' })).code).toBe('EAPI_TARGET_CLASS_MISSING')
+    expect(refused(labEnv({ EAPI_TARGET_CLASS: '' })).code).toBe('EAPI_TARGET_CLASS_MISSING')
+  })
+
+  it('refuses a management-IP host even when the target class says lab', () => {
+    // The other direction of the same rule: DR-035(e) is not satisfied by declaring "lab", because a
+    // switch management address is off the endpoint list whatever the class claims (DR-043).
+    const { code, reason } = refused(labEnv({ EAPI_HOST: '192.168.1.10' }))
+    expect(code).toBe('EAPI_HOST_NOT_ALLOWED')
+    expect(reason).toContain('192.168.1.10')
+    expect(reason).toMatch(/physical switch/u)
+  })
+
+  it('refuses loopback spellings that are not literally on the list', () => {
+    // The list is literal, not a `127/8` prefix test: `127.0.0.2` resolves to this machine on Linux, and
+    // a broad match there is exactly the "loopback, therefore lab" reasoning this guard exists to refuse.
+    // A job that genuinely needs one adds it on purpose via EAPI_ALLOW_HOSTS.
+    expect(refused(labEnv({ EAPI_HOST: '127.0.0.2' })).code).toBe('EAPI_HOST_NOT_ALLOWED')
+    // The IPv4-mapped spellings are refused as well, by the host-shape gate ahead of the allow-list.
+    for (const host of ['::ffff:127.0.0.1', '[::ffff:127.0.0.1]']) {
+      expect(['EAPI_HOST_MALFORMED', 'EAPI_HOST_NOT_ALLOWED']).toContain(refused(labEnv({ EAPI_HOST: host })).code)
+    }
+  })
+
+  it('characterises the over-strict IPv6 case: ::1 is on the list but never reaches it (flagged, safe direction)', () => {
+    // FINDING, not a hole: normalizeHost treats any unzone'd colon as "it spells a port", so the `::1`
+    // entry in LAB_LOOPBACK_HOSTS is currently unreachable and the reason tells the operator to move an
+    // IPv6 address into EAPI_PORT. Over-refusing is the safe direction (and `localhost`/`ip6-localhost`
+    // cover the runbook's endpoint), so this pins today's behaviour instead of quietly widening the guard:
+    // whoever relaxes normalizeHost for IPv6 literals should update this case to expect acceptance.
+    expect(LAB_LOOPBACK_HOSTS).toContain('::1')
+    const { code, reason } = refused(labEnv({ EAPI_HOST: '::1' }))
+    expect(code).toBe('EAPI_HOST_MALFORMED')
+    expect(reason).toMatch(/use EAPI_PORT/u)
+    // Contrast: a colon-free loopback name on the same list does resolve, so the guard is not blanket-broken.
+    expect(accepted(labEnv({ EAPI_HOST: 'ip6-localhost' })).host).toBe('ip6-localhost')
+  })
+
+  it('refuses the physical switch local eAPI port (8080) on an allow-listed loopback host', () => {
+    // host=localhost + class=lab is the *lab* shape; only the published cEOS port belongs here
+    // (docs/CEOS.md:109/123). 8080 is what EOS serves locally on the switch, so its absence from
+    // LAB_ALLOWED_PORTS is the difference between "my container" and "the switch's own management API".
+    const { code, reason } = refused(labEnv({ EAPI_PORT: '8080' }))
+    expect(code).toBe('EAPI_PORT_NOT_ALLOWED')
+    expect(reason).toContain('8080')
+    expect(reason).toContain(String(LAB_ALLOWED_PORTS[0]))
+    expect(LAB_ALLOWED_PORTS).not.toContain(8_080)
+  })
+
+  it('refuses loopback:8080 even with the cleartext opt-in, because the port gate runs before the transport gate', () => {
+    // EAPI_TRANSPORT=http + EAPI_ALLOW_INSECURE_HTTP=1 is the *switch-local* recipe (plain HTTP on
+    // localhost:8080). It must not become a skeleton key: section 4 refuses the port before section 5
+    // ever looks at the transport, so the flag alone cannot authorise cleartext to hardware.
+    const { code } = refused(labEnv({ EAPI_PORT: '8080', EAPI_TRANSPORT: 'http', EAPI_ALLOW_INSECURE_HTTP: '1' }))
+    expect(code).toBe('EAPI_PORT_NOT_ALLOWED')
+  })
+
+  it('never lets widening one half of the endpoint rescue the other half', () => {
+    // Both lists exist for parallel jobs publishing extra ports/hosts (docs/CEOS.md:136), and each is
+    // independent: opening the port list cannot admit a switch management IP, and naming an extra lab
+    // host cannot admit the switch's local port.
+    expect(refused(labEnv({ EAPI_HOST: '10.10.0.1', EAPI_PORT: '8080', EAPI_ALLOW_PORTS: '8080' })).code).toBe('EAPI_HOST_NOT_ALLOWED')
+    expect(refused(labEnv({ EAPI_HOST: 'ceos-lab.internal', EAPI_ALLOW_HOSTS: 'ceos-lab.internal', EAPI_PORT: '8080' })).code).toBe('EAPI_PORT_NOT_ALLOWED')
   })
 })
 
