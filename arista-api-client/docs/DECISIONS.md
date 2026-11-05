@@ -1021,6 +1021,78 @@ member's LACP configuration. §5 row 130; `interfaces.ts` divergence 20.
 
 ---
 
+### DR-081 — a live write is applied only through a named session that aborts on failure and never persists (M12a #14)
+The `*.live.test.ts` port of the pyeapi system tests reaches the point where a mutation must actually run
+on a device, and DR-035's write half — *named session, abort-on-failure, no `copy run start`* — was the part
+`src/testing/live-guard.ts` did not yet encode (it gates the endpoint and the scratch-interface name, not
+*how* a write lands). pyeapi makes this easy to get wrong: `configure_session()` is a lazy anonymous `uuid4`
+(`client.py:1003-1006`), there is no `finally`-style rollback in its system tests, and its `abort()` never
+clears `_session_name`, so a later call *re-creates* the session EOS already destroyed (row 63). **Decision:**
+one helper, `runGuardedLiveWriteSession(node, {name, commands, description?})` in `src/testing/live-session-policy.ts`
+(browser-safe, DR-002): the session **name is required** (DR-022/DR-047 — a live write an operator cannot
+name is one they cannot abort by hand after a crash); `commands` is passed as **data**, not an open callback,
+so `assertNoPersistenceCommand` inspects every command *before* the first byte is sent (the reason the
+persist ban is enforceable rather than advisory); the sequence is `configSession(name)` → `run` → `commit`,
+and an **`isOpen`-guarded `abort()` in a `finally`** does the rollback — the `isOpen` test is what makes the
+rollback unconditional without re-aborting a handle already terminal (`committed`) or already dead (`lost`),
+which the state-machine would have thrown on and hidden the real error. `commit()` is called **without**
+`{persist:true}` (DR-024), closing DR-035(c). **Consequence:** every scratch-port live write in this lane
+(switchports default/switchport/no-switchport/mode, interfaces description) goes through it, and the same
+object is unit-tested offline (§5 rows 137-140). Cost: a write test cannot take an arbitrary callback, which
+is the point — smuggled persistence then cannot happen.
+
+### DR-082 — a port that is not an `Ethernet…` scratch name is never a live write, so whole upstream families are skipped rather than faked (M12a #14)
+The pyeapi system suite is not "60 read tests": almost every case is **read-after-write on a name the run
+chose by convenience** — `random_interface(dut)` for switchports, `random_int(2,4094)` VLANs, and
+`Loopback0`/`Port-Channel1`/`Vxlan1`/`Management1`/`Vlan1234`/`Ethernet1.1` for interfaces. DR-035(b) allows a
+live write on **exactly** `EAPI_SCRATCH_INTERFACE` (which `requireScratchInterface` pins to an `Ethernet…`,
+`docs/CEOS.md:131`), and there is deliberately **no** `EAPI_SCRATCH_VLAN`/`..._PORTCHANNEL` gate in
+`live-guard.ts`. **Decision:** do not widen a guard, invent a scratch-VLAN, mutate a LAG/loopback/mgmt port,
+or pad the port with no-op read copies to hit a "~60" number. Port the genuinely write-free reads
+(`vlans.get(1)`, `getAll()`, `interfaces.getAll()` incl. `Management1`, `system.get()` at key/type level) plus
+the writes whose target *is* the named scratch Ethernet port, and record every skipped method with its reason
+in the file's JSDoc ledger (a per-file table: off-limits name / global write / client-side refusal that never
+round-trips / fixture-owned field). **Consequence:** the honest per-file counts are small (system 1/20,
+vlans 2/15, switchports 2 reads + write-integration/8, interfaces 2/~48) and stated as such rather than
+inflated; a reviewer can see which behaviours remain offline-only vs. device-touched. Risk noted: it means the
+live lane does **not** exercise random-VLAN or LAG writes at all — those stay DECISIONS open items and offline
+tests, which is the safer reading of DR-035, not an oversight.
+
+### DR-083 — `MockTransport` scripts full joined session command lists, because an opener-only key silently never matches (M12a #14)
+The policy helper's *only* offline proof that it aborts-but-does-not-persist depends on the exact command
+arrays a config session puts on the wire, and `MockTransport.matches` (mock-transport.ts, `texts.includes(match) || texts.join('\n') === match`)
+has a trap that has already cost this project time: an entry keyed `configure session <name>` matches the run
+batch **only if that whole string is one list element** — but a session batch is
+`[enable, configure session <name>, …tail]`, so the opener sits inside a longer list and an opener-only key
+never matches → the request falls through to `NotSupportedError` with no scripted answer. **Decision:** every
+script key in `live-session-policy.test.ts` spells the **full `\n`-joined list**, `enable` and the opener
+included, with **separate** keys for the `…\ncommit` and `…\nabort` round trips (they are distinct batches,
+each re-entering the session). A `wireKey(name, …tail)` builder makes that join once per test so the intent —
+which operation — reads off the assertion, and the exact-spelling hazard cannot be re-introduced case by case.
+The failure modes this pins are precisely the ones DR-035(c)/DR-023 care about: a `copy run start` in the batch
+is refused with `transport.sent() === []` (guard before wire); a device `1002` **with** `errorDetail` leaves the
+session `open` so the `finally` abort reaches the device; a `1006` `lost` commit must **not** re-abort (the state
+machine already killed the handle). **Consequence:** the helper is falsifiable offline; live CI still owns the
+one real-cEOS confirmation. This is the DR-035 write policy expressed as a *command list*, not prose.
+
+### DR-084 — one bounded real-cEOS validation consumes the lab lane as-is and is reported, never worked around (M12a #14)
+M12 (#14)'s PLAN box that stayed open through the guard/fixture/harness rows is "the live lane provably runs
+*once*". This lane must prove it without owning the harness — `scripts/ceos-lab.mjs`, `docs/CEOS.md`,
+`.github/workflows/ci.yml` and every `package.json` script entry belong to the sibling CI lane. **Decision:**
+run the documented sequence verbatim from the repo root (`lab:up` → `lab:probe`, which prints the 0600 state
+file and cross-checks the published endpoint's TLS fingerprint against the container's `capi.pem` → the eAPI
+child → export those vars plus `EAPI_TARGET_CLASS=lab` and a **real, exposed** `EAPI_SCRATCH_INTERFACE` →
+`test:live -w arista-api-client`), bounded to ~15 min, and **always** `lab:down` afterwards (verified by
+`lab:list` showing zero leftovers), *including on failure*. If any gate refuses the run — the scratch
+interface doesn't resolve, the readiness/version cross-check fails, the harness errors — the exact message is
+reported to the orchestrator; the guard is **never** loosened, no lab script edited, no fixture force-written,
+no fallback to a physical switch (DR-043/DR-066). **Consequence:** a pass says "the guard + transport +
+resource reads + the DR-035 write helper all executed against real EOS 4.28.14M, and the container was torn
+down"; a non-run or partial run says which gate said no and why, and is *not* dressed up as coverage. Container
+results settle software behaviour only (§5 row 141); the DCS-7050TX-64 sweep stays open.
+
+---
+
 ## Open items (need the device)
 
 Use cEOS first for software behavior and schema exploration, recording its model/version;

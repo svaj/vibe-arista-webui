@@ -47,6 +47,17 @@ separate verb (**DR-075**); branch gate: **49 files / 1,556 client tests** (+82 
 `in-progress`, not done:** the `68..9214` MTU-bound box and the 48-port fixture `getAll()` await the
 M12 (#14) §3 capture, and M10d/Vxlan stays deferred to wave 3.
 
+**M12a (#14, live suite + write policy) is delivered on its
+branch** — §5 rows **135-142** + **DR-081-084**: four live suites (9 device-facing specs) that ran
+against a real cEOS-lab 4.28.14M (readiness finding recorded in the band: the guard's EXACT-version
+pin cannot match the image's engineering-build suffix, so the suites hard-fail every model/train
+refusal and tolerate ONLY the suffix-driven mismatch, guard untouched), plus `src/testing/live-session-policy.ts`
+closing DR-035's write side — named session, always-abort finally, persistence ban, no scratch port
+inferred — with an offline MockTransport matrix. Branch gate: **50 files / 1,481 client tests**, all
+files 98.14 st / 92.75 br / 99.35 fn / 98.83 ln; live files skip loudly offline. The lab run left its
+container up for the orchestrator's teardown (verified zero leftovers afterwards) — flagged so the
+next live-CI job never relies on manual cleanup.
+
 **M11 (#13) is delivered on its branch** — the non-`runCmds` differentiators: `Node.verifyConfig()` /
 `getCompletions()` / `getCommandHelp()` ride a validated `WIRE_METHODS` table over the new optional
 `Transport#callMethod` seam, and faking them with `runCmds` is refused as unsafe, not inconvenient
