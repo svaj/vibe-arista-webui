@@ -1229,6 +1229,84 @@ function writeFixtures(cfg, state, probe) {
   return written
 }
 
+/* --------------------------------------------------------- fixtures:refresh */
+
+/**
+ * `fixtures` — the named refresh entry PLAN §M12 asks for (`npm run fixtures:refresh`). The
+ * capability already existed as `probe`'s guarded writes + `--fixtures-force` (§5 row 112); this
+ * chains it into ONE run the process owns: `up` → `probe` (fixture writes are the whole point) →
+ * `down`, with teardown on every path, including a probe that refuses.
+ *
+ * The consent gate is checked FIRST, before anything that could touch Docker: a refused refresh is
+ * provably side-effect free (no `docker image inspect`, no container, no network, no eAPI request),
+ * which is also what makes the refusal testable offline. `--yes` is required because a refresh
+ * replaces committed, **reviewed** device captures — docs/CEOS.md: "Refresh is explicit and
+ * reviewed". `--yes` implies `--fixtures-force` for this command only, and the path rule in
+ * {@link writeFixtures} is deliberately NOT relaxed: writes outside `fixtures/live/ceos-<version>/`
+ * still refuse with exit 3, so a container capture can never overwrite a hardware recording (DR-043).
+ * @param {ReturnType<typeof labConfig>} cfg
+ */
+async function cmdFixtures(cfg) {
+  if (cfg.fixtureDir === null) {
+    refuse(
+      '`fixtures` cannot be combined with --no-fixtures: writing the captures IS this command. Drop the flag ' +
+        '(the default target is fixtures/live/ceos-<version>/)',
+      EXIT.usage,
+    )
+  }
+  const relDir = path.relative(REPO_ROOT, cfg.fixtureDir)
+  const existing = fs.existsSync(cfg.fixtureDir) ? fs.readdirSync(cfg.fixtureDir).filter((f) => f.endsWith('.json')) : []
+  const endpoint = cfg.port === null ? `an ephemeral ${cfg.hostIp}:<auto> port (locked per endpoint)` : `${cfg.hostIp}:${cfg.port}`
+  if (!cfg.refreshConfirmed) {
+    refuse(
+      '`fixtures` replaces committed device captures, so it requires the explicit --yes confirmation flag. Nothing was ' +
+        `started: no image was inspected, no container or network was created, no eAPI request was sent. With --yes this ` +
+        `command would create one run-owned lab on ${endpoint}, replace ${String(existing.length)} existing capture file(s) ` +
+        `under ${relDir} (overwrite stays confined to fixtures/live/ceos-<version>/), then tear that run down in all paths. ` +
+        'Review the diff afterwards: refresh is explicit and reviewed, and a container capture is never 7050TX-64 evidence ' +
+        '(docs/CEOS.md, DR-043). Re-run as: npm run fixtures:refresh -- --yes',
+      EXIT.usage,
+    )
+  }
+  log(
+    `[fixtures] confirmed refresh · target ${relDir} (${String(existing.length)} existing capture(s)) · endpoint ${endpoint} ` +
+      '· existing files will be replaced (implied --fixtures-force, confined to the ceos-<version> path guard)',
+  )
+  // Pre-generate the run id so the teardown below always names the run this call owns, even on a
+  // path where `cmdUp` failed after creating resources (its own catch already tears down + releases).
+  const runId = cfg.runId ?? newRunId()
+  const owned = { ...cfg, runId, fixturesForce: true }
+  const up = await cmdUp(owned)
+  if (up.exitCode !== EXIT.ok) return { exitCode: up.exitCode, runId: up.runId, stage: 'up' }
+  /** @type {{exitCode: number, runId?: string, stage?: string, result?: any, reason?: string}} */
+  let outcome
+  try {
+    const state = readState(up.runId)
+    if (!state) refuse(`state for run ${up.runId} vanished between up and probe`, EXIT.internal)
+    outcome = await cmdProbe(owned, state)
+    if (outcome.exitCode !== EXIT.ok) {
+      log(
+        `[fixtures] probe refused (exit ${String(outcome.exitCode)}${outcome.reason ? `: ${outcome.reason}` : ''}) — this path ` +
+          'wrote no captures, and there is no fallback target to read them from',
+      )
+    }
+  } catch (err) {
+    // A version/model mismatch in `cmdProbe` throws rather than returning: the run still has to die.
+    reportError(err, 'fixtures')
+    outcome = { exitCode: err instanceof LabError ? err.code : EXIT.internal, runId: up.runId, stage: 'probe' }
+  }
+  const td = teardownRun(up.runId)
+  if (!td.ok) {
+    log(`[fixtures] teardown reported problems, so the refresh fails even if captures were written: ${td.problems.join('; ')}`)
+    return { exitCode: EXIT.teardown, runId: up.runId, stage: 'teardown', teardown: td, probe: outcome }
+  }
+  log(
+    `[fixtures] run ${up.runId} torn down cleanly · ${String(outcome.exitCode === EXIT.ok ? (outcome.result?.fixturesWritten?.length ?? 0) : 0)} ` +
+      `capture file(s) processed under ${relDir}`,
+  )
+  return { ...outcome, runId: up.runId, teardown: { ok: td.ok, removed: td.removed } }
+}
+
 /* ------------------------------------------------------------------- down */
 
 /** @param {unknown} labels @param {string} key */
@@ -1455,7 +1533,7 @@ async function cmdRun(cfg, childArgv) {
 
 /** @param {string} name */
 function isKnownBoolFlag(name) {
-  return ['fixtures', 'no-fixtures', 'fixtures-force', 'all', 'list', 'quiet', 'help', 'no-digest'].includes(name)
+  return ['fixtures', 'no-fixtures', 'fixtures-force', 'yes', 'all', 'list', 'quiet', 'help', 'no-digest'].includes(name)
 }
 
 /** @param {string[]} argv */
@@ -1527,6 +1605,9 @@ function labConfig(flags) {
     runId: typeof flags['run'] === 'string' ? flags['run'] : undefined,
     fixtureDir: flags['fixtures'] === false || flags['no-fixtures'] === true ? null : str('fixtures', FIXTURE_DIR),
     fixturesForce: flags['fixtures-force'] === true,
+    // The explicit confirmation the `fixtures` command requires before it may replace reviewed
+    // captures. Nothing else reads it: `up`/`probe`/`run` keep their existing semantics.
+    refreshConfirmed: flags['yes'] === true,
   }
   if (!/^[A-Za-z0-9][A-Za-z0-9._:/@-]*$/.test(cfg.image.tag)) {
     refuse(`--image is not a valid docker reference: ${cfg.image.tag}`, EXIT.usage)
@@ -1553,6 +1634,11 @@ usage: node scripts/ceos-lab.mjs <command> [flags] [-- <child args>]
   run     up + probe, exec the child with EAPI_LIVE / EAPI_HOST / EAPI_PORT / EAPI_USER
           / EAPI_PASS / EAPI_TARGET_CLASS=lab …, then down in a finally — also on
           SIGINT/SIGTERM or child failure.
+  fixtures
+          the refresh entry (npm run fixtures:refresh): up + probe with captures written to
+          --fixtures (default the committed cEOS dir) + down, on a run this process owns.
+          Refuses with exit 2 BEFORE any docker call unless --yes is present; --yes implies
+          --fixtures-force inside the guarded ceos-<version> path only.
   list    list every container/network labelled ${LABEL_RUN} plus this harness's state files.
 
 flags
@@ -1572,6 +1658,7 @@ flags
   --fixtures <dir>             write probe captures to a fixture dir (default ${path.relative(REPO_ROOT, FIXTURE_DIR)})
   --no-fixtures                never write fixtures
   --fixtures-force             allow overwriting existing fixture files
+  --yes                        required by the fixtures command: confirms replacing reviewed captures
   --all                        with down: tear down every labelled run
   --help                       this text
 `,
@@ -1637,6 +1724,12 @@ async function main(argv) {
     case 'run': {
       guardInheritedHost()
       return cmdRun(cfg, parsed.passthrough)
+    }
+    case 'fixtures': {
+      // No docker call happens before cmdFixtures' own --yes refusal, so the refusal path is
+      // exercisable on any machine (docs/CEOS.md keeps the lab itself trusted-host only).
+      guardInheritedHost()
+      return cmdFixtures(cfg)
     }
     case 'list': {
       const resources = listLabResources()
