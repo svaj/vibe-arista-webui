@@ -16,7 +16,7 @@
  *    `:321-326` verifyConfig, `CliApi.py:442-462` help), *not* from a capture; the values inside them are
  *    invented stand-ins. The M12 (#14) capture replaces them, so each of these tests pins *our parse*,
  *    never *EOS's prose*;
- *  - **(c) refusals** — local rules (DR-016 allow-list, DR-032, DR-011 redaction), each asserting **zero**
+ *  - **(c) refusals** — local rules (DR-016 allow-list, DR-061 method-table refusals, DR-011 redaction), each asserting **zero**
  *    round trips.
  *
  * Two facts from the vendor Python are load-bearing and get their own tests below: the two dict-returning
@@ -352,7 +352,7 @@ describe('Node.getCompletions — request, parse, refusal', () => {
     expect(view.completions).toEqual([])
   })
 
-  it('refuses a reply with no completions object rather than reporting an empty command set (DR-032)', async () => {
+  it('refuses a reply with no completions object rather than reporting an empty command set (DR-061)', async () => {
     for (const bad of [{ errors: {}, complete: false }, { completions: [] }, { completions: 'show' }, { completions: null }]) {
       const t = scripted().methodReplies('getCommandCompletions', objectResult(bad))
       const error = (await rejection(nodeFor(t).getCompletions('sh'))) as ProtocolError

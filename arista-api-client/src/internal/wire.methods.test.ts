@@ -344,7 +344,7 @@ describe('parseMethodResponse — the object-result gate (JsonRpcBase.py:160)', 
     expect('id' in parsed.envelope).toBe(false)
   })
 
-  it('refuses an array result for an object-shaped method: this client will not guess which element answers (DR-032)', () => {
+  it('refuses an array result for an object-shaped method: this client will not guess which element answers (DR-061)', () => {
     const parsed = parseMethodResponse(JSON.stringify({ jsonrpc: '2.0', result: [{ show: 'Set show command' }], id: 'unit-1' }), { method: 'getCommandHelp', requestId: 'unit-1' })
     expect(parsed.ok).toBe(false)
     if (parsed.ok) throw new Error('expected a refusal')

@@ -711,7 +711,7 @@ describe('candidate / batch guards run before the first request (c: zero round t
   })
 })
 
-describe('createCapabilityCache: hit / TTL expiry / keying / DR-032 no-store for inconclusive runs', () => {
+describe('createCapabilityCache: hit / TTL expiry / keying / DR-063 no-store for inconclusive runs', () => {
   it('a miss probes once, stores one entry, and returns the outcome', async () => {
     const now = () => 0
     const t = mockTransport({ address: ADDRESS })
@@ -806,7 +806,7 @@ describe('createCapabilityCache: hit / TTL expiry / keying / DR-032 no-store for
     expect(cache.peek(ADDRESS, ['vlan 20'])).toBeUndefined()
   })
 
-  it('an outcome with an inconclusive verdict is never stored (DR-032: unverifiable ≠ stored fact)', async () => {
+  it('an outcome with an inconclusive verdict is never stored (DR-063: unverifiable ≠ stored fact)', async () => {
     const t = mockTransport({ address: ADDRESS })
       .rejects(probeKey(CACHE_OPEN, ['vlan 20']), {
         code: EapiErrorCode.COMMAND_FAILED,

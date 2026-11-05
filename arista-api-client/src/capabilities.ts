@@ -106,7 +106,7 @@ const VERDICT_BY_CODE: Readonly<Record<number, CapabilityVerdict>> = Object.free
 /** Verdicts that answer "is this command unavailable?". The rest are inconclusive by construction. */
 const NEGATIVE_VERDICTS: readonly CapabilityVerdict[] = ['unsupported']
 
-/** Verdicts that say nothing at all happened, and so must never be cached (DR-032: do not store what you could not verify). */
+/** Verdicts that say nothing at all happened, and so must never be cached (DR-063: do not store what you could not verify). */
 const INCONCLUSIVE_VERDICTS: readonly CapabilityVerdict[] = ['config-locked', 'unknown']
 
 /**
@@ -642,7 +642,7 @@ export const DEFAULT_CAPABILITY_TTL_MS = 15 * 60 * 1_000
  *  - keyed by `Transport#address` **plus** the candidate list **plus** the options that change the
  *    answer (`batchSize`, and the label map, because labels are part of what is returned);
  *  - never stores a rejection, a `config-locked` run, or a `not-rejected`-without-detail run
- *    ({@link isInconclusiveVerdict}) — DR-032: an unverifiable answer must not become a cached fact;
+ *    ({@link isInconclusiveVerdict}) — DR-063: an unverifiable answer must not become a cached fact;
  *  - probes against one endpoint are serialised, and concurrent probes for the **same** key share one
  *    promise, because {@link Node.configSession} allows one live session per node (DR-025) and a second
  *    tab must not turn a dedupe opportunity into a `SessionError`.

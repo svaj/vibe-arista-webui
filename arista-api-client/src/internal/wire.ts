@@ -717,7 +717,7 @@ export interface BuildCompletionsParamsOptions {
    * CLI commands the device **executes** before completing the partial line, to enter the mode it
    * belongs in (`CliApi.py:656-668`, the loop at `:659-663`), e.g. `['interface Ethernet1']`. They run
    * in the caller's privilege, so this is not a read-only-looking option: it is a command list in
-   * disguise (DR-032).
+   * disguise (DR-061).
    */
   readonly preamble?: readonly string[] | undefined
 }
@@ -961,7 +961,7 @@ export function parseMethodResponse(text: string, context: MethodResponseContext
     return {
       ok: false,
       error: protocolError(
-        `eAPI result for '${context.method}' must be a single JSON object, not ${shapeOf(reading.result)} — this client refuses to guess a shape it cannot verify (DR-032)`,
+        `eAPI result for '${context.method}' must be a single JSON object, not ${shapeOf(reading.result)} — this client refuses to guess a shape it cannot verify (DR-061)`,
         text,
         context,
         EapiErrorCode.INVALID_REQUEST,
