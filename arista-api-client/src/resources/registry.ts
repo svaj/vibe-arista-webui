@@ -29,6 +29,8 @@
 
 import { NotSupportedError } from '../errors'
 import { InterfacesResource } from './interfaces'
+import { IpinterfacesResource } from './ipinterfaces'
+import { StpResource } from './stp'
 import { SwitchportsResource } from './switchports'
 import { SystemResource } from './system'
 import { VlansResource } from './vlans'
@@ -52,8 +54,9 @@ export type ResourceFactory<T> = (node: Node) => T
  * ```
  *
  * The first rows are M8's (`system`, #10) and M9's (`vlans`, `switchports`, #11); M10a (#12) added
- * `interfaces`. A name in this interface without a factory in {@link RESOURCE_FACTORIES} is a bug in this
- * package, and {@link ResourceRegistry.get} throws rather than returning `undefined` (row 79).
+ * `interfaces`. W2c (#39 #40) appended `stp` and `ipinterfaces`. A name in this interface without a
+ * factory in {@link RESOURCE_FACTORIES} is a bug in this package, and {@link ResourceRegistry.get} throws
+ * rather than returning `undefined` (row 79).
  */
 export interface ResourceKinds {
   /** The global system settings — `src/resources/system.ts`, port of pyeapi `api/system.py`. */
@@ -64,6 +67,10 @@ export interface ResourceKinds {
   switchports: SwitchportsResource
   /** Every interface's presence and shared configuration — `src/resources/interfaces.ts`, port of pyeapi `api/interfaces.py` (M10a slice). */
   interfaces: InterfacesResource
+  /** Global spanning-tree state plus the per-interface portfast/bpduguard view — `src/resources/stp.ts`, port of pyeapi `api/stp.py` (W2c #39). */
+  stp: StpResource
+  /** The layer-3 view of each interface (its `ip address` lines and `mtu`) — `src/resources/ipinterfaces.ts`, port of pyeapi `api/ipinterfaces.py` (W2c #40). */
+  ipinterfaces: IpinterfacesResource
 }
 
 /** Any name `node.resource()` may be asked for. Grows by one row per resource module (M8-M10). */
@@ -92,6 +99,8 @@ export const RESOURCE_FACTORIES: ResourceFactories<ResourceKinds> = Object.freez
   vlans: (node) => new VlansResource(node),
   switchports: (node) => new SwitchportsResource(node),
   interfaces: (node) => new InterfacesResource(node),
+  stp: (node) => new StpResource(node),
+  ipinterfaces: (node) => new IpinterfacesResource(node),
 })
 
 /**

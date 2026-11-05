@@ -354,7 +354,8 @@ import type { Transport } from './transports/contract'
 // consumer adds a name and gets a typed `node.resource(name)`. M8 (#10) registered the first built-in
 // row (`system`, with `Node.system` for it) and M9 (#11) registered `vlans` + `switchports` (with
 // `Node.vlans` / `Node.switchports`); M10a (#12) registered `interfaces` (with `Node.interfaces`) and
-// the per-kind interface-name parser that row 76 promised — MIGRATION §5 row 79.
+// the per-kind interface-name parser that row 76 promised — MIGRATION §5 row 79. W2c (#39 #40)
+// registered `stp` and `ipinterfaces` (with `Node.stp` / `Node.ipinterfaces`).
 export { Entity, EntityCollection, ResourceBase } from './resources/base'
 export { commandBuilder, submodeCommands } from './resources/command-builder'
 export { parseConfigBlock } from './resources/config-block'
@@ -364,6 +365,23 @@ export { InterfacesResource, INTERFACE_STATUS_COMMAND } from './resources/interf
 export { SwitchportsResource, SWITCHPORT_MODES, isSwitchportMode } from './resources/switchports'
 export { SystemResource } from './resources/system'
 export { VlansResource } from './resources/vlans'
+// W2c (#39 #40): the spanning-tree module and the L3 interface module, plus the vocabularies a UI
+// narrows device tokens with. `StpInterfacesResource`/`StpInstancesResource` are exported because
+// `node.stp.interfaces` / `node.stp.instances` hand them to the caller (pyeapi's composition, `stp.py:118-130`).
+export {
+  IpinterfacesResource,
+  IP_MTU_MAX,
+  IP_MTU_MIN,
+} from './resources/ipinterfaces'
+export {
+  StpResource,
+  StpInstancesResource,
+  StpInterfacesResource,
+  STP_MODES,
+  PORTFAST_TYPES,
+  isStpMode,
+  isPortfastType,
+} from './resources/stp'
 export { toArray } from './internal/collections'
 export type {
   CommandInput,
@@ -386,6 +404,8 @@ export type {
 export type { Switchport, SwitchportAttrs, SwitchportMode, TrunkAttrs } from './resources/switchports'
 export type { SystemBanner, SystemBannerKind, SystemSettings } from './resources/system'
 export type { Vlan, VlanAttrs, VlanState } from './resources/vlans'
+export type { IpInterface, IpInterfaceAttrs } from './resources/ipinterfaces'
+export type { PortfastType, StpInstance, StpInterface, StpMode, StpSettings } from './resources/stp'
 export type {
   EthernetInterfaceName,
   InterfaceKind,

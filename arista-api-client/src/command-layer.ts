@@ -64,6 +64,8 @@ import type { CliVariant } from './internal/variants'
 import type { ConfigSections } from './config/chunk'
 import type { SectionPattern } from './config/section'
 import type { InterfacesResource } from './resources/interfaces'
+import type { IpinterfacesResource } from './resources/ipinterfaces'
+import type { StpResource } from './resources/stp'
 import type { SystemResource } from './resources/system'
 import type { SwitchportsResource } from './resources/switchports'
 import type { VlansResource } from './resources/vlans'
@@ -865,6 +867,27 @@ export class Node {
    */
   get interfaces(): InterfacesResource {
     return this.resource('interfaces')
+  }
+
+  /**
+   * The `stp` resource — the same per-`Node` {@link resourceMemo} as {@link interfaces} (DR-052):
+   * `node.stp === node.stp === node.resource('stp')`, and its `interfaces` / `instances` sub-views are
+   * memoised inside it the way pyeapi memoises `Stp._interfaces` / `Stp._instances` (`stp.py:88-91`,
+   * `:118-130`). pyeapi reaches the object through `node.api('stp')` → `stp.py:366-367`'s `instance(api)`,
+   * which DR-006 removes. Added by W2c (#39).
+   */
+  get stp(): StpResource {
+    return this.resource('stp')
+  }
+
+  /**
+   * The `ipinterfaces` resource — same memo, same reasoning as {@link stp}; pyeapi's factory is
+   * `ipinterfaces.py:257-268` and its accessor never was (DR-006). The L3 view is a **separate** resource
+   * from `node.interfaces` on upstream's terms and stays one here: the two read the same `mtu` line and
+   * write it as separate transactions (MIGRATION.md §5 row 174 / DR-097). Added by W2c (#40).
+   */
+  get ipinterfaces(): IpinterfacesResource {
+    return this.resource('ipinterfaces')
   }
 
   /**
