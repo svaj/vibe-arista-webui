@@ -139,7 +139,7 @@ describe('ResourceRegistry — DR-006 replaces pyeapi node.api() (client.py:927-
     expect(registry.get('probe')).toBe(before)
   })
 
-  it('the built-in factory table is frozen and holds exactly the rows shipped so far (M8 #10 `system`, M9 #11 `vlans`/`switchports`, M10a #12 `interfaces`)', () => {
+  it('the built-in factory table is frozen and holds exactly the rows shipped so far (M8 #10 `system`, M9 #11 `vlans`/`switchports`, M10a #12 `interfaces`, W2a #35 `users`/`ntp`)', () => {
     // M7 (#9) shipped this table honest-but-empty; M8 (#10) claimed the first row, M9 (#11) the next two
     // and M10a (#12) the fourth, so the assertion names what exists. A name in `ResourceKinds` without a
     // row here would be a package bug (row 79). A mutable module-level registry is what ARCHITECTURE.md §7
@@ -147,9 +147,13 @@ describe('ResourceRegistry — DR-006 replaces pyeapi node.api() (client.py:927-
     // has shipped it, so it is the honest "still owed" name now that `interfaces` is registered.
     expect(Object.isFrozen(RESOURCE_FACTORIES)).toBe(true)
     const { node } = nodeWith()
-    expect(new ResourceRegistry(RESOURCE_FACTORIES, node).names()).toEqual(['system', 'vlans', 'switchports', 'interfaces'])
+    // W2a (#35) appended `users` and `ntp` at the END of the table (the cross-lane merge rule), so the
+    // ordered assertion carries them last rather than in a lane-chosen slot.
+    expect(new ResourceRegistry(RESOURCE_FACTORIES, node).names()).toEqual(['system', 'vlans', 'switchports', 'interfaces', 'users', 'ntp'])
     expect(new ResourceRegistry(RESOURCE_FACTORIES, node).has('vlans')).toBe(true)
     expect(new ResourceRegistry(RESOURCE_FACTORIES, node).has('interfaces')).toBe(true)
+    expect(new ResourceRegistry(RESOURCE_FACTORIES, node).has('users')).toBe(true)
+    expect(new ResourceRegistry(RESOURCE_FACTORIES, node).has('ntp')).toBe(true)
     expect(new ResourceRegistry(RESOURCE_FACTORIES, node).has('mlag')).toBe(false)
   })
 })
@@ -161,6 +165,8 @@ describe('Node.resource / Node.hasResource — the typed replacement for node.ap
     expect(node.hasResource('vlans')).toBe(true)
     expect(node.hasResource('switchports')).toBe(true)
     expect(node.hasResource('interfaces')).toBe(true)
+    expect(node.hasResource('users')).toBe(true)
+    expect(node.hasResource('ntp')).toBe(true)
     expect(node.hasResource('mlag')).toBe(false)
     expect(node.hasResource('probe')).toBe(false)
   })
@@ -185,6 +191,14 @@ describe('Node.resource / Node.hasResource — the typed replacement for node.ap
     expect(node.interfaces).toBe(node.interfaces)
     expect(node.interfaces).toBe(node.resource('interfaces'))
     expect(node.interfaces.constructor.name).toBe('InterfacesResource')
+    // W2a (#35) appended the fifth and sixth rows: `node.users` (collection) and `node.ntp` (global
+    // entity, the `node.system` sibling), each its registry twin under the same memo.
+    expect(node.users).toBe(node.users)
+    expect(node.users).toBe(node.resource('users'))
+    expect(node.users.constructor.name).toBe('UsersResource')
+    expect(node.ntp).toBe(node.ntp)
+    expect(node.ntp).toBe(node.resource('ntp'))
+    expect(node.ntp.constructor.name).toBe('NtpResource')
   })
 
   it('asking for an unregistered resource throws, listing the rows that DO exist', () => {
@@ -196,7 +210,7 @@ describe('Node.resource / Node.hasResource — the typed replacement for node.ap
     const untyped = 'mlag' as never
     expect(() => node.resource(untyped)).toThrow(NotSupportedError)
     expect(() => node.resource(untyped)).toThrow(/unknown resource mlag — no factory is registered/)
-    expect(() => node.resource(untyped)).toThrow(/registered: system, vlans, switchports, interfaces/)
+    expect(() => node.resource(untyped)).toThrow(/registered: system, vlans, switchports, interfaces, users, ntp/)
   })
 
   it('every failed resource call sends nothing to the device (a registry miss is not a device error)', () => {

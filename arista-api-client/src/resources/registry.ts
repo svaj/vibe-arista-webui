@@ -29,8 +29,10 @@
 
 import { NotSupportedError } from '../errors'
 import { InterfacesResource } from './interfaces'
+import { NtpResource } from './ntp'
 import { SwitchportsResource } from './switchports'
 import { SystemResource } from './system'
+import { UsersResource } from './users'
 import { VlansResource } from './vlans'
 import type { Node } from '../command-layer'
 
@@ -64,6 +66,10 @@ export interface ResourceKinds {
   switchports: SwitchportsResource
   /** Every interface's presence and shared configuration — `src/resources/interfaces.ts`, port of pyeapi `api/interfaces.py` (M10a slice). */
   interfaces: InterfacesResource
+  /** The local usernames — `src/resources/users.ts`, port of pyeapi `api/users.py` (W2a #35). */
+  users: UsersResource
+  /** The global NTP configuration — `src/resources/ntp.ts`, port of pyeapi `api/ntp.py` (W2a #35). */
+  ntp: NtpResource
 }
 
 /** Any name `node.resource()` may be asked for. Grows by one row per resource module (M8-M10). */
@@ -92,6 +98,8 @@ export const RESOURCE_FACTORIES: ResourceFactories<ResourceKinds> = Object.freez
   vlans: (node) => new VlansResource(node),
   switchports: (node) => new SwitchportsResource(node),
   interfaces: (node) => new InterfacesResource(node),
+  users: (node) => new UsersResource(node),
+  ntp: (node) => new NtpResource(node),
 })
 
 /**
