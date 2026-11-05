@@ -37,7 +37,15 @@ merged suite), coverage 98.14 st / 92.66 br / 99.35 fn / 98.83 ln, `interfaces.t
 funcs/lines, `src/resources/` 99.85 / 99.73 / 100 / 100. **M10 is `in-progress`, not done:** PLAN's exit
 gate is LAG/LACP end-to-end, which needs M10b (`EthernetInterface`) and M10c (`PortchannelInterface`) —
 rows **123-130** and **DR-070+** stay reserved for them, and `interface Ethernet1` creation remains a typed
-refusal that names M10b as its owner.
+refusal that names M10b as its owner. **M10b/M10c are delivered on their branch** (superseding that
+reserve sentence: they claimed §5 rows **125-132** + **DR-075-080**, with rows 123-124 and DR-070-074
+declared-skipped; M11's PR takes 115-122 + DR-061-063 and must merge FIRST to keep the §5 table
+ascending). Ethernet sflow/flowcontrol/vrf and the Port-Channel members/mode/minimum-links/LACP family
+ride DR-068 as field groups — members from the config relation by decision, the `all-ports` scrape as a
+separate verb (**DR-075**); branch gate: **49 files / 1,556 client tests** (+82 specs), all-files
+98.22 st / 93.0 br / 99.39 fn / 98.92 ln, `interfaces.ts` 99.48 / 98.11 / 100 / 100. **M10 is still
+`in-progress`, not done:** the `68..9214` MTU-bound box and the 48-port fixture `getAll()` await the
+M12 (#14) §3 capture, and M10d/Vxlan stays deferred to wave 3.
 
 **M11 (#13) is delivered on its branch** — the non-`runCmds` differentiators: `Node.verifyConfig()` /
 `getCompletions()` / `getCommandHelp()` ride a validated `WIRE_METHODS` table over the new optional

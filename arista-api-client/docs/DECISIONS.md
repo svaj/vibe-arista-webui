@@ -902,6 +902,123 @@ a capture forces a re-read of the readers that had guessed — that check is now
 fixtures, and each spellings list cites the file it came from, so a reviewer can open the evidence.
 §5 row 106; `interfaces.ts` divergence 12.
 
+### DR-075 — a Port-Channel's members are read from the config relation, and the live `show` scrape stays a separate verb (M10b/M10c #12)
+`get_members` (`interfaces.py:660-675`) is a text scrape: group id taken from the Port-Channel **name**
+(`:671`), `show port-channel <id> all-ports` in `format:'text'` (`:672-673`), then
+`re.findall(r'\b(?!Peer)Ethernet[\d/]*\b', …)` over the output (`:674-675`). Upstream treats that scrape as
+the **fact** — `get` stamps it into the record (`:611`) and `set_members` diffs against it (`:700`) — so on
+a unit without the command, or against a malformed reply, or for a member the scrape drops, the answer
+silently becomes "no members", and the dropped member's own `channel-group` line is never removed by the
+diff that believes it was never a member. **Decision:** the record's `portChannel.members` comes from the
+members' own `channel-group <id> [mode <word>]` body lines, harvested across sections in one pass
+(`interfacesFromSections`, deduped in device order) — the same config text upstream's `get_lacp_mode` already
+greps per member (`:655-658`), so this stays upstream's source of truth for the relation while dropping the
+scrape's fragility. The scrape itself is **also** ported, as the verb `getMembers`, with the look-around kept
+verbatim (`membersFromOutput`) so an M-LAG `Peer-Ethernet` line can never become a member: "what the switch
+reports right now" and "what the running-config declares" are two facts and a UI is allowed to see them
+disagree — which is why neither is derived from the other. A scrape result this client's grammar cannot name
+(`Ethernet1/1`) is returned as-is and then fails the write guards, so a member can always be removed but
+never silently mis-composed. **Consequence:** `getAll()` answers the membership question with one config
+read and no `show`, `getMembers()` is the only way to ask the device, and M12 (#14) still owes how
+4.28.13.1M spells that show's output on the 7050TX-64 (the pinned scrape shapes are pyeapi's own fixture
+text, DR-043/DR-069's caveat). §5 row 125; `interfaces.ts` divergence 15.
+
+### DR-076 — absence outranks upstream's invented defaults on every new read (M10b/M10c #12)
+The Port-Channel readers answer a question the device never answered: `_parse_minimum_links` returns `0`
+when there is no `port-channel min-links` line (`interfaces.py:618-624`), `_parse_lacp_fallback` returns
+`DEFAULT_LACP_FALLBACK` (`'disabled'`, `:625-631`, `:68`), `_parse_lacp_timeout` returns
+`DEFAULT_LACP_FALLBACK_TIMEOUT` (`90`, `:632-638`, `:69`), and `get_lacp_mode` returns
+`DEFAULT_LACP_MODE` (`'on'`) for a group with no members (`:651-653`). Upstream's own `test_get`
+(`test_api_interfaces.py:318-326`) proves the confusion is load-bearing, because the fixture it pins against
+writes the **negations** `no port-channel min-links` (`running_config.portchannel:18`) and
+`no port-channel lacp fallback` (`:19`) — a device that turned a value off and a device that never mentioned
+it both come back as a value. **Decision:** every M10b/M10c read answers `undefined` for an absent line, and
+`no`/`default` forms are never read as a value — `valueAfterKeyword` anchors at the keyword (row 91), and
+`lacpFallbackFromBlock` additionally skips the `port-channel lacp fallback timeout <n>` line, since the
+timeout **is** the fallback keyword's sub-command and the fixture's `:19`/`:20` pair is exactly that case.
+The reads are total: a non-decimal value is a `ConfigParseError` naming the section rather than a truncated
+`int()` (`ipinterfaces.py:126`'s habit, DR-059). sFlow is the same decision one field over: upstream's
+`'no sflow' not in config` (`:367-380`) fabricates `true` from an absence, so the field is read as exact
+`sflow enable` / `no sflow enable` command lines instead — the same three-answer shape as DR-027 fixed for the
+administrative state — and a `no sflow` pair is never answered as the **fabricated** `true` upstream gives a
+section with no line at all; the `false` half of an explicit `no sflow enable` is reported, never invented
+from silence. **Consequence:** a UI can tell "off", "not configured" and "the device did not say" apart, and
+what the EOS defaults actually are stays an M12 (#14) capture (open item 1, DR-057) instead of being adopted
+as a client-side constant. §5 rows 126 / 127; `interfaces.ts` divergences 13 / 16.
+
+### DR-077 — an invalid verb argument is a refusal, never a `False`, a message-less `ValueError`, or a command the device will misparse (M10b/M10c #12)
+Three upstream styles coexist in this slice: `ValueError('invalid flowcontrol value')` (`:513-515`) and
+`ValueError('invalid direction specified')` (`:517-518`); a **bare** `raise ValueError` with no message on
+`set_sflow` (`:542-543`); and `return False` — silently — for an unknown LACP mode (`set_lacp_mode`,
+`:731-732`, pinned non-raising at `test_api_interfaces.py:424-427`) or an unknown fallback mode
+(`set_lacp_fallback`, `:787-788`, `:371-373`). A fourth case has no answer at all: with no `mode` argument,
+`set_members` interpolates `get_lacp_mode`'s `None` into `channel-group 1 mode None` (`:712-714`), and the
+suite pins **that text** as expected behaviour (`:404-409`). **Decision:** all of them become
+`NotSupportedError`s naming what upstream did (DR-005 deletes the boolean, DR-010 requires a message,
+DR-053 puts the guard in the verb), and the three refusals that buy real safety are: an unknown `mode`
+argument (DR-079), a `setMembers` call that has no mode to write and nothing readable to reuse — refusing
+outranks sending a token whose effect on a LAG is undefined — and `setLacpFallback`'s `'disabled'`, which is
+a *negation*, so it is the verb `unsetLacpFallback` and not a mode string that happens to read as one
+(DR-037); `setLacpFallback('Port-Channel1', 'disabled')` composes nothing — it refuses **before** any
+request, which is the shape DR-053's guards exist to guarantee. The same row also deletes the `default`/`no`
+arms' ambiguity rather than reproducing it. **Consequence:** every bad-input test in this lane asserts
+**zero** requests reaching the device, and the refusal texts quote upstream so a reader can tell a
+client-side rule from a device rule; pyeapi's exception pins cannot be ported as-is because
+`eapi_exception_config_test` ignores its own `cmds` argument (`testlib.py:121-123`). §5 rows 128 / 129;
+`interfaces.ts` divergences 17 / 19.
+
+### DR-078 — a release floor is compared as numbers, and an unclassifiable release composes no command (M10b/M10c #12)
+`set_vrf` decides which keyword to send with `if self.version_number >= '4.23'` (`interfaces.py:568`, arms at
+`:569-575`) — a **string** compare of the device version, so `'4.9' >= '4.23'` is true character-wise and a
+4.9-era box is handed the 4.23 keyword, while `'4.100…'` compares below `'4.23'` although 4.100 is a later
+release. Upstream's suite cannot surface the bug because the mock node pins `'4.17.1.1'`
+(`test/lib/testlib.py:81`), the only arm it exercises being `vrf forwarding testvrf`
+(`test_api_interfaces.py:297-302`). **Decision:** keep the two command texts verbatim and fix only the
+comparison — `vrfKeyword()` asks `Node.getVersion()` (the DR-035 memoised `show version`) and compares the
+leading `major.minor` **segments numerically** (`versionFloorCompare`); 4.9 < 4.23, 4.23 ≤ 4.28. A version
+with no leading `major.minor` (an engineering build that does not start with digits, or a device that will
+not answer `show version`) is **refused**, not defaulted to either arm: guessing which VRF syntax an
+unnameable device accepts is exactly the claim DR-032/DR-057 forbid. **Consequence:** a VRF write costs one
+memoised version read per `Node`, not per verb; both sides of the floor are pinned in the suite; and whether
+the two keywords are interchangeable — or which one the v4 image this build runs actually wants — stays with
+the device, so the `CommandError` arm is pinned and M12 (#14) owns the capture. §5 row 131;
+`interfaces.ts` divergence 18.
+
+### DR-079 — the channel-group mode is validated where it is captured, so one type covers the wire, the record and the arguments (M10b/M10c #12)
+Upstream's mode is an unvalidated string at every step: `get_lacp_mode` hands back `re.search(...)`'s
+`(?P<value>.+)` group from **one** member and returns inside the first loop iteration, so a second member is
+never examined and a first member with no `channel-group … mode` line crashes on
+`re.search(pattern, None)` when its block is missing (`:655-658` + `abstract.py:96-101`); its only write-side
+check is `set_lacp_mode`'s `return False` (`:731-732`), while `set_members` (the verb the UI reaches through
+its diff and its side call — DR-080) accepts any value and interpolates it into
+`channel-group %s mode %s` (`:712-714`). **Decision:** validate the token **at the capture site**
+(`readChannelGroupMode`): a section body line reading `channel-group 1 mode fast` fails the whole table read
+with a `ConfigParseError` naming the section — because `getAll()` builds a typed record, and publishing a
+mode this client's own verbs refuse is a promise of consistency that does not hold. `LacpMode`
+(`active`/`passive`/`on`, the trio at `:731`) is then the single type of the record field, the harvested
+group facts, the lookup answer `getLacpMode()` returns and the argument `setLacpMode()`/`setMembers()` take —
+so a wrong type cannot express `mode None` at all (the type-system half of DR-010/DR-077). `getLacpMode`
+scans **every** member for the first mode-bearing line and answers `undefined` when none names a mode
+(no `DEFAULT_LACP_MODE` invention, DR-076). **Consequence:** one device typo is visible as one named parse
+failure instead of a table that agrees with the next `setLacpMode` about a mode that does not exist, and the
+type is narrower than the device's possible output on purpose, with the overflow reported rather than
+published. §5 row 129; `interfaces.ts` divergence 19.
+
+### DR-080 — a verb that performs writes on the way to its own answer keeps them as separate, pinned transactions (M10b/M10c #12)
+`set_members` is where those verbs live. Upstream's copy
+(1) asks the device for the members, (2) reads the mode from the candidates, and, when a mode is supplied and
+differs, (3) performs its own remove-and-re-add rewrite before applying the diff. Upstream's single test
+sees only the last call, so each side effect is invisible in review. **Decision:** port the side effects
+faithfully — the rewrite stays a distinct
+operation between the read and the diff rather than being folded into one batch — because collapsing
+them into a single transaction would be this client inventing a device behavior that upstream, and
+therefore the operator, does not expect. Each side effect is visible in the recorded `callArgs`; the
+diff-then-rewrite ordering is not reordered silently. **Consequence:** a UI that calls
+`setMembers` must expect more than one round trip, and the test suite's
+per-side-effect pins are what keep a future "optimization" from quietly merging them —
+M12 (#14) will say whether an operator should be warned that a mode change briefly removes every
+member's LACP configuration. §5 row 130; `interfaces.ts` divergence 20.
+
 ---
 
 ## Open items (need the device)
