@@ -49,9 +49,11 @@
  *  - the five `test_set_encapsulation_*` (`:144-171`) — `interface Ethernet1.1` + `encapsulation dot1q vlan 1`,
  *    the vid-less `no`/`default` arms, and upstream's two `NotImplementedError` refusals (no dot, wrong prefix),
  *    which the per-kind grammar makes structural (divergence 6).
- *  - `TestApiInterfaces.create/delete/default` (`:186-209`) and `test_ethernet_interface_create` (`:211-224`)
- *    — `interface X`, `no interface X`, `default interface Ethernet1`, and Ethernet create/delete refused
- *    (divergence 5: the refusal is a typed one naming M10b (#12, wave 2) as the owner).
+ *  - `TestApiEthernetInterface.test_instance_functions` (`:191-209`) and
+ *    `test_instance_functions_exceptions` (`:211-224`) — `interface X`, `no interface X`,
+ *    `default interface Ethernet1`, and Ethernet create/delete refused for the **physical** name
+ *    (divergence 5: M10a landed the refusal naming M10b as the owner; M10b (#12) then composed the
+ *    dotted form upstream itself pins, so the refusal now covers only `Ethernet1`-shaped names).
  *  - MTU: **no upstream twin in this module** — `interfaces.py` has no MTU verb — so every bound asserted
  *    below is this client's (divergence 7), with the device keeping authority via a pinned `CommandError`.
  *
@@ -656,7 +658,7 @@ describe('InterfacesResource read matrix — interfacesFromSections over the chu
     const interfaces = node.interfaces
     const keys = await interfaces.keys()
     expect(keys.filter((key) => key.startsWith('Ethernet0'))).toEqual(['Ethernet0010'])
-    await expectRefusal(() => interfaces.delete('Ethernet0010'), "invalid delete interface 'Ethernet0010'", 'and not an Ethernet')
+    await expectRefusal(() => interfaces.delete('Ethernet0010'), "invalid delete interface 'Ethernet0010'", 'expected a non-Ethernet name with no subinterface suffix')
     scriptWrite(transport, ['default interface Ethernet0010'])
     await interfaces.setDefault('Ethernet0010')
     expect(sentAsText(transport)).toEqual([
@@ -1022,24 +1024,41 @@ describe('InterfacesResource presence verbs — interfaces.py:211-254, with DR-0
     const thrown = await outcome(() => interfaces.create('Ethernet1'))
     expect(thrown).toBeInstanceOf(NotSupportedError)
     expect((thrown as Error).message).toContain("invalid create interface 'Ethernet1'")
-    expect((thrown as Error).message).toContain('and not an Ethernet')
-    expect((thrown as Error).message).toContain('M10b')
-    expect(transport.sent()).toEqual([])
+    expect((thrown as Error).message).toContain('expected a non-Ethernet name with no subinterface suffix')
+    expect((thrown as Error).message).toContain('NotImplementedError')
     // pyeapi pins the same refusal one class up: EthernetInterface.create raises NotImplementedError
     // (test_api_interfaces.py:211-224) — DR-006 has no class dispatch, so the refusal is in the verb.
+    // M10b (#12) is the slice that landed: the refusal is now the **physical** form only (divergence 5),
+    // and the dotted form below is what upstream's own positive pin sends.
+    expect(transport.sent()).toEqual([])
   })
 
-  it('create refuses every subinterface name while open item 7 is open', async () => {
+  it('create/delete compose the Ethernet SUBINTERFACE form, which is what upstream\'s own pins send (interfaces.py:429/445)', async () => {
     const transport = configTransport(FLAT_CONFIG)
     const interfaces = new Node(transport).interfaces
-    for (const dotted of ['Ethernet1.100', 'Port-Channel1.1']) {
+    for (const cmds of [['interface Ethernet1.100'], ['no interface Ethernet1.100']]) scriptWrite(transport, cmds)
+    await interfaces.create('Ethernet1.100')
+    await interfaces.delete('Ethernet1.100')
+    expect(sentAsText(transport)).toEqual([
+      ['enable', 'configure terminal', 'interface Ethernet1.100'],
+      ['enable', 'configure terminal', 'no interface Ethernet1.100'],
+    ])
+    // test_api_interfaces.py:191-209 pins exactly this pair for `intf + '.1'`; the dotted form is
+    // accepted here only for Ethernet, because that is the kind whose class carries the rule.
+  })
+
+  it('create refuses a dotted name of any OTHER kind while open item 7 stays open', async () => {
+    const transport = configTransport(FLAT_CONFIG)
+    const interfaces = new Node(transport).interfaces
+    for (const dotted of ['Port-Channel1.1', 'Vlan1.1']) {
       const thrown = await outcome(() => interfaces.create(dotted))
       expect(thrown).toBeInstanceOf(NotSupportedError)
       expect((thrown as Error).message).toContain(`invalid create interface '${dotted}'`)
+      expect((thrown as Error).message).toContain('a dotted name of any other kind stays refused')
     }
     expect(transport.sent()).toEqual([])
-    // Upstream's EthernetInterface *does* create `Ethernet1.1` (the same test pins the text); this client
-    // waits for M12 (#14) to capture which kinds may carry a dotted header on 4.28.13.1M.
+    // No upstream class composes a dotted header for these kinds, and which kinds may carry one on
+    // 4.28.13.1M is still an M12 (#14) capture (open item 7).
   })
 
   it('delete answers `no interface <name>` for the same kinds (interfaces.py:228-243)', async () => {
@@ -1122,7 +1141,7 @@ describe('InterfacesResource presence verbs — interfaces.py:211-254, with DR-0
   it('a name every guard refuses never reaches the device — four states from one seam (USAGE.md §7)', async () => {
     const transport = configTransport(FLAT_CONFIG)
     const interfaces = new Node(transport).interfaces
-    for (const bad of ['Po1', 'Et1', 'Ethernet', 'Vlan', 'interface Ethernet1', 'Ethernet1 ', 'Ethernet1/1', 'Ethernet1.1']) {
+    for (const bad of ['Po1', 'Et1', 'Ethernet', 'Vlan', 'interface Ethernet1', 'Ethernet1 ', 'Ethernet1/1', 'Port-Channel1.1', 'Nope1']) {
       await expectRefusal(() => interfaces.create(bad), `invalid create interface '${bad}'`)
       await expectRefusal(() => interfaces.delete(bad), 'invalid delete interface')
       await expectRefusal(() => interfaces.setDefault(bad), 'invalid interface')

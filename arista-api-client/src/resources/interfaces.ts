@@ -1,13 +1,15 @@
 /**
- * `interfaces` — the M10a slice of `pyeapi/api/interfaces.py` (#12): the {@link InterfacesResource}
- * facade, the {@link BaseInterface} verbs it is built from, and the per-kind interface-name parser that
- * replaces M7's single regex.
+ * `interfaces` — the M10a + M10b + M10c slices of `pyeapi/api/interfaces.py` (#12): the
+ * {@link InterfacesResource} facade, the {@link BaseInterface} verbs it is built from, the per-kind
+ * interface-name parser that replaces M7's single regex, and the `EthernetInterface` /
+ * `PortchannelInterface` per-kind fields and verbs.
  *
- * Port of `pyeapi/api/interfaces.py` (1,101 lines, BSD-3-Clause, Arista Networks — DR-001). This is the
- * first of the four slices PLAN.md §M10 splits the module into: **M10a** = `Interfaces` +
- * `BaseInterface` + the name parser; M10b = `EthernetInterface` (sflow / flowcontrol / vrf); M10c =
- * `PortchannelInterface` (members / LACP); M10d = `VxlanInterface`, deferred to wave 3. The parts of the
- * upstream file that belong to those slices are **not** ported or hinted at here.
+ * Port of `pyeapi/api/interfaces.py` (1,101 lines, BSD-3-Clause, Arista Networks — DR-001). PLAN.md §M10
+ * splits the module into four slices: **M10a** = `Interfaces` + `BaseInterface` + the name parser;
+ * **M10b** = `EthernetInterface` (sflow / flowcontrol / vrf, `:330-577`); **M10c** =
+ * `PortchannelInterface` (members / LACP / min-links, `:578-813`); M10d = `VxlanInterface` (`:814-1090`),
+ * deferred to wave 3 — nothing in this file ports or hints at it beyond the `Vxlan` **name** arm of the
+ * grammar and the `Vxlan5` rows of a config table.
  *
  * Every `pyeapi` range in this file was opened in the pinned clone
  * `/home/svaj/development/arista/pyeapi` (1.0.4-rc0, `develop` @ `6816d9e`) on 2026-11-04, and every
@@ -24,9 +26,13 @@
  * | `Interfaces.get` (`:92-93`) → `get_instance(name)[name]`, i.e. `__getitem__` → `get` (`abstract.py:211-212`) | {@link InterfacesResource.get} — a lookup in the same one-read table, so `get`/`getAll()` cannot disagree |
  * | `Interfaces.getall` (`:95-115`): `re.compile(r'(?<=^interface\s)(.+)$', re.M)` (`:108`) over the whole config, then `self.get(name)` per hit with an `if interface:` filter (`:111-114`) | {@link interfacesFromSections} over the chunked document's section keys (DR-055: the chunker, not a module regex, decides what is a top-level command) — divergence 1 |
  * | `BaseInterface.get` (`:147-177`): `get_block('^interface %s')` (`:170`), `if not config: return None` (`:171-172`), then `name` / `type='generic'` (`:174`) + two `_parse_*` merged with `dict.update` (`:175-176`) | {@link interfaceFromSection}; `type` (the answering **class**) is replaced by `kind` (what the name **is**) — divergence 2 |
+ | `EthernetInterface.get` (`:335-366`) with `_parse_sflow` (`:367-380`), `_parse_flowcontrol_send` (`:381-397`) and `_parse_flowcontrol_receive` (`:398-414`) | the {@link Interface.ethernet} field group on an Ethernet-kind section ({@link ethernetFieldsFromBlock}) — sFlow read as whole command lines, flowcontrol read verbatim, VRF read though upstream never reads it — **divergences 13/14/16**, and the port-channel reads' absent-not-defaulted discipline is **DR-076** |
+ | `EthernetInterface.set_flowcontrol*` (`:447-472` composing through `set_flowcontrol` at `:513-524`), `set_sflow` (`:526-548`), `set_vrf` (`:550-576`, which picks its keyword with `if self.version_number >= '4.23'` at `:568`) | {@link setFlowcontrol} / {@link setFlowcontrolSend} / {@link setFlowcontrolReceive} and their `unset`/`default` pairs, {@link setSflow} trio, {@link setVrf} trio behind {@link assertEthernetName} — upstream's `ValueError` guards and its two silent-`False` answers become typed refusals (**divergence 17**, DR-077), and the version floor becomes a numeric segment compare (**divergence 18**, DR-078) |
+ | `PortchannelInterface.get` (`:583-616`) with `_parse_minimum_links` / `_parse_lacp_fallback` / `_parse_lacp_timeout` (`:618-638`, defaulting to `0` / `'disabled'` / `90`), `get_lacp_mode` (`:639-658`), `get_members` (`:660-675`) | the {@link Interface.portChannel} field group ({@link portChannelFieldsFromBlock} + {@link interfacesFromSections}' group facts) plus {@link getLacpMode} / {@link getMembers} — read values stay absent where upstream substitutes a module constant, and members come from the running-config relation instead of only the text scrape (**DR-076**, divergence 15) |
+ | `PortchannelInterface.set_members` (`:677-716`), `set_lacp_mode` (`:718-745`), `set_minimum_links` (`:747-769`), `set_lacp_fallback` (`:771-793`), `set_lacp_timeout` (`:795-811`) | {@link setMembers} / {@link setLacpMode} / {@link setMinimumLinks} trio / {@link setLacpFallback} + {@link unsetLacpFallback} / {@link setLacpTimeout} — same diff and same remove-then-add batch, with the mode-change side call kept as **two** transactions (**divergence 20**, DR-080) |
  * | `_parse_shutdown` (`:179-191`): `'no shutdown' not in config` (`:190`) | {@link shutdownFromBlock} — a parsed body **command line**, three answers instead of two — divergence 3 |
  * | `_parse_description` (`:193-209`): `re.search(r'description (.+)$', config, re.M)` (`:206`), raw remainder, first match wins | {@link valueAfterKeyword} (`config-block.ts`) over the block body — the shared keyword extractor, so a value can no longer answer for another field (row 91's rule) — divergence 4 |
- * | `create` / `delete` / `default` (`:211-254`): `return self.configure('interface %s')` (`:226`) / `'no interface %s'` (`:243`) / `'default interface %s'` (`:254`) | {@link InterfacesResource.create} / {@link delete} / {@link setDefault} — same three command texts, no `True` to check (DR-005), plus the Ethernet refusal M10b owns — divergence 5 |
+ * | `create` / `delete` / `default` (`:211-254`): `return self.configure('interface %s')` (`:226`) / `'no interface %s'` (`:243`) / `'default interface %s'` (`:254`) | {@link InterfacesResource.create} / {@link delete} / {@link setDefault} — same three command texts, no `True` to check (DR-005), plus the physical-Ethernet rule from divergence 5 — and Port-Channel create/delete are the same pair on a non-dotted name, since upstream's `PortchannelInterface` inherits `BaseInterface.create`/`delete` rather than overriding them |
  * | `EthernetInterface.create` / `delete` (`:415-445`): `raise NotImplementedError` unless the name has a `.` (`:425-428`, `:441-444`); `test_api_interfaces.py:211-224` pins both | the refusal inside {@link assertPresentName} (divergence 5) |
  * | `set_encapsulation` (`:256-282`): `NotImplementedError` unless `'.' in name` (`:271-273`) and `name[0:2] in ['Et','Po']` (`:274-277`); `['interface %s']` (`:278`) + `command_builder('encapsulation dot1q vlan', str(vid), default, disable)` (`:279-281`) then `configure` (`:282`) | {@link setEncapsulation} / {@link unsetEncapsulation} / {@link defaultEncapsulation} — the prefix test becomes a consequence of the grammar, and there is no upstream reader for this field — divergence 6 |
  * | `set_description` (`:284-303`): `command_builder('description', …)` (`:301-302`) + `configure_interface` (`:303`) | `setDescription` / `unsetDescription` / `defaultDescription` (DR-037's mode table; `test_api_interfaces.py:107-124` pins all three texts) |
@@ -37,7 +43,7 @@
  * | **no upstream twin** | the `mtu` field on the read and `setMtu` / `unsetMtu` / `defaultMtu` — the closest upstream code is a *different module and a different command*, `ipinterfaces.py:113-127` / `:222-256` — divergence 7 |
  *
  * Upstream's own suite is `test/unit/test_api_interfaces.py` — **72** test methods (re-counted by AST on
- * 2026-11-04), of which the M10a scope is `TestFunctions` (`:48-62`), `TestApiInterfaces` (`:65-91`) and
+ * 2026-11-04), of which **M10a's** round (`#12, PR #30`) covered `TestFunctions` (`:48-62`), `TestApiInterfaces` (`:65-91`) and
  * `TestApiBaseInterface` (`:94-171`): `test_isvalidinterface_returns_true` (`:50-53`),
  * `_returns_false` (`:55-58`), `test_instance` (`:60-62`), `test_get_interface_generic` (`:72-75`),
  * `test_get_interface_ethernet` (`:77-79`), `test_get_invalid_interface` (`:81-83`),
@@ -46,19 +52,36 @@
  * (`:107-124`), `test_set_shutdown` / `_with_disable` / `_with_default` (`:126-142`) and the five
  * `test_set_encapsulation_*` (`:144-171`). Every command text they pin is reproduced verbatim in
  * `interfaces.test.ts`; the `AttributeError`/`NotImplementedError` answers are ported as typed
- * refusals, and the slices M10a excludes (`TestApiEthernetInterface` from `:174`,
- * `TestApiPortchannelInterface` from `:305`, `TestApiVxlanInterface` from `:429`) are not ported at all.
- * Upstream drives all of it through `EapiConfigUnitTest`, whose `MockConnection` answers `{}` to anything
- * it was not told about — here an unscripted request is a hard failure, so every batch below spells every
- * command (`testing/mock-transport.ts:83-88` compares a string matcher against the **whole joined command
+ * refusals. M10b/M10c (#12, this commit) port the two remaining groups: `TestApiEthernetInterface`
+ * (`:174-303`) — `test_get` (`:183-189`), `test_instance_functions` (`:191-209`),
+ * `test_instance_functions_exceptions` (`:211-224`) and the flowcontrol / sflow / vrf families
+ * (`:225-302`) — and `TestApiPortchannelInterface` (`:305-428`) — `test_get` (`:318-326`), the min-links /
+ * timeout / fallback families (`:328-373`), `test_get_lacp_mode` (`:375-377`), `test_get_members`
+ * (`:379-381`), the five `test_set_members_*` (`:383-414`), `test_set_lacp_mode` (`:416-422`) and
+ * `test_set_lacp_mode_invalid_mode` (`:424-427`). `TestApiVxlanInterface` (from `:429`) stays wave 3.
+ * Upstream's `EapiConfigUnitTest` mock answers `{}` to anything it was not told about, records only the
+ * **last** `config` call (`test/lib/testlib.py:100`), asserts `call_count == 0` for a `cmds=None` pin
+ * (`:109`), and drops the command list entirely on an exception pin (`:121-123`) — so several of its
+ * pins cannot see half of what the method sent; here an unscripted request is a hard failure, so every
+ * batch spells every command and the two-transaction verbs pin both calls
+ * (`testing/mock-transport.ts:83-88` compares a string matcher against the **whole joined command
  * list**, not a prefix).
  *
- * ## Divergences this file owns — numbered in MIGRATION.md §5 rows **99-106** (M10a's band)
+ * ## Divergences this file owns — numbered in MIGRATION.md §5 rows **99-106** (M10a's band) and
+ * **125-134** (M10b/M10c's band)
  *
  * Mapping for a reviewer: 1→99, 2→100, 3→101, 4 and 10→102, 5→103, 6→104, 7→105, and 8/9/11/12→106.
  * Decisions taken here are **DR-067** (the per-kind grammar), **DR-068** (per-kind fields, never
  * per-kind objects) and **DR-069** (a recording of the exact command outranks an inferred spelling).
- * M10b/M10c continue the ledger at rows **123-130**, which PR #29 reserved for this issue.
+ * M10b/M10c's divergences 13-20 land in the assigned band, rows **125-132** — the band **123-130** that
+ * PR #29's merge note tentatively reserved for #12 is **superseded** by the band this lane was given
+ * (125-134), and rows 133-134 are left unused rather than padded. Second-half mapping (not ascending,
+ * because the rows are grouped by what a reviewer reads together):
+ * **13→126, 14→132, 15→125, 16→127, 17→128, 18→131, 19→129, 20→130**, and the decisions are
+ * **DR-075** (members from the config relation), **DR-076** (absence survives a read), **DR-077** (the
+ * refusal replaces upstream's `ValueError` **and** its silent `False`), **DR-078** (the VRF keyword is a
+ * numeric version compare, refused when unclassifiable), **DR-079** (the channel-group mode is one type on
+ * both sides of the wire) and **DR-080** (a diff verb owns its side effects).
  *
  * 1. **membership comes from the chunker, and a name must be one token.** Upstream regex-scans the whole
  *    config text with `(?<=^interface\s)(.+)$` (`:108`) under `re.M`, so *any* line that begins with the word
@@ -109,9 +132,13 @@
  *    `test_api_interfaces.py:211-224` pins that, and pins `interface Ethernet1.1` as the form it *does*
  *    send). Here the refusal is explicit in {@link assertPresentName} and subinterfaces are refused too,
  *    because the shared name guard still refuses the dotted form (open item 7) — so this client can create
- *    a Port-Channel / Vlan / Management / Loopback / Vxlan interface and cannot create any Ethernet form
- *    until M10b (#12) owns `EthernetInterface`. Upstream's `default interface Ethernet1` **is** ported
- *    (`:245-254`, pinned positive at `test_api_interfaces.py:191-209`).
+ *    a Port-Channel / Vlan / Management / Loopback / Vxlan interface and an Ethernet **subinterface**
+ *    (`Ethernet1.100`, the form upstream pins), and cannot create a physical Ethernet or a dotted name of
+ *    another kind. Upstream's `default interface Ethernet1` **is** ported
+ *    (`:245-254`, pinned positive at `test_api_interfaces.py:191-209`). M10b (#12, this commit) is what
+ *    owns the Ethernet pair, so the refusal shrank from "every Ethernet form" to "the physical form" — the
+ *    four M10a pins that asserted the wider refusal were re-issued in `interfaces.test.ts` against the new
+ *    boundary rather than deleted.
  * 6. **`encapsulation` is read as well as written, and the kind rule is free.** Upstream writes
  *    `encapsulation dot1q vlan <vid>` with an `Et`/`Po`-prefix test (`:274-277`) and never reads the field
  *    back. The prefix test is what the per-kind grammar makes unnecessary: only the Ethernet and
@@ -194,6 +221,111 @@
  *     `EbraTestPhyPort` on that container — a PHY type, not the sibling capture's `ethernet` port-class).
  *     Whether 4.28.13.1M on the 7050TX-64 answers the same key set is a STATUS §3 capture, not an
  *     assumption; nothing here claims the container spelling is the hardware spelling (DR-043).
+ *
+ * ## M10b/M10c divergences (this lane, #12) — §5 rows 125-132, decisions DR-075..080
+ *
+ * 13. **absence is not a value on the Port-Channel reads.** Upstream's three `_parse_*` readers substitute
+ *     module constants when the section writes nothing: `minimum_links` → `0` (`:618-624`),
+ *     `lacp_fallback` → `DEFAULT_LACP_FALLBACK = 'disabled'` (`:625-631`, `:68`), `lacp_timeout` →
+ *     `DEFAULT_LACP_FALLBACK_TIMEOUT = 90` (`:632-638`, `:69`) — and `get_lacp_mode` answers
+ *     `DEFAULT_LACP_MODE = 'on'` for a group with no members (`:651-653`, `:67`). Its own `test_get`
+ *     (`test_api_interfaces.py:318-326`) pins the three invented answers against the fixture that provokes
+ *     them: `running_config.portchannel:18` writes `no port-channel min-links` and reads back `0`; `:19`
+ *     writes `no port-channel lacp fallback` and reads back the word `'disabled'`; only `:20`'s
+ *     `port-channel lacp fallback timeout 90` is honest. Here a `no` line and an absent line both read
+ *     **absent** ({@link numberFieldFromBlock} / {@link lacpFallbackFromBlock} /
+ *     {@link portChannelFieldsFromBlock}), because "the switch turned this off" and "the switch has 90 by
+ *     default" are different statements a UI must not confuse (DR-029/DR-057) — and the fallback reader
+ *     additionally has to skip the `port-channel lacp fallback timeout <n>` line, which a keyword-anchored
+ *     value read would otherwise report as the mode `timeout 90`. **DR-076.**
+ * 14. **the VRF binding is read back although upstream only ever writes it.** `EthernetInterface.get`
+ *     composes only sflow and the two flowcontrol directions (`:335-366` with the parsers at `:367-414`);
+ *     `set_vrf` (`:550-576`) has no reader anywhere in the module, so pyeapi cannot answer which VRF a port
+ *     is in. {@link vrfFromBlock} reads the same two keyword forms this client's own verb composes
+ *     ({@link setVrf}, divergence 18) plus the `vrf DAT` shape pyeapi's fixture already carries
+ *     (`running_config.text:1475`, beside the `vrf default` lines at `:2130`/`:2189`), so a
+ *     `setVrf` → `getAll` round trip closes. Absence stays absence: whether 4.28.13.1M writes a line for a
+ *     port in the default VRF is a device question (DECISIONS.md open item 2's VRF-licensing family), and
+ *     reporting `'default'` from silence would be the invention DR-057 names.
+ * 15. **members come from the running-config relation, and the live scrape stays a separate verb.**
+ *     `get_members` (`:660-675`) takes the group id from the Port-Channel **name** (`:671`), runs
+ *     `show port-channel <id> all-ports` as **text** (`:672-673`) and regexes
+ *     `\b(?!Peer)Ethernet[\d/]*\b` out of the output (`:674-675`); `get` (`:611`) and `set_members` (`:700`)
+ *     both treat that scrape as the member list. The record's `portChannel.members` instead reads the
+ *     members' own `channel-group <id> [mode <word>]` lines from the config this read already fetched
+ *     ({@link interfacesFromSections}) — which is where upstream's `get_lacp_mode` looks as well
+ *     (`:655-658` greps each member's `get_block('^interface %s')`), so the config is upstream's own source
+ *     for half of this answer. The scrape is still a verb ({@link getMembers}, its expression ported verbatim
+ *     as {@link membersFromOutput}) because "what the switch reports the LAG holds" and "what the
+ *     running-config declares" are different facts, and a review screen has to be able to see them
+ *     disagree. **DR-075.**
+ * 16. **sFlow and flow-control are read as commands, not as characters inside a block.**
+ *     `_parse_sflow` is `'no sflow' not in config` (`:367-380`, the answer at `:379`), a substring search over
+ *     the whole block: a section with **no** sflow line reads `sflow: true` — which the suite's own `test_get`
+ *     pins for `interface Ethernet1` (`test_api_interfaces.py:183-189`, a fixture section carrying no sflow
+ *     line, `running_config.text:542-675`) — and any line merely containing those six characters (a
+ *     description, `no sflow <anything>`, an indented sub-mode) reads `false`. Here the two whole body
+ *     commands `sflow enable` / `no sflow enable` answer, in device order, and neither present is absent
+ *     ({@link sflowFromBlock}, the {@link shutdownFromBlock} shape). The flowcontrol readers (`:381-414`)
+ *     hard-code `'off'` when the block writes neither line and take `(\w+)$` when it does, so
+ *     `no flowcontrol send` reads back `off` — one answer for three different writes. Here the value is read
+ *     behind the keyword ({@link valueAfterKeyword}), so neither the `no` nor the `default` arm answers as a
+ *     value, while a device word outside `on|off` is reported **verbatim** rather than coerced: the writer's
+ *     pair is client policy ({@link assertFlowcontrolValue}), the reader's job is what the switch wrote
+ *     (DR-059/DR-069).
+ * 17. **upstream's bad-input answers become typed refusals, and the per-kind surface is stated rather than
+ *     dispatched.** This slice's methods refuse bad input three different ways: `ValueError('invalid
+ *     flowcontrol value')` (`:513-515`), `ValueError('invalid direction specified')` (`:517-518`), a **bare**
+ *     `raise ValueError` carrying no message at all on `set_sflow` (`:542-543`), and `return False` — no
+ *     exception, no reason, just a boolean a caller has to remember to check — for an unknown LACP mode
+ *     (`set_lacp_mode`, `:731-732`, pinned non-raising at `test_api_interfaces.py:424-427`) or an unknown
+ *     fallback mode (`set_lacp_fallback`, `:787-788`, pinned at `:371-373`). DR-005 deletes the boolean and
+ *     every case lands as a {@link NotSupportedError} naming what upstream did (DR-010/DR-053). The surface
+ *     half of the same decision: upstream's instance methods validate no name — its suite drives
+ *     `EthernetInterface` over the module-level six-kind `INTERFACES` list (`:44-45` feeding `:280`, `:286`,
+ *     `:292`, `:297`) because `isvalidinterface` guards only `marshall`, the dispatch DR-006 does not port
+ *     (`:129-133`) — yet the only surface a caller has is the facade, whose prefix map reaches
+ *     `EthernetInterface` for `Et` and produces `AttributeError` for a `Management1` (`:120-127`, `:1093-1097`,
+ *     pinned at `:89-91`). {@link assertEthernetName} and {@link assertPortChannelName} model **that** surface
+ *     and refuse anything else with a message that says so; whether the 7050TX-64 binds sflow / a VRF / a
+ *     channel-group to another kind anyway is an M12 (#14) capture, not a licence to widen the verbs now
+ *     (DR-032/DR-057, row 128).
+ * 18. **`set_vrf`'s keyword is a numeric release compare, not a string compare.** Upstream picks `vrf` over
+ *     `vrf forwarding` with `if self.version_number >= '4.23'` (`:568`, the two arms at `:569-575`) on a
+ *     **string**, so `'4.9' >= '4.23'` is true and a 4.9-era device is handed the newer keyword; its suite
+ *     cannot see the bug because the mock node pins `'4.17.1.1'` (`test/lib/testlib.py:81`), which is why the
+ *     only VRF test pins `vrf forwarding testvrf` (`test_api_interfaces.py:297-302`). {@link vrfKeyword}
+ *     compares the two leading segments of the client's parsed {@link VersionProperties.versionNumber} as
+ *     numbers ({@link versionFloorCompare}) and **refuses** a version it cannot classify rather than guessing
+ *     which command an unnameable device accepts (DR-032/DR-057). The command texts are upstream's verbatim
+ *     and the device stays the authority on both forms — a `CommandError` path is pinned. **DR-078.**
+ * 19. **the channel-group mode has one type end to end, and no invented answer.** `get_lacp_mode`
+ *     (`:639-658`) answers `DEFAULT_LACP_MODE` (`:651-653`) for a group with no members — so a group whose
+ *     members are configured `mode active` can be reported as `on` — and otherwise `return`s inside the
+ *     **first** loop iteration (`:655-658`), which both stops it from ever looking at a second member and
+ *     makes it raise `TypeError` from `re.search(pattern, None)` when that member has no running-config
+ *     section (`abstract.py:96-101` answers `None`). `set_members` feeds that answer straight into
+ *     `channel-group %s mode %s` (`:712-714`), so a parameterless call on such a group writes the literal
+ *     text `channel-group 1 mode None` — and the suite pins that exact command as expected behaviour
+ *     (`test_set_members_mode_none`, `test_api_interfaces.py:404-409`). Here the mode token read off a device
+ *     line is validated against {@link LACP_MODES} ({@link readChannelGroupMode}): a section writing
+ *     `channel-group 1 mode fast` is **reported** as a {@link ConfigParseError}, not published as a mode; the
+ *     value is typed `LacpMode` from parse through verb argument (**DR-079**); the scan looks at every member
+ *     rather than only the first and answers **absent** when none names a mode; and a `setMembers` call with
+ *     no mode and no readable mode refuses rather than composing `mode None` (DR-077).
+ * 20. **`setMembers` keeps upstream's side call as its own transaction, and an empty diff is no transaction
+ *     at all.** `set_members` calls `self.set_lacp_mode(<grpid>, mode)` (`:702-704` — passing the bare group
+ *     id, which works only because that verb re-extracts the digits from it, `:734`) when the requested mode
+ *     differs from the current one, *before* composing its own add/remove diff. A mode change is therefore
+ *     **two** config transactions: a full remove-then-add of every current member (`:736-745`, which
+ *     momentarily detaches the whole LAG) and then the diff (`:706-714`). Upstream's test for exactly that
+ *     case (`:397-402`) can only see the last call — `testlib.py:100` inspects `config.call_args` — so the
+ *     detach batch is easy to miss in a review of upstream; {@link rewriteMembers} ports it and
+ *     `interfaces.test.ts` pins **both** transactions in order. The `return self.configure(commands) if
+ *     commands else True` line (`:716`) becomes "send nothing" (upstream pins that shape with `cmds=None`,
+ *     which `testlib.py:109` turns into `config.call_count == 0`, at `:411-414`); and where `set_lacp_mode`
+ *     with no members would still open a `configure terminal` carrying an empty list (`abstract.py:103-127`),
+ *     {@link setLacpMode} performs no transaction for an empty plan. **DR-080.**
  */
 import { ConfigParseError, NotSupportedError, ProtocolError } from '../errors'
 import { pythonRepr } from '../internal/wire'
@@ -201,7 +333,7 @@ import { parseBlock } from '../config/text'
 import { valueAfterKeyword } from './config-block'
 import { EntityCollection } from './base'
 import { submodeCommands } from './command-builder'
-import { assertInterfaceName, assertVlanId, INTERFACE_KINDS, parseInterfaceName } from './validators'
+import { assertInterfaceName, assertVlanId, parseInterfaceName } from './validators'
 import type { ConfigBlock, ConfigLine } from '../config/text'
 import type { ConfigSections } from '../config/chunk'
 import type { InterfaceKind, ParsedInterfaceName } from './validators'
@@ -277,7 +409,7 @@ export interface Interface {
    * members' own `channel-group <id> mode <m>` body lines (`get_lacp_mode`'s per-member block read,
    * `interfaces.py:639-658`, reached through the running-config instead of upstream's `show port-channel
    * all-ports` scrape — divergence 15) plus this section's own min-links / LACP-fallback lines
-   * (`:583-637`, absent-instead-of-defaulted — DR-076). Attached only on a `Port-Channel`-kind section
+   * (`get` at `:583-616` plus the three `_parse_*` readers at `:618-638`, absent-instead-of-defaulted — DR-076). Attached only on a `Port-Channel`-kind section
    * carrying at least one such fact.
    */
   readonly portChannel?: InterfacePortChannelFields
@@ -315,8 +447,12 @@ export interface InterfacePortChannelFields {
    * same members show; the live read stays a verb ({@link InterfacesResource.getMembers}, divergence 15).
    */
   readonly members?: string[]
-  /** The mode word of the first member line's `channel-group <id> mode <word>`. */
-  readonly lacpMode?: string
+  /**
+   * The mode word of the first member line's `channel-group <id> mode <word>`, one of
+   * {@link LACP_MODES} — a device line naming anything else is reported by
+   * {@link readChannelGroupMode} rather than published as a mode this client cannot write.
+   */
+  readonly lacpMode?: LacpMode
   /** The `port-channel min-links <n>` line — absent, not `0`, when the section writes no value (DR-076). */
   readonly minimumLinks?: number
   /** The `port-channel lacp fallback <word>` line — absent, not `'disabled'`, for the `no …` form (DR-076). */
@@ -325,13 +461,13 @@ export interface InterfacePortChannelFields {
   readonly lacpTimeout?: number
 }
 
-/** Which flow-control direction a write names — pyeapi's pair, validated at `interfaces.py:518-519`. */
+/** Which flow-control direction a write names — pyeapi's pair, validated at `interfaces.py:517-518`. */
 export const FLOWCONTROL_DIRECTIONS: readonly string[] = ['send', 'receive']
 /** The flow-control values pyeapi accepts before composing (`interfaces.py:514-516`). */
 export const FLOWCONTROL_VALUES: readonly string[] = ['on', 'off']
 export type FlowcontrolDirection = 'send' | 'receive'
 export type FlowcontrolValue = 'on' | 'off'
-/** The `channel-group … mode` values pyeapi accepts (`interfaces.py:727-729` and `:741`). */
+/** The `channel-group … mode` values pyeapi accepts (`interfaces.py:731` — the only mode check in the class; `set_members` composes whatever it is handed, `:712-714`, so an unlisted mode reaches the wire there). Also the three values its `set_members`/`set_lacp_mode` docstrings list (`:688`, `:726`). */
 export const LACP_MODES: readonly string[] = ['active', 'passive', 'on']
 export type LacpMode = 'active' | 'passive' | 'on'
 /** The fallback modes that carry a value (the `disabled` intent is a verb: {@link InterfacesResource.unsetLacpFallback}). */
@@ -422,18 +558,40 @@ const FLOWCONTROL_RECEIVE_KEYWORD = 'flowcontrol receive'
 /** A `vrf <name>` or `vrf forwarding <name>` body line — the two shapes {@link InterfacesResource.setVrf} writes, and the `vrf DAT` form the 4.13.7M fixture already carries (`test/fixtures/running_config.text:1475`). */
 const VRF_BODY_LINE = /^vrf(?:[ \t]+forwarding)?[ \t]+(\S+)$/u
 
-/** The channel-group relation that stitches members to their group (`interface Ethernet5` writing `channel-group 1 mode active`, `running_config.portchannel:147`). The id and mode runs are captured; anything further on the line is kept out of the mode word. */
+/** The channel-group relation that stitches members to their group (`interface Ethernet5` writing `channel-group 1 mode on`, `running_config.portchannel:147`; `:278` is `Ethernet6`'s copy). The id and mode runs are captured; anything further on the line is kept out of the mode word. */
 const CHANNEL_GROUP_LINE = /^channel-group[ \t]+([0-9]+)(?:[ \t]+mode[ \t]+(\S+?))?(?:[ \t]+\S+)*[ \t]*$/u
+
+/**
+ * The mode token of a `channel-group <id> mode <word>` line, validated against {@link LACP_MODES}.
+ *
+ * Upstream reads this token **unvalidated and verbatim**: `get_lacp_mode`'s
+ * `re.search(r'channel-group\s\d+\smode\s(?P<value>.+)', …)` hands back whatever follows `mode `
+ * (`interfaces.py:656-658`), and `set_members` interpolates the mode it was handed straight into
+ * `channel-group %s mode %s` without a check (`:712-714`). This client reads the token as one of the
+ * three modes the LACP verbs accept and **reports the line when it is not one of them** — the
+ * {@link numberFieldFromBlock} rule (rows 43/44, restated for this module by DR-059): a table that
+ * silently carried `mode fast` would show the operator a value its own write verbs refuse.
+ * Refusing the *input* side is {@link assertLacpMode}; this is the read side, so the failure is a
+ * {@link ConfigParseError} naming the section, not a caller-facing refusal.
+ */
+function readChannelGroupMode(token: string | undefined, sectionKey: string): LacpMode | undefined {
+  if (token === undefined) return undefined
+  if ((LACP_MODES as readonly string[]).includes(token)) return token as LacpMode
+  throw new ConfigParseError(
+    `interfaces: cannot read the channel-group mode in ${pythonRepr(sectionKey)} — ${pythonRepr(token)} is not one of ${LACP_MODES.join(' / ')}. pyeapi answers the raw word back without checking it (api/interfaces.py:656-658) and set_members writes an unvalidated mode to the wire (:712-714); this client reports the line instead of publishing a mode its own LACP verbs refuse (DR-059)`,
+    { sectionKey },
+  )
+}
 
 /** Keywords the PortchannelInterface fields are read behind. */
 const MIN_LINKS_KEYWORD = 'port-channel min-links'
 const LACP_FALLBACK_KEYWORD = 'port-channel lacp fallback'
 const LACP_TIMEOUT_KEYWORD = 'port-channel lacp fallback timeout'
 
-/** The group id pyeapi extracts from a Port-Channel name for its command texts — the first decimal run (`re.search(r'(\d+)', name).group()`, `interfaces.py:667`/`:698`/`:739`; it `.group()`s on `None` and crashes for a name with no digits). */
+/** The group id pyeapi extracts from a Port-Channel name for its command texts — the first decimal run (`re.search(r'(\d+)', name).group()`, `interfaces.py:671` in `get_members`, `:699` in `set_members`, `:734` in `set_lacp_mode`; it `.group()`s on `None` and crashes for a name with no digits). */
 const GROUP_ID = /([0-9]+)/u
 
-/** The release floor at which pyeapi's `set_vrf` switches from `vrf forwarding` to the bare `vrf` keyword (`interfaces.py:550-571` — a **string** compare against `'4.23'`, which divergence 18 replaces with a numeric one). */
+/** The release floor at which pyeapi's `set_vrf` switches from `vrf forwarding` to the bare `vrf` keyword (`interfaces.py:550-576`, the compare itself at `:568` — a **string** compare against `'4.23'`, which divergence 18 replaces with a numeric one). */
 const VRF_BARE_FORM_MIN: readonly [number, number] = [4, 23]
 
 /**
@@ -593,27 +751,27 @@ function assertPortChannelName(verb: string, value: unknown): asserts value is s
   refuse(
     `${verb} interface`,
     value,
-    'expected a plain `PortChannel<n>` name whose digits carry the channel-group id — members/min-links/LACP are pyeapi PortchannelInterface methods (api/interfaces.py:578-813) reached only through the `PortChannel` prefix of its class map (:120-127, :1093-1097), and its group extraction re.search(r"(\\d+)", name).group() crashes outright on a digit-less name (:667, :698, :739); dotted Port-Channel names stay refused for want of device evidence (DECISIONS.md open item 7)',
+    'expected a plain `PortChannel<n>` name whose digits carry the channel-group id — members/min-links/LACP are pyeapi PortchannelInterface methods (api/interfaces.py:578-813) reached only through the `PortChannel` prefix of its class map (:120-127, :1093-1097), and its group extraction re.search(r"(\\d+)", name).group() crashes outright on a digit-less name (:671, :699, :734); dotted Port-Channel names stay refused for want of device evidence (DECISIONS.md open item 7)',
   )
 }
 
-/** Require one of pyeapi's two flowcontrol directions (its `ValueError`, `interfaces.py:518-519`, becomes a typed refusal — DR-077). */
+/** Require one of pyeapi's two flowcontrol directions (its `ValueError`, `interfaces.py:517-518`, becomes a typed refusal — divergence 17 / DR-077). */
 function assertFlowcontrolDirection(value: unknown): asserts value is FlowcontrolDirection {
   if ((FLOWCONTROL_DIRECTIONS as readonly unknown[]).includes(value)) return
-  refuse('flowcontrol direction', value, `expected one of ${FLOWCONTROL_DIRECTIONS.join(' / ')} — pyeapi raises ValueError for anything else (api/interfaces.py:518-519; pinned negative by test/unit/test_api_interfaces.py:234-238)`)
+  refuse('flowcontrol direction', value, `expected one of ${FLOWCONTROL_DIRECTIONS.join(' / ')} — pyeapi raises ValueError for anything else (api/interfaces.py:517-518; pinned negative by test/unit/test_api_interfaces.py:234-238)`)
 }
 
-/** Require one of pyeapi's two flowcontrol values (its `ValueError`, `interfaces.py:514-517`; tests `:239-243`). */
+/** Require one of pyeapi's two flowcontrol values (its `ValueError`, `interfaces.py:513-515`; tests `:239-243`). */
 function assertFlowcontrolValue(value: unknown): asserts value is FlowcontrolValue {
   if ((FLOWCONTROL_VALUES as readonly unknown[]).includes(value)) return
-  refuse('flowcontrol value', value, `expected one of ${FLOWCONTROL_VALUES.join(' / ')} — pyeapi raises ValueError for anything else (api/interfaces.py:514-517; pinned negative by test/unit/test_api_interfaces.py:239-243)`)
+  refuse('flowcontrol value', value, `expected one of ${FLOWCONTROL_VALUES.join(' / ')} — pyeapi raises ValueError for anything else (api/interfaces.py:513-515; pinned negative by test/unit/test_api_interfaces.py:239-243)`)
 }
 
 /**
  * Require a VRF name this client can read back: a single non-empty token, no surrounding
  * whitespace and no control character.
  *
- * Upstream interpolates whatever it is handed (`interfaces.py:569/574` and `abstract.py:158-159`),
+ * Upstream interpolates whatever it is handed (`interfaces.py:569`/`:573` and `abstract.py:158-159`),
  * tests name it `'testvrf'` (:297), and the fixture carries the single-token forms `vrf DAT`
  * (`test/fixtures/running_config.text:1475`) and `vrf default` (`:2130`/`:2189`). A spaced or
  * padded name would compose a command whose read-back this module's `VRF_BODY_LINE` cannot reproduce,
@@ -631,20 +789,20 @@ function assertVrfValue(value: unknown): asserts value is string {
 /** Require one of the three channel-group modes, for either side of the LACP verbs. */
 function assertLacpMode(value: unknown): asserts value is LacpMode {
   if ((LACP_MODES as readonly unknown[]).includes(value)) return
-  refuse('lacp mode', value, `expected one of ${LACP_MODES.join(' / ')} — pyeapi answers an invalid mode by RETURNING False in set_lacp_mode (api/interfaces.py:727-729, pinned non-raising at test/unit/test_api_interfaces.py:424-428) and does not check one at all in set_members, where an unknown mode reaches the wire as \`channel-group 1 mode <junk>\` (:704-707). Neither answer is usable from TS (DR-005/DR-077): the typed refusal is the third, and it is also the one that keeps a typo out of a LAG`)
+  refuse('lacp mode', value, `expected one of ${LACP_MODES.join(' / ')} — pyeapi answers an invalid mode by RETURNING False in set_lacp_mode (api/interfaces.py:731-732, pinned non-raising at test/unit/test_api_interfaces.py:424-427) and does not check one at all in set_members, where an unknown mode reaches the wire as \`channel-group 1 mode <junk>\` (:712-714). Neither answer is usable from TS (DR-005/DR-077): the typed refusal is the third, and it is also the one that keeps a typo out of a LAG`)
 }
 
 /** Require a fallback mode that carries a value; the `disabled` intent is the named-verb treatment of pyeapi's `disable` arm (DR-037/DR-077). */
 function assertLacpFallbackMode(value: unknown): asserts value is LacpFallbackMode {
-  if (value === 'disabled') refuse('lacp fallback mode', value, "the 'disabled' arm composes `no port-channel lacp fallback` (pyeapi maps mode=='disabled' to disable=True, api/interfaces.py:782-789, pinned test/unit/test_api_interfaces.py:366-370) — that intent is the verb unsetLacpFallback() here, because the mode strings and the negation are separate questions (DR-037)")
+  if (value === 'disabled') refuse('lacp fallback mode', value, "the 'disabled' arm composes `no port-channel lacp fallback` (pyeapi maps mode=='disabled' to disable=True at api/interfaces.py:789, composed at :790-792 and pinned by test/unit/test_api_interfaces.py:386-390) — that intent is the verb unsetLacpFallback() here, because the mode strings and the negation are separate questions (DR-037)")
   if ((LACP_FALLBACK_MODES as readonly unknown[]).includes(value)) return
-  refuse('lacp fallback mode', value, `expected one of ${LACP_FALLBACK_MODES.join(' / ')} (or unsetLacpFallback() for the \`no\` form) — pyeapi answers any other mode by RETURNING False, with no exception and nothing to inspect (api/interfaces.py:779-781, pinned at test/unit/test_api_interfaces.py:371-374)`)
+  refuse('lacp fallback mode', value, `expected one of ${LACP_FALLBACK_MODES.join(' / ')} (or unsetLacpFallback() for the \`no\` form) — pyeapi answers any other mode by RETURNING False, with no exception and nothing to inspect (api/interfaces.py:787-788, pinned by the suite's invalid-mode test at test/unit/test_api_interfaces.py:391-394)`)
 }
 
 /** Require the positive-integer value a min-links / fallback-timeout write composes. **Client policy** — the platform bound is a device answer (DR-032/DR-057), upstream validates nothing, and `0` is DR-037's falsy trap. */
 function assertPortBandValue(value: unknown, label: string): asserts value is number {
   if (typeof value === 'number' && Number.isSafeInteger(value) && value > 0) return
-  refuse(label, value, `expected a positive integer — pyeapi interpolates whatever arrives (api/interfaces.py:760-770 min-links / :806-813 lacp timeout have no bound at all), and the DEVICE answers 1002/1003 for a value it genuinely refuses (DR-005). 0 would compose a \`no\` line through pyeapi's falsy fall-through at abstract.py:160-161, which is exactly the surprise DR-037 deletes`)
+  refuse(label, value, `expected a positive integer — pyeapi interpolates whatever arrives (api/interfaces.py:747-769 min-links / :795-811 lacp timeout have no bound at all), and the DEVICE answers 1002/1003 for a value it genuinely refuses (DR-005). 0 would compose a \`no\` line through pyeapi's falsy fall-through at abstract.py:158-161, which is exactly the surprise DR-037 deletes`)
 }
 
 /**
@@ -670,8 +828,8 @@ function versionFloorCompare(versionNumber: string, floor: readonly [number, num
  * applied to the M10b field (divergence 16).
  *
  * Upstream's reader is not a command match — it is a substring search over the whole block text,
- * `value = 'no sflow' not in config` (`interfaces.py:367-380`): an interface whose block carries
- * **no sflow line at all** reads back ENABLED (the answer `test/unit/test_api_interfaces.py:183-190`
+ * `value = 'no sflow' not in config` (`interfaces.py:367-380`, the test at `:379`): an interface whose block carries
+ * **no sflow line at all** reads back ENABLED (the answer `test/unit/test_api_interfaces.py:183-189`
  * pins for the fixture's `interface Ethernet1`, `test/fixtures/running_config.text:542-675`, which
  * carries no sflow line), and any block containing those six characters anywhere — a description,
  * a nested line, `no sflow something-else` — reads back disabled. Absence is not a state
@@ -784,7 +942,7 @@ function numberFieldFromBlock(value: string | undefined, keyword: string, sectio
 /** The cross-section facts of one channel-group id, collected from the members' own body lines. */
 interface GroupFacts {
   readonly members: readonly string[]
-  readonly lacpMode: string | undefined
+  readonly lacpMode: LacpMode | undefined
 }
 
 /** The Port-Channel-kind field group: this section's own min-links/LACP lines plus its group's members/mode. */
@@ -830,7 +988,7 @@ function interfaceFromSection(sectionKey: string, name: string, parsed: ParsedIn
  * `channel-group <id> mode <m>` line into the group facts, the second builds the records (per-kind
  * groups arrive with M10b/M10c — DR-068) and attaches those facts to the matching Port-Channel
  * section. Members land in running-config order, and the group id is the raw decimal run as written,
- * because that is the token every channel-group command uses (`interfaces.py:667`/`:699` extract it
+ * because that is the token every channel-group command uses (`interfaces.py:671`/`:699`/`:734` extract it
  * from the Port-Channel *name* — a header spelled `PortChannel01` therefore looks for the id `01`
  * exactly as upstream would write it; whether EOS normalizes the two spellings together is an M12 (#14)
  * capture, not a claim here).
@@ -846,7 +1004,7 @@ function interfaceFromSection(sectionKey: string, name: string, parsed: ParsedIn
  */
 function interfacesFromSections(sections: ConfigSections): Map<string, Interface> {
   const parsedSections = new Map<string, { sectionKey: string; parsed: ParsedInterfaceName | undefined; block: ConfigBlock }>()
-  const groups = new Map<string, { members: string[]; firstMode?: string }>()
+  const groups = new Map<string, { members: string[]; firstMode?: LacpMode }>()
   for (const [sectionKey, sectionText] of sections) {
     const name = INTERFACE_SECTION.exec(sectionKey)?.[1]
     if (name === undefined) continue
@@ -857,10 +1015,18 @@ function interfacesFromSections(sections: ConfigSections): Map<string, Interface
     for (const line of block.body) {
       const relation = CHANNEL_GROUP_LINE.exec(line.text)
       if (relation === null) continue
-      const facts = groups.get(relation[1]) ?? { members: [] }
+      // The id group is the key of the fact record, so it has to be bound and checked: `exec` types every
+      // capture `string | undefined` under `noUncheckedIndexedAccess` even when the regex makes the group
+      // mandatory, and `groups.get(undefined)` would silently key a member under a group no name has.
+      const gid = relation[1]
+      if (gid === undefined) continue
+      const facts = groups.get(gid) ?? { members: [] }
       if (!facts.members.includes(name)) facts.members.push(name)
-      if (facts.firstMode === undefined && relation[2] !== undefined) facts.firstMode = relation[2]
-      groups.set(relation[1], facts)
+      // Assign only a real mode: `exactOptionalPropertyTypes` makes `firstMode?: LacpMode` mean
+      // "absent or a mode", never "present and undefined", and the first mode-bearing line wins.
+      const mode = readChannelGroupMode(relation[2], sectionKey)
+      if (facts.firstMode === undefined && mode !== undefined) facts.firstMode = mode
+      groups.set(gid, facts)
     }
   }
   const interfaces = new Map<string, Interface>()
@@ -1176,9 +1342,10 @@ export class InterfacesResource extends EntityCollection<Interface, string, Inte
   // --- EthernetInterface verbs, M10b (#12): interfaces.py:330-577 ---------------------------------
 
   /**
-   * `sflow enable` — pyeapi's `set_sflow(name, True)` (`interfaces.py:526-545`;
-   * `test_api_interfaces.py` pins enable on `interface Ethernet1`/`interface Ethernet1-23` blocks at
-   * the `set_sflow_with_value` group).
+   * `sflow enable` — pyeapi's `set_sflow(name, True)` (`interfaces.py:526-548`, the guard refusing any
+   * non-boolean at `:542-543` and the compose at `:545-547`);
+   * `test/unit/test_api_interfaces.py:269-278` pins `interface Ethernet1` / `interface Ethernet1/1` +
+   * `sflow enable` for the truthy arm.
    */
   async setSflow(name: string): Promise<void> {
     assertEthernetName('setSflow', name)
@@ -1190,7 +1357,8 @@ export class InterfacesResource extends EntityCollection<Interface, string, Inte
    * (falsy value → `no` arm through `command_builder`'s `elif value:` fall-through,
    * `abstract.py:158-161`), `set_sflow(name)` with no value at all (the deprecated `no` line), and
    * `set_sflow(name, disable=True)` — and its suite pins the `False` arm's text at
-   * `test/unit/test_api_interfaces.py` under `test_set_sflow_with_value` (`interfaces.py:538-542`).
+   * `test/unit/test_api_interfaces.py:269-278` (`interfaces.py:542-543` is the only guard on this verb,
+   * and it is a **bare** `raise ValueError` with no message; the three arms all compose at `:545-547`).
    * DR-037 keeps one name per intent: this verb is that text, whatever keyword produced it upstream.
    */
   async unsetSflow(name: string): Promise<void> {
@@ -1198,7 +1366,7 @@ export class InterfacesResource extends EntityCollection<Interface, string, Inte
     await this.configureInterface(name, [this.commandBuilder(SFLOW_ON_COMMAND, { mode: 'no' })])
   }
 
-  /** `default sflow enable` — pyeapi's `set_sflow(name, default=True)` (`:539-540`; tests `test_set_sflow_with_default`). */
+  /** `default sflow enable` — pyeapi's `set_sflow(name, default=True)` (`:545-547` passes `default=default` to `command_builder`; tests `:286-290` pin the text, over the module-level six-kind list). */
   async defaultSflow(name: string): Promise<void> {
     assertEthernetName('defaultSflow', name)
     await this.configureInterface(name, [this.commandBuilder(SFLOW_ON_COMMAND, { mode: 'default' })])
@@ -1206,8 +1374,8 @@ export class InterfacesResource extends EntityCollection<Interface, string, Inte
 
   /**
    * `flowcontrol <direction> <on|off>` — pyeapi's `set_flowcontrol(name, direction, value)`
-   * (`interfaces.py:491-525`), whose two guards (`ValueError` for a bad value `:514-517` and for a bad
-   * direction `:518-519`, pinned negative at `test_api_interfaces.py`'s
+   * (`interfaces.py:491-524`), whose two guards (`ValueError` for a bad value `:513-515` and for a bad
+   * direction `:517-518`, pinned negative at `test_api_interfaces.py`'s
    * `test_set_flowcontrol_with_invalid_*` pair) become typed refusals, and whose command text the
    * `test_set_flowcontrol_with_value` loops pin for both directions and both values.
    */
@@ -1275,7 +1443,7 @@ export class InterfacesResource extends EntityCollection<Interface, string, Inte
    * kinds, `test_api_interfaces.py` module-level `INTERFACES` `:44-45`); the per-kind refusal is the
    * facade's `Et`-prefix dispatch, which is the only upstream user surface (DR-006). The test-era
    * answer this client ports is `test_set_vrf` at `:297` (`interface X` + `vrf forwarding testvrf`
-   * against the mock node's `'4.17.1.1'`, `test/lib/testlib.py` — same commands this verb emits under
+   * against the mock node's `'4.17.1.1'`, `test/lib/testlib.py:81` — same commands this verb emits under
    * a pre-4.23 version).
    */
   async setVrf(name: string, vrf: string): Promise<void> {
@@ -1327,7 +1495,7 @@ export class InterfacesResource extends EntityCollection<Interface, string, Inte
    * which is why {@link setMembers} names members it will not compose.
    *
    * Upstream reads `config[0]['result']['output']` positionally off the `enable` answer
-   * (`:672-675`) and raises `TypeError`/`IndexError` on a malformed reply; this verb goes through
+   * (`:673-675`) and raises `TypeError`/`IndexError` on a malformed reply; this verb goes through
    * `Node.showText`, whose own shape checks produce the typed `ProtocolError`/`CommandError` instead
    * (DR-005/DR-010). The record's `portChannel.members` is the config-side relation
    * ({@link interfacesFromSections}, divergence 15); this is the device read the PLAN names.
@@ -1342,7 +1510,7 @@ export class InterfacesResource extends EntityCollection<Interface, string, Inte
     return membersFromOutput(await this.showPortChannelText(name))
   }
 
-  /** The one device read behind {@link getMembers} and the diff verbs — command literal ported from `interfaces.py:667/672`. */
+  /** The one device read behind {@link getMembers} and the diff verbs — command literal ported from `interfaces.py:671-672`. */
   private async showPortChannelText(name: string): Promise<string> {
     const grpid = GROUP_ID.exec(name)?.[1] ?? ''
     return this.node.showText(`show port-channel ${grpid} all-ports`)
@@ -1358,22 +1526,30 @@ export class InterfacesResource extends EntityCollection<Interface, string, Inte
    * (`:655-658` + `abstract.py:96-101`). Both answers are refusals to look further; this client scans
    * its members and answers **absent** when none of the blocks name a mode (divergence 19).
    */
-  async getLacpMode(name: string): Promise<string | undefined> {
+  async getLacpMode(name: string): Promise<LacpMode | undefined> {
     assertPortChannelName('getLacpMode', name)
     const members = await this.getMembers(name)
     return this.lacpModeFromMembers(members)
   }
 
-  /** The shared search behind {@link getLacpMode} — also what {@link setMembers} uses, without paying for the fetch twice. */
-  private async lacpModeFromMembers(members: readonly string[]): Promise<string | undefined> {
+  /**
+   * The shared search behind {@link getLacpMode} — also what {@link setMembers} uses, without paying for
+   * the fetch twice. The token is validated by {@link readChannelGroupMode}, so the answer is one of
+   * {@link LACP_MODES} or absent: the mode a UI shows and the mode {@link setLacpMode} writes are the same
+   * type, which is what keeps a device-carried typo out of the next LAG rewrite.
+   */
+  private async lacpModeFromMembers(members: readonly string[]): Promise<LacpMode | undefined> {
     for (const member of members) {
       const parsed = parseInterfaceName(member)
       if (parsed === undefined) continue
-      const block = await this.getBlock(`interface ${parsed.name}`)
+      const blockKey = `interface ${parsed.name}`
+      const block = await this.getBlock(blockKey)
       if (block === undefined) continue
       for (const line of parseBlock(block).body) {
         const relation = CHANNEL_GROUP_LINE.exec(line.text)
-        if (relation !== null && relation[2] !== undefined) return relation[2]
+        if (relation === null) continue
+        const mode = readChannelGroupMode(relation[2], blockKey)
+        if (mode !== undefined) return mode
       }
     }
     return undefined
@@ -1384,17 +1560,20 @@ export class InterfacesResource extends EntityCollection<Interface, string, Inte
    * `set_members` (`interfaces.py:677-717`) computes "the ones now that shouldn't be" as
    * `interface <m>` + `no channel-group <id>` pairs and "the ones that should be and aren't" as
    * `interface <m>` + `channel-group <id> mode <mode>` pairs, in ONE transaction, and sends **nothing**
-   * when the two lists come out empty (the `if commands else True` line, `:717` — pinned by
+   * when the two lists come out empty (the `if commands else True` line, `:716` — pinned by
    * `test_set_members_no_changes`, whose `cmds=None` assertion is "no config call happened at all",
-   * `test/lib/testlib.py`).
+   * `test_api_interfaces.py:411-414` against `test/lib/testlib.py:96-97`, which reads
+   * `self.node.config.call_args` — the **last** config call only.
    *
    * Upstream's current-members source is the `show port-channel all-ports` scrape, so this verb asks
    * the device ({@link getMembers}) rather than trusting the local table — and its `mode` handling is
    * ported faithfully, including the side effect: when a `mode` is given and differs from the mode the
    * members currently carry, pyeapi first **rewrites every current member** (`self.set_lacp_mode`,
-   * `:713`, a full remove-then-add batch of its own) and then composes the diff with the new mode —
-   * two config transactions (divergence 20, DR-080; upstream's own `:997-1009` test could only see
-   * the LAST `configure` call, `test/lib/testlib.py:79`, so the first batch is easy to miss in a
+   * `:704`, a full remove-then-add batch of its own — note upstream passes the bare **group id** as
+   * `set_lacp_mode`'s `name` argument, which only works because that verb re-extracts the digits) and then
+   * composes the diff with the new mode — two config transactions (divergence 20, DR-080; upstream's own
+   * `test_set_members_update_mode` test could only see the LAST `configure` call,
+   * `test/lib/testlib.py:100-103`, so the first batch is easy to miss in a
    * review). When no mode is given and none can be read from any member, the verb refuses instead of
    * writing pyeapi's `channel-group 1 mode None` string (divergence 19/DR-077).
    *
@@ -1409,17 +1588,17 @@ export class InterfacesResource extends EntityCollection<Interface, string, Inte
     const grpid = GROUP_ID.exec(name)?.[1] ?? ''
     const current = await this.getMembers(name)
 
-    let effective = mode
+    let effective: LacpMode | undefined = mode
     if (effective !== undefined) {
       const found = await this.lacpModeFromMembers(current)
       if (found !== undefined && found !== effective) {
-        await this.rewriteMembers(current, grpid, effective) // pyeapi's set_lacp_mode side call, :713
+        await this.rewriteMembers(current, grpid, effective) // pyeapi's set_lacp_mode side call, :702-704
       }
     } else {
       effective = await this.lacpModeFromMembers(current)
       if (effective === undefined && current.length > 0) {
         throw new NotSupportedError(
-          `setMembers(PortChannel ${pythonRepr(name)}): no mode given and no current member names a channel-group mode to reuse — pyeapi would interpolate Python None and write \`channel-group ${grpid} mode None\` (api/interfaces.py:704-707 reached via get_lacp_mode's None answer, :639-658); name the mode instead (DR-077)`,
+          `setMembers(PortChannel ${pythonRepr(name)}): no mode given and no current member names a channel-group mode to reuse — pyeapi would interpolate Python None and write \`channel-group ${grpid} mode None\` (api/interfaces.py:712-714 reached via get_lacp_mode's None answer, :639-658); name the mode instead (DR-077)`,
         )
       }
     }
@@ -1439,9 +1618,10 @@ export class InterfacesResource extends EntityCollection<Interface, string, Inte
 
   /**
    * Set the LACP mode on **every current member** — pyeapi's `set_lacp_mode` (`interfaces.py:718-746`):
-   * it fetches the live member list (`get_members`, `:732-733`) and composes ALL the `no channel-group`
+   * it fetches the live member list (`get_members`, called at `:739`) and composes ALL the `no channel-group`
    * removals before ALL the `channel-group <id> mode <new>` re-adds in one flat
-   * `remove + add`-ordered transaction (`:745`), pinned by test_set_lacp_mode's eight-line expectation.
+   * `remove + add`-ordered transaction (`:740-743`, sent at `:745`), pinned by
+   * `test_set_lacp_mode`'s eight-line expectation at `test/unit/test_api_interfaces.py:416-422`.
    * With no members upstream would send `configure([])` (one bare `configure terminal`); this client
    * treats an empty plan as no transaction — pinning that difference is the row, DR-077's refusal
    * family.
@@ -1466,24 +1646,24 @@ export class InterfacesResource extends EntityCollection<Interface, string, Inte
   }
 
   /**
-   * `port-channel min-links <n>` — pyeapi's `set_minimum_links(name, value)` (`interfaces.py:747-759`,
+   * `port-channel min-links <n>` — pyeapi's `set_minimum_links(name, value)` (`interfaces.py:747-769`,
    * `test/unit/test_api_interfaces.py:305-428` pin the trio texts and `test_set_minimum_links_with_value`
    * a random 1..16). The positive-integer floor is this client's (see {@link assertPortBandValue}); the
    * platform bound stays the device's.
    */
   async setMinimumLinks(name: string, value: number): Promise<void> {
     assertPortChannelName('setMinimumLinks', name)
-    assertPortBandValue(value, 'minimum links value') // pyeapi validates nothing on this verb — interfaces.py:747-759, pinned positive at test_api_interfaces.py:305-428 (min-links random 1..16)
+    assertPortBandValue(value, 'minimum links value') // pyeapi validates nothing on this verb — interfaces.py:747-769, pinned positive at test_api_interfaces.py:328-333 (min-links random 1..16)
     await this.configureInterface(name, [this.commandBuilder(MIN_LINKS_KEYWORD, { value })])
   }
 
-  /** `no port-channel min-links` — pyeapi's no-value default arm and its `disable=True` arm, one text, one verb (`interfaces.py:752-753` + `abstract.py:154-161`; both pinned by the min-links `with_no_value` / `with_disable` tests — the fixture's own negation line, `running_config.portchannel:18`). */
+  /** `no port-channel min-links` — pyeapi's no-value default arm and its `disable=True` arm, one text, one verb (`interfaces.py:765-768` + `abstract.py:154-161`; pinned at test_api_interfaces.py:335-338 and :345-348 — the fixture's own negation line, `running_config.portchannel:18`). */
   async unsetMinimumLinks(name: string): Promise<void> {
     assertPortChannelName('unsetMinimumLinks', name)
     await this.configureInterface(name, [this.commandBuilder(MIN_LINKS_KEYWORD, { mode: 'no' })])
   }
 
-  /** `default port-channel min-links` — pyeapi's `default=True` arm (`:752` + `abstract.py:152-153`; pinned by `test_set_minimum_links_with_default`). */
+  /** `default port-channel min-links` — pyeapi's `default=True` arm (`:767` + `abstract.py:152-153`; pinned at `test_api_interfaces.py:340-343`). */
   async defaultMinimumLinks(name: string): Promise<void> {
     assertPortChannelName('defaultMinimumLinks', name)
     await this.configureInterface(name, [this.commandBuilder(MIN_LINKS_KEYWORD, { mode: 'default' })])
@@ -1491,8 +1671,8 @@ export class InterfacesResource extends EntityCollection<Interface, string, Inte
 
   /**
    * `port-channel lacp fallback <individual|static>` — pyeapi's `set_lacp_fallback`
-   * (`interfaces.py:771-805`, pinned by the `with_individual` / `with_static` / `with_disabled` /
-   * `invalid_mode` group): the two value-carrying modes here, and the third — `'disabled'`, which
+   * (`interfaces.py:771-793`, pinned at `test/unit/test_api_interfaces.py:356-359` / `:361-364` /
+   * `:366-369` / `:371-373` — individual / static / disabled / invalid): the two value-carrying modes here, and the third — `'disabled'`, which
    * upstream turns into the `no` arm — is {@link unsetLacpFallback}, because a mode string and a
    * negation are different intents (DR-037/DR-077).
    */
@@ -1502,7 +1682,7 @@ export class InterfacesResource extends EntityCollection<Interface, string, Inte
     await this.configureInterface(name, [this.commandBuilder(LACP_FALLBACK_KEYWORD, { value: mode })])
   }
 
-  /** `no port-channel lacp fallback` — upstream's `mode='disabled'` arm (`interfaces.py:786-789`; pinned by `test/unit/test_api_interfaces.py`'s `test_set_lacp_fallback_with_disabled`, and the config-side mirror is the fixture's line at `running_config.portchannel:19`). */
+  /** `no port-channel lacp fallback` — upstream's `mode='disabled'` arm (`interfaces.py:789-792`; pinned at `test/unit/test_api_interfaces.py:366-369`, and the config-side mirror is the fixture's line at `running_config.portchannel:19`). */
   async unsetLacpFallback(name: string): Promise<void> {
     assertPortChannelName('unsetLacpFallback', name)
     await this.configureInterface(name, [this.commandBuilder(LACP_FALLBACK_KEYWORD, { mode: 'no' })])
@@ -1510,14 +1690,15 @@ export class InterfacesResource extends EntityCollection<Interface, string, Inte
 
   /**
    * `port-channel lacp fallback timeout <seconds>` — pyeapi's `set_lacp_timeout`
-   * (`interfaces.py:806-813`; `test_set_lacp_timeout_with_value` and `test_get` pair the write with the
+   * (`interfaces.py:795-811`; `test_set_lacp_timeout_with_value` at `test_api_interfaces.py:350-354` and
+   * `test_get` at `:318-326` pair the write with the
    * fixture's `port-channel lacp fallback timeout 90`, `running_config.portchannel:20`). No value: the
    * guard, not upstream's fall-through to the **defaulted** reader answer — and the record never
    * reports `90` because that is a module constant, not the device's line (DR-076).
    */
   async setLacpTimeout(name: string, value: number): Promise<void> {
     assertPortChannelName('setLacpTimeout', name)
-    assertPortBandValue(value, 'lacp fallback timeout') // pyeapi's only timeout test uses a random 1..16 — interfaces.py:806-813, no bound anywhere
+    assertPortBandValue(value, 'lacp fallback timeout') // pyeapi's only timeout test uses a random 1..16 — interfaces.py:795-811, no bound anywhere
     await this.configureInterface(name, [this.commandBuilder(LACP_TIMEOUT_KEYWORD, { value })])
   }
 
