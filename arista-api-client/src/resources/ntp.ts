@@ -180,7 +180,8 @@ function settingsFromSections(sections: ConfigSections): NtpSettings {
       }
     }
     const server = NTP_SERVER_KEY.exec(key)
-    const address = server?.[1]
+    if (server === null) continue
+    const address = server[1]
     if (address === undefined) continue
     servers.push({ address, prefer: server[2] === 'prefer' })
   }

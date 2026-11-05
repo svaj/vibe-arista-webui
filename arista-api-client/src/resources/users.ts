@@ -416,7 +416,8 @@ function usersFromSections(sections: ConfigSections): Map<string, User> {
   const merged = new Map<string, MutableUser>()
   for (const key of sections.keys()) {
     const line = USERNAME_LINE.exec(key)
-    const name = line?.[1]
+    if (line === null) continue
+    const name = line[1]
     if (name === undefined) continue
     const fields = fieldsOfUsernameLine(key, line[2] ?? '')
     let user = merged.get(name)
