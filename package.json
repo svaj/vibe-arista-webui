@@ -16,10 +16,12 @@
     "lint": "npm run lint --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
     "lint:scripts": "oxlint --config .oxlintrc.json scripts",
+    "smoke:dist": "node scripts/dist-smoke.mjs",
     "lab:up": "node scripts/ceos-lab.mjs up",
     "lab:probe": "node scripts/ceos-lab.mjs probe",
     "lab:down": "node scripts/ceos-lab.mjs down",
     "lab:list": "node scripts/ceos-lab.mjs list",
-    "lab:run": "node scripts/ceos-lab.mjs run"
+    "lab:run": "node scripts/ceos-lab.mjs run",
+    "fixtures:refresh": "node scripts/ceos-lab.mjs fixtures"
   }
 }

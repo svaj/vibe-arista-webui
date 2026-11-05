@@ -40,7 +40,8 @@
     "test": "vitest run --project unit",
     "test:watch": "vitest --project unit",
     "test:live": "vitest run --project live",
-    "coverage": "vitest run --project unit --coverage"
+    "coverage": "vitest run --project unit --coverage",
+    "fixtures:refresh": "node ../scripts/ceos-lab.mjs fixtures"
   },
   "devDependencies": {
     "@types/node": "^26.6.6",
