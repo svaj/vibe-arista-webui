@@ -37,7 +37,15 @@ merged suite), coverage 98.14 st / 92.66 br / 99.35 fn / 98.83 ln, `interfaces.t
 funcs/lines, `src/resources/` 99.85 / 99.73 / 100 / 100. **M10 is `in-progress`, not done:** PLAN's exit
 gate is LAG/LACP end-to-end, which needs M10b (`EthernetInterface`) and M10c (`PortchannelInterface`) —
 rows **123-130** and **DR-070+** stay reserved for them, and `interface Ethernet1` creation remains a typed
-refusal that names M10b as its owner.
+refusal that names M10b as its owner. **M12b (#14, CI + fixture-refresh plumbing) is delivered on its
+branch** — §5 rows **143-149** + **DR-085-088**: `fixtures:refresh` as an explicit-consent, run-owned
+chain (refuses BEFORE any docker call without confirmation, DR-085); the PR job's coverage step +
+artefact upload; `scripts/dist-smoke.mjs` (dependency-free) plus a node-20 leg proving the artifact,
+not the dev tooling (DR-087, closing ci.yml's own promise); and the never-yet-executed
+`workflow_dispatch` cEOS live job with its per-endpoint lock and no-fake-green summary assertion
+(DR-086/DR-088). Branch gate: **49 files / 1,474 client tests** — identical to the merged suite:
+this lane adds NO unit tests (its diff is YAML + `.mjs` scripts, outside the unit coverage set); the
+refusal paths were exercised by hand, and the live job's first CI run is itself a review item.
 
 **Test infrastructure planning update:** local cEOS-lab **4.28.14M** and vendor install
 instructions are now available under `/home/svaj/development/arista/cEOS/`.
