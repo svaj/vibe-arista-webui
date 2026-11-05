@@ -180,6 +180,10 @@ const INTERFACE_GRAMMAR: readonly InterfaceGrammar[] = [
  * not an interface, and an index that cannot survive `String(index)` could not be reported, compared, or
  * rendered by a table. Refusing it is the same bounded-work rule `vlans.ts` states for a `vlan 1-999999999`
  * header (its divergence 8) — nothing here claims what index a given EOS release stops accepting.
+ *
+ * The `undefined` arm exists because TypeScript types a capture group as optional: every grammar row in
+ * {@link INTERFACE_GRAMMAR} requires the digits, so no call ever reaches it and it stays unexercised — it
+ * is a type fact, not a parsed case, and no test pretends to cover it.
  */
 function interfaceIndex(digits: string | undefined): number | undefined {
   if (digits === undefined) return undefined

@@ -134,17 +134,20 @@
  *    {@link ConfigParseError} rather than a truncation (contrast `ipinterfaces.py:126`).
  * 8. **the hybrid read never lets the enrichment decide existence.** {@link getAll} keys its table from
  *    the running-config sections, then *attaches* a `show interfaces status` row when the device answers
- *    the model. Reading the show first and driving from it would (a) inherit a field-name set whose
- *    **spellings come from a capture of the sibling `show interfaces` command** (`pyeapi/test/fixtures/`
- *    `show_interfaces.json`, vendor-shipped) while **this** command's model membership is unverified —
- *    DR-031's confirmed model-backed list does not include `show interfaces status` — and (b) strand a
- *    port the model lists but the config has no block for,
+ *    the model. Reading the show first and driving from it would (a) inherit column spellings whose only
+ *    capture is the **sibling** `show interfaces` command (`pyeapi/test/fixtures/show_interfaces.json`,
+ *    vendor-shipped) while this command's own model membership stays a device question — DR-031's confirmed
+ *    model-backed list does not include `show interfaces status` — and (b) strand a port the model lists but
+ *    the config has no block for,
  *    for which this client has no honest `shutdown` answer. So: config = existence + configuration, status
  *    = operational enrichment, and a status failure of any kind (1003 with no JSON model and a text-only
  *    retry, 1002 on a unit without the command, a shape this reader cannot use) leaves the config table
- *    intact ({@link InterfaceStatusMode} `'auto'`). The shape rules in {@link statusRowsFrom} are
- *    client-side and unverified for this command, M12 (#14) to capture; `getStatus()` is the verb for a UI
- *    that wants to say "status unavailable" instead of showing nothing.
+ *    intact ({@link InterfaceStatusMode} `'auto'`). Since PR #29 merged, {@link statusRowsFrom} reads this
+ *    command's **own captured shape** — the cEOS-lab 4.28.14M recording
+ *    `test/fixtures/live/ceos-4.28.14M/show-interfaces-status.json` (`interfaceStatuses` / `linkStatus`),
+ *    lab evidence only, `hardwareEvidence: "none"` per DR-043 — with the sibling command's names as the
+ *    fallback; the 7050TX-64 spelling is still owed to the STATUS §3 sweep. `getStatus()` is the verb for a
+ *    UI that wants to say "status unavailable" instead of showing nothing.
  * 9. **`getAll()` is 2-3 requests, not 1 — and `{ status: 'skip' }` is the way back to 1.** pyeapi pays a
  *    `section()` key scan plus two regex passes per interface (`:110-113` → `get` → `get_block`);
  *    M9's modules cost exactly one `show running-config`. Two reads here is the price of DR-031's hybrid,
@@ -172,6 +175,20 @@
  *     `typeof`, so a `typeof === 'number'` test is what keeps {@link InterfaceStatus.mtu} honest; the wrong
  *     type reads as "not reported" (which a UI shows as unknown) rather than `0`, the value pyeapi's
  *     habit of `int()`-ing anything would produce.
+ * 12. **`show interfaces status` answers a different map than `show interfaces`, and the reader takes the
+ *     captured spelling first.** The only recording of this exact command in the evidence set is
+ *     cEOS-lab 4.28.14M — `test/fixtures/live/ceos-4.28.14M/show-interfaces-status.json`
+ *     (identity/redaction envelope in its own `metadata`, `hardwareEvidence: "none"`) — and it keys its rows
+ *     `interfaceStatuses`, with the operational column spelled `linkStatus` (`"connected"`, matching the
+ *     paired `--text` capture's `Status` column) and **no** `mtu`, `hardware` or `interfaceStatus` key at
+ *     all. pyeapi's vendor-shipped `show_interfaces.json` capture of the *sibling* command uses `interfaces`
+ *     / `interfaceStatus` / `hardware` / `mtu`. So {@link statusRowsFrom} looks both up in capture order
+ *     ({@link STATUS_ROW_MAP_KEYS}) and reads the link column in capture order
+ *     ({@link STATUS_LINK_COLUMNS}); when a reply carries both maps the recorded one wins, and the
+ *     capture-only columns stay absent rather than being synthesised from `interfaceType` (which answers
+ *     `EbraTestPhyPort` on that container — a PHY type, not the sibling capture's `ethernet` port-class).
+ *     Whether 4.28.13.1M on the 7050TX-64 answers the same key set is a STATUS §3 capture, not an
+ *     assumption; nothing here claims the container spelling is the hardware spelling (DR-043).
  */
 import { ConfigParseError, NotSupportedError, ProtocolError } from '../errors'
 import { pythonRepr } from '../internal/wire'
@@ -248,43 +265,50 @@ export interface Interface {
 /**
  * One `show interfaces status` row, as {@link statusRowsFrom} reads it.
  *
- * **The column names come from a capture of a sibling command, not of this one.** The only EOS
- * `show interfaces`-shaped JSON anywhere in the evidence set is vendor-shipped:
- * `pyeapi/test/fixtures/show_interfaces.json`, whose per-interface records carry `name`, `description`,
- * `mtu`, `interfaceStatus`, `lineProtocolStatus`, `hardware`, `bandwidth`, `forwardingModel`, `duplex`,
- * `autoNegotiate`, `lastStatusChangeTimestamp`, `physicalAddress`, `burnedInAddress`, `interfaceAddress[]`
- * and `interfaceCounters{}` (all re-read from that file on 2026-11-04: `interfaceStatus` at `:63`,
- * `lineProtocolStatus` at `:65`, `mtu` at `:66`, `hardware` on `Ethernet1`). This client reads five of
- * those names and **no** name that file does not carry: `show interfaces status`'s own model is not
- * captured here, is not in DR-031's confirmed model-backed list, and is never read by pyeapi (its only
- * `show interfaces` use is `get_members`' text scrape, `interfaces.py:660-675`). A column this client
- * cannot find therefore reads as **absent** — which is honest — rather than as a value guessed from a
- * similar-sounding key, and M12 (#14) replaces both these names and {@link InterfaceStatus.status}'s raw
- * string with this command's captured spellings and vocabulary (a status column's set of values is a
- * device question; DR-032/DR-057).
+ * **Two spellings, because the evidence set has two captures and only one of them is this command.**
+ * The recording of `show interfaces status` itself is cEOS-lab **4.28.14M**,
+ * `test/fixtures/live/ceos-4.28.14M/show-interfaces-status.json` — `interfaceStatuses` keyed by interface,
+ * whose row carries `linkStatus` (`"connected"`, the same word its paired `--text` capture prints in the
+ * `Status` column), `lineProtocolStatus` (`"up"`), `description` (`""` on its only port), `bandwidth`,
+ * `duplex`, `interfaceType`, `autoNegotiateActive` and a `vlanInformation{}` — and carries **no** `mtu`,
+ * `hardware` or `interfaceStatus` key. The older vendor-shipped capture
+ * `pyeapi/test/fixtures/show_interfaces.json` belongs to the **sibling** `show interfaces` command and
+ * spells the map `interfaces` and the link column `interfaceStatus` (`:63`, re-read 2026-11-04,
+ * `lineProtocolStatus` `:65`, `mtu` `:66`, `hardware` `:10`, and `Management1`'s `description` is `""`).
+ * {@link statusRowsFrom} therefore reads both, recorded-spelling first ({@link STATUS_ROW_MAP_KEYS},
+ * {@link STATUS_LINK_COLUMNS}) — divergence 12. Neither capture settles the DCS-7050TX-64 answer, and the
+ * container file states `hardwareEvidence: "none"` (DR-043); the hardware spelling stays a STATUS §3 capture.
  *
- * The sample in `test/fixtures/show/show-interfaces-status--mixed-l2.json` is **synthetic** in exactly
- * this sense: its values are authored here, its key spellings are the capture's (that directory's README
- * records the same values/names split for its session-model sample).
+ * Columns outside those two captures are **not** read at all, so a column this client cannot find reads as
+ * absent — honest — rather than as a value guessed from a similar-sounding key: the container's
+ * `interfaceType` (`"EbraTestPhyPort"`) is a PHY name, not the sibling capture's `ethernet` port class, and
+ * {@link InterfaceStatus.hardware} stays the latter's. Likewise this client reads **no** name neither file
+ * carries, and pyeapi never reads this command (its only `show interfaces` use is `get_members`' text
+ * scrape, `interfaces.py:660-675`). {@link InterfaceStatus.status}/{@link InterfaceStatus.protocol} are the
+ * device's raw strings: a status vocabulary is a device question and is never enumerated here (DR-032/DR-057).
  *
  * Absent means "the answer did not carry that column in a type this client can use" (divergence 11).
  */
 export interface InterfaceStatus {
-  /** The interface this row is for: the member key of the `interfaces` map. */
+  /** The interface this row is for: the member key of the status map (divergence 12's two spellings). */
   readonly name: string
   /**
    * The `description` column, verbatim — quotes and all, and an empty string when the device wrote one
-   * (the capture carries an empty description on `Management1`). {@link Interface.description} is the
-   * configured half, which this client refuses to write empty.
+   * (both captures carry an empty description: `Management1` in the sibling, the container's only port).
+   * {@link Interface.description} is the configured half, which this client refuses to write empty.
    */
   readonly description?: string
-  /** The `interfaceStatus` column ({@link Interface.shutdown} is the configured half of the same story). */
+  /**
+   * The operational-state column: `linkStatus` in the recorded cEOS-lab answer, `interfaceStatus` in the
+   * sibling capture ({@link STATUS_LINK_COLUMNS}). {@link Interface.shutdown} is the configured half of the
+   * same story; the value set is the device's (DR-032).
+   */
   readonly status?: string
-  /** The `lineProtocolStatus` column. */
+  /** The `lineProtocolStatus` column — spelled identically in both captures. */
   readonly protocol?: string
-  /** The `hardware` column (`ethernet`, `loopback`, …) — the capture's port-type spelling. */
+  /** The sibling capture's `hardware` column (`ethernet`, `loopback`, …); absent on a lab-shaped row. */
   readonly hardware?: string
-  /** The `mtu` column, when the answer carries it as a number. */
+  /** The sibling capture's `mtu` column, when the answer carries it as a number. The lab capture has none. */
   readonly mtu?: number
 }
 
@@ -310,6 +334,37 @@ const ENCAPSULATION_KEYWORD = 'encapsulation dot1q vlan'
 
 /** A field value that must be a plain decimal number. */
 const DECIMAL = /^[0-9]+$/u
+
+/**
+ * The key holding the per-interface status rows, in capture order (divergence 12).
+ *
+ * `interfaceStatuses` is the spelling this client has actually recorded for **this** command —
+ * `test/fixtures/live/ceos-4.28.14M/show-interfaces-status.json` — and `interfaces` is the sibling
+ * command's spelling from pyeapi's vendor-shipped `test/fixtures/show_interfaces.json`, kept as the
+ * fallback so a unit answering that shape still reads. A reply carrying both takes the recorded one.
+ */
+const STATUS_ROW_MAP_KEYS: readonly string[] = ['interfaceStatuses', 'interfaces']
+
+/** The operational-state column, in capture order: `linkStatus` (recorded) then `interfaceStatus` (sibling). */
+const STATUS_LINK_COLUMNS: readonly string[] = ['linkStatus', 'interfaceStatus']
+
+/** The first of `keys` that holds an object in `source`. */
+function pickRecord(source: Record<string, unknown> | undefined, keys: readonly string[]): Record<string, unknown> | undefined {
+  for (const key of keys) {
+    const found = asRecord(source?.[key])
+    if (found !== undefined) return found
+  }
+  return undefined
+}
+
+/** The first of `keys` that holds a string in `row`. */
+function pickText(row: Record<string, unknown>, keys: readonly string[]): string | undefined {
+  for (const key of keys) {
+    const value = textColumn(row, key)
+    if (value !== undefined) return value
+  }
+  return undefined
+}
 
 /** A control character anywhere in an operator-supplied value. One expression, same rule as `system.ts:178-184`'s loop. */
 const CONTROL_CHARACTER = /[\u0000-\u001f\u007f]/u
@@ -493,13 +548,14 @@ function numberColumn(row: Record<string, unknown>, key: string): number | undef
 /**
  * The rows of a `show interfaces status` reply, keyed by interface name.
  *
- * **The column names follow the only captured EOS interfaces JSON in the evidence set; this command's own
- * model shape is still unverified on hardware** (see {@link InterfaceStatus}): the member key is taken as
- * the identity, and each column is read only when its type matches. That split is deliberate — a missing
- * column is ordinary (the capture's `Loopback0` row carries no `duplex`, `physicalAddress` or
- * `autoNegotiate` at all), but a reply with no usable `interfaces` map means the device did not answer
- * this command's model at all, which the caller
- * has to be able to distinguish from "every column is empty" (DR-027).
+ * **The captured spellings decide what is read, in capture order (divergence 12).** The row map is
+ * {@link STATUS_ROW_MAP_KEYS} — `interfaceStatuses` from the cEOS-lab recording of this command, else
+ * `interfaces` from the sibling capture — and the link column is {@link STATUS_LINK_COLUMNS}. Both
+ * captures agree on `description` and `lineProtocolStatus`; `hardware` and `mtu` exist only in the
+ * sibling, so a lab-shaped row honestly reports them absent. A missing column is ordinary (the sibling
+ * capture's `Loopback0` row carries no `duplex`, `physicalAddress` or `autoNegotiate` at all), but a reply
+ * with **no** row map means the device did not answer this command's model at all, which the caller has to
+ * be able to distinguish from "every column is empty" (DR-027).
  *
  * @throws {ProtocolError} the reply is not a `show interfaces status` model, including the `format:'text'`
  *   answer M2's codec produces for a `1003 COMMAND_UNCONVERTED` (`internal/wire.ts:544-562`): an
@@ -514,13 +570,14 @@ function numberColumn(row: Record<string, unknown>, key: string): number | undef
  * which an asserted parameter type would turn into a `TypeError` reading a property off `null`.
  */
 function statusRowsFrom(reply: unknown): Map<string, InterfaceStatus> {
-  const table = asRecord(asRecord(reply)?.['interfaces'])
+  const answer = asRecord(reply)
+  const table = pickRecord(answer, STATUS_ROW_MAP_KEYS)
   if (table === undefined) {
-    const text = typeof asRecord(reply)?.['output'] === 'string'
+    const text = typeof answer?.['output'] === 'string'
       ? ' — the reply is a `format: \'text\'` output block, i.e. the CLI has no JSON model for this command (DR-012/DR-031)'
       : ''
     throw new ProtocolError(
-      `${INTERFACE_STATUS_COMMAND} reply has no \`interfaces\` object, so no status row can be read${text}. Field names in src/resources/interfaces.ts are hand-authored and unverified on hardware (M12 #14 to capture); refusing to substitute an empty table`,
+      `${INTERFACE_STATUS_COMMAND} reply has no \`${STATUS_ROW_MAP_KEYS.join('` or `')}\` object, so no status row can be read${text}. Row spellings come from the cEOS-lab recording of this command and pyeapi's sibling-command capture; the 7050TX-64 spelling is still owed to M12 (#14) per DR-043, and this client refuses to substitute an empty table`,
       { commands: [INTERFACE_STATUS_COMMAND] },
     )
   }
@@ -531,7 +588,7 @@ function statusRowsFrom(reply: unknown): Map<string, InterfaceStatus> {
     // whole was already required to exist above.
     if (row === undefined) continue
     const description = textColumn(row, 'description')
-    const status = textColumn(row, 'interfaceStatus')
+    const status = pickText(row, STATUS_LINK_COLUMNS)
     const protocol = textColumn(row, 'lineProtocolStatus')
     const hardware = textColumn(row, 'hardware')
     const mtu = numberColumn(row, 'mtu')

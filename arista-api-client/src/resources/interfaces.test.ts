@@ -7,10 +7,15 @@
  *
  * M9's two `EntityCollection` specs read a committed `test/fixtures/config/*.conf`; this one does not,
  * because everything this module must pin is either a small shape worth reading at the call site (an
- * interface header, a banner body, a nested sub-mode) or a status reply that **cannot** be a fixture at
- * all: `show interfaces status` has no captured model here (DR-031's confirmed model-backed list excludes
- * it), so every reply below is hand-authored and asserted only about *this client's* reading of it. Adding
- * a config fixture would also mean editing `test/fixtures/config/manifest.json`, which is outside this
+ * interface header, a banner body, a nested sub-mode) or a status reply asserted inline so the column in
+ * question sits next to the expectation. Those replies use **captured** spellings and values:
+ * `interfaceStatuses` / `linkStatus` come from `test/fixtures/live/ceos-4.28.14M/show-interfaces-status.json`
+ * (cEOS-lab 4.28.14M, `hardwareEvidence: "none"` — DR-043) and `interfaces` / `interfaceStatus` / `hardware`
+ * / `mtu` from pyeapi's vendor-shipped `test/fixtures/show_interfaces.json` (the **sibling** `show
+ * interfaces` command: `interfaceStatus` `:63`, `lineProtocolStatus` `:65`, `mtu` `:66`), so `connected` /
+ * `disabled` / `up` are words a real EOS answered rather than vocabulary invented here — and no value set
+ * is claimed closed ({@link InterfaceStatus.status} stays the device's raw string, DR-032/DR-057). Adding a
+ * config fixture would also mean editing `test/fixtures/config/manifest.json`, which is outside this
  * milestone's file list — `interfaces.ts` states which claims that defers to M12 (#14).
  *
  * ## Upstream port ledger
@@ -57,9 +62,10 @@
  * entries rather than a bare count wherever the text matters.
  *
  * Anything about EOS itself — whether 4.28.13.1M accepts a dotted header on this SKU (DECISIONS.md open
- * item 7), whether it quotes a description, what its L2 MTU bounds are, what `show interfaces status`'s
- * model carries, whether an interface sub-mode re-enters rather than erroring — is **not** claimed here:
- * unit tests never reach a device and this workspace has no readable CLI sources, so those read
+ * item 7), whether it quotes a description, what its L2 MTU bounds are, what **its own** `show interfaces
+ * status` model carries (only the cEOS-lab answer is captured), whether an interface sub-mode re-enters
+ * rather than erroring — is **not** claimed here: unit tests never reach a device, a container capture is
+ * not hardware evidence (DR-043), and this workspace has no readable CLI sources, so those read
  * "unverified on hardware, M12 (#14) to capture" in `interfaces.ts`.
  */
 
@@ -165,8 +171,34 @@ function scriptWrite(transport: MockTransport, cmds: readonly string[]): MockTra
 /** The key for the hybrid read's second request — `Node.show` prepends `enable`, `showCommand` keeps the literal. */
 const statusKey = `enable\n${INTERFACE_STATUS_COMMAND}`
 
-/** One `show interfaces status` answer: enable's reply, then this command's model-shaped result. */
+/**
+ * One `show interfaces status` answer in the **sibling command's** spelling: enable's reply, then
+ * `interfaces` — pyeapi's `test/fixtures/show_interfaces.json` shape, kept readable as the fallback
+ * (divergence 12).
+ */
 const statusReply = (rows: Record<string, unknown>): MockReply => [{}, { interfaces: rows }]
+
+/**
+ * The same answer in this command's **recorded** spelling — `interfaceStatuses`, from the cEOS-lab 4.28.14M
+ * capture at `test/fixtures/live/ceos-4.28.14M/show-interfaces-status.json`. The row below is that file's
+ * `result.interfaceStatuses.Ethernet1` verbatim (typo variant key included), so these pins read the same
+ * JSON a real EOS answered; the container identity stays in the capture file (DR-043).
+ */
+const labStatusReply = (rows: Record<string, unknown>): MockReply => [{}, { interfaceStatuses: rows }]
+
+/** The captured cEOS-lab row for `Ethernet1`, verbatim from that recording's `result`. */
+const LAB_ROW_ETHERNET1 = {
+  vlanInformation: { interfaceMode: 'bridged', vlanId: 1, interfaceForwardingModel: 'bridged' },
+  bandwidth: 1000000000,
+  interfaceType: 'EbraTestPhyPort',
+  description: '',
+  autoNegotiateActive: false,
+  duplex: 'duplexFull',
+  // The recording really carries both spellings of this one — the mis-cased sibling is device data, not ours.
+  autoNegotigateActive: false,
+  linkStatus: 'connected',
+  lineProtocolStatus: 'up',
+}
 
 /** A reply that is **not** this command's model — the two-block `{ output }` shape a `format:'text'` answer has. */
 const textReply: MockReply = [{}, { output: 'Ethernet1                 up   0 always   9216' }]
@@ -462,7 +494,7 @@ describe('InterfacesResource read matrix — interfacesFromSections over the chu
 
   it('has()/keys()/entries() ride one getAll each — never one read per element', async () => {
     const { node, transport } = nodeFor(FLAT_CONFIG)
-    transport.replies(statusKey, statusReply({ Ethernet1: { interfaceStatus: 'in_use' } }))
+    transport.replies(statusKey, statusReply({ Ethernet1: { interfaceStatus: 'connected' } }))
     expect(await node.interfaces.has('Ethernet1')).toBe(true)
     expect(await node.interfaces.has('Ethernet99')).toBe(false)
     const keys = await node.interfaces.keys()
@@ -649,7 +681,7 @@ describe('InterfacesResource hybrid read — configuration decides existence (di
 
   it('a device that models the show pays 2 requests and merges the row onto config entries only', async () => {
     const transport = configTransport(FLAT_CONFIG).replies(statusKey, statusReply({
-      Ethernet1: { description: 'WAN uplink', interfaceStatus: 'in_use', mtu: 9216 },
+      Ethernet1: { description: 'WAN uplink', interfaceStatus: 'connected', mtu: 9216 },
     }))
     const all = await new Node(transport).interfaces.getAll()
     expect(all.get('Ethernet1')).toEqual({
@@ -658,7 +690,7 @@ describe('InterfacesResource hybrid read — configuration decides existence (di
       shutdown: false,
       description: 'WAN uplink',
       mtu: 9216,
-      status: { name: 'Ethernet1', description: 'WAN uplink', status: 'in_use', mtu: 9216 },
+      status: { name: 'Ethernet1', description: 'WAN uplink', status: 'connected', mtu: 9216 },
     })
     expect(all.get('Ethernet2')).toEqual({ name: 'Ethernet2', kind: 'Ethernet', shutdown: true })
     expect(transport.callCount()).toBe(2)
@@ -670,8 +702,8 @@ describe('InterfacesResource hybrid read — configuration decides existence (di
 
   it('config = existence: a status-only row never joins the table (divergence 8)', async () => {
     const transport = configTransport(FLAT_CONFIG).replies(statusKey, statusReply({
-      Ethernet1: { interfaceStatus: 'in_use' },
-      Ethernet9: { interfaceStatus: 'not_present' },
+      Ethernet1: { interfaceStatus: 'connected' },
+      Ethernet9: { interfaceStatus: 'disabled' },
     }))
     const all = await new Node(transport).interfaces.getAll()
     expect(all.size).toBe(FLAT_ORDER.length)
@@ -751,20 +783,20 @@ describe('InterfacesResource hybrid read — configuration decides existence (di
 
   it('getStatus() answers the status table alone, keyed by the model\'s own member names', async () => {
     const transport = configTransport(FLAT_CONFIG).replies(statusKey, statusReply({
-      Ethernet1: { description: 'WAN uplink', interfaceStatus: 'in_use', lineProtocolStatus: 'enabled', hardware: 'ethernet', mtu: 9216 },
-      Ethernet9: { interfaceStatus: 'not_present' },
+      Ethernet1: { description: 'WAN uplink', interfaceStatus: 'connected', lineProtocolStatus: 'up', hardware: 'ethernet', mtu: 9216 },
+      Ethernet9: { interfaceStatus: 'disabled' },
     }))
     const rows = await new Node(transport).interfaces.getStatus()
     expect([...rows.keys()]).toEqual(['Ethernet1', 'Ethernet9'])
     expect(rows.get('Ethernet1')).toEqual({
       name: 'Ethernet1',
       description: 'WAN uplink',
-      status: 'in_use',
-      protocol: 'enabled',
+      status: 'connected',
+      protocol: 'up',
       hardware: 'ethernet',
       mtu: 9216,
     })
-    expect(rows.get('Ethernet9')).toEqual({ name: 'Ethernet9', status: 'not_present' })
+    expect(rows.get('Ethernet9')).toEqual({ name: 'Ethernet9', status: 'disabled' })
     expect(transport.callCount()).toBe(1)
     expect(sentAsText(transport)).toEqual([['enable', 'show interfaces status']])
   })
@@ -781,7 +813,7 @@ describe('InterfacesResource hybrid read — configuration decides existence (di
 
   it('a member that is not an object is skipped and keeps the good rows (DR-027)', async () => {
     const transport = configTransport(FLAT_CONFIG).replies(statusKey, statusReply({
-      Ethernet1: { interfaceStatus: 'in_use' },
+      Ethernet1: { interfaceStatus: 'connected' },
       Ethernet2: null,
       Ethernet3: ['x'],
       Ethernet4: { mtu: 9216 },
@@ -817,19 +849,19 @@ describe('InterfacesResource hybrid read — configuration decides existence (di
   it('the status description is verbatim — empty and quoted values, unlike the configured half', async () => {
     const transport = configTransport(FLAT_CONFIG).replies(statusKey, statusReply({
       Management1: { description: '', interfaceStatus: 'connected' },
-      Ethernet1: { description: '"WAN quoted"', interfaceStatus: 'in_use' },
+      Ethernet1: { description: '"WAN quoted"', interfaceStatus: 'connected' },
     }))
     const interfaces = new Node(transport).interfaces
     const merged = await interfaces.getAll()
     expect(merged.get('Management1')?.status).toEqual({ name: 'Management1', description: '', status: 'connected' })
-    expect(merged.get('Ethernet1')?.status).toEqual({ name: 'Ethernet1', description: '"WAN quoted"', status: 'in_use' })
+    expect(merged.get('Ethernet1')?.status).toEqual({ name: 'Ethernet1', description: '"WAN quoted"', status: 'connected' })
     // The capture carries an empty description on `Management1`, so absence is not a fair reading there;
     // the *write* side refuses an empty value because `unsetDescription` is that intent (DR-037).
     await expectRefusal(() => interfaces.setDescription('Management1', ''), "invalid interface description ''")
   })
 
   it('the merged entry keeps every configured field and adds exactly one key', async () => {
-    const transport = configTransport(FLAT_CONFIG).replies(statusKey, statusReply({ 'Port-Channel3': { interfaceStatus: 'configured_inactive' } }))
+    const transport = configTransport(FLAT_CONFIG).replies(statusKey, statusReply({ 'Port-Channel3': { interfaceStatus: 'disabled' } }))
     const merged = await new Node(transport).interfaces.getAll()
     expect(merged.get('Port-Channel3')).toEqual({
       name: 'Port-Channel3',
@@ -837,12 +869,12 @@ describe('InterfacesResource hybrid read — configuration decides existence (di
       shutdown: false,
       description: 'ops bay',
       encapsulation: 40,
-      status: { name: 'Port-Channel3', status: 'configured_inactive' },
+      status: { name: 'Port-Channel3', status: 'disabled' },
     })
   })
 
   it('get() after getAll() reuses the config memo but re-reads the status leg', async () => {
-    const transport = configTransport(FLAT_CONFIG).replies(statusKey, statusReply({ Ethernet1: { interfaceStatus: 'in_use' } }))
+    const transport = configTransport(FLAT_CONFIG).replies(statusKey, statusReply({ Ethernet1: { interfaceStatus: 'connected' } }))
     const interfaces = new Node(transport).interfaces
     expect((await interfaces.getAll()).has('Ethernet1')).toBe(true)
     expect((await interfaces.get('Ethernet1'))?.description).toBe('WAN uplink')
@@ -891,6 +923,86 @@ describe('InterfacesResource hybrid read — configuration decides existence (di
     expect((thrown as Error).message).toContain('mock scripted connection failure')
     // The read path asks for `readOnly: true`, so a retryable wire failure is re-sent once before it
     // throws — the request count is the transport's contract, not this module's, so it is not pinned here.
+  })
+})
+
+describe('InterfacesResource status rows — the recorded cEOS-lab spelling wins over the sibling capture (divergence 12)', () => {
+  it('the captured `interfaceStatuses` / `linkStatus` shape reads, column for column', async () => {
+    const transport = configTransport(FLAT_CONFIG).replies(statusKey, labStatusReply({ Ethernet1: LAB_ROW_ETHERNET1 }))
+    const rows = await new Node(transport).interfaces.getStatus()
+    expect([...rows.keys()]).toEqual(['Ethernet1'])
+    // Exactly what the two captures have in common plus this command's own link column. The container's
+    // `bandwidth`, `duplex`, `interfaceType` and `vlanInformation` are real device data this client does
+    // not model — unread columns are ignored data, not an error, and not a place to invent an `InterfaceStatus`
+    // field a screen never shows (DR-032).
+    expect(rows.get('Ethernet1')).toEqual({
+      name: 'Ethernet1',
+      description: '',
+      status: 'connected',
+      protocol: 'up',
+    })
+  })
+
+  it('`interfaceType` is not this client\'s port class, and the capture\'s typo variant is not the link column', async () => {
+    const transport = configTransport(FLAT_CONFIG).replies(statusKey, labStatusReply({ Ethernet1: LAB_ROW_ETHERNET1 }))
+    const row = (await new Node(transport).interfaces.getStatus()).get('Ethernet1')
+    // `EbraTestPhyPort` answers a PHY name, not the sibling capture's `ethernet`/`loopback` port class, and
+    // the recording really carries both `autoNegotiateActive` and the mis-cased `autoNegotigateActive`.
+    // Substituting either would be this client speaking for a column the capture never spells.
+    expect(row?.hardware).toBeUndefined()
+    expect(row?.mtu).toBeUndefined()
+    expect(row?.status).toBe('connected')
+  })
+
+  it('a reply carrying both maps takes the recorded spelling, not the sibling\'s', async () => {
+    const transport = configTransport(FLAT_CONFIG).replies(statusKey, [{}, {
+      interfaceStatuses: { Ethernet1: { linkStatus: 'connected' } },
+      interfaces: { Ethernet1: { interfaceStatus: 'disabled' }, Ethernet8: { interfaceStatus: 'disabled' } },
+    }])
+    const rows = await new Node(transport).interfaces.getStatus()
+    expect([...rows.keys()]).toEqual(['Ethernet1'])
+    expect(rows.get('Ethernet1')).toEqual({ name: 'Ethernet1', status: 'connected' })
+  })
+
+  it('`linkStatus` falls through to `interfaceStatus` only when the recorded column is missing or untyped', async () => {
+    const transport = configTransport(FLAT_CONFIG).replies(statusKey, labStatusReply({
+      Ethernet1: { linkStatus: 7, interfaceStatus: 'disabled' },
+      Ethernet2: { interfaceStatus: 'disabled' },
+    }))
+    const rows = await new Node(transport).interfaces.getStatus()
+    expect(rows.get('Ethernet1')).toEqual({ name: 'Ethernet1', status: 'disabled' })
+    expect(rows.get('Ethernet2')).toEqual({ name: 'Ethernet2', status: 'disabled' })
+  })
+
+  it('an EMPTY `interfaceStatuses` map is an empty status table, distinct from an absent one', async () => {
+    const transport = configTransport(FLAT_CONFIG).replies(statusKey, labStatusReply({}))
+    const rows = await new Node(transport).interfaces.getStatus()
+    expect(rows.size).toBe(0)
+    const all = await new Node(transport).interfaces.getAll()
+    expect(all.size).toBe(FLAT_ORDER.length)
+    expect([...all.values()].every((entry) => entry.status === undefined)).toBe(true)
+  })
+
+  it('a lab-shaped row merges onto the config table by name (divergence 8 still holds)', async () => {
+    const transport = configTransport(FLAT_CONFIG).replies(statusKey, labStatusReply({ Ethernet1: LAB_ROW_ETHERNET1 }))
+    const merged = await new Node(transport).interfaces.getAll()
+    expect(merged.get('Ethernet1')).toEqual({
+      name: 'Ethernet1',
+      kind: 'Ethernet',
+      shutdown: false,
+      description: 'WAN uplink',
+      mtu: 9216,
+      status: { name: 'Ethernet1', description: '', status: 'connected', protocol: 'up' },
+    })
+    // Two operational words in one record: `description`/`mtu` are the configured half, `status` is the row.
+    expect(merged.get('Ethernet2')?.status).toBeUndefined()
+  })
+
+  it('the refusal names both spellings, so a shape failure says what was looked for', async () => {
+    const transport = configTransport(FLAT_CONFIG).replies(statusKey, [{}, {}])
+    const thrown = await outcome(() => new Node(transport).interfaces.getStatus())
+    expect((thrown as Error).message).toContain('`interfaceStatuses` or `interfaces`')
+    expect((thrown as Error).message).toContain('DR-043')
   })
 })
 
@@ -1335,7 +1447,7 @@ describe('InterfacesResource wiring — one accessor per Node (DR-006/DR-052)', 
   })
 
   it('the reads this module performs are the running-config and `show interfaces status` — nothing else', async () => {
-    const transport = configTransport(FLAT_CONFIG).replies(statusKey, statusReply({ Ethernet1: { interfaceStatus: 'in_use' } }))
+    const transport = configTransport(FLAT_CONFIG).replies(statusKey, statusReply({ Ethernet1: { interfaceStatus: 'connected' } }))
     const interfaces = new Node(transport).interfaces
     expect((await interfaces.getAll()).size).toBe(FLAT_ORDER.length)
     expect((await interfaces.getStatus()).size).toBe(1)
