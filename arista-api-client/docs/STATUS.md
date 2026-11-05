@@ -37,7 +37,16 @@ merged suite), coverage 98.14 st / 92.66 br / 99.35 fn / 98.83 ln, `interfaces.t
 funcs/lines, `src/resources/` 99.85 / 99.73 / 100 / 100. **M10 is `in-progress`, not done:** PLAN's exit
 gate is LAG/LACP end-to-end, which needs M10b (`EthernetInterface`) and M10c (`PortchannelInterface`) —
 rows **123-130** and **DR-070+** stay reserved for them, and `interface Ethernet1` creation remains a typed
-refusal that names M10b as its owner.
+refusal that names M10b as its owner. **M12a (#14, live suite + write policy) is delivered on its
+branch** — §5 rows **135-142** + **DR-081-084**: four live suites (9 device-facing specs) that ran
+against a real cEOS-lab 4.28.14M (readiness finding recorded in the band: the guard's EXACT-version
+pin cannot match the image's engineering-build suffix, so the suites hard-fail every model/train
+refusal and tolerate ONLY the suffix-driven mismatch, guard untouched), plus `src/testing/live-session-policy.ts`
+closing DR-035's write side — named session, always-abort finally, persistence ban, no scratch port
+inferred — with an offline MockTransport matrix. Branch gate: **50 files / 1,481 client tests**, all
+files 98.14 st / 92.75 br / 99.35 fn / 98.83 ln; live files skip loudly offline. The lab run left its
+container up for the orchestrator's teardown (verified zero leftovers afterwards) — flagged so the
+next live-CI job never relies on manual cleanup.
 
 **Test infrastructure planning update:** local cEOS-lab **4.28.14M** and vendor install
 instructions are now available under `/home/svaj/development/arista/cEOS/`.
