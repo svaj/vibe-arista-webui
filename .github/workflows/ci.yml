@@ -57,5 +57,25 @@ jobs:
       - name: Test (offline only — never a device)
         run: npm test
 
+      # The v8 coverage gate. `arista-api-client/vitest.config.ts` carries the global floor
+      # (lines 85 / branches 75 / functions 60) plus the per-directory thresholds, and the
+      # command's EXIT CODE is the assertion — a threshold miss fails this step. Still fully
+      # offline: the `unit` project excludes every `*.live.test.ts`, nothing here can reach a
+      # device or Docker. Cheaper than it looks (~6 s of wall time), so it gates both legs;
+      # only the node-22 leg publishes the report, so there is one artifact to review.
+      - name: Coverage gate (offline unit suite)
+        run: npm run coverage -w arista-api-client
+
       - name: Build
         run: npm run build
+
+      # Uploaded with !cancelled() so a threshold failure still ships the report the reviewer
+      # needs to see WHAT was uncovered — the step's own failure above is the gate.
+      - name: Upload coverage report (node 22 leg only)
+        if: ${{ matrix.node == '22' && !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-client-coverage-node${{ matrix.node }}
+          path: arista-api-client/coverage/
+          if-no-files-found: error
+          retention-days: 14
