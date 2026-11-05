@@ -333,8 +333,9 @@ describe.skipIf(!ready)('live read-only observation: pyeapi test_api_interfaces.
         } else {
           outcomes[verb] = value === undefined ? 'answered undefined (this client\'s divergence 19: no DEFAULT_LACP_MODE default, unlike interfaces.py:67)' : `answered ${JSON.stringify(value)}`
         }
-      } catch (err) {
-        expect(err).toBeInstanceOf(EapiError)
+      } catch (rawErr) {
+        expect(rawErr).toBeInstanceOf(EapiError)
+        const err = rawErr as EapiError
         const code = err instanceof CommandError ? String(err.code) : err instanceof ProtocolError ? `protocol ${String(err.code)}` : 'no code'
         outcomes[verb] = `refused (${err.constructor.name} ${code}): ${err.message.split('\n')[0]?.slice(0, 160)}`
       }
