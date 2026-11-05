@@ -50,7 +50,7 @@
  * `TestApiPortchannelInterface` from `:305`, `TestApiVxlanInterface` from `:429`) are not ported at all.
  * Upstream drives all of it through `EapiConfigUnitTest`, whose `MockConnection` answers `{}` to anything
  * it was not told about — here an unscripted request is a hard failure, so every batch below spells every
- * command (`testing/mock-transport.ts:167` compares a string matcher against the **whole joined command
+ * command (`testing/mock-transport.ts:83-88` compares a string matcher against the **whole joined command
  * list**, not a prefix).
  *
  * ## Divergences this file owns — numbered in MIGRATION.md §5 rows **99-106** (M10a's band)
@@ -157,7 +157,7 @@
  *    `section()` key scan plus two regex passes per interface (`:110-113` → `get` → `get_block`);
  *    M9's modules cost exactly one `show running-config`. Two reads here is the price of DR-031's hybrid,
  *    three on a unit whose show answers `1003` because M2's codec re-issues it with `format:'text'`
- *    (`internal/wire.ts:553-567`, DR-012). Every count is pinned in `interfaces.test.ts` and
+ *    (`internal/wire.ts:550-567`, DR-012). Every count is pinned in `interfaces.test.ts` and
  *    {@link InterfaceStatusMode} `'skip'` is the documented opt-out, so nothing pays for a column a screen
  *    does not show.
  * 10. **what the writers refuse, and how far a body line reaches.** Upstream validates no name on any
@@ -563,7 +563,7 @@ function numberColumn(row: Record<string, unknown>, key: string): number | undef
  * be able to distinguish from "every column is empty" (DR-027).
  *
  * @throws {ProtocolError} the reply is not a `show interfaces status` model, including the `format:'text'`
- *   answer M2's codec produces for a `1003 COMMAND_UNCONVERTED` (`internal/wire.ts:544-562`): an
+ *   answer M2's codec produces for a `1003 COMMAND_UNCONVERTED` (`internal/wire.ts:550-567`): an
  *   `{ output: … }` block is not this map, and silently reading nothing from it would look like a switch
  *   with no interfaces.
  *

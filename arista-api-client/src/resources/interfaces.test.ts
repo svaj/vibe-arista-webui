@@ -56,7 +56,7 @@
  *    below is this client's (divergence 7), with the device keeping authority via a pinned `CommandError`.
  *
  * Upstream drives all of it through `EapiConfigUnitTest`, whose `MockConnection` answers `{}` to anything
- * it was not told about. Here an unscripted request is a loud failure and (`testing/mock-transport.ts:167`)
+ * it was not told about. Here an unscripted request is a loud failure and (`testing/mock-transport.ts:83-88`)
  * a string matcher is compared against the **whole joined command list**, never a prefix — so every batch
  * below spells every command it sends, `enable` and `configure terminal` included, and asserts `sent()`
  * entries rather than a bare count wherever the text matters.
