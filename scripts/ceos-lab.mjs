@@ -20,7 +20,9 @@
  *    (the owning pid is checked) per docs/CEOS.md "Single-flight execution per endpoint".
  *  - **Lab-only credentials**, random per run, printed once, stored in a 0600 state
  *    file in a 0700 directory, deleted on teardown. They never appear in argv (the
- *    bootstrap is fed to `Cli` on stdin) and never appear in an error message.
+ *    bootstrap is fed to `Cli` on stdin) and never appear in an error message. `--quiet`
+ *    suppresses the one-time print for CI-collected logs; the state file stays the only
+ *    copy, so an artifact cannot become the second place a lab secret lives.
  *  - **TLS is pinned, never downgraded.** The trust anchor is the *public*
  *    certificate read out of the container's own filesystem with `docker exec`
  *    (a trusted local side channel, per docs/CEOS.md), and the peer must present a
@@ -843,7 +845,12 @@ async function cmdUp(cfg) {
           eosVersionFromCli: identityFromShowVersion(versionJson),
           eosInterfacesObserved: Object.keys(interfacesJson?.interfaceStatuses ?? interfacesJson?.interfaces ?? {}),
           httpCommandsAfterBootstrap: httpCommandsJson,
-          credentialsPrintedOnce: { user: creds.user, secret: creds.secret },
+          credentialsPrintedOnce: cfg.quiet
+            ? {
+                user: creds.user,
+                secret: '<withheld: --quiet; the run\'s 0600 state file is the only copy, and teardown deletes it>',
+              }
+            : { user: creds.user, secret: creds.secret },
           stateFile: path.relative(REPO_ROOT, sp),
           notYetReady: 'eAPI on the published port has not been probed yet — run `npm run lab:probe`',
           next: `npm run lab:probe -- --run ${runId}`,
@@ -1491,6 +1498,24 @@ async function cmdRun(cfg, childArgv) {
     EAPI_LAB_CERT: probed.result.tls.anchorPublicCertFile ?? '',
     EAPI_LAB_CERT_FINGERPRINT: probed.result.tls.anchorFingerprint256,
     EAPI_SCRATCH_INTERFACES: scratchInterfaces,
+    // The names `src/testing/live-guard.ts` actually reads (its accepted-variable list is spelled
+    // out in that module's header). Without these the child would be refused by its own consent
+    // matrix — EAPI_PORT_NOT_ALLOWED first, then EAPI_ALLOW_VERSION_MISSING, then
+    // EAPI_TLS_TRUST_MISSING — so the aliasing belongs HERE, at the seam that owns the run:
+    //  - EAPI_ALLOW_PORTS: extended with ONLY the port this run published. That is the documented
+    //    shape for a non-default published port (docs/CEOS.md: "Parallel jobs need separate
+    //    containers, networks, and published ports"); it never widens the guard toward a switch.
+    //  - EAPI_ALLOW_VERSION: the same pinned base the probe already verified over authenticated eAPI.
+    //  - EAPI_CA_FILE: the run's **public** certificate (0600, deleted by teardown) — the guard
+    //    refuses an https target with no CA and no fingerprint, and `EAPI_INSECURE_TLS` is refused,
+    //    so handing it the extracted anchor is the only accepted route (DR-013).
+    //  - EAPI_SCRATCH_INTERFACE: exactly one Ethernet port chosen from the interfaces THIS container
+    //    reported, so a write-side test never invents one (guard's EAPI_SCRATCH_INTERFACE rule);
+    //    the plural list above stays as the observation for humans.
+    ...(state.port === 8443 ? {} : { EAPI_ALLOW_PORTS: String(state.port) }),
+    EAPI_ALLOW_VERSION: cfg.expectVersion,
+    ...(probed.result.tls.anchorPublicCertFile ? { EAPI_CA_FILE: String(probed.result.tls.anchorPublicCertFile) } : {}),
+    ...(scratchInterfaces.split(',')[0] ? { EAPI_SCRATCH_INTERFACE: scratchInterfaces.split(',')[0] } : {}),
   }
   let childExit = null
   let childSignal = null
@@ -1608,6 +1633,9 @@ function labConfig(flags) {
     // The explicit confirmation the `fixtures` command requires before it may replace reviewed
     // captures. Nothing else reads it: `up`/`probe`/`run` keep their existing semantics.
     refreshConfirmed: flags['yes'] === true,
+    // CI-collected logs must not contain the one-time credential print (docs/CEOS.md: archive only
+    // redacted diagnostics). Default stays false so the operator recipe keeps printing.
+    quiet: flags['quiet'] === true,
   }
   if (!/^[A-Za-z0-9][A-Za-z0-9._:/@-]*$/.test(cfg.image.tag)) {
     refuse(`--image is not a valid docker reference: ${cfg.image.tag}`, EXIT.usage)
@@ -1659,6 +1687,8 @@ flags
   --no-fixtures                never write fixtures
   --fixtures-force             allow overwriting existing fixture files
   --yes                        required by the fixtures command: confirms replacing reviewed captures
+  --quiet                      suppress the one-time credential print (CI logs; the 0600 state file
+                               remains the only copy and teardown deletes it)
   --all                        with down: tear down every labelled run
   --help                       this text
 `,

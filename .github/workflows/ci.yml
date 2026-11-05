@@ -1,21 +1,40 @@
 name: CI
 
-# Offline quality gate only (#2 / M0). This workflow must never start, build or contact an
-# EOS device or a cEOS-lab container: no `arista_eos` image, no docker, no eAPI endpoint.
-# Real-EOS / cEOS lanes are M12 (#14) work and, when added, must be a separate explicitly
-# trusted `workflow_dispatch` job on a dedicated runner per docs/CEOS.md — never a PR job.
+# Offline quality gate for every push and pull_request (#2 / M0). **The rule that must never
+# weaken: a push/PR job must never start, build or contact an EOS device or a cEOS-lab container —
+# no image, no docker, no eAPI endpoint.** The M12 (#14) real-EOS lane exists exactly as this header
+# always reserved it: a separate, explicitly trusted `workflow_dispatch` **job** (`ceos-live` below)
+# on a dedicated self-hosted runner per docs/CEOS.md. It cannot be reached by a push, a PR (including
+# a fork PR) or a scheduled run, and it is the only job in this workflow allowed to create a
+# container — everything else in this file stays offline by construction.
 
 on:
   push:
     branches: [main]
   pull_request:
+  # Trusted operators only. Docs/CEOS.md §Browser E2E and CI plan item 5: "Initially use explicit
+  # trusted workflow_dispatch on a dedicated Linux runner with authorized image access. Keep ordinary
+  # PR checks offline." Never combine this with an `image:` job or a secret for the live lane.
+  workflow_dispatch:
+    inputs:
+      port:
+        description: 'Loopback port the lab publishes (must be free on the lab runner)'
+        required: false
+        default: '8443'
 
 permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  # Push/PR behaviour is unchanged: a superseded duplicate of the same ref is cancelled.
+  # A trusted dispatch gets its OWN lane keyed on the endpoint, never cancelled mid-flight, because
+  # it holds a privileged container, a lab credential set and possibly an open config session — the
+  # docs/CEOS.md "single-flight execution per endpoint" rule, at the scheduler level. Second
+  # dispatch on the same port QUEUES behind the first. The harness layers a second, machine-local
+  # guard (scripts/.state/lock-<port>.json, stale-aware), so a run smuggled past the scheduler still
+  # refuses with exit 4. If a second lab runner is ever added, put its name in this group too.
+  group: ${{ github.event_name == 'workflow_dispatch' && format('ceos-live-endpoint-{0}', github.event.inputs.port || '8443') || format('ci-{0}', github.ref) }}
+  cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
 
 jobs:
   quality:
@@ -111,3 +130,111 @@ jobs:
 
       - name: Smoke the built dist/ (no dev tooling, no device, no network)
         run: node scripts/dist-smoke.mjs
+
+  # ================== cEOS-lab live eAPI lane — trusted dispatch only (M12b #14) ============
+  # How this composes with `arista-api-client/src/testing/live-guard.ts` (the consent matrix):
+  # the guard is the ONLY thing in front of a `*.live.test.ts`, and it needs a set of independent
+  # consents, none of which this job fabricates. `npm run lab:run` (scripts/ceos-lab.mjs) supplies
+  # them from a container it created and owns: loopback `EAPI_HOST` + the published `EAPI_PORT`
+  # (also handed to `EAPI_ALLOW_PORTS`, because the guard's default list only carries 8443 and this
+  # job pins 8443 anyway), `EAPI_TARGET_CLASS=lab`, run-scoped `EAPI_USER`/`EAPI_PASS`, the probed
+  # `EAPI_ALLOW_MODEL` (a cEOS model — the guard rejects the hardware model name here), the pinned
+  # `EAPI_ALLOW_VERSION=4.28.14M`, `EAPI_CA_FILE` pointing at the run's extracted **public**
+  # certificate, and one `EAPI_SCRATCH_INTERFACE`. The harness refuses before any of that if
+  # `EAPI_TARGET_CLASS` is anything but `lab` or an inherited `EAPI_HOST` is not loopback (exit 3),
+  # and the image-identity pin (exit 5) means an unauthorized/mismatched image never starts. No
+  # secret is stored in this workflow: there are no `secrets.*` references anywhere in this job, and
+  # the credential exists only in the per-run 0600 state file plus the child env, deleted on
+  # teardown. Local opt-in leniency (DR-034: skip-with-a-reason, exit 0) is deliberately NOT
+  # reproduced here — `scripts/assert-live-run.mjs` fails the job when nothing executed.
+  #
+  # Why it cannot run by accident: `runs-on` names labels GitHub never hosts, so the job is queued
+  # until a runner registered on the trusted lab machine (docs/CEOS.md §Manual lab setup, "dedicated
+  # trusted lab host/runner") picks it up — which also means the job is currently UNEXECUTED and the
+  # image must already be imported there as an authorized local cache (the harness never pulls).
+  # Nothing may be published from it: `--no-fixtures` keeps committed captures out of reach of CI
+  # (refresh is `npm run fixtures:refresh -- --yes`, a human act by docs/CEOS.md "explicit and
+  # reviewed"), and the only artifact is a log that has already passed the secret scan.
+  ceos-live:
+    name: cEOS-lab live eAPI suite (trusted dispatch, self-hosted lab runner)
+    # Belt and braces on top of the `workflow_dispatch` trigger: a fork PR, a push, or a copy of this
+    # file reaching another event must never start a privileged container.
+    if: ${{ github.event_name == 'workflow_dispatch' }}
+    runs-on: [self-hosted, linux, eos-lab]
+    timeout-minutes: 45
+    env:
+      LAB_PORT: ${{ github.event.inputs.port || '8443' }}
+      LIVE_LOG: live-run.log
+    steps:
+      - uses: actions/checkout@v4
+
+      # The live suite runs on vitest 5, so this leg needs a supported line (22), not the floor 20 —
+      # that is exactly the `quality`/`dist-node20` split in this file.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install (lockfile at the workspace root)
+        run: npm ci
+
+      - name: Preflight — what this harness already owns (read-only listing, nothing created)
+        # Prints every labelled container/network plus the state/lock files, so an operator sees a
+        # leftover run from an interrupted job BEFORE a new privileged container is started.
+        run: npm run lab:list
+
+      - name: Live suite against the run-owned lab (up → probe → vitest --project live → down)
+        # `--quiet` keeps the one-time credential print out of the log that becomes an artifact; the
+        # 0600 state file stays the only copy and the harness deletes it. `--no-fixtures` means this
+        # job can never write a committed capture. pipefail keeps the harness's exit code, which is
+        # either the child's exit code or a distinct refusal code (3-9).
+        # No worker/file fan-out is configured here on purpose: the `live` project in
+        # arista-api-client/vitest.config.ts already pins pool 'forks' + fileParallelism:false +
+        # maxWorkers:1, which is the in-process half of docs/CEOS.md's "single-flight execution per
+        # endpoint, both between jobs and within Vitest/Playwright".
+        run: |
+          set -o pipefail
+          npm run lab:run -- --quiet --no-fixtures --port "$LAB_PORT" -- \
+            npx vitest run --project live 2>&1 | tee "$LIVE_LOG"
+        shell: bash
+
+      - name: Teardown — always, including readiness/test/timeout failure paths
+        # `lab:run` already tears its own run down in a finally (and on SIGINT/SIGTERM/SIGHUP). This
+        # is the safety net for the paths where that never got to run: the job was cancelled or the
+        # step was killed by timeout-minutes. It names this harness's newest run only, verifies the
+        # run label before removing anything, never prunes shared resources, and is idempotent.
+        if: ${{ always() }}
+        run: npm run lab:down
+
+      - name: Diagnostics — run ownership + the summary the assertion read
+        if: ${{ always() }}
+        run: |
+          # `|| true`: the listing needs the daemon, and losing the summary lines below because of an
+          # unreachable Docker socket would hide the actual reason this job failed.
+          npm run lab:list || true
+          if [ -f "$LIVE_LOG" ]; then
+            grep -nE '^[[:space:]]+(Test Files|Tests)[[:space:]]' "$LIVE_LOG" || echo 'no vitest summary line in the log'
+          else
+            echo "$LIVE_LOG was never written — the live step died before the child produced output"
+          fi
+        shell: bash
+
+      - name: Assert the live tests actually EXECUTED (all-skipped is not coverage)
+        id: assert
+        if: ${{ always() }}
+        # The exit code of `vitest run --project live` cannot carry this signal: an unconsented or
+        # half-guarded run exits 0 with everything skipped (DR-034's local convention). So this step
+        # reads the printed summary itself — it fails unless a `Tests` line exists, zero tests are
+        # skipped, zero failed, and >=1 passed — and it also runs the artifact hygiene scan, naming
+        # any credential-shaped value it finds without echoing it.
+        run: node scripts/assert-live-run.mjs "$LIVE_LOG" --min-passed 1 --check-secrets
+
+      - name: Upload the redacted live log
+        if: ${{ always() && steps.assert.outcome == 'success' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ceos-live-diagnostics-${{ github.run_id }}
+          path: ${{ env.LIVE_LOG }}
+          if-no-files-found: error
+          retention-days: 14
