@@ -59,7 +59,10 @@ describe.skipIf(!ready)('live read: pyeapi test_api_switchports.py (test_getall,
     node = createNode(liveTransportOptions(target))
     const reported = await node.getVersion()
     const mismatch = matchesDeviceIdentity(target, { version: reported.version, modelName: reported.modelName })
-    if (mismatch !== undefined) throw new Error(`live-switchports readiness: ${mismatch.reason}`)
+    // Tolerate only the suffix-driven EAPI_VERSION_MISMATCH (cEOS `version` has an engineering-build suffix);
+    // the probe enforces base identity + model + TLS (DR-066).
+    if (mismatch !== undefined && mismatch.code !== 'EAPI_VERSION_MISMATCH') throw new Error(`live-switchports readiness: ${mismatch.reason}`)
+    if (mismatch?.code === 'EAPI_VERSION_MISMATCH') console.warn(`live-switchports: reported version "${reported.version}" vs pin "${target.allowVersion}" (base-level enforced by the probe, DR-066)`)
   })
 
   it('switchports.getAll() is a keyed table of switchport records (test_getall, :62 — read half)', async () => {
