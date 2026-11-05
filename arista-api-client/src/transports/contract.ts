@@ -27,8 +27,8 @@
  * `client.TRANSPORTS` (`client.py:112-121`). MIGRATION.md §2 maps the class names, §5 the semantics.
  */
 
-import type { SendRequestOptions, SendRequestResult } from '../internal/wire'
-import type { CommandSpec } from '../types/eapi'
+import type { SendRequestOptions, SendRequestResult, SentMethodCall } from '../internal/wire'
+import type { CommandSpec, WireMethodCall, WireMethodResultOf } from '../types/eapi'
 
 /**
  * Transport kinds, named after what they *are*, not after pyeapi's spelling.
@@ -318,6 +318,25 @@ export interface TransportExecOptions extends SendRequestOptions {
   readonly readOnly?: boolean | undefined
 }
 
+/** Per-call knobs for {@link Transport.callMethod} — the transport half only; the method's own
+ * parameters are the typed `params` of the call, and the allow-list in `internal/wire.ts` gates them
+ * (DR-016). There is no `format`/`stopOnError` here because those are *per-method* parameters the
+ * caller passes in `params`, not codec options. */
+export interface MethodCallOptions {
+  /** Override this call's deadline (ms). */
+  readonly timeoutMs?: number | undefined
+  /** Cancel an in-flight call from the UI. */
+  readonly signal?: AbortSignal | undefined
+  /**
+   * DR-019's resend-on-`ConnectError` opt-in. Default `false` — deliberately, even though
+   * `verifyConfig` never changes running-config: the device opens and aborts a **config session**
+   * server-side to answer it (`JsonCli.py:293-305`), so "it is only a read" is a claim about EOS
+   * internals rather than about our own request, and DR-019 keeps writes (and anything session-shaped)
+   * out of the automatic-retry path unless the caller says otherwise.
+   */
+  readonly readOnly?: boolean | undefined
+}
+
 /** A device round trip: commands in, M1's parsed result-or-typed-failure out. */
 export interface Transport {
   /** The pyeapi-equivalent transport name, as data (ARCHITECTURE §2). */
@@ -330,6 +349,20 @@ export interface Transport {
   readonly address: string
   /** build → send → parse for one batch of commands. Never throws for a device error envelope. */
   execute(commands: CommandSpec | readonly CommandSpec[], options?: TransportExecOptions): Promise<SendRequestResult>
+  /**
+   * build → send → parse for one **non-`runCmds`** JSON-RPC call (`verifyConfig`,
+   * `getCommandCompletions`, `getCommandHelp`) — M11 (#13), the seam PLAN §M11 needs and pyeapi never
+   * had: it can only send `runCmds` (`eapilib.py:326-327`, `:362`). The `params` allow-list runs
+   * before anything is sent, the connection's id policy stamps the envelope (DR-017), and the reply
+   * is validated by the same codec (`internal/wire.ts` → `parseResponse`/`parseMethodResponse`), which
+   * is why this returns a result union instead of a `Promise<EapiReply>`.
+   *
+   * **Optional, and that is a compatibility statement, not laziness:** every transport built by
+   * `createCodecTransport` (all seven device kinds and `MockTransport`) provides it, while a
+   * third-party `Transport` written before M11 does not. `Node`'s method verbs check for it and
+   * refuse with `NotSupportedError` naming this member rather than guessing an encoding.
+   */
+  callMethod?<C extends WireMethodCall>(call: C, options?: MethodCallOptions): Promise<SentMethodCall<WireMethodResultOf<C>>>
   /** Idempotent. Cookie transports also `POST /logout` here (DR-018 — pyeapi never logs out). */
   close(): Promise<void>
   /** pyeapi `__str__`/`__repr__` equivalent, secret-free (no password is ever rendered). */

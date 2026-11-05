@@ -47,6 +47,21 @@ separate verb (**DR-075**); branch gate: **49 files / 1,556 client tests** (+82 
 `in-progress`, not done:** the `68..9214` MTU-bound box and the 48-port fixture `getAll()` await the
 M12 (#14) §3 capture, and M10d/Vxlan stays deferred to wave 3.
 
+**M11 (#13) is delivered on its branch** — the non-`runCmds` differentiators: `Node.verifyConfig()` /
+`getCompletions()` / `getCommandHelp()` ride a validated `WIRE_METHODS` table over the new optional
+`Transport#callMethod` seam, and faking them with `runCmds` is refused as unsafe, not inconvenient
+(**DR-061**, §5 rows 115-117); `src/capabilities.ts` probes candidate commands in a throwaway named
+config session with an abort guaranteed on every path and a seven-verdict taxonomy in which ONLY a
+`1002` may ever say *unavailable* (**DR-062**, rows 118-121); `createCapabilityCache` keys answers by
+endpoint + candidates + `batchSize` with a 15-minute TTL and never stores an inconclusive run
+(**DR-063**, row 122). It claims §5 rows **115-122** + **DR-061-063** — the reservation from this
+lane's merged note, and it FILLS the apparent 061-063 DECISIONS gap on purpose (reserved, never
+skipped). Branch gate: **53 files / 1,647 client tests** (webui 3 / 8), coverage 97.85 st / 92.07 br /
+98.84 fn / 98.63 ln, `capabilities.ts` 93.39 / 81.62 / 90.9 / 96.41 against the root-level gate.
+Supersedes the `123-130` / `DR-070+` reserve sentence above: the open lanes' FINAL bands are M11 this
+branch 115-122 / DR-061-063; M10b/c 125-132 / DR-075-080; M12a 135-142 / DR-081-084; M12b 143-149 /
+DR-085-088; declared skips 123-124, 133-134, DR-070-074; safe merge order M11 -> M10b/c -> M12a -> M12b.
+
 **Test infrastructure planning update:** local cEOS-lab **4.28.14M** and vendor install
 instructions are now available under `/home/svaj/development/arista/cEOS/`.
 Disposable cEOS is the preferred planned integration/live and browser E2E target;

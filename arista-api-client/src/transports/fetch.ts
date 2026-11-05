@@ -22,7 +22,7 @@ import {
 } from './contract'
 import { resolveEndpoint, type ResolvedEndpoint, type ResolveEndpointDefaults } from './endpoint'
 import { guardEmptyResponseBody, mapHttpStatus, mapWireFailure } from './error-map'
-import type { JsonRpcRequest } from '../types/eapi'
+import type { RawWireRequest } from '../types/eapi'
 
 /** The header eAPI documents and pyeapi sends (`eapilib.py:432`): `application/json-rpc`. */
 export const EAPI_CONTENT_TYPE = 'application/json-rpc'
@@ -34,7 +34,7 @@ export const EAPI_CONTENT_TYPE = 'application/json-rpc'
 export function createFetchSender(endpoint: ResolvedEndpoint, credentials: CredentialOptions): RawSend {
   const auth = authorizationHeader(credentials)
   const address = endpoint.address
-  return async function send(request: JsonRpcRequest, ctx): Promise<string> {
+  return async function send(request: RawWireRequest, ctx): Promise<string> {
     const controller = new AbortController()
     let deadlineHit = false
     const timer = setTimeout(() => {

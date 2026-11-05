@@ -23,7 +23,7 @@
 import { AuthError } from '../errors'
 import { redactCommands } from '../internal/redact'
 import { warnOnce } from '../internal/warn'
-import type { JsonRpcRequest } from '../types/eapi'
+import type { RawWireRequest } from '../types/eapi'
 import { TransportBase, idPolicyFrom, type RawSend, type RawSendContext, type TransportKernel } from './base'
 import { DEFAULT_HTTPS_PORT, DEFAULT_TIMEOUT_MS, type SessionTransportOptions } from './contract'
 import { resolveEndpoint, type ResolvedEndpoint } from './endpoint'
@@ -76,7 +76,7 @@ function sessionKernel(options: SessionTransportOptions): TransportKernel {
    * request keeps the promise that **every** error carries its `commands` (ARCHITECTURE §4) and costs
    * nothing observable. Concurrent callers share one login (MIGRATION.md §5 row 30).
    */
-  async function performLogin(request: JsonRpcRequest, ctx: RawSendContext): Promise<void> {
+  async function performLogin(request: RawWireRequest, ctx: RawSendContext): Promise<void> {
     const context: WireErrorContext = { endpoint: loginEndpoint.address, request, timeoutMs: ctx.timeoutMs }
     const body = JSON.stringify({ username: options.username, password: options.password ?? '' })
     const response = await nodeCall(
@@ -93,7 +93,10 @@ function sessionKernel(options: SessionTransportOptions): TransportKernel {
     const attached = {
       endpoint: loginEndpoint.address,
       ...(request.id === undefined ? {} : { requestId: request.id }),
-      commands: redactCommands(request.params.cmds),
+      // A M11 method call has no `cmds` to name: a login failure that happened while asking for
+      // completions says so with the request id, and does not invent a command list (DR-011 keeps the
+      // list redacted rather than dropped when there is one).
+      commands: redactCommands(request.method === 'runCmds' ? request.params.cmds : []),
     }
     if (response.status !== 200) {
       // Body deliberately not echoed (row 26) — pyeapi's `resp.read()` there can leak an echoed field.
@@ -119,7 +122,7 @@ function sessionKernel(options: SessionTransportOptions): TransportKernel {
     })
   }
 
-  async function ensureSession(request: JsonRpcRequest, ctx: RawSendContext): Promise<void> {
+  async function ensureSession(request: RawWireRequest, ctx: RawSendContext): Promise<void> {
     if (jar !== undefined) return
     inflight ??= performLogin(request, ctx).then(
       () => {
