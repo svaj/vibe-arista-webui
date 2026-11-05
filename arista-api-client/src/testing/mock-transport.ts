@@ -24,14 +24,31 @@ import {
   TimeoutError,
   TransportError,
 } from '../errors'
-import { createCodecTransport, idPolicyFrom, type RawSend, type TransportKernel } from '../transports/base'
-import type { Transport, TransportExecOptions } from '../transports/contract'
+import { createCodecTransport, idPolicyFrom, type ComposedTransport, type RawRequest, type RawSend, type TransportKernel } from '../transports/base'
+import type { MethodCallOptions, Transport, TransportExecOptions } from '../transports/contract'
 import { mapHttpStatus } from '../transports/error-map'
-import type { SendRequestResult } from '../internal/wire'
-import type { CommandResult, CommandSpec, JsonRpcError, JsonRpcId, JsonRpcRequest } from '../types/eapi'
+import type { SendRequestResult, SentMethodCall } from '../internal/wire'
+import type {
+  CommandResult,
+  CommandSpec,
+  JsonRpcError,
+  JsonRpcId,
+  JsonRpcMethodRequest,
+  JsonRpcRequest,
+  NonRunCmdsMethodName,
+  WireMethodCall,
+  WireMethodResultOf,
+} from '../types/eapi'
 
 /** Matches a request by its command list. `'*'` matches anything; a predicate matches anything else. */
 export type CommandMatcher = string | ((commands: readonly CommandSpec[]) => boolean)
+
+/**
+ * Matches a **non-`runCmds`** request (M11, #13): by method name, by `'*'` for any method call, or by a
+ * predicate over the built envelope — which is how a test asserts on `params.configList` without
+ * reaching into the transport.
+ */
+export type MethodMatcher = NonRunCmdsMethodName | '*' | ((request: JsonRpcMethodRequest) => boolean)
 
 /** What a script entry can do when it matches. */
 type ScriptAction =
@@ -42,6 +59,14 @@ interface ScriptEntry {
   readonly match: CommandMatcher
   readonly action: ScriptAction
   /** `once` entries are consumed by the first match, so a two-step scenario can be scripted exactly. */
+  once: boolean
+  consumed: boolean
+}
+
+/** The same entry shape for the method script, matched on the method instead of the command list. */
+interface MethodScriptEntry {
+  readonly match: MethodMatcher
+  readonly action: ScriptAction
   once: boolean
   consumed: boolean
 }
@@ -88,8 +113,39 @@ function matches(entry: ScriptEntry, commands: readonly CommandSpec[]): boolean 
   return texts.includes(match) || texts.join('\n') === match
 }
 
+/**
+ * A method request is anything whose `method` is not `runCmds`, which the two envelope types make a
+ * compile-time discriminator. Checked first in `dispatch` because a method request has **no**
+ * `params.cmds` to match on: `verifyConfig` carries `configList`, and the completion/help methods carry
+ * a `command` string (`JsonCli.py:174-330`).
+ */
+function isMethodRequest(request: RawRequest): request is JsonRpcMethodRequest {
+  return request.method !== 'runCmds'
+}
+
+function methodMatches(entry: MethodScriptEntry, request: JsonRpcMethodRequest): boolean {
+  const { match } = entry
+  if (match === '*') return true
+  if (typeof match === 'function') return match(request)
+  return match === request.method
+}
+
+/**
+ * A **wire-level** failure (`httpStatus` / `connectFailure` / `tlsFailure` / `timeoutAfter` /
+ * `wireFailure`) is scripted with the `'*'` matcher, which means *every* request — M11's (#13)
+ * non-`runCmds` calls included. Without this fallback, `mockTransport().httpStatus(401)` would be
+ * answered to a `verifyConfig` call with a loud-but-wrong "no scripted answer for the verifyConfig
+ * call" instead of the `AuthError` the real transports produce, i.e. the status-mapping path would be
+ * untestable through the mock. Replies are deliberately excluded: `.replies('*', …)` scripts a
+ * `runCmds`-shaped body and cannot describe a method reply, and an unmatched method call must stay the
+ * loud failure docs/TESTING.md §3 demands.
+ */
+function wireLevelFailure(script: readonly ScriptEntry[]): ScriptEntry | undefined {
+  return script.find((entry) => !entry.consumed && entry.match === '*' && entry.action.kind === 'fail')
+}
+
 /** Serialize a scripted answer into response text, echoing the request id when the script does not pin one. */
-function replyBody(reply: MockReply, request: JsonRpcRequest): string {
+function replyBody(reply: MockReply, request: RawRequest): string {
   if (typeof reply === 'string') return reply
   if (Array.isArray(reply)) return JSON.stringify({ jsonrpc: '2.0', result: reply, id: request.id })
   if ('result' in reply || 'error' in reply) {
@@ -117,9 +173,11 @@ export class MockTransport implements Transport {
   readonly address: string
 
   private readonly script: ScriptEntry[] = []
+  private readonly methodScript: MethodScriptEntry[] = []
   private readonly requests: JsonRpcRequest[] = []
+  private readonly methodRequests: JsonRpcMethodRequest[] = []
   private readonly commandLists: (readonly CommandSpec[])[] = []
-  private readonly inner: Transport
+  private readonly inner: ComposedTransport
   private closed = false
 
   constructor(options: MockTransportOptions = {}) {
@@ -141,6 +199,17 @@ export class MockTransport implements Transport {
   execute(commands: CommandSpec | readonly CommandSpec[], options?: TransportExecOptions): Promise<SendRequestResult> {
     if (this.closed) return Promise.reject(new TransportError('this MockTransport is closed', { endpoint: this.address }))
     return this.inner.execute(commands, options)
+  }
+
+  /**
+   * The M11 (#13) non-`runCmds` seam, run through the **same** composition the real transports use
+   * (`createCodecTransport` → `sendMethodRequest`), so a scripted `verifyConfig` test exercises the
+   * production parameter allow-list, id stamping and result gate — not a mock's shorter version of
+   * them (docs/TESTING.md §3).
+   */
+  callMethod<C extends WireMethodCall>(call: C, options?: MethodCallOptions): Promise<SentMethodCall<WireMethodResultOf<C>>> {
+    if (this.closed) return Promise.reject(new TransportError('this MockTransport is closed', { endpoint: this.address }))
+    return this.inner.callMethod(call, options)
   }
 
   async close(): Promise<void> {
@@ -174,6 +243,39 @@ export class MockTransport implements Transport {
   /** Lower-level version of {@link MockTransport.rejects}: script the whole `error` member. */
   repliesError(match: CommandMatcher, error: JsonRpcError): this {
     return this.replies(match, { error })
+  }
+
+  // --- scripting non-`runCmds` methods (M11 #13) ---------------------------------------------------
+
+  /**
+   * Answer `reply` to a method request (`verifyConfig` / `getCommandCompletions` / `getCommandHelp`).
+   * The reply is scripted as **text**, exactly like a command reply would be, because `parseResponse`
+   * and `parseMethodResponse` stay the only validators of a device answer (M1's rule): a fixture that
+   * cannot be produced by `JSON.stringify` of an envelope is not a reply this mock will invent.
+   */
+  methodReplies(match: MethodMatcher, reply: MockReply): this {
+    this.methodScript.push({ match, action: { kind: 'reply', reply }, once: false, consumed: false })
+    return this
+  }
+
+  /** Answer a method request once, then fall through to the next matching entry. */
+  methodRepliesOnce(match: MethodMatcher, reply: MockReply): this {
+    this.methodScript.push({ match, action: { kind: 'reply', reply }, once: true, consumed: false })
+    return this
+  }
+
+  /** The device's `error` envelope for a method call — the same taxonomy as `rejects`, without `cmds`. */
+  methodRejects(match: MethodMatcher, failure: MockFailure): this {
+    return this.methodReplies(match, { error: { code: failure.code, message: failure.message, ...(failure.data === undefined ? {} : { data: failure.data }) } })
+  }
+
+  /**
+   * The built non-`runCmds` envelopes, in send order — params and id included, which is where
+   * `verifyConfig`'s `configList` and a completions `preamble` are asserted (the `sent()` list is
+   * commands only and stays empty for these).
+   */
+  methodCalls(): readonly JsonRpcMethodRequest[] {
+    return this.methodRequests.map((request) => ({ ...request, params: { ...request.params } }))
   }
 
   /** A bare `CommandError`, for the cases where the caller needs the exception rather than the envelope. */
@@ -236,17 +338,31 @@ export class MockTransport implements Transport {
 
   // --- internals ---------------------------------------------------------------------------------
 
-  private async dispatch(request: JsonRpcRequest, ctx: { timeoutMs: number }): Promise<string> {
-    this.requests.push(request)
-    this.commandLists.push([...request.params.cmds])
-    const entry = this.script.find((candidate) => !candidate.consumed && matches(candidate, request.params.cmds))
+  private async dispatch(request: RawRequest, ctx: { timeoutMs: number }): Promise<string> {
+    const method = isMethodRequest(request) ? request : undefined
+    if (method === undefined) {
+      const runCmds = request as JsonRpcRequest
+      this.requests.push(runCmds)
+      this.commandLists.push([...runCmds.params.cmds])
+    } else {
+      this.methodRequests.push(method)
+    }
+
+    const entry =
+      method === undefined
+        ? this.script.find((candidate) => !candidate.consumed && matches(candidate, (request as JsonRpcRequest).params.cmds))
+        // Method script first (it is the only place a method *reply* can come from), then a `'*'`
+        // wire-level failure, which by contract applies to every request — see `wireLevelFailure`.
+        : this.methodScript.find((candidate) => !candidate.consumed && methodMatches(candidate, method)) ?? wireLevelFailure(this.script)
     if (entry === undefined) {
       throw new NotSupportedError(
-        `MockTransport has no scripted answer for ${JSON.stringify(commandTexts(request.params.cmds))}. Add .replies(<command>, …) — an unmatched command never falls back to an empty result (docs/TESTING.md §3), and pyeapi's MockConnection silently returning {} is why upstream parse tests are weak.`,
+        method === undefined
+          ? `MockTransport has no scripted answer for ${JSON.stringify(commandTexts((request as JsonRpcRequest).params.cmds))}. Add .replies(<command>, …) — an unmatched command never falls back to an empty result (docs/TESTING.md §3), and pyeapi's MockConnection silently returning {} is why upstream parse tests are weak.`
+          : `MockTransport has no scripted answer for the ${method.method} call ${JSON.stringify(Object.keys(method.params))}. Add .methodReplies('${method.method}', …) — the same rule as for commands: a method call with no script is a loud test failure, never an invented envelope (docs/TESTING.md §3).`,
       )
     }
     if (entry.once) entry.consumed = true
-    if (entry.action.kind === 'fail') throw entry.action.make(request)
+    if (entry.action.kind === 'fail') throw entry.action.make(request as JsonRpcRequest)
     if (ctx.timeoutMs < 0) throw new TimeoutError('mock scripted negative deadline', { endpoint: this.address })
     return replyBody(entry.action.reply, request)
   }

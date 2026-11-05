@@ -30,21 +30,35 @@
 // `pythonRepr`, `formatErrorDataEntries` and `decorateUnsupportedParam` stay internal: they exist to
 // keep pyeapi message rendering comparable (tested directly) and are not a consumer contract.
 export {
+  buildGetCommandCompletionsRequest,
+  buildMethodRequest,
   buildRequest,
+  buildVerifyConfigRequest,
   createRequestIds,
   isUnconvertedCommandFailure,
   MAX_RAW_BODY,
   parseErrorEnvelope,
+  parseMethodResponse,
   parseResponse,
+  runMethodRequest,
   runRequest,
+  sendMethodRequest,
   sendRequest,
   unwrapResponse,
+  type BuildCompletionsParamsOptions,
+  type BuildCompletionsRequestOptions,
+  type BuildMethodRequestOptions,
   type BuildRequestOptions,
+  type BuildVerifyConfigParamsOptions,
+  type BuildVerifyConfigRequestOptions,
+  type MethodResponseContext,
+  type ParsedMethodResponse,
   type ParsedResponse,
   type RequestIdOptions,
   type ResponseContext,
   type SendRequestOptions,
   type SendRequestResult,
+  type SentMethodCall,
 } from './internal/wire'
 export { REDACTED, redactCommandText, redactCommands, redactSecrets, redactWireText } from './internal/redact'
 
@@ -77,17 +91,34 @@ export type {
   EapiResponse,
   ErrorDetailData,
   ErrorDetailEntry,
+  GetCommandCompletionsParams,
+  GetCommandCompletionsRequest,
+  GetCommandHelpCall,
+  GetCommandHelpParams,
+  GetCommandHelpRequest,
   JsonRpcError,
   JsonRpcFailure,
   JsonRpcId,
+  JsonRpcMethodRequest,
+  JsonRpcObjectSuccess,
   JsonRpcRequest,
   JsonRpcSuccess,
+  MethodWireSender,
+  NonRunCmdsMethodName,
+  RawWireRequest,
   RequestIdPolicy,
   RunCmdsFormat,
   RunCmdsParams,
   RunCmdsVersion,
   ShowContracts,
   ShowReply,
+  VerifyConfigCall,
+  VerifyConfigParams,
+  VerifyConfigRequest,
+  WireMethodName,
+  WireMethodCall,
+  WireMethodParams,
+  WireMethodResultOf,
   WireSender,
 } from './types/eapi'
 
@@ -123,6 +154,7 @@ export type {
   HttpsTransportOptions,
   InsecureTransportGate,
   LocalTrustGate,
+  MethodCallOptions,
   MockTransportOptions,
   NodeOnlyTlsOptions,
   NodeOnlyTransportKind,
@@ -146,16 +178,29 @@ export type {
 // parsed device identity. `parseVersionProperties` and `tryVariants` are exported because TESTING.md
 // §6 keeps parsers pure and unit-testable without a device (DR-006 for variants).
 export { Node, parseVersionProperties } from './command-layer'
+// M11 (#13): the same pure-parser rule as `parseVersionProperties` — a reply reader a spec can pin
+// without a device (`src/command-layer.methods.test.ts`) and a review screen can reuse on a replayed
+// reply. The three verbs themselves are `Node.verifyConfig` / `getCompletions` / `getCommandHelp`.
+export { parseCommandCompletions, parseCommandHelp, parseVerifyConfigReply } from './command-layer'
 export { tryVariants } from './internal/variants'
 export type {
+  CommandCompletion,
+  CommandCompletions,
+  CommandHelp,
+  CommandHelpEntry,
   ConfigOutput,
   ConfigTarget,
   ExecResult,
+  GetCommandHelpOptions,
+  GetCompletionsOptions,
   GetConfigOptions,
   NodeRequestOptions,
   NodeSettings,
   ShowOptions,
   ShowTextOptions,
+  VerifyConfigEntry,
+  VerifyConfigOptions,
+  VerifyConfigOutcome,
   VersionProperties,
 } from './command-layer'
 export type { CliVariant, VariantSender } from './internal/variants'
@@ -199,6 +244,36 @@ export type {
   SessionRequestOptions,
   WebStorageLike,
 } from './config-session'
+
+// --- capability probing (M11 #13, src/capabilities.ts) -------------------------------------------
+// The mechanism half of PLAN §M11: `probeCommands` runs candidate CLI commands inside a throwaway
+// `no-commit` config session and classifies what the device answered (DR-033 — presence is *probed*,
+// never looked up in a table this package ships), and `createCapabilityCache` keeps those answers per
+// endpoint so a UI does not contend for the config lock on every render. Feature *names* are only a
+// caller-supplied label map here; there is no feature list in this package, and there must not be one
+// until M10 (#12) provides candidates worth trusting.
+export {
+  createCapabilityCache,
+  DEFAULT_CAPABILITY_TTL_MS,
+  isInconclusiveVerdict,
+  isUnavailableVerdict,
+  probeCommands,
+} from './capabilities'
+export type {
+  CapabilityCache,
+  CapabilityCacheEntry,
+  CapabilityCacheOptions,
+  CapabilityCachePeek,
+  CapabilityProbeTarget,
+  CapabilityVerdict,
+  CommandProbeResult,
+  FeatureProbeCommands,
+  ProbeBatchProgress,
+  ProbeCleanupFailure,
+  ProbeCommandsOptions,
+  ProbeCommandsOutcome,
+  ProbeSessionReport,
+} from './capabilities'
 
 // --- connection profiles (M3 #5, src/profiles.ts, DR-038/DR-044) --------------------------------
 // pyeapi's `Config` / `config_for` / `hosts_for_tag` (`client.py:127-367`) without the file: an INI
