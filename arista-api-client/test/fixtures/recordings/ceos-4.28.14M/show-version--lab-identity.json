@@ -1,0 +1,36 @@
+{
+  "format": "arista-eapi-recording/v1",
+  "identity": {
+    "targetSlug": "ceos-4.28.14M",
+    "targetClass": "lab",
+    "modelName": "cEOS",
+    "aristaVersion": "4.28.14M",
+    "versionNumber": "4.28.14",
+    "provenance": "hand-authored-example",
+    "endpoint": "https://localhost:8443/command-api",
+    "image": "ceosimage:4.28.14M",
+    "topology": "single cEOS-lab container, one published port"
+  },
+  "captures": [
+    {
+      "requestId": "lab-ceos-1",
+      "commands": [
+        {
+          "cmd": "enable",
+          "input": "<redacted>"
+        },
+        "show version"
+      ],
+      "format": "json",
+      "result": [
+        {},
+        {
+          "version": "4.28.14M",
+          "modelName": "cEOS",
+          "hostname": "lab"
+        }
+      ]
+    }
+  ],
+  "incomplete": []
+}
