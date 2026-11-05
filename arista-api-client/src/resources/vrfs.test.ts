@@ -252,12 +252,12 @@ describe('VrfsResource reads — vrfs.py:67-99 + the DR-030 read budget', () => 
     // `vrf instance blue` with an empty body: no rd line (upstream would carry rd=None, divergence 3),
     // and NO description line at all — where upstream's _parse_description raises AttributeError and
     // its getall would raise for the WHOLE collection (vrfs.py:132, :149; divergence 4).
-    expect(all.get('blue')).toEqual<Vrf({
+    expect(all.get('blue')).toEqual<Vrf>({
       name: 'blue',
       definitionForm: 'instance',
       ipv4Routing: false,
       ipv6Routing: true,
-    }))
+    })
   })
 
   it('a banner body line at column 0 never speaks for a VRF (divergence 2, same rule as vlans divergence 3)', async () => {
