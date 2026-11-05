@@ -19,8 +19,8 @@
  * is what needs the plumbing — PLAN.md M7's exit gate is "the first resource module (M8) requires ~30
  * lines of new plumbing at most", and `base.test.ts` measures that cost against a throwaway entity.
  * **M8 (#10) claimed the first row** (`system`, with `Node.system` for it), and **M9 (#11) claimed the
- * next two** (`vlans`, `switchports`, with `Node.vlans` / `Node.switchports`). `interfaces` still arrives
- * with M10 (#12).
+ * next two** (`vlans`, `switchports`, with `Node.vlans` / `Node.switchports`), and **M10a (#12) claimed
+ * the fourth** (`interfaces`, with `Node.interfaces`).
  *
  * Instances are memoised **per `Node`**, not globally: `ResourceRegistry` is constructed with the `Node`
  * it drives, so two switches get two resource objects and no module-level mutable singleton exists
@@ -28,6 +28,7 @@
  */
 
 import { NotSupportedError } from '../errors'
+import { InterfacesResource } from './interfaces'
 import { SwitchportsResource } from './switchports'
 import { SystemResource } from './system'
 import { VlansResource } from './vlans'
@@ -50,8 +51,8 @@ export type ResourceFactory<T> = (node: Node) => T
  * }
  * ```
  *
- * The first rows are M8's (`system`, #10) and M9's (`vlans`, `switchports`, #11); `interfaces` (#12)
- * follows. A name in this interface without a factory in {@link RESOURCE_FACTORIES} is a bug in this
+ * The first rows are M8's (`system`, #10) and M9's (`vlans`, `switchports`, #11); M10a (#12) added
+ * `interfaces`. A name in this interface without a factory in {@link RESOURCE_FACTORIES} is a bug in this
  * package, and {@link ResourceRegistry.get} throws rather than returning `undefined` (row 79).
  */
 export interface ResourceKinds {
@@ -61,6 +62,8 @@ export interface ResourceKinds {
   vlans: VlansResource
   /** The L2 state of each Ethernet / Port-Channel interface — `src/resources/switchports.ts`, port of pyeapi `api/switchports.py`. */
   switchports: SwitchportsResource
+  /** Every interface's presence and shared configuration — `src/resources/interfaces.ts`, port of pyeapi `api/interfaces.py` (M10a slice). */
+  interfaces: InterfacesResource
 }
 
 /** Any name `node.resource()` may be asked for. Grows by one row per resource module (M8-M10). */
@@ -88,6 +91,7 @@ export const RESOURCE_FACTORIES: ResourceFactories<ResourceKinds> = Object.freez
   system: (node) => new SystemResource(node),
   vlans: (node) => new VlansResource(node),
   switchports: (node) => new SwitchportsResource(node),
+  interfaces: (node) => new InterfacesResource(node),
 })
 
 /**
@@ -137,7 +141,7 @@ export class ResourceRegistry<K extends object = ResourceKinds> {
       const known = this.names().map(String)
       throw new NotSupportedError(
         `unknown resource ${String(name)} — no factory is registered for it${
-          known.length === 0 ? '. This registry holds no factories at all, which for the built-in map would mean no resource module has been registered (M8 #10 shipped `system`; M9 #11 and M10 #12 owe the rest) — an app-defined registry is created with createResourceRegistry(factories, node).' : `; registered: ${known.join(', ')}`
+          known.length === 0 ? '. This registry holds no factories at all, which for the built-in map would mean no resource module has been registered (M8 #10 shipped `system`, M9 #11 `vlans`/`switchports` and M10a #12 `interfaces`) — an app-defined registry is created with createResourceRegistry(factories, node).' : `; registered: ${known.join(', ')}`
         }`,
         { cause: name },
       )

@@ -43,7 +43,7 @@
  * tests never reach a device and this workspace has no readable CLI sources, so those read
  * "unverified on hardware, M12 (#14) to capture".
  *
- * `MockTransport` key strings are whole joined command lists (`testing/mock-transport.ts:167`), spelled by
+ * `MockTransport` key strings are whole joined command lists (`testing/mock-transport.ts:83-88`), spelled by
  * the `batch()` helper below so a multi-command write names every command it sends.
  */
 
