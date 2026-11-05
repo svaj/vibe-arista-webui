@@ -31,8 +31,8 @@ jobs:
       # "Cannot read properties of undefined (reading 'bind')"), not because of this package.
       # 22 + 24 are the two LTS lines every pinned tool supports. The library's own
       # `engines.node >= 20` (DR-021) is a runtime floor claim, not a dev-toolchain claim:
-      # prove it in M12 (#14) by running the built dist/ under Node 20 with a dependency-free
-      # smoke script rather than by running the dev tooling there.
+      # proved in M12 (#14) by the `dist-node20` job below, which runs the built dist/ under Node 20
+      # with the dependency-free `scripts/dist-smoke.mjs` instead of running the dev tooling there.
       matrix:
         node: ['22', '24']
     steps:
@@ -79,3 +79,35 @@ jobs:
           path: arista-api-client/coverage/
           if-no-files-found: error
           retention-days: 14
+
+  # ---------------------------- engines.node >= 20 (DR-021), proved on the artifact ---------
+  # Still a PR-safe, offline job: no image, no Docker, no endpoint. `scripts/dist-smoke.mjs` installs
+  # no dependencies of its own and replaces fetch/http(s).request with a throwing tripwire before it
+  # imports `dist/`, so the only thing exercised is the shipped bundle loading and behaving.
+  # The floor cannot be measured by the suite: vitest 5.0.5 and jsdom 30 exclude Node 20 outright (see
+  # the matrix note), which is what the note reserved this leg for. `npm run build` is the only dev
+  # tooling that runs here, and vite/oxlint/rolldown/plugin-react all accept `^20.19.0`, which is the
+  # patch line actions/setup-node installs for `node-version: 20` — so the build is a fixture of this
+  # job, not its subject. A Node that is older than the package's own floor makes the script exit 1
+  # rather than pass vacuously, so this leg cannot silently stop proving anything.
+  dist-node20:
+    name: dist smoke on the engines floor (node 20)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install (lockfile at the workspace root)
+        run: npm ci
+
+      - name: Build the libraries
+        run: npm run build
+
+      - name: Smoke the built dist/ (no dev tooling, no device, no network)
+        run: node scripts/dist-smoke.mjs
