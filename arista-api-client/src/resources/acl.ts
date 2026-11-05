@@ -175,7 +175,6 @@ import { pythonRepr } from '../internal/wire'
 import { parseBlock } from '../config/text'
 import { EntityCollection } from './base'
 import { commandBuilder, submodeCommands } from './command-builder'
-import type { Node } from '../command-layer'
 import type { ConfigLine } from '../config/text'
 import type { ConfigSections } from '../config/chunk'
 import type { ResourceTable } from './types'
@@ -305,9 +304,6 @@ export type AclMatchInput =
   | { readonly host: string }
   | { readonly address: string; readonly prefixlen: number }
   | { readonly address: string; readonly mask: string }
-
-/** A parsed section header: which kind, and the name it carries. */
-type AclHeader = { readonly type: AclType; readonly name: string }
 
 /**
  * The section header grammar, at pyeapi's own charset: `^ip access-list (?:(standard) )?(.+)$`
@@ -678,7 +674,8 @@ function aclsFromSections(sections: ConfigSections, wanted: AclType | null): Map
   const acls = new Map<string, Acl>()
   for (const [key, sectionText] of sections) {
     const header = ACL_HEADER.exec(key)
-    const name = header?.[2]
+    if (header === null) continue
+    const name = header[2]
     if (name === undefined) continue
     const type: AclType = header[1] === 'standard' ? 'standard' : 'extended'
     if (wanted !== null && type !== wanted) continue
