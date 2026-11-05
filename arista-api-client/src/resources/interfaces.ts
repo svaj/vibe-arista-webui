@@ -26,7 +26,7 @@
  * | `Interfaces.get` (`:92-93`) → `get_instance(name)[name]`, i.e. `__getitem__` → `get` (`abstract.py:211-212`) | {@link InterfacesResource.get} — a lookup in the same one-read table, so `get`/`getAll()` cannot disagree |
  * | `Interfaces.getall` (`:95-115`): `re.compile(r'(?<=^interface\s)(.+)$', re.M)` (`:108`) over the whole config, then `self.get(name)` per hit with an `if interface:` filter (`:111-114`) | {@link interfacesFromSections} over the chunked document's section keys (DR-055: the chunker, not a module regex, decides what is a top-level command) — divergence 1 |
  * | `BaseInterface.get` (`:147-177`): `get_block('^interface %s')` (`:170`), `if not config: return None` (`:171-172`), then `name` / `type='generic'` (`:174`) + two `_parse_*` merged with `dict.update` (`:175-176`) | {@link interfaceFromSection}; `type` (the answering **class**) is replaced by `kind` (what the name **is**) — divergence 2 |
- | `EthernetInterface.get` (`:335-366`) with `_parse_sflow` (`:367-380`), `_parse_flowcontrol_send` (`:381-397`) and `_parse_flowcontrol_receive` (`:398-414`) | the {@link Interface.ethernet} field group on an Ethernet-kind section ({@link ethernetFieldsFromBlock}) — sFlow read as whole command lines, flowcontrol read verbatim, VRF read though upstream never reads it — **divergences 13/14/16**, and the port-channel reads' absent-not-defaulted discipline is **DR-076** |
+ | `EthernetInterface.get` (`:335-365`) with `_parse_sflow` (`:367-379`), `_parse_flowcontrol_send` (`:381-396`) and `_parse_flowcontrol_receive` (`:398-413`) | the {@link Interface.ethernet} field group on an Ethernet-kind section ({@link ethernetFieldsFromBlock}) — sFlow read as whole command lines, flowcontrol read verbatim, VRF read though upstream never reads it — **divergences 13/14/16**, and the port-channel reads' absent-not-defaulted discipline is **DR-076** |
  | `EthernetInterface.set_flowcontrol*` (`:447-472` composing through `set_flowcontrol` at `:513-524`), `set_sflow` (`:526-548`), `set_vrf` (`:550-576`, which picks its keyword with `if self.version_number >= '4.23'` at `:568`) | {@link setFlowcontrol} / {@link setFlowcontrolSend} / {@link setFlowcontrolReceive} and their `unset`/`default` pairs, {@link setSflow} trio, {@link setVrf} trio behind {@link assertEthernetName} — upstream's `ValueError` guards and its two silent-`False` answers become typed refusals (**divergence 17**, DR-077), and the version floor becomes a numeric segment compare (**divergence 18**, DR-078) |
  | `PortchannelInterface.get` (`:583-616`) with `_parse_minimum_links` / `_parse_lacp_fallback` / `_parse_lacp_timeout` (`:618-638`, defaulting to `0` / `'disabled'` / `90`), `get_lacp_mode` (`:639-658`), `get_members` (`:660-675`) | the {@link Interface.portChannel} field group ({@link portChannelFieldsFromBlock} + {@link interfacesFromSections}' group facts) plus {@link getLacpMode} / {@link getMembers} — read values stay absent where upstream substitutes a module constant, and members come from the running-config relation instead of only the text scrape (**DR-076**, divergence 15) |
  | `PortchannelInterface.set_members` (`:677-716`), `set_lacp_mode` (`:718-745`), `set_minimum_links` (`:747-769`), `set_lacp_fallback` (`:771-793`), `set_lacp_timeout` (`:795-811`) | {@link setMembers} / {@link setLacpMode} / {@link setMinimumLinks} trio / {@link setLacpFallback} + {@link unsetLacpFallback} / {@link setLacpTimeout} — same diff and same remove-then-add batch, with the mode-change side call kept as **two** transactions (**divergence 20**, DR-080) |
@@ -75,7 +75,7 @@
  * per-kind objects) and **DR-069** (a recording of the exact command outranks an inferred spelling).
  * M10b/M10c's divergences 13-20 land in the assigned band, rows **125-132** — the band **123-130** that
  * PR #29's merge note tentatively reserved for #12 is **superseded** by the band this lane was given
- * (125-134), and rows 133-134 are left unused rather than padded. Second-half mapping (not ascending,
+ * (125-134), and the band's last two numbers are deliberately left unused rather than padded. Second-half mapping (not ascending,
  * because the rows are grouped by what a reviewer reads together):
  * **13→126, 14→132, 15→125, 16→127, 17→128, 18→131, 19→129, 20→130**, and the decisions are
  * **DR-075** (members from the config relation), **DR-076** (absence survives a read), **DR-077** (the
@@ -260,11 +260,14 @@
  *     running-config declares" are different facts, and a review screen has to be able to see them
  *     disagree. **DR-075.**
  * 16. **sFlow and flow-control are read as commands, not as characters inside a block.**
- *     `_parse_sflow` is `'no sflow' not in config` (`:367-380`, the answer at `:379`), a substring search over
- *     the whole block: a section with **no** sflow line reads `sflow: true` — which the suite's own `test_get`
- *     pins for `interface Ethernet1` (`test_api_interfaces.py:183-189`, a fixture section carrying no sflow
- *     line, `running_config.text:542-675`) — and any line merely containing those six characters (a
- *     description, `no sflow <anything>`, an indented sub-mode) reads `false`. Here the two whole body
+ *     `_parse_sflow` is `'no sflow' not in config` (`:367-379`, the assignment at `:378`), a substring search over
+ *     the whole block: a section with **no** sflow line reads `sflow: true`, and any line merely containing those
+ *     six characters (a description, `no sflow <anything>`, an indented sub-mode) reads `false`. Upstream's own
+ *     `test_get` (`test_api_interfaces.py:183-189`) is **not** evidence of the first half: the fixture section it
+ *     reads (`test/fixtures/running_config.text:542-675`) really does carry `sflow enable` at `:652`, so its
+ *     `sflow: True` is a real line answering — the earlier draft of this note claimed that section carried no
+ *     sflow line, and the re-read on 2026-11-05 retired that claim (the fabricated `true` is pinned against a
+ *     config of this suite's own instead). Here the two whole body
  *     commands `sflow enable` / `no sflow enable` answer, in device order, and neither present is absent
  *     ({@link sflowFromBlock}, the {@link shutdownFromBlock} shape). The flowcontrol readers (`:381-414`)
  *     hard-code `'off'` when the block writes neither line and take `(\w+)$` when it does, so
@@ -794,9 +797,9 @@ function assertLacpMode(value: unknown): asserts value is LacpMode {
 
 /** Require a fallback mode that carries a value; the `disabled` intent is the named-verb treatment of pyeapi's `disable` arm (DR-037/DR-077). */
 function assertLacpFallbackMode(value: unknown): asserts value is LacpFallbackMode {
-  if (value === 'disabled') refuse('lacp fallback mode', value, "the 'disabled' arm composes `no port-channel lacp fallback` (pyeapi maps mode=='disabled' to disable=True at api/interfaces.py:789, composed at :790-792 and pinned by test/unit/test_api_interfaces.py:386-390) — that intent is the verb unsetLacpFallback() here, because the mode strings and the negation are separate questions (DR-037)")
+  if (value === 'disabled') refuse('lacp fallback mode', value, "the 'disabled' arm composes `no port-channel lacp fallback` (pyeapi maps mode=='disabled' to disable=True at api/interfaces.py:789, composed at :790-792 and pinned by test/unit/test_api_interfaces.py:366-369) — that intent is the verb unsetLacpFallback() here, because the mode strings and the negation are separate questions (DR-037)")
   if ((LACP_FALLBACK_MODES as readonly unknown[]).includes(value)) return
-  refuse('lacp fallback mode', value, `expected one of ${LACP_FALLBACK_MODES.join(' / ')} (or unsetLacpFallback() for the \`no\` form) — pyeapi answers any other mode by RETURNING False, with no exception and nothing to inspect (api/interfaces.py:787-788, pinned by the suite's invalid-mode test at test/unit/test_api_interfaces.py:391-394)`)
+  refuse('lacp fallback mode', value, `expected one of ${LACP_FALLBACK_MODES.join(' / ')} (or unsetLacpFallback() for the \`no\` form) — pyeapi answers any other mode by RETURNING False, with no exception and nothing to inspect (api/interfaces.py:787-788, pinned by the suite's invalid-mode test at test/unit/test_api_interfaces.py:371-374)`)
 }
 
 /** Require the positive-integer value a min-links / fallback-timeout write composes. **Client policy** — the platform bound is a device answer (DR-032/DR-057), upstream validates nothing, and `0` is DR-037's falsy trap. */
@@ -828,12 +831,12 @@ function versionFloorCompare(versionNumber: string, floor: readonly [number, num
  * applied to the M10b field (divergence 16).
  *
  * Upstream's reader is not a command match — it is a substring search over the whole block text,
- * `value = 'no sflow' not in config` (`interfaces.py:367-380`, the test at `:379`): an interface whose block carries
- * **no sflow line at all** reads back ENABLED (the answer `test/unit/test_api_interfaces.py:183-189`
- * pins for the fixture's `interface Ethernet1`, `test/fixtures/running_config.text:542-675`, which
- * carries no sflow line), and any block containing those six characters anywhere — a description,
- * a nested line, `no sflow something-else` — reads back disabled. Absence is not a state
- * (DR-029/DR-057), so the fabricated `true` is not ported.
+ * `value = 'no sflow' not in config` (`interfaces.py:367-379`, the assignment at `:378`): an interface whose block
+ * carries **no sflow line at all** reads back ENABLED, and any block containing those six characters anywhere —
+ * a description, a nested line, `no sflow something-else` — reads back disabled. Absence is not a state
+ * (DR-029/DR-057), so the fabricated `true` is not ported. The pinned suite's `test_get` (`:183-189`) does not
+ * demonstrate that fabrication: its fixture section carries `sflow enable` at `running_config.text:652`, so
+ * there the answer came from a real line. `interfaces.test.ts` pins the fabricated arm against its own config.
  */
 function sflowFromBlock(block: ConfigBlock): boolean | undefined {
   for (const line of block.body) {
@@ -1489,10 +1492,13 @@ export class InterfacesResource extends EntityCollection<Interface, string, Inte
   /**
    * The live member list, from `show port-channel <id> all-ports` — pyeapi's `get_members`
    * (`interfaces.py:660-675`) ported with its **text scrape** and its exact regular expression,
-   * `re.findall(r'\b(?!Peer)Ethernet[\d/]*\b', output)`: the negative look-ahead is why a
-   * `Peer-Ethernet` MLAG peer name is not a member, and the class keeps slot digits, so an
-   * `Ethernet1/1`-shaped token in the output is read verbatim — a name this client's grammar refuses,
-   * which is why {@link setMembers} names members it will not compose.
+   * `re.findall(r'\b(?!Peer)Ethernet[\d/]*\b', output)`. The look-around is **weaker than it reads**: it
+   * only rejects a match position whose own text starts with `Peer`, and a hyphen is itself a word
+   * boundary, so the hyphenated MLAG spelling is scraped as a member — the pinned clone answers
+   * `['Ethernet1']` for `'  Peer-Ethernet1'` (probe, 2026-11-05; `interfaces.test.ts` pins it). The class
+   * also keeps slot digits, so an `Ethernet1/1`-shaped token comes back verbatim — a name this client's
+   * grammar refuses, which is why {@link setMembers} names members it will not compose. Whether either
+   * shape appears in 4.28.13.1M's own answer is an M12 (#14) capture (DR-043).
    *
    * Upstream reads `config[0]['result']['output']` positionally off the `enable` answer
    * (`:673-675`) and raises `TypeError`/`IndexError` on a malformed reply; this verb goes through
@@ -1705,10 +1711,11 @@ export class InterfacesResource extends EntityCollection<Interface, string, Inte
 }
 
 /**
- * Upstream's member-scrape answer, verbatim (`interfaces.py:673-674`): every `Ethernet…` token that is
- * not introduced by `Peer`, keeping slot digits. Exported only for `interfaces.test.ts` to pin the
- * exact look-around semantics — production code reaches it through
- * {@link InterfacesResource.getMembers}.
+ * Upstream's member-scrape answer, verbatim (`interfaces.py:673-674`): every `Ethernet…` token, keeping
+ * slot digits, at a position that does not itself begin with `Peer` — which does **not** exclude a
+ * `Peer-Ethernet1` spelling, since the hyphen supplies the word boundary (see {@link InterfacesResource.getMembers}).
+ * Exported only for `interfaces.test.ts` to pin the exact look-around semantics — production code reaches it
+ * through {@link InterfacesResource.getMembers}.
  */
 export function membersFromOutput(output: string): string[] {
   return output.match(/\b(?!Peer)Ethernet[\d/]*\b/gu) ?? []

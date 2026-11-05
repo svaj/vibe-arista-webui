@@ -57,6 +57,25 @@
  *  - MTU: **no upstream twin in this module** — `interfaces.py` has no MTU verb — so every bound asserted
  *    below is this client's (divergence 7), with the device keeping authority via a pinned `CommandError`.
  *
+ * The **M10b/M10c** groups at the end of this file (#12, second round) port the two remaining classes:
+ * `TestApiEthernetInterface` (`:174-303`, **14** methods — `test_get` `:183-189`, `test_instance_functions`
+ * `:191-209`, `test_instance_functions_exceptions` `:211-224`, the six flow-control tests `:225-267`, the
+ * four sFlow tests `:269-295`, `test_set_vrf` `:297-302`) and `TestApiPortchannelInterface` (`:305-428`,
+ * **19** methods — `test_get` `:318-326`, the four min-links tests `:328-348`, `test_set_lacp_timeout_with_value`
+ * `:350-354`, the four fallback tests `:356-374`, `test_get_lacp_mode` `:375-377`, `test_get_members`
+ * `:379-381`, the five `test_set_members_*` `:383-414`, `test_set_lacp_mode` `:416-422`,
+ * `test_set_lacp_mode_invalid_mode` `:424-426`). 20 + 33 + 19 = 72, and `TestApiVxlanInterface` (`:429+`,
+ * **19** methods) is the only class left — wave 3 (M10d). Every command text those 33 pin is reproduced
+ * verbatim below, with upstream's own fixture lines quoted where a read is involved
+ * (`running_config.portchannel:18`/`:19`/`:20`/`:147`/`:278`, `running_config.text:550`/`:551`/`:652`,
+ * `show_portchannel.json`'s `Active Ports` block) — each re-opening of the pinned clone on 2026-11-05.
+ * Two claims in the earlier draft of this file's prose did **not** survive that re-reading and are corrected
+ * in `interfaces.ts` / MIGRATION.md row 127 alongside these specs: upstream's `test_get` `sflow: True` for
+ * `interface Ethernet1` is **not** a section with no sFlow line (`sflow enable` sits at
+ * `running_config.text:652`, inside the `:542-675` range cited), and `_parse_sflow`'s answer is the
+ * assignment at `:378` (`value = 'no sflow' not in config`), not the `return` at `:379`. The fabricated
+ * `true` is pinned here against a config of our own instead of against that fixture.
+ *
  * Upstream drives all of it through `EapiConfigUnitTest`, whose `MockConnection` answers `{}` to anything
  * it was not told about. Here an unscripted request is a loud failure and (`testing/mock-transport.ts:83-88`)
  * a string matcher is compared against the **whole joined command list**, never a prefix — so every batch
@@ -76,7 +95,23 @@ import { describe, expect, it } from 'vitest'
 import { Node } from '../command-layer'
 import { CommandError, ConfigParseError, EapiErrorCode, NotSupportedError, ProtocolError } from '../errors'
 import { mockTransport, type MockReply, type MockTransport } from '../testing/mock-transport'
-import { INTERFACE_STATUS_COMMAND, InterfacesResource, type InterfaceStatusMode, type InterfacesReadOptions } from './interfaces'
+import {
+  FLOWCONTROL_DIRECTIONS,
+  FLOWCONTROL_VALUES,
+  INTERFACE_STATUS_COMMAND,
+  InterfacesResource,
+  LACP_FALLBACK_MODES,
+  LACP_MODES,
+  membersFromOutput,
+  type FlowcontrolDirection,
+  type FlowcontrolValue,
+  type Interface,
+  type InterfaceStatusMode,
+  type InterfacesReadOptions,
+  type LacpFallbackMode,
+  type LacpMode,
+} from './interfaces'
+import type { ResourceTable } from './types'
 import { INTERFACE_KINDS, assertInterfaceName, assertVlanId, isInterfaceName, parseInterfaceName } from './validators'
 
 /** Join lines into config text so a trailing-space line cannot be lost to an editor. */
@@ -1477,5 +1512,1182 @@ describe('InterfacesResource wiring — one accessor per Node (DR-006/DR-052)', 
     ])
     // `configSections` is a protected `ResourceBase` read (base.ts) — the startup-config seam lives on the
     // base and is pinned there by base.test.ts, so no read option is invented on this module's verbs.
+  })
+})
+
+// ====================================================================================================
+// M10b / M10c (#12): `EthernetInterface` (`interfaces.py:330-577`) and `PortchannelInterface`
+// (`:578-813`). Command texts and fixture lines below are re-read from the pinned clone on 2026-11-05;
+// upstream's `ValueError`/`return False` bad-input answers land here as typed refusals (divergence 17,
+// DR-077) and its invented read defaults (`0` / `'disabled'` / `90` / `'off'` / `sflow True`) as absence
+// (divergence 13/16, DR-076), each pinned next to the upstream line it replaces.
+// ====================================================================================================
+
+/** The one `show version` read behind the VRF keyword choice (`vrfKeyword`, one memoised call per Node). */
+const versionKey = 'enable\nshow version'
+
+/** Script a version answer with BOTH fields `parseVersionProperties` requires (a missing one is a `ProtocolError`). */
+const versionReply = (version: string): MockReply => [{}, { version, modelName: 'DCS-7050TX-64' }]
+
+/**
+ * A `show port-channel <id> all-ports` **text** body. The two-port form is pyeapi's capture verbatim —
+ * `test/fixtures/show_portchannel.json`: `"Port Channel Port-Channel1:\n  Active Ports: Ethernet5 Ethernet6 \n"`
+ * (trailing space included, which is why this is built rather than written as a literal) — and the other
+ * arities are hand-authored in that same layout. None of it is a claim about what a 7050TX-64 prints
+ * (DR-043): the expression that reads it is pyeapi's own (`:674-675`), ported verbatim as
+ * {@link membersFromOutput}.
+ */
+const activePortsText = (ports: readonly string[]): string => `Port Channel Port-Channel1:\n  Active Ports: ${ports.map((port) => `${port} `).join('')}\n`
+
+/** Script a running-config plus the live `show port-channel <gid> all-ports` text the LAG verbs read. */
+function lagTransport(config: string, ports: readonly string[], gid = '1'): MockTransport {
+  return mockTransport()
+    .replies('enable\nshow running-config all', [{}, { output: config }])
+    .replies(`enable\nshow port-channel ${gid} all-ports`, [{}, { output: activePortsText(ports) }])
+}
+
+/** Members E5/E6 with the fixture's own relation lines (`running_config.portchannel:147` / `:278`) and the group section. */
+const LAG_CONFIG = textOf([
+  'interface Port-Channel1',
+  '   no shutdown',
+  '!',
+  'interface Ethernet5',
+  '   channel-group 1 mode on',
+  '!',
+  'interface Ethernet6',
+  '   channel-group 1 mode on',
+  '!',
+  'end',
+])
+
+/** Members the device reports but whose config lines name no mode — the shape upstream hands `mode None` to the wire (`:712-714`). */
+const LAG_MEMBERS_WITHOUT_MODE = textOf([
+  'interface Port-Channel1',
+  '   no shutdown',
+  '!',
+  'interface Ethernet5',
+  '   channel-group 1',
+  '!',
+  'interface Ethernet6',
+  '   channel-group 1',
+  '!',
+  'end',
+])
+
+/** Read one config as a one-read table (no status leg), the shape every read spec below asserts against. */
+async function readTable(config: string): Promise<ResourceTable<string, Interface>> {
+  return interfacesFor(config).getAll({ status: 'skip' })
+}
+
+describe('InterfacesResource Ethernet field reads — M10b: interfaces.py:335-414 plus the VRF read this client adds (divergence 16, DR-076)', () => {
+  it('the two sFlow command lines answer true/false as whole body commands', async () => {
+    const on = await readTable(textOf(['interface Ethernet1', '   sflow enable', 'end']))
+    expect(on.get('Ethernet1')).toEqual({ name: 'Ethernet1', kind: 'Ethernet', ethernet: { sflow: true } })
+    const off = await readTable(textOf(['interface Ethernet1', '   no sflow enable', 'end']))
+    expect(off.get('Ethernet1')).toEqual({ name: 'Ethernet1', kind: 'Ethernet', ethernet: { sflow: false } })
+    // `sflow enable` is what the fixture writes inside its interface sections (`running_config.text:652`
+    // inside `interface Ethernet1`, and the global block's `sflow sample 1048576`/`no sflow source` at
+    // `:261-266`), so both command words here are device text rather than this client's vocabulary.
+  })
+
+  it('neither line means ABSENT — never the `true` upstream\'s substring rule invents (:378)', async () => {
+    const all = await readTable(textOf(['interface Ethernet1', '   no shutdown', 'end']))
+    expect(all.get('Ethernet1')).toEqual({ name: 'Ethernet1', kind: 'Ethernet', shutdown: false })
+    // `_parse_sflow` is `value = 'no sflow' not in config` (`:367-379`, the assignment at `:378`), so a
+    // section carrying no sFlow line at all reads `sflow: True`. Upstream's own `test_get` (`:183-189`) is
+    // NOT the proof of that — the fixture section it reads really does carry `sflow enable`
+    // (`running_config.text:652`), which is why its `sflow: True` is a real line answering. The rule is
+    // what is ported-not, and it is pinned here against a config of our own (DR-029/DR-057).
+  })
+
+  it('a near-miss sFlow line never answers, although the substring rule says it should (:378)', async () => {
+    const all = await readTable(textOf([
+      'interface Ethernet1',
+      '   sflow sample 1048576',
+      '   sflow polling-interval 2',
+      '   no sflow source',
+      '   description no sflow in prose',
+      'end',
+    ]))
+    expect(all.get('Ethernet1')).toEqual({ name: 'Ethernet1', kind: 'Ethernet', description: 'no sflow in prose' })
+    // Four body lines copied from the pinned fixture's global sFlow block (`running_config.text:261-266`),
+    // and every one of them makes upstream answer `false` for the interface — the description line included,
+    // since `'no sflow'` is searched across the whole block (`:378`).
+  })
+
+  it('both sFlow forms in one block: device order answers, no rule is invented', async () => {
+    const offFirst = await readTable(textOf(['interface Ethernet1', '   no sflow enable', '   sflow enable', 'end']))
+    expect(offFirst.get('Ethernet1')?.ethernet).toEqual({ sflow: false })
+    const onFirst = await readTable(textOf(['interface Ethernet1', '   sflow enable', '   no sflow enable', 'end']))
+    expect(onFirst.get('Ethernet1')?.ethernet).toEqual({ sflow: true })
+  })
+
+  it('flow-control: a negated line is ABSENT, not upstream\'s hard-coded \'off\' (:392, :398)', async () => {
+    const all = await readTable(textOf(['interface Ethernet1', '   no flowcontrol send', '   no flowcontrol receive', 'end']))
+    expect(all.get('Ethernet1')).toEqual({ name: 'Ethernet1', kind: 'Ethernet' })
+    // Exactly the two lines the fixture writes in `interface Ethernet1` (`running_config.text:550-551`),
+    // where upstream's `_parse_flowcontrol_send`/`_parse_flowcontrol_receive` answer `'off'` because their
+    // regex needs a value after the keyword and their default is a module constant — so `no …`,
+    // `default …` and "line absent" all collapse to the same answer there. Its `test_get` (`:183-189`)
+    // pins that collapse; here the three states stay three states.
+  })
+
+  it('flow-control values read the word behind the keyword, per direction', async () => {
+    const all = await readTable(textOf(['interface Ethernet1', '   flowcontrol send on', '   flowcontrol receive off', 'end']))
+    expect(all.get('Ethernet1')?.ethernet).toEqual({ flowcontrolSend: 'on', flowcontrolReceive: 'off' })
+  })
+
+  it('the reader reports a word the writer refuses, so a read is never coerced into the writer\'s pair', async () => {
+    // The line is deliberately synthetic — EOS's own pair is `on|off` and nothing here claims the device
+    // writes otherwise. What is pinned is the division of labour (DR-059/DR-069): the reader answers what
+    // the section says, and the write guard is the only place `on|off` is enforced. Upstream's regex
+    // (`flowcontrol send (\w+)$`, `:393`) answers the same token, then refuses to let it be written back.
+    const all = await readTable(textOf(['interface Ethernet1', '   default flowcontrol send', '   flowcontrol send', '   flowcontrol receive asymmetric', 'end']))
+    expect(all.get('Ethernet1')?.ethernet).toEqual({ flowcontrolReceive: 'asymmetric' })
+    await expectRefusal(() => interfacesFor('').setFlowcontrol('Ethernet1', 'receive', 'asymmetric' as FlowcontrolValue), 'invalid flowcontrol value', /expected one of on \/ off/)
+  })
+
+  it('a longer word beginning with the keyword does not answer (the keyword boundary, config-block.ts)', async () => {
+    const all = await readTable(textOf(['interface Ethernet1', '   flowcontrol sends on', '   sflow-enabled x', 'end']))
+    expect(all.get('Ethernet1')).toEqual({ name: 'Ethernet1', kind: 'Ethernet' })
+  })
+
+  it('the VRF binding reads back although upstream has no reader for it at all (divergence 14)', async () => {
+    const forwarding = await readTable(textOf(['interface Ethernet1', '   vrf forwarding MGMT', 'end']))
+    expect(forwarding.get('Ethernet1')?.ethernet).toEqual({ vrf: 'MGMT' })
+    // `vrf DAT` is the fixture's 4.13-era single-keyword line (`running_config.text:1475`, inside
+    // `interface Ethernet48.2044` at `:1468`), and `vrf default` at `:2130`/`:2189` is the same shape in a
+    // non-interface section — both forms this client's own `setVrf` composes (divergence 18) read back.
+    const bare = await readTable(textOf(['interface Ethernet4', '   vrf DAT', 'end']))
+    expect(bare.get('Ethernet4')?.ethernet).toEqual({ vrf: 'DAT' })
+  })
+
+  it('an absent or malformed VRF line answers nothing, never the default VRF\'s name (open item 2\'s family)', async () => {
+    const all = await readTable(textOf(['interface Ethernet1', '   vrf', '   vrflite MGMT', 'end']))
+    expect(all.get('Ethernet1')).toEqual({ name: 'Ethernet1', kind: 'Ethernet' })
+    // `vrf default` reading back as `'default'` would be a claim about what 4.28.13.1M writes for a port in
+    // the default VRF — that is a device capture (DECISIONS.md open item 2's VRF-licensing family), not an
+    // inference from a line this reader happens to see elsewhere.
+  })
+
+  it('the field group is kind-gated: only an Ethernet section carries it', async () => {
+    const vlan = await readTable(textOf(['interface Vlan20', '   vrf MGMT', '   sflow enable', '   flowcontrol send on', 'end']))
+    expect(vlan.get('Vlan20')).toEqual({ name: 'Vlan20', kind: 'Vlan' })
+    const chassis = await readTable(textOf(['interface Ethernet1/1', '   vrf MGMT', '   sflow enable', 'end']))
+    expect(chassis.get('Ethernet1/1')).toEqual({ name: 'Ethernet1/1', kind: null })
+    // A header this grammar cannot read keeps its row with `kind: null` (divergence 2) and no field group —
+    // the group is attached by what the name *is*, which is also why upstream's class dispatch
+    // (`interface[0:2]`, `:120-127`) is not needed here (DR-068).
+  })
+
+  it('one group object, every found field inside it (DR-068: fields, never per-kind objects)', async () => {
+    const all = await readTable(textOf([
+      'interface Ethernet1',
+      '   no sflow enable',
+      '   flowcontrol send on',
+      '   flowcontrol receive on',
+      '   vrf MGMT',
+      'end',
+    ]))
+    expect(all.get('Ethernet1')?.ethernet).toEqual({ sflow: false, flowcontrolSend: 'on', flowcontrolReceive: 'on', vrf: 'MGMT' })
+    expect(Object.keys(all.get('Ethernet1') ?? {}).sort()).toEqual(['ethernet', 'kind', 'name'])
+  })
+})
+
+describe('InterfacesResource Port-Channel field reads — M10c: the channel-group relation plus this section\'s own LAG lines (DR-075/076/079)', () => {
+  it('members come from the members\' own `channel-group` lines, from ONE config read (divergence 15)', async () => {
+    const { node, transport } = nodeFor(LAG_CONFIG)
+    const all = await node.interfaces.getAll({ status: 'skip' })
+    expect(all.get('Port-Channel1')?.portChannel).toEqual({ members: ['Ethernet5', 'Ethernet6'], lacpMode: 'on' })
+    expect(all.get('Ethernet5')?.portChannel).toBeUndefined()
+    expect(transport.callCount()).toBe(1)
+    expect(sentAsText(transport)).toEqual([['enable', 'show running-config all']])
+    // Upstream gets the same two names — but from a **text scrape** of `show port-channel 1 all-ports`
+    // (`:660-675`), a second device read it pays for in `get` (`:611`) as well; its own `test_get`
+    // (`:318-326`) pins `members: ['Ethernet5','Ethernet6']` from that scrape against
+    // `show_portchannel.json`. Here the read is the config the members already show, which is also where
+    // upstream's `get_lacp_mode` looks (`:655-658`), and the live scrape stays a separate verb.
+  })
+
+  it('members keep running-config order, and a member whose section repeats the line joins once', async () => {
+    const all = await readTable(textOf([
+      'interface Port-Channel1',
+      '   no shutdown',
+      '!',
+      'interface Ethernet6',
+      '   channel-group 1 mode on',
+      '!',
+      'interface Ethernet5',
+      '   channel-group 1 mode on',
+      '   channel-group 1 mode on',
+      '!',
+      'end',
+    ]))
+    expect(all.get('Port-Channel1')?.portChannel).toEqual({ members: ['Ethernet6', 'Ethernet5'], lacpMode: 'on' })
+  })
+
+  it('the group id is the decimal run exactly as written on both sides (upstream\'s extraction, :671/:699/:734)', async () => {
+    const all = await readTable(textOf([
+      'interface Port-Channel0001',
+      '   no shutdown',
+      '!',
+      'interface Ethernet1',
+      '   channel-group 0001 mode active',
+      '!',
+      'interface Ethernet2',
+      '   channel-group 1 mode active',
+      '!',
+      'end',
+    ]))
+    expect(all.get('Port-Channel0001')?.portChannel).toEqual({ members: ['Ethernet1'], lacpMode: 'active' })
+    // Whether EOS normalises `Port-Channel0001` and `channel-group 1` into one group is a device question
+    // (M12, #14); the client deliberately keeps the token parity upstream's `%s` interpolation has.
+  })
+
+  it('a relation naming a group the config has no section for invents no entry, and a memberless group gets no fields', async () => {
+    const all = await readTable(textOf([
+      'interface Port-Channel1',
+      '   no shutdown',
+      '!',
+      'interface Ethernet1',
+      '   channel-group 2 mode active',
+      '!',
+      'end',
+    ]))
+    expect(all.get('Port-Channel1')).toEqual({ name: 'Port-Channel1', kind: 'Port-Channel', shutdown: false })
+    expect(all.has('Port-Channel2')).toBe(false)
+    expect([...all.keys()]).toEqual(['Port-Channel1', 'Ethernet1'])
+  })
+
+  it('only Ethernet sections feed a group, so a Vlan or an unreadable header cannot be a member', async () => {
+    const all = await readTable(textOf([
+      'interface Port-Channel1',
+      '   port-channel min-links 3',
+      '!',
+      'interface Vlan20',
+      '   channel-group 1 mode active',
+      '!',
+      'interface Ethernet1/1',
+      '   channel-group 1 mode active',
+      '!',
+      'end',
+    ]))
+    expect(all.get('Port-Channel1')?.portChannel).toEqual({ minimumLinks: 3 })
+    expect(all.get('Vlan20')?.portChannel).toBeUndefined()
+    // The members array would be a claim about a LAG this client cannot even name in a write verb
+    // (`assertPortChannelName`'s grammar), which is why the kind gate is the reader's too (row 128).
+  })
+
+  it('the first member line naming a mode wins, and every member is scanned (contrast :655-658)', async () => {
+    const all = await readTable(textOf([
+      'interface Port-Channel1',
+      '   no shutdown',
+      '!',
+      'interface Ethernet5',
+      '   channel-group 1 mode active',
+      '!',
+      'interface Ethernet6',
+      '   channel-group 1 mode passive',
+      '!',
+      'end',
+    ]))
+    expect(all.get('Port-Channel1')?.portChannel).toEqual({ members: ['Ethernet5', 'Ethernet6'], lacpMode: 'active' })
+    // Upstream `return`s inside its FIRST loop iteration (`:655-658`), so a second member's contradicting
+    // mode is never looked at; here both members are in `members` and the mode is the first one the device
+    // wrote, which is the statement the config actually supports.
+  })
+
+  it('a channel-group mode outside LACP_MODES is reported, not published as a mode (DR-079)', async () => {
+    const thrown = await outcome(() => readTable(textOf([
+      'interface Port-Channel1',
+      '   no shutdown',
+      '!',
+      'interface Ethernet5',
+      '   channel-group 1 mode fast',
+      '!',
+      'end',
+    ])))
+    expect(thrown).toBeInstanceOf(ConfigParseError)
+    expect((thrown as Error).message).toContain("interfaces: cannot read the channel-group mode in 'interface Ethernet5'")
+    expect((thrown as Error).message).toContain("'fast' is not one of active / passive / on")
+    expect(LACP_MODES).toEqual(['active', 'passive', 'on'])
+    // Upstream hands the raw word back unchecked (`:656-658`) and writes an unchecked word to the wire in
+    // `set_members` (`:712-714`), so its `mode` can be anything — a table here cannot show a mode its own
+    // LACP verbs would refuse, or carry it into the next rewrite (row 129).
+  })
+
+  it('a `channel-group <id>` with no mode word contributes a member and no mode (the members read survives it)', async () => {
+    const all = await readTable(LAG_MEMBERS_WITHOUT_MODE)
+    expect(all.get('Port-Channel1')?.portChannel).toEqual({ members: ['Ethernet5', 'Ethernet6'] })
+    // EOS's own syntax carries a mode, so this shape is a tolerated reading rather than a claimed device
+    // spelling (M12, #14, to capture what a memberless-mode config looks like). It is pinned because
+    // `setMembers` behaves differently in exactly this state — see the `mode None` refusal below.
+  })
+
+  it('min-links: the value line answers, and the `no`/`default`/absent forms answer nothing (upstream\'s 0, :618-623)', async () => {
+    const set = await readTable(textOf(['interface Port-Channel1', '   port-channel min-links 2', 'end']))
+    expect(set.get('Port-Channel1')?.portChannel).toEqual({ minimumLinks: 2 })
+    for (const line of ['   no port-channel min-links', '   default port-channel min-links']) {
+      const all = await readTable(textOf(['interface Port-Channel1', line, 'end']))
+      expect(all.get('Port-Channel1')).toEqual({ name: 'Port-Channel1', kind: 'Port-Channel' })
+    }
+    // `no port-channel min-links` is the fixture's own line (`running_config.portchannel:18`), which
+    // upstream reads back as the invented `minimum_links: 0` — the same answer as a section that never
+    // mentions the command. Upstream's `test_get` (`:322`) pins that invented 0 (row 126).
+  })
+
+  it('lacp fallback: individual/static read verbatim; the `no`, bare, and near-miss forms read nothing', async () => {
+    for (const [line, expected] of [
+      ['   port-channel lacp fallback individual', 'individual'],
+      ['   port-channel lacp fallback static', 'static'],
+      ['   port-channel lacp fallback\tindividual', 'individual'],
+    ] as const) {
+      const all = await readTable(textOf(['interface Port-Channel1', line, 'end']))
+      expect(all.get('Port-Channel1')?.portChannel, line).toEqual({ lacpFallback: expected })
+    }
+    for (const line of [
+      '   no port-channel lacp fallback',
+      '   default port-channel lacp fallback',
+      '   port-channel lacp fallback',
+      '   port-channel lacp fallbackxyz individual',
+    ]) {
+      const all = await readTable(textOf(['interface Port-Channel1', line, 'end']))
+      expect(all.get('Port-Channel1'), line).toEqual({ name: 'Port-Channel1', kind: 'Port-Channel' })
+    }
+    // The last two lines of the table are the two arms the reader has to distinguish: a bare keyword and a
+    // near-miss word are not values, and the `timeout` sub-command's line must not report the mode
+    // `'timeout 90'` — while the SAME line is honestly the timeout field, which the next spec pins.
+    const timeoutLine = await readTable(textOf(['interface Port-Channel1', '   port-channel lacp fallback timeout 90', 'end']))
+    expect(timeoutLine.get('Port-Channel1')?.portChannel).toEqual({ lacpTimeout: 90 })
+    // `no port-channel lacp fallback` is the fixture's line (`running_config.portchannel:19`) that upstream
+    // reads as the module constant `'disabled'` (`:625-631` + `:68`, pinned at `test_api_interfaces.py:323`),
+    // and `port-channel lacp fallback timeout 90` (`:20`) is the line that reader must NOT treat as the mode
+    // `timeout 90` — hence the keyword-boundary and `timeout`-skip arms below.
+  })
+
+  it('the fallback value and its timeout are different fields read from different lines', async () => {
+    const all = await readTable(textOf(['interface Port-Channel1', '   port-channel lacp fallback static', '   port-channel lacp fallback timeout 4', 'end']))
+    expect(all.get('Port-Channel1')?.portChannel).toEqual({ lacpFallback: 'static', lacpTimeout: 4 })
+    const bareTimeout = await readTable(textOf(['interface Port-Channel1', '   port-channel lacp fallback timeout', 'end']))
+    expect(bareTimeout.get('Port-Channel1')).toEqual({ name: 'Port-Channel1', kind: 'Port-Channel' })
+    expect(LACP_FALLBACK_MODES).toEqual(['individual', 'static'])
+  })
+
+  it('lacp fallback timeout: the line answers, absence answers nothing (upstream\'s 90, :632-637)', async () => {
+    const all = await readTable(textOf(['interface Port-Channel1', '   port-channel lacp fallback timeout 90', 'end']))
+    expect(all.get('Port-Channel1')?.portChannel).toEqual({ lacpTimeout: 90 })
+    const none = await readTable(textOf(['interface Port-Channel1', '   no shutdown', 'end']))
+    expect(none.get('Port-Channel1')).toEqual({ name: 'Port-Channel1', kind: 'Port-Channel', shutdown: false })
+    // The 90 read above is honest — it is the fixture's own line (`running_config.portchannel:20`). The
+    // invented 90 is `DEFAULT_LACP_FALLBACK_TIMEOUT` (`:69`) standing in for a section that writes nothing,
+    // which is what upstream's `test_get` pins at `:323`; here "the switch wrote 90" and "the client
+    // guessed 90" remain different statements (DR-029/DR-076).
+  })
+
+  it('a non-decimal min-links or timeout is a parse failure naming section and keyword (DR-059, no truncation)', async () => {
+    for (const [keyword, line] of [['port-channel min-links', '   port-channel min-links 2.5'], ['port-channel lacp fallback timeout', '   port-channel lacp fallback timeout nine']] as const) {
+      const thrown = await outcome(() => readTable(textOf(['interface Port-Channel1', line, 'end'])))
+      expect(thrown, keyword).toBeInstanceOf(ConfigParseError)
+      expect((thrown as Error).message).toContain(`interfaces: cannot read '${keyword}' in 'interface Port-Channel1'`)
+      expect((thrown as Error).message).toContain('not a decimal number')
+    }
+    const huge = await outcome(() => readTable(textOf(['interface Port-Channel1', '   port-channel min-links 999999999999999999999', 'end'])))
+    expect(huge).toBeInstanceOf(ConfigParseError)
+    expect((huge as Error).message).toContain('cannot hold as an integer index')
+  })
+
+  it('a full Port-Channel record: the group facts and the section\'s own lines in one object', async () => {
+    const all = await readTable(textOf([
+      'interface Port-Channel1',
+      '   description ops bay',
+      '   no shutdown',
+      '   port-channel min-links 2',
+      '   port-channel lacp fallback individual',
+      '   port-channel lacp fallback timeout 90',
+      '!',
+      'interface Ethernet5',
+      '   channel-group 1 mode active',
+      '!',
+      'end',
+    ]))
+    expect(all.get('Port-Channel1')).toEqual({
+      name: 'Port-Channel1',
+      kind: 'Port-Channel',
+      shutdown: false,
+      description: 'ops bay',
+      portChannel: { members: ['Ethernet5'], lacpMode: 'active', minimumLinks: 2, lacpFallback: 'individual', lacpTimeout: 90 },
+    })
+  })
+
+  it('the config relation and the live scrape can disagree, and both stay visible (divergence 15)', async () => {
+    const transport = lagTransport(LAG_CONFIG, ['Ethernet7'])
+    const interfaces = new Node(transport).interfaces
+    const all = await interfaces.getAll({ status: 'skip' })
+    expect(all.get('Port-Channel1')?.portChannel?.members).toEqual(['Ethernet5', 'Ethernet6'])
+    expect(await interfaces.getMembers('Port-Channel1')).toEqual(['Ethernet7'])
+    expect(sentAsText(transport)).toEqual([
+      ['enable', 'show running-config all'],
+      ['enable', 'show port-channel 1 all-ports'],
+    ])
+    // "What the running-config declares" and "what the switch reports the LAG holds" are different facts,
+    // and a review screen has to be able to show them out of agreement rather than have one overwrite the
+    // other (DR-075). The record reads never issue the show — the second request here is the explicit verb.
+  })
+
+  it('an indented channel-group line inside a sub-mode joins the group (divergence 10\'s shared limitation)', async () => {
+    const all = await readTable(textOf([
+      'interface Port-Channel1',
+      '   no shutdown',
+      '!',
+      'interface Ethernet7',
+      '   some sub-mode',
+      '      channel-group 1 mode active',
+      '!',
+      'end',
+    ]))
+    expect(all.get('Port-Channel1')?.portChannel).toEqual({ members: ['Ethernet7'], lacpMode: 'active' })
+    // `ConfigLine.indent` is deliberately unfiltered, exactly as pyeapi's `get_block` + `re.search` reach
+    // into a nested block (`:655-658`). Whether interface sub-modes carry these commands is M12's capture;
+    // if they do, the fix is one indent bound in `config-block.ts` for every module (divergence 10).
+  })
+})
+
+describe('InterfacesResource sFlow writes — EthernetInterface.set_sflow (interfaces.py:526-548, tests :269-295)', () => {
+  it('the three arms are three verbs, each sending the text upstream pins (:269-278, :286-290)', async () => {
+    const transport = configTransport(FLAT_CONFIG)
+    for (const inner of ['sflow enable', 'no sflow enable', 'default sflow enable']) scriptWrite(transport, pair('Ethernet1', inner))
+    const interfaces = new Node(transport).interfaces
+    await interfaces.setSflow('Ethernet1')
+    await interfaces.unsetSflow('Ethernet1')
+    await interfaces.defaultSflow('Ethernet1')
+    expect(sentAsText(transport)).toEqual([
+      ['enable', 'configure terminal', 'interface Ethernet1', 'sflow enable'],
+      ['enable', 'configure terminal', 'interface Ethernet1', 'no sflow enable'],
+      ['enable', 'configure terminal', 'interface Ethernet1', 'default sflow enable'],
+    ])
+    // Upstream reaches `no sflow enable` by THREE call spellings — `value=False` (`:269-278` pins that arm),
+    // no value at all (the deprecated `'no %s'` fall-through at `abstract.py:160-161`, pinned at `:280-284`),
+    // and `disable=True` — and its only guard (`if value not in [True, False, None]: raise ValueError`,
+    // `:542-543`) is a **bare** raise carrying no message at all. DR-037/DR-077 make that one name per
+    // intent, with a refusal that says what was wrong.
+    expect(transport.callCount()).toBe(3)
+  })
+
+  it('a non-Ethernet name is refused by every sFlow verb, naming the class that owns them (row 128)', async () => {
+    const transport = configTransport(FLAT_CONFIG)
+    const interfaces = new Node(transport).interfaces
+    const wrong: readonly string[] = ['Vlan22', 'Port-Channel3', 'Management1', 'Loopback2', 'Vxlan5', 'Ethernet1/1', 'Ethernet1.100', 'Po1', 'Ethernet']
+    for (const name of wrong) {
+      for (const verb of ['setSflow', 'unsetSflow', 'defaultSflow'] as const) {
+        await expectRefusal(() => interfaces[verb](name), `invalid ${verb} interface`)
+      }
+      await expectRefusal(() => interfaces.setSflow(name), 'invalid setSflow interface', 'expected a plain `Ethernet<digits>` name')
+    }
+    expect(transport.sent()).toEqual([])
+    // Upstream's facade would route the four other kinds to a `BaseInterface` with no such method —
+    // `AttributeError` (`:120-127` + `INTERFACE_CLASS_MAP` `:1093-1097`, pinned at `:89-91`) — while its
+    // **instance** tests happily drive `set_sflow` over `Vlan1234`, `Management1`, `Port-Channel1` and
+    // `Vxlan1` (the module-level `INTERFACES`, `test_api_interfaces.py:44-45`, feeding `:280`/`:286`/`:292`)
+    // and over `Ethernet1/1` (`:269-278`). DR-006 has no dispatch to reproduce, so the surface is the type:
+    // the refusal is client policy, and whether the 7050TX-64 binds sFlow to another kind anyway is an
+    // M12 (#14) capture — the message never claims it cannot.
+  })
+
+  it('the device keeps authority over an Ethernet name this client accepts (CommandError, DR-005)', async () => {
+    const transport = configTransport(FLAT_CONFIG).rejects(writeKey(pair('Ethernet1', 'sflow enable')), {
+      code: EapiErrorCode.COMMAND_INVALID,
+      message: "CLI command 4 of 4 'sflow enable' failed: command not available on this unit",
+    })
+    const thrown = await outcome(() => new Node(transport).interfaces.setSflow('Ethernet1'))
+    expect(thrown).toBeInstanceOf(CommandError)
+    expect((thrown as CommandError).failedCommand).toBe('sflow enable')
+    // Whether 4.28.13.1M needs a licence or a role for sFlow is a device answer (DECISIONS.md open item 2's
+    // licensing family) — what is pinned is that a rejection never becomes a silent success.
+  })
+})
+
+describe('InterfacesResource flow-control writes — set_flowcontrol and its direction wrappers (:447-472, :491-524, tests :225-267)', () => {
+  it('both directions × both values send `flowcontrol <direction> <value>` (:225-232)', async () => {
+    const transport = configTransport(FLAT_CONFIG)
+    const interfaces = new Node(transport).interfaces
+    const combos: readonly (readonly [FlowcontrolDirection, FlowcontrolValue])[] = [
+      ['send', 'on'], ['send', 'off'], ['receive', 'on'], ['receive', 'off'],
+    ]
+    for (const [direction, value] of combos) scriptWrite(transport, pair('Ethernet1', `flowcontrol ${direction} ${value}`))
+    for (const [direction, value] of combos) await interfaces.setFlowcontrol('Ethernet1', direction, value)
+    expect(sentAsText(transport)).toEqual(combos.map(([direction, value]) => ['enable', 'configure terminal', 'interface Ethernet1', `flowcontrol ${direction} ${value}`]))
+    expect(FLOWCONTROL_VALUES).toEqual(['on', 'off'])
+    expect(FLOWCONTROL_DIRECTIONS).toEqual(['send', 'receive'])
+  })
+
+  it('the send/receive wrappers compose the same texts upstream\'s six loops pin', async () => {
+    const transport = configTransport(FLAT_CONFIG)
+    const interfaces = new Node(transport).interfaces
+    const texts: string[] = []
+    for (const direction of ['send', 'receive'] as const) {
+      for (const inner of [`flowcontrol ${direction} on`, `no flowcontrol ${direction}`, `default flowcontrol ${direction}`]) {
+        scriptWrite(transport, pair('Ethernet1', inner))
+        texts.push(inner)
+      }
+    }
+    await interfaces.setFlowcontrolSend('Ethernet1', 'on')
+    await interfaces.unsetFlowcontrolSend('Ethernet1')
+    await interfaces.defaultFlowcontrolSend('Ethernet1')
+    await interfaces.setFlowcontrolReceive('Ethernet1', 'on')
+    await interfaces.unsetFlowcontrolReceive('Ethernet1')
+    await interfaces.defaultFlowcontrolReceive('Ethernet1')
+    expect(sentAsText(transport)).toEqual(texts.map((inner) => ['enable', 'configure terminal', 'interface Ethernet1', inner]))
+    // The wrappers are pyeapi's `set_flowcontrol_send`/`_receive` (`:447-450`, `:469-472`), which only ever
+    // call `set_flowcontrol` with the direction baked in — so these six transactions are its
+    // `test_set_flowcontrol_with_value`/`_with_no_value`/`_with_disable`/`_with_default` loops (`:225-267`),
+    // where the no-value and `disable=True` arms BOTH answer `no flowcontrol <direction>` (`:521-523`).
+  })
+
+  it('a bad value or direction is a typed refusal, not upstream\'s ValueError (:513-518)', async () => {
+    const transport = configTransport(FLAT_CONFIG)
+    const interfaces = new Node(transport).interfaces
+    for (const direction of ['send', 'receive'] as const) {
+      await expectRefusal(() => interfaces.setFlowcontrol('Ethernet1', direction, 'auto' as FlowcontrolValue), 'invalid flowcontrol value', /expected one of on \/ off/)
+      await expectRefusal(() => interfaces.setFlowcontrol('Ethernet1', direction, true as unknown as FlowcontrolValue), 'invalid flowcontrol value')
+      await expectRefusal(() => interfaces.setFlowcontrol('Ethernet1', direction, undefined as unknown as FlowcontrolValue), 'invalid flowcontrol value')
+    }
+    for (const direction of ['both', 'tx', '', 'Send']) {
+      await expectRefusal(() => interfaces.setFlowcontrol('Ethernet1', direction as unknown as FlowcontrolDirection, 'on'), 'invalid flowcontrol direction', /expected one of send \/ receive/)
+      await expectRefusal(() => interfaces.unsetFlowcontrol('Ethernet1', direction as unknown as FlowcontrolDirection), 'invalid flowcontrol direction')
+      await expectRefusal(() => interfaces.defaultFlowcontrol('Ethernet1', direction as unknown as FlowcontrolDirection), 'invalid flowcontrol direction')
+    }
+    expect(transport.sent()).toEqual([])
+    // pyeapi's guards are `ValueError('invalid flowcontrol value')` (`:513-515`, pinned at
+    // `test_api_interfaces.py:239-243`) and `ValueError('invalid direction specified')` (`:517-518`, `:234-238`).
+  })
+
+  it('when both arguments are bad the DIRECTION is what this client reports (upstream checks the value first)', async () => {
+    const interfaces = interfacesFor(FLAT_CONFIG)
+    await expectRefusal(() => interfaces.setFlowcontrol('Ethernet1', 'both' as unknown as FlowcontrolDirection, 'auto' as FlowcontrolValue), 'invalid flowcontrol direction')
+    // Upstream's guard order is the other way round — value at `:513-515`, direction at `:517-518` — so its
+    // message for a doubly-bad call names the value. Either order refuses before the wire and every
+    // single-bad-argument case above agrees with upstream; the ordering difference is recorded rather than
+    // smoothed over, because a caller reading a message should be able to tell what was looked at first.
+  })
+
+  it('the Ethernet-only surface is enforced on the flow-control family too, dotted name included', async () => {
+    const transport = configTransport(FLAT_CONFIG)
+    const interfaces = new Node(transport).interfaces
+    for (const name of ['Port-Channel3', 'Vlan20', 'Management1', 'Ethernet48.2044', 'Ethernet1/1']) {
+      await expectRefusal(() => interfaces.setFlowcontrolSend(name, 'on'), 'invalid setFlowcontrol interface')
+      await expectRefusal(() => interfaces.unsetFlowcontrolReceive(name), 'invalid unsetFlowcontrol interface')
+      await expectRefusal(() => interfaces.defaultFlowcontrolSend(name), 'invalid defaultFlowcontrol interface')
+    }
+    expect(transport.sent()).toEqual([])
+  })
+
+  it('a flow-control write the device refuses arrives as its CommandError', async () => {
+    const transport = configTransport(FLAT_CONFIG).rejects(writeKey(pair('Ethernet1', 'flowcontrol receive off')), {
+      code: EapiErrorCode.COMMAND_INVALID,
+      message: "CLI command 4 of 4 'flowcontrol receive off' failed: command not available on this unit",
+    })
+    const thrown = await outcome(() => new Node(transport).interfaces.setFlowcontrolReceive('Ethernet1', 'off'))
+    expect(thrown).toBeInstanceOf(CommandError)
+    expect((thrown as CommandError).failedCommand).toBe('flowcontrol receive off')
+    expect((thrown as CommandError).commands).toEqual(['enable', 'configure terminal', 'interface Ethernet1', 'flowcontrol receive off'])
+  })
+})
+
+describe('InterfacesResource VRF binding — set_vrf and its version-selected keyword (:550-577, tests :297-302; divergences 14/18, DR-078)', () => {
+  it.each([
+    ['4.28.13.1M', 'vrf'],
+    ['4.28.14M', 'vrf'],
+    ['4.23.0F', 'vrf'],
+    ['5.0.1F', 'vrf'],
+    ['4.22.2F', 'vrf forwarding'],
+    ['4.17.1.1F-3512479.41711F', 'vrf forwarding'],
+    ['4.9.13.1F', 'vrf forwarding'],
+    ['3.21.1F', 'vrf forwarding'],
+  ] as const)('setVrf on %s composes `%s MGMT`', async (version, keyword) => {
+    const transport = configTransport(FLAT_CONFIG).replies(versionKey, versionReply(version))
+    const cmds = pair('Ethernet1', `${keyword} MGMT`)
+    scriptWrite(transport, cmds)
+    await new Node(transport).interfaces.setVrf('Ethernet1', 'MGMT')
+    expect(sentAsText(transport)).toEqual([
+      ['enable', 'show version'],
+      ['enable', 'configure terminal', ...cmds],
+    ])
+  })
+
+  it('the 4.9 case is the recorded divergence: upstream\'s STRING compare picked the newer keyword (:568)', async () => {
+    // `if self.version_number >= '4.23':` is a lexicographic compare, and `'4.9' >= '4.23'` is true
+    // character-wise — so a 4.9-era box is handed the bare `vrf`. The mock node upstream tests against is
+    // pinned at `'4.17.1.1'` (`test/lib/testlib.py:81`), which is why its only VRF test (`:297-302`) pins
+    // `vrf forwarding testvrf` and never sees the bug. This client compares release SEGMENTS as numbers
+    // (`versionFloorCompare`), and the difference is stated rather than silently patched (row 131, DR-078).
+    const transport = configTransport(FLAT_CONFIG).replies(versionKey, versionReply('4.9.13.1F'))
+    const cmds = pair('Ethernet1', 'vrf forwarding MGMT')
+    scriptWrite(transport, cmds)
+    await new Node(transport).interfaces.setVrf('Ethernet1', 'MGMT')
+    expect(sentAsText(transport)).toEqual([
+      ['enable', 'show version'],
+      ['enable', 'configure terminal', ...cmds],
+    ])
+  })
+
+  it('a version this client cannot classify composes no command at all (DR-032/DR-057)', async () => {
+    for (const version of ['software-version-string', '4', 'v4.23', '999999999999999999999.1', '4.999999999999999999999']) {
+      const transport = configTransport(FLAT_CONFIG).replies(versionKey, versionReply(version))
+      const thrown = await outcome(() => new Node(transport).interfaces.setVrf('Ethernet1', 'MGMT'))
+      expect(thrown, version).toBeInstanceOf(NotSupportedError)
+      expect((thrown as Error).message).toContain('cannot pick the VRF command form')
+      expect(sentAsText(transport)).toEqual([['enable', 'show version']])
+    }
+    // The last two forms exercise the segment compare's own guard: a `major`/`minor` that cannot be held as
+    // an integer is not a release this client can order, so neither arm is chosen — where pyeapi would
+    // string-compare whatever the device said and pick one anyway (`:568`).
+  })
+
+  it('the version read is the Node\'s memo — three VRF writes, one `show version`', async () => {
+    const transport = configTransport(FLAT_CONFIG).replies(versionKey, versionReply('4.28.13.1M'))
+    for (const cmds of [pair('Ethernet1', 'vrf MGMT'), pair('Ethernet2', 'no vrf'), pair('Ethernet3', 'default vrf')]) scriptWrite(transport, cmds)
+    const interfaces = new Node(transport).interfaces
+    await interfaces.setVrf('Ethernet1', 'MGMT')
+    await interfaces.unsetVrf('Ethernet2')
+    await interfaces.defaultVrf('Ethernet3')
+    expect(transport.bodies().filter((body) => body.params.cmds.some((c) => String(c) === 'show version'))).toHaveLength(1)
+    expect(sentAsText(transport)).toEqual([
+      ['enable', 'show version'],
+      ['enable', 'configure terminal', 'interface Ethernet1', 'vrf MGMT'],
+      ['enable', 'configure terminal', 'interface Ethernet2', 'no vrf'],
+      ['enable', 'configure terminal', 'interface Ethernet3', 'default vrf'],
+    ])
+  })
+
+  it('the no/default arms drop the VRF name in both keyword forms, exactly as upstream composes them', async () => {
+    const older = configTransport(FLAT_CONFIG).replies(versionKey, versionReply('4.17.1.1'))
+    for (const cmds of [pair('Ethernet1', 'vrf forwarding MGMT'), pair('Ethernet1', 'no vrf forwarding'), pair('Ethernet1', 'default vrf forwarding')]) scriptWrite(older, cmds)
+    const interfaces = new Node(older).interfaces
+    await interfaces.setVrf('Ethernet1', 'MGMT')
+    await interfaces.unsetVrf('Ethernet1')
+    await interfaces.defaultVrf('Ethernet1')
+    expect(sentAsText(older)).toEqual([
+      ['enable', 'show version'],
+      ['enable', 'configure terminal', 'interface Ethernet1', 'vrf forwarding MGMT'],
+      ['enable', 'configure terminal', 'interface Ethernet1', 'no vrf forwarding'],
+      ['enable', 'configure terminal', 'interface Ethernet1', 'default vrf forwarding'],
+    ])
+    // `set_vrf(name, vrf, disable=True)` / `default=True` reach `command_builder`'s mode arms
+    // (`abstract.py:152-155`), which return `no <keyword>` / `default <keyword>` and lose the name — so this
+    // client never composes `no vrf MGMT`. Whether such a form exists on 4.28.13.1M is an M12 (#14)
+    // capture, not something to invent here (row 131).
+  })
+
+  it('a VRF name this client could not read back is refused before the version read (reader-derived)', async () => {
+    const transport = configTransport(FLAT_CONFIG).replies(versionKey, versionReply('4.28.13.1M'))
+    const interfaces = new Node(transport).interfaces
+    const cases: readonly (readonly [unknown, RegExp])[] = [
+      ['', /an empty VRF name is refused/],
+      ['   ', /an empty VRF name is refused/],
+      [' MGMT', /leading or trailing whitespace cannot read back/],
+      ['MGMT ', /leading or trailing whitespace cannot read back/],
+      ['MG M', /inner whitespace cannot round-trip/],
+      ['MG\x07MT', /control character would break/],
+      [42, /expected a string VRF name/],
+      [undefined, /expected a string VRF name/],
+    ]
+    for (const [value, why] of cases) {
+      const thrown = await outcome(() => interfaces.setVrf('Ethernet1', value as string))
+      expect(thrown, String(value)).toBeInstanceOf(NotSupportedError)
+      expect((thrown as Error).message).toContain('invalid interface vrf')
+      expect((thrown as Error).message).toMatch(why)
+    }
+    expect(transport.sent()).toEqual([])
+    // Upstream interpolates whatever arrives (`:569`/`:573` through `abstract.py:158-159`) and its test uses
+    // the single-token `'testvrf'` (`:297`), so every value above would reach its wire and then fail to read
+    // back through `VRF_BODY_LINE`. What EOS itself permits in a VRF name stays an open item (DR-057).
+  })
+
+  it('the name guard runs first, so a wrong-kind name is what a bad call reports', async () => {
+    const transport = configTransport(FLAT_CONFIG).replies(versionKey, versionReply('4.28.13.1M'))
+    const interfaces = new Node(transport).interfaces
+    for (const name of ['Vlan20', 'Port-Channel3', 'Management1', 'Ethernet48.2044', 'PortChannel1']) {
+      await expectRefusal(() => interfaces.setVrf(name, 'MG M'), 'invalid setVrf interface')
+      await expectRefusal(() => interfaces.unsetVrf(name), 'invalid unsetVrf interface')
+      await expectRefusal(() => interfaces.defaultVrf(name), 'invalid defaultVrf interface')
+    }
+    expect(transport.sent()).toEqual([])
+  })
+
+  it('the write round-trips: the binding setVrf composes is the binding a read reports (divergence 14)', async () => {
+    const transport = mockTransport()
+      .repliesOnce('enable\nshow running-config all', [{}, { output: 'end' }])
+      .replies(versionKey, versionReply('4.28.13.1M'))
+      .replies(writeKey(pair('Ethernet1', 'vrf MGMT')), okFor(pair('Ethernet1', 'vrf MGMT')))
+      .repliesOnce('enable\nshow running-config all', [{}, { output: textOf(['interface Ethernet1', '   vrf MGMT', 'end']) }])
+    const interfaces = new Node(transport).interfaces
+    expect((await interfaces.getAll({ status: 'skip' })).get('Ethernet1')?.ethernet).toBeUndefined()
+    await interfaces.setVrf('Ethernet1', 'MGMT')
+    expect((await interfaces.getAll({ status: 'skip' })).get('Ethernet1')?.ethernet).toEqual({ vrf: 'MGMT' })
+    expect(sentAsText(transport)).toEqual([
+      ['enable', 'show running-config all'],
+      ['enable', 'show version'],
+      ['enable', 'configure terminal', 'interface Ethernet1', 'vrf MGMT'],
+      ['enable', 'show running-config all'],
+    ])
+    // pyeapi cannot do this at all: `set_vrf` (`:550-577`) has no reader anywhere in the module, since
+    // `EthernetInterface.get` composes only sflow and the two flow-control directions (`:335-366`).
+  })
+
+  it('both keyword forms stay the device\'s to refuse — a CommandError arrives either way', async () => {
+    for (const [version, keyword] of [['4.17.1.1', 'vrf forwarding'], ['4.28.13.1M', 'vrf']] as const) {
+      const transport = configTransport(FLAT_CONFIG)
+        .replies(versionKey, versionReply(version))
+        .rejects(writeKey(pair('Ethernet1', `${keyword} MGMT`)), {
+          code: EapiErrorCode.COMMAND_INVALID,
+          message: `CLI command 4 of 4 '${keyword} MGMT' failed: vrf not configured for this interface`,
+        })
+      const thrown = await outcome(() => new Node(transport).interfaces.setVrf('Ethernet1', 'MGMT'))
+      expect(thrown, version).toBeInstanceOf(CommandError)
+      expect((thrown as CommandError).failedCommand).toBe(`${keyword} MGMT`)
+    }
+    // The failure message's *reason* is a paraphrase of a device answer, not a claim about one (DR-057):
+    // the routed-mode/VRF-licensing question lives in DECISIONS.md open item 2.
+  })
+})
+
+describe('InterfacesResource LAG reads — get_members (interfaces.py:660-675) and get_lacp_mode (:639-658)', () => {
+  it('the live member list is the fixture scrape, ported with its exact expression (:379-381)', async () => {
+    const transport = lagTransport(LAG_CONFIG, ['Ethernet5', 'Ethernet6'])
+    expect(await new Node(transport).interfaces.getMembers('Port-Channel1')).toEqual(['Ethernet5', 'Ethernet6'])
+    expect(sentAsText(transport))
+      .toEqual([['enable', 'show port-channel 1 all-ports']])
+    // One read, `format:'text'`, exactly the command upstream builds at `:671-672`, and the reply is
+    // `show_portchannel.json`'s verbatim output — so this pins the same answer as upstream's
+    // `test_get_members` (`:379-381`).
+  })
+
+  it('the group id comes from the name\'s first decimal run, zero padding kept (:671 parity)', async () => {
+    const transport = lagTransport(LAG_CONFIG, [], '0010')
+    expect(await new Node(transport).interfaces.getMembers('Port-Channel0010')).toEqual([])
+    expect(sentAsText(transport)).toEqual([['enable', 'show port-channel 0010 all-ports']])
+    // `re.search(r'(\d+)', name).group()` keeps the run as written, and upstream `.group()`s on `None` —
+    // a `TypeError` — for a digit-less name (`:671`, `:699`, `:734`). The guard below is where that crash
+    // becomes a refusal instead.
+  })
+
+  it('the Peer look-around does NOT exclude the hyphenated MLAG spelling — upstream\'s expression verbatim (:674)', async () => {
+    const transport = lagTransport(LAG_CONFIG, ['Ethernet5', 'Ethernet1/1'])
+    expect(await new Node(transport).interfaces.getMembers('Port-Channel1')).toEqual(['Ethernet5', 'Ethernet1/1'])
+    expect(membersFromOutput(activePortsText(['Ethernet5', 'Ethernet1/1']))).toEqual(['Ethernet5', 'Ethernet1/1'])
+    // The probe that settles this, run against the pinned clone on 2026-11-05:
+    //   re.findall(r'\b(?!Peer)Ethernet[\d/]*\b', '  Peer-Ethernet1 Ethernet2') -> ['Ethernet1', 'Ethernet2']
+    //   re.findall(r'\b(?!Peer)Ethernet[\d/]*\b', 'PeerEthernet1 Ethernet2')    -> ['Ethernet2']
+    // A hyphen is itself a word boundary, so the match position begins at `Ethernet` and the look-around —
+    // which only rejects a position whose own text starts with `Peer` — never fires. The JS port reproduces
+    // that exactly, and `[\d/]*` is what keeps the `Ethernet1/1` slot form legible as a member the device
+    // reports although this client's grammar refuses to configure it. Whether 4.28.13.1M prints a peer port
+    // inside this block at all is an M12 (#14) capture, so what is being retired here is the code comment's
+    // claim, not a device fact (row 125, DR-075).
+    expect(membersFromOutput('Port Channel Port-Channel1:\n  Peer-Ethernet1 Ethernet2\n')).toEqual(['Ethernet1', 'Ethernet2'])
+    expect(membersFromOutput('PeerEthernet1 Ethernet2')).toEqual(['Ethernet2'])
+  })
+
+  it('an empty answer is an empty member list — and it is not the same statement as a failure', async () => {
+    const transport = lagTransport(LAG_CONFIG, [])
+    expect(await new Node(transport).interfaces.getMembers('Port-Channel1')).toEqual([])
+    expect(membersFromOutput('Port Channel Port-Channel1:\n  No members\n')).toEqual([])
+  })
+
+  it('a refused or malformed show arrives as a typed failure, never as "no members" (DR-029)', async () => {
+    const refused = mockTransport().rejects('enable\nshow port-channel 1 all-ports', {
+      code: EapiErrorCode.COMMAND_INVALID,
+      message: "CLI command 2 of 2 'show port-channel 1 all-ports' failed: command not available",
+    })
+    const thrown = await outcome(() => new Node(refused).interfaces.getMembers('Port-Channel1'))
+    expect(thrown).toBeInstanceOf(CommandError)
+    expect((thrown as CommandError).failedCommand).toBe('show port-channel 1 all-ports')
+    expect(refused.callCount()).toBe(1)
+
+    const shapeless = mockTransport().replies('enable\nshow port-channel 1 all-ports', [{}, { interfaces: {} }])
+    const badShape = await outcome(() => new Node(shapeless).interfaces.getMembers('Port-Channel1'))
+    expect(badShape).toBeInstanceOf(ProtocolError)
+    expect((badShape as Error).message).toContain("no string 'output' member")
+    // Upstream reads `config[0]['result']['output']` positionally off the `enable` answer (`:673-675`) and
+    // raises `TypeError`/`IndexError` in exactly these states; the typed errors carry the same information
+    // (DR-005/DR-010).
+  })
+
+  it('a name the Port-Channel guard refuses composes nothing, for every LAG verb at once', async () => {
+    const transport = lagTransport(LAG_CONFIG, ['Ethernet5', 'Ethernet6'])
+    const interfaces = new Node(transport).interfaces
+    for (const name of ['Ethernet1', 'Vlan20', 'Management1', 'Loopback2', 'Vxlan5', 'PortChannel1', 'Po1', 'Port-Channel1.1', 'Ethernet1/1']) {
+      await expectRefusal(() => interfaces.getMembers(name), 'invalid getMembers interface')
+      await expectRefusal(() => interfaces.getLacpMode(name), 'invalid getLacpMode interface')
+      await expectRefusal(() => interfaces.setMembers(name, ['Ethernet5']), 'invalid setMembers interface')
+      await expectRefusal(() => interfaces.setLacpMode(name, 'active'), 'invalid setLacpMode interface')
+      await expectRefusal(() => interfaces.setMinimumLinks(name, 2), 'invalid setMinimumLinks interface')
+      await expectRefusal(() => interfaces.setLacpFallback(name, 'static'), 'invalid setLacpFallback interface')
+    }
+    expect(transport.sent()).toEqual([])
+    await expectRefusal(() => interfaces.getMembers('PortChannel1'), 'invalid getMembers interface', 'expected a plain `PortChannel<n>` name whose digits carry the channel-group id')
+    // Upstream's class checks no name at all on these verbs — its tests drive them with the literal
+    // `'Port-Channel1'` only — but the group extraction crashes on a digit-less name (`:671`/`:699`/`:734`),
+    // which is the second half of this guard (row 128).
+  })
+
+  it('getLacpMode answers from the members it can read, scanning past the ones it cannot (:639-658)', async () => {
+    const transport = lagTransport(LAG_CONFIG, ['Ethernet1/1', 'Ethernet9', 'Ethernet5'])
+    const interfaces = new Node(transport).interfaces
+    expect(await interfaces.getLacpMode('Port-Channel1')).toBe('on')
+    expect(sentAsText(transport)).toEqual([
+      ['enable', 'show port-channel 1 all-ports'],
+      ['enable', 'show running-config all'],
+    ])
+    // Three members, three states: a name the grammar cannot read (skipped before any lookup), a name with
+    // no running-config section (`getBlock` answers `undefined`, where upstream's `re.search(pattern, None)`
+    // raises `TypeError` at `:656-657`), and the one section carrying the relation. Upstream `return`s
+    // inside its FIRST loop iteration, so only the first name it fetched is ever examined (row 129).
+  })
+
+  it('no member naming a mode means ABSENT, not the DEFAULT_LACP_MODE upstream fabricates (:651-653)', async () => {
+    expect(await new Node(lagTransport(LAG_CONFIG, [])).interfaces.getLacpMode('Port-Channel1')).toBeUndefined()
+    // `return DEFAULT_LACP_MODE` (`:67`, `:653`) answers `'on'` for a group with no members, and upstream's
+    // `test_get_lacp_mode` (`:375-377`) pins exactly that `'on'` — a mode for a LAG holding nothing.
+    const withoutMode = lagTransport(LAG_MEMBERS_WITHOUT_MODE, ['Ethernet5', 'Ethernet6'])
+    expect(await new Node(withoutMode).interfaces.getLacpMode('Port-Channel1')).toBeUndefined()
+  })
+
+  it('a member naming a mode outside LACP_MODES is reported, not handed to a caller to rewrite (DR-079)', async () => {
+    const transport = lagTransport(textOf(['interface Port-Channel1', '!', 'interface Ethernet5', '   channel-group 1 mode fast', 'end']), ['Ethernet5'])
+    const thrown = await outcome(() => new Node(transport).interfaces.getLacpMode('Port-Channel1'))
+    expect(thrown).toBeInstanceOf(ConfigParseError)
+    expect((thrown as Error).message).toContain("cannot read the channel-group mode in 'interface Ethernet5'")
+  })
+})
+
+describe('InterfacesResource setMembers — the remove/add diff and its mode side call (interfaces.py:677-716, tests :383-414; divergence 20, DR-080)', () => {
+  it('the diff removes the ex-members then adds the new ones, reusing the mode the members carry (:383-388)', async () => {
+    const transport = lagTransport(LAG_CONFIG, ['Ethernet5', 'Ethernet6'])
+    const cmds = ['interface Ethernet6', 'no channel-group 1', 'interface Ethernet7', 'channel-group 1 mode on']
+    scriptWrite(transport, cmds)
+    await new Node(transport).interfaces.setMembers('Port-Channel1', ['Ethernet5', 'Ethernet7'])
+    expect(sentAsText(transport)).toEqual([
+      ['enable', 'show port-channel 1 all-ports'],
+      ['enable', 'show running-config all'],
+      ['enable', 'configure terminal', ...cmds],
+    ])
+    // Upstream computes the same four lines — `set(current_members).difference(members)` then
+    // `set(members).difference(current_members)` (`:706-714`) — but iterates Python **sets**, so its order is
+    // hash order rather than the device's; here removes follow the scraped order and adds follow the
+    // caller's array, which is what makes the batch reviewable (DR-060 is the general rule). The `'on'` comes
+    // from the members' own `channel-group 1 mode on` config lines (`running_config.portchannel:147`/`:278`),
+    // where upstream answers it from `get_lacp_mode`'s regex instead.
+  })
+
+  it('a mode change costs TWO transactions and both are pinned (upstream\'s test can only see the last, :397-402)', async () => {
+    const transport = lagTransport(LAG_CONFIG, ['Ethernet5', 'Ethernet6'])
+    const detachAll = [
+      'interface Ethernet5', 'no channel-group 1',
+      'interface Ethernet6', 'no channel-group 1',
+      'interface Ethernet5', 'channel-group 1 mode active',
+      'interface Ethernet6', 'channel-group 1 mode active',
+    ]
+    const diff = ['interface Ethernet6', 'no channel-group 1', 'interface Ethernet7', 'channel-group 1 mode active']
+    scriptWrite(transport, detachAll)
+    scriptWrite(transport, diff)
+    await new Node(transport).interfaces.setMembers('Port-Channel1', ['Ethernet5', 'Ethernet7'], 'active')
+    expect(sentAsText(transport)).toEqual([
+      ['enable', 'show port-channel 1 all-ports'],
+      ['enable', 'show running-config all'],
+      ['enable', 'configure terminal', ...detachAll],
+      ['enable', 'configure terminal', ...diff],
+    ])
+    // `set_members` calls `self.set_lacp_mode(<grpid>, mode)` (`:702-704`) when the requested mode differs,
+    // and that verb detaches and re-attaches **every** current member in one flat remove-then-add batch
+    // (`:736-745`) — so a mode change momentarily drops the whole LAG before the diff runs. Upstream's
+    // `test_set_members_update_mode` asserts against the **last** `config` call only
+    // (`test/lib/testlib.py:100`), so the detach batch is invisible in its own suite (row 130, DR-080).
+    expect(transport.callCount()).toBe(4)
+    // PLAN.md §M10's phrase "shutdown member interfaces before joining" describes no upstream command:
+    // `set_members`/`set_lacp_mode` contain no `shutdown` at all (re-read `:677-745`, 2026-11-05), so the
+    // transaction order pinned here is the whole of the safety story the code actually tells.
+  })
+
+  it('a mode equal to the members\' current one rewrites nothing and costs one transaction', async () => {
+    const transport = lagTransport(LAG_CONFIG, ['Ethernet5', 'Ethernet6'])
+    const cmds = ['interface Ethernet7', 'channel-group 1 mode on']
+    scriptWrite(transport, cmds)
+    await new Node(transport).interfaces.setMembers('Port-Channel1', ['Ethernet5', 'Ethernet6', 'Ethernet7'], 'on')
+    expect(sentAsText(transport)).toEqual([
+      ['enable', 'show port-channel 1 all-ports'],
+      ['enable', 'show running-config all'],
+      ['enable', 'configure terminal', ...cmds],
+    ])
+  })
+
+  it('no diff means no configuration transaction at all (:716, upstream\'s cmds=None pin at :411-414)', async () => {
+    const transport = lagTransport(LAG_CONFIG, ['Ethernet5', 'Ethernet6'])
+    await new Node(transport).interfaces.setMembers('Port-Channel1', ['Ethernet5', 'Ethernet6'])
+    expect(sentAsText(transport)).toEqual([
+      ['enable', 'show port-channel 1 all-ports'],
+      ['enable', 'show running-config all'],
+    ])
+    // `return self.configure(commands) if commands else True` (`:716`) — and `testlib.py:109` turns that
+    // `cmds=None` pin into `config.call_count == 0`, so upstream opens no transaction either. The
+    // running-config read is still spent here, because the mode for a hypothetical add must be found first.
+  })
+
+  it('an empty target detaches every member: removes only, never an add for a member the caller dropped', async () => {
+    const transport = lagTransport(LAG_CONFIG, ['Ethernet5', 'Ethernet6'])
+    const cmds = ['interface Ethernet5', 'no channel-group 1', 'interface Ethernet6', 'no channel-group 1']
+    scriptWrite(transport, cmds)
+    await new Node(transport).interfaces.setMembers('Port-Channel1', [])
+    expect(sentAsText(transport)).toEqual([
+      ['enable', 'show port-channel 1 all-ports'],
+      ['enable', 'show running-config all'],
+      ['enable', 'configure terminal', ...cmds],
+    ])
+  })
+
+  it('a modeless group is written modeless — the DEFAULT_LACP_MODE answer upstream interpolates is refused (:712-714)', async () => {
+    const transport = lagTransport(LAG_CONFIG, [])
+    const cmds = ['interface Ethernet5', 'channel-group 1']
+    scriptWrite(transport, cmds)
+    await new Node(transport).interfaces.setMembers('Port-Channel1', ['Ethernet5'])
+    expect(sentAsText(transport)).toEqual([
+      ['enable', 'show port-channel 1 all-ports'],
+      ['enable', 'configure terminal', ...cmds],
+    ])
+    // With no members, upstream's `get_lacp_mode` returns `DEFAULT_LACP_MODE` (`:67`, `:651-653`) and the add
+    // line becomes `channel-group 1 mode on` — a mode invented for a group nothing declares. No running-config
+    // read is needed here: there is no current member to read a mode from (compare the refusal below, where
+    // members exist but name none).
+  })
+
+  it('members that name no mode plus a caller who gives none: a refusal, not pyeapi\'s literal `mode None`', async () => {
+    const transport = lagTransport(LAG_MEMBERS_WITHOUT_MODE, ['Ethernet5', 'Ethernet6'])
+    const thrown = await outcome(() => new Node(transport).interfaces.setMembers('Port-Channel1', ['Ethernet5', 'Ethernet6', 'Ethernet7']))
+    expect(thrown).toBeInstanceOf(NotSupportedError)
+    expect((thrown as Error).message).toContain('no mode given and no current member names a channel-group mode to reuse')
+    expect((thrown as Error).message).toContain('channel-group 1 mode None')
+    expect(sentAsText(transport)).toEqual([
+      ['enable', 'show port-channel 1 all-ports'],
+      ['enable', 'show running-config all'],
+    ])
+    // Upstream's `test_set_members_mode_none` (`:404-409`) pins `channel-group 1 mode on` for its `mode=None`
+    // call **because** its fixture members do name `on`; the writing-`None` case is what `get_lacp_mode`'s
+    // `None` answer produces (`:639-658` into `:712-714`) and its suite never drives it. Interpolating a
+    // Python `None` into a LAG write is not a command to send and say nothing about (DR-077).
+  })
+
+  it('a scraped member this client cannot name is still removed — no local guard strands it (DR-005)', async () => {
+    const transport = lagTransport(LAG_CONFIG, ['Ethernet5', 'Ethernet1/1'])
+    const cmds = ['interface Ethernet1/1', 'no channel-group 1']
+    scriptWrite(transport, cmds)
+    await new Node(transport).interfaces.setMembers('Port-Channel1', ['Ethernet5'])
+    expect(sentAsText(transport)).toEqual([
+      ['enable', 'show port-channel 1 all-ports'],
+      ['enable', 'show running-config all'],
+      ['enable', 'configure terminal', ...cmds],
+    ])
+    // `Ethernet1/1` is what upstream's own expression scrapes (`:674-675`) — and its Ethernet test class
+    // drives methods on that very name (`:176`) — yet `parseInterfaceName` refuses it (open item 7). A
+    // member-side guard would silently strand such a port in the LAG, so the member lines reach the device
+    // unguarded and the device answers.
+  })
+
+  it('a bad mode refuses before any device read, and upstream\'s two bad-mode answers are both unusable', async () => {
+    const transport = lagTransport(LAG_CONFIG, ['Ethernet5', 'Ethernet6'])
+    const interfaces = new Node(transport).interfaces
+    await expectRefusal(() => interfaces.setMembers('Port-Channel1', ['Ethernet5'], 'fast' as unknown as LacpMode), 'invalid lacp mode', /expected one of active \/ passive \/ on/)
+    await expectRefusal(() => interfaces.setLacpMode('Port-Channel1', 'auto' as unknown as LacpMode), 'invalid lacp mode', /RETURNING False/)
+    for (const junk of ['both', '', 7, null] as const) {
+      await expectRefusal(() => interfaces.setMembers('Port-Channel1', ['Ethernet5'], junk as unknown as LacpMode), 'invalid lacp mode')
+    }
+    expect(transport.sent()).toEqual([])
+    // Upstream's bad-mode answers are `return False` in `set_lacp_mode` (`:731-732`, pinned non-raising at
+    // `test_api_interfaces.py:424-426`) and **no check at all** in `set_members`, where an unknown mode
+    // reaches the wire as `channel-group 1 mode <junk>` (`:712-714`). Neither is usable from TS (DR-005).
+  })
+
+  it('the device refuses the diff and the CommandError arrives with the whole batch (:706-714 is one transaction)', async () => {
+    const transport = lagTransport(LAG_CONFIG, ['Ethernet5', 'Ethernet6']).rejects(writeKey(['interface Ethernet6', 'no channel-group 1', 'interface Ethernet7', 'channel-group 1 mode on']), {
+      code: EapiErrorCode.COMMAND_INVALID,
+      message: "CLI command 6 of 6 'channel-group 1 mode active' failed: interface is configured as a channel member",
+    })
+    const thrown = await outcome(() => new Node(transport).interfaces.setMembers('Port-Channel1', ['Ethernet5', 'Ethernet7']))
+    expect(thrown).toBeInstanceOf(CommandError)
+    expect((thrown as CommandError).failedCommand).toBe('channel-group 1 mode active')
+    expect((thrown as CommandError).commands).toEqual([
+      'enable',
+      'configure terminal',
+      'interface Ethernet6',
+      'no channel-group 1',
+      'interface Ethernet7',
+      'channel-group 1 mode on',
+    ])
+    // The message names the command the device complained about, which is not the last line of the batch —
+    // a device-side refusal mid-transaction is reported as it arrives rather than re-rolled by this client.
+  })
+})
+
+describe('InterfacesResource LAG field writes — set_lacp_mode / set_minimum_links / set_lacp_fallback / set_lacp_timeout (:718-811, tests :328-374, :416-426)', () => {
+  it('setLacpMode removes every member then re-adds every member, in ONE flat transaction (:416-422)', async () => {
+    const transport = lagTransport(LAG_CONFIG, ['Ethernet5', 'Ethernet6'])
+    const expected: string[][] = []
+    for (const mode of LACP_MODES as readonly LacpMode[]) {
+      const cmds = [
+        'interface Ethernet5', 'no channel-group 1',
+        'interface Ethernet6', 'no channel-group 1',
+        'interface Ethernet5', `channel-group 1 mode ${mode}`,
+        'interface Ethernet6', `channel-group 1 mode ${mode}`,
+      ]
+      scriptWrite(transport, cmds)
+      expected.push(['enable', 'show port-channel 1 all-ports'], ['enable', 'configure terminal', ...cmds])
+    }
+    const interfaces = new Node(transport).interfaces
+    for (const mode of LACP_MODES as readonly LacpMode[]) await interfaces.setLacpMode('Port-Channel1', mode)
+    expect(sentAsText(transport)).toEqual(expected)
+    expect(LACP_MODES).toEqual(['active', 'passive', 'on'])
+    // Each call asks the device who its members are — `get_members` is called inside the loop body upstream
+    // too (`:739`), and neither side memoises it — so three mode changes cost three shows and three
+    // transactions. That is the honest count, pinned rather than assumed.
+    // The eight-line expectation at `test_api_interfaces.py:416-422` is upstream's, verbatim for `'active'`:
+    // removes for all members before adds for all members (`:740-743`, sent at `:745`). The three modes are
+    // the set its docstrings list (`:688`, `:726`) and its only guard accepts (`:731`). The order
+    // momentarily detaches the whole LAG, which is why the batch is pinned as exactly one transaction.
+  })
+
+  it('no members means no transaction — where upstream would still open a configure terminal (:745)', async () => {
+    const transport = lagTransport(LAG_CONFIG, [])
+    await new Node(transport).interfaces.setLacpMode('Port-Channel1', 'active')
+    expect(sentAsText(transport)).toEqual([['enable', 'show port-channel 1 all-ports']])
+    // `self.configure(remove_commands + add_commands)` with both lists empty (`:745`) still opens a
+    // `configure terminal` transaction carrying nothing (through `abstract.py:103-127`). A no-op
+    // transaction against a switch is a surprise, so this client sends nothing (divergence 20's close).
+  })
+
+  it('min-links writes the trio, every arm in the interface-submode pair shape (:328-348)', async () => {
+    const transport = configTransport(FLAT_CONFIG)
+    for (const inner of ['port-channel min-links 2', 'no port-channel min-links', 'default port-channel min-links']) {
+      scriptWrite(transport, pair('Port-Channel1', inner))
+    }
+    const interfaces = new Node(transport).interfaces
+    await interfaces.setMinimumLinks('Port-Channel1', 2)
+    await interfaces.unsetMinimumLinks('Port-Channel1')
+    await interfaces.defaultMinimumLinks('Port-Channel1')
+    expect(sentAsText(transport)).toEqual([
+      ['enable', 'configure terminal', 'interface Port-Channel1', 'port-channel min-links 2'],
+      ['enable', 'configure terminal', 'interface Port-Channel1', 'no port-channel min-links'],
+      ['enable', 'configure terminal', 'interface Port-Channel1', 'default port-channel min-links'],
+    ])
+    // Upstream reaches the `no` text two ways — no value at all (`:335-338`, the deprecated `'no %s'`
+    // fall-through at `abstract.py:160-161`) and `disable=True` (`:345-348`) — and the fixture's own line is
+    // that same negation (`running_config.portchannel:18`). One name per intent here (DR-037).
+  })
+
+  it('min-links accepts any positive safe integer and refuses the rest, naming the reason (client policy)', async () => {
+    const transport = configTransport(FLAT_CONFIG)
+    const interfaces = new Node(transport).interfaces
+    const values: readonly number[] = [1, 2, 16, 4096, Number.MAX_SAFE_INTEGER]
+    for (const value of values) scriptWrite(transport, pair('Port-Channel1', `port-channel min-links ${value}`))
+    for (const value of values) await interfaces.setMinimumLinks('Port-Channel1', value)
+    expect(sentAsText(transport).map((cmds) => String(cmds.at(-1)))).toEqual(values.map((value) => `port-channel min-links ${value}`))
+    for (const bad of [0, -1, 1.5, Number.NaN, Infinity, Number.MAX_SAFE_INTEGER + 1, '2', null, undefined, true]) {
+      const thrown = await outcome(() => interfaces.setMinimumLinks('Port-Channel1', bad as unknown as number))
+      expect(thrown, String(bad)).toBeInstanceOf(NotSupportedError)
+      expect((thrown as Error).message).toContain('invalid minimum links value')
+      expect((thrown as Error).message).toContain('expected a positive integer')
+    }
+    // pyeapi validates nothing here (`:747-769`; its test draws a random 1..16 at `:329`) and the platform
+    // ceiling is a device answer, so the bound pinned above is DR-037's falsy trap and nothing more
+    // (DR-032/DR-057) — which is why 4096 is sent and let the device object (the next-but-one spec).
+  })
+
+  it('the lacp fallback family: two value-carrying modes, one named negation, and no silent False (:356-374)', async () => {
+    const transport = configTransport(FLAT_CONFIG)
+    for (const inner of ['port-channel lacp fallback individual', 'port-channel lacp fallback static', 'no port-channel lacp fallback']) {
+      scriptWrite(transport, pair('Port-Channel1', inner))
+    }
+    const interfaces = new Node(transport).interfaces
+    await interfaces.setLacpFallback('Port-Channel1', 'individual')
+    await interfaces.setLacpFallback('Port-Channel1', 'static')
+    await interfaces.unsetLacpFallback('Port-Channel1')
+    expect(sentAsText(transport)).toEqual([
+      ['enable', 'configure terminal', 'interface Port-Channel1', 'port-channel lacp fallback individual'],
+      ['enable', 'configure terminal', 'interface Port-Channel1', 'port-channel lacp fallback static'],
+      ['enable', 'configure terminal', 'interface Port-Channel1', 'no port-channel lacp fallback'],
+    ])
+    // Upstream's value set is exactly these three words (`:787`: `['disabled', 'static', 'individual']`), with
+    // `'disabled'` mapped to `disable=True` at `:789` and pinned at `test_api_interfaces.py:366-369`; the mode
+    // word and the negation are separate intents here (DR-037), and the config-side mirror of the negation is
+    // the fixture's line at `running_config.portchannel:19`.
+    for (const bad of ['disabled', 'auto', '', 'Individual', 7, null] as const) {
+      const thrown = await outcome(() => interfaces.setLacpFallback('Port-Channel1', bad as unknown as LacpFallbackMode))
+      expect(thrown, String(bad)).toBeInstanceOf(NotSupportedError)
+      expect((thrown as Error).message).toContain('invalid lacp fallback mode')
+      expect((thrown as Error).message).toMatch(bad === 'disabled' ? /that intent is the verb unsetLacpFallback\(\)/ : /RETURNING False/)
+    }
+    expect(transport.bodies().filter((body) => body.params.cmds.includes('configure terminal'))).toHaveLength(3)
+  })
+
+  it('lacp fallback timeout writes the value arm and has no negation twin in this slice (:350-354)', async () => {
+    const transport = configTransport(FLAT_CONFIG)
+    const cmds = pair('Port-Channel1', 'port-channel lacp fallback timeout 90')
+    scriptWrite(transport, cmds)
+    await new Node(transport).interfaces.setLacpTimeout('Port-Channel1', 90)
+    expect(sentAsText(transport)).toEqual([['enable', 'configure terminal', ...cmds]])
+    // The absent-value arm deliberately has no verb here: upstream's `set_lacp_timeout(name)` with no value
+    // falls through `command_builder` to the deprecated `'no %s'` answer (`abstract.py:160-161`), i.e.
+    // `no port-channel lacp fallback timeout`, and DR-037 refuses to let an omitted argument produce a write.
+    // So this slice ships the value verb only — a negation is a named verb for a later decision, and the read
+    // side keeps that same line honest (row 126).
+    expect((interfacesFor(FLAT_CONFIG) as unknown as Record<string, unknown>)['unsetLacpTimeout']).toBeUndefined()
+  })
+
+  it('the timeout value is guarded like min-links, and a legal-but-unwelcome value is the device\'s to refuse', async () => {
+    const transport = configTransport(FLAT_CONFIG)
+    const interfaces = new Node(transport).interfaces
+    for (const bad of [0, -5, 0.5, Number.NaN, '90', {}, undefined]) {
+      const thrown = await outcome(() => interfaces.setLacpTimeout('Port-Channel1', bad as unknown as number))
+      expect(thrown, String(bad)).toBeInstanceOf(NotSupportedError)
+      expect((thrown as Error).message).toContain('invalid lacp fallback timeout')
+      expect((thrown as Error).message).toContain('expected a positive integer')
+    }
+    expect(transport.sent()).toEqual([])
+    const refused = configTransport(FLAT_CONFIG).rejects(writeKey(pair('Port-Channel1', 'port-channel lacp fallback timeout 99999')), {
+      code: EapiErrorCode.COMMAND_INVALID,
+      message: "CLI command 4 of 4 'port-channel lacp fallback timeout 99999' failed: timeout out of range",
+    })
+    const thrown = await outcome(() => new Node(refused).interfaces.setLacpTimeout('Port-Channel1', 99999))
+    expect(thrown).toBeInstanceOf(CommandError)
+    expect((thrown as CommandError).failedCommand).toBe('port-channel lacp fallback timeout 99999')
+    // The range is the device's: upstream's only timeout test uses a random 1..16 (`:351`) and its module
+    // carries no bound anywhere, so what 4.28.13.1M accepts is an M12 (#14) capture, not a constant here.
+  })
+
+  it('a min-links write the device refuses keeps the device\'s code, command and message (DR-005)', async () => {
+    const transport = configTransport(FLAT_CONFIG).rejects(writeKey(pair('Port-Channel1', 'port-channel min-links 2')), {
+      code: EapiErrorCode.COMMAND_INVALID,
+      message: "CLI command 4 of 4 'port-channel min-links 2' failed: command not available on this unit",
+    })
+    const thrown = await outcome(() => new Node(transport).interfaces.setMinimumLinks('Port-Channel1', 2))
+    expect(thrown).toBeInstanceOf(CommandError)
+    expect((thrown as CommandError).code).toBe(EapiErrorCode.COMMAND_INVALID)
+    expect((thrown as CommandError).failedCommand).toBe('port-channel min-links 2')
+  })
+
+  it('no Port-Channel field write reads a config first, and each is exactly one transaction (DR-030)', async () => {
+    const transport = configTransport(FLAT_CONFIG)
+    const interfaces = new Node(transport).interfaces
+    const batches: readonly (readonly string[])[] = [
+      pair('Port-Channel1', 'port-channel min-links 3'),
+      pair('Port-Channel1', 'default port-channel min-links'),
+      pair('Port-Channel1', 'port-channel lacp fallback static'),
+      pair('Port-Channel1', 'port-channel lacp fallback timeout 4'),
+    ]
+    for (const cmds of batches) scriptWrite(transport, cmds)
+    await interfaces.setMinimumLinks('Port-Channel1', 3)
+    await interfaces.defaultMinimumLinks('Port-Channel1')
+    await interfaces.setLacpFallback('Port-Channel1', 'static')
+    await interfaces.setLacpTimeout('Port-Channel1', 4)
+    expect(transport.callCount()).toBe(4)
+    expect(transport.bodies().filter((body) => body.params.cmds.some((c) => String(c) === 'show running-config all'))).toEqual([])
   })
 })
