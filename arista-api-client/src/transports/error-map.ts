@@ -26,14 +26,14 @@ import {
 } from '../errors'
 import { MAX_RAW_BODY } from '../internal/wire'
 import { redactCommands, redactWireText } from '../internal/redact'
-import type { CommandSpec, JsonRpcRequest } from '../types/eapi'
+import type { CommandSpec, RawWireRequest } from '../types/eapi'
 
 /** What a mapped error needs in order to be actionable in a UI (DR-005: errors carry their context). */
 export interface WireErrorContext {
   /** Where the request went — quoted in the message and stored on the error. */
   readonly endpoint: string
   /** The built request, when one exists. A `/login` POST has no `runCmds` request (DR-018). */
-  readonly request?: JsonRpcRequest | undefined
+  readonly request?: RawWireRequest | undefined
   /** Commands to attach, redacted on the way out — pyeapi attaches them in `execute` (`:641-644`). */
   readonly commands?: readonly CommandSpec[] | undefined
   /** The client deadline in force, so the message can name the number that expired (DR-019). */
@@ -42,7 +42,9 @@ export interface WireErrorContext {
 
 function baseContext(ctx: WireErrorContext): TransportErrorOptions {
   const request = ctx.request
-  const commands = ctx.commands ?? request?.params.cmds
+  // Only a `runCmds` body has commands to attach; a M11 method call carries `configList` or a partial
+  // line instead, and pretending otherwise would print a command list the device never received.
+  const commands = ctx.commands ?? (request !== undefined && request.method === 'runCmds' ? request.params.cmds : [])
   return {
     endpoint: ctx.endpoint,
     ...(request?.id === undefined ? {} : { requestId: request.id }),

@@ -14,16 +14,32 @@
 
 import { ConnectError, EapiError, TransportError } from '../errors'
 import { redactWireText } from '../internal/redact'
-import { createRequestIds, sendRequest } from '../internal/wire'
+import { createRequestIds, sendMethodRequest, sendRequest } from '../internal/wire'
 import type { RequestIdOptions } from '../internal/wire'
-import type { SendRequestResult } from '../internal/wire'
-import type { CommandSpec, JsonRpcRequest, RequestIdPolicy, WireSender } from '../types/eapi'
+import type { SendRequestResult, SentMethodCall } from '../internal/wire'
+import type {
+  CommandSpec,
+  JsonRpcMethodRequest,
+  JsonRpcRequest,
+  MethodWireSender,
+  RawWireRequest,
+  RequestIdPolicy,
+  WireMethodCall,
+  WireMethodResultOf,
+  WireSender,
+} from '../types/eapi'
 import { assertResponseIdMatches } from './correlate'
 import { DEFAULT_TIMEOUT_MS } from './contract'
-import type { Transport, TransportBaseOptions, TransportExecOptions, TransportKind, WireTraceSink } from './contract'
+import type { MethodCallOptions, Transport, TransportBaseOptions, TransportExecOptions, TransportKind, WireTraceSink } from './contract'
+
+/**
+ * Either envelope this composition sends — the wire-contract name, aliased here so a transport's
+ * `RawSend` says what the composition actually hands it (`runCmds` or a M11 method call).
+ */
+export type RawRequest = RawWireRequest
 
 /** One byte-level round trip: request in, raw response text out. Throws the mapped wire error on failure. */
-export type RawSend = (request: JsonRpcRequest, context: RawSendContext) => Promise<string>
+export type RawSend = (request: RawRequest, context: RawSendContext) => Promise<string>
 
 export interface RawSendContext {
   /** Effective deadline for this attempt, already resolved from per-call over per-connection defaults. */
@@ -71,13 +87,42 @@ function withReadOnlyRetry(sender: WireSender): WireSender {
   }
 }
 
+/**
+ * The same single resend for a non-`runCmds` request (M11, #13). Still opt-in, and the reason
+ * `Transport#callMethod` does not default it to `true` even though `verifyConfig` promises to leave
+ * running-config alone: on the device that promise is kept by opening and aborting a **config
+ * session** (`JsonCli.py:293-305`), which is a claim about EOS internals rather than about our own
+ * request — so DR-019's "the device never saw it" rule needs the caller's word, not ours.
+ */
+function withReadOnlyMethodRetry(sender: MethodWireSender): MethodWireSender {
+  return {
+    async sendMethod(request: JsonRpcMethodRequest): Promise<string> {
+      try {
+        return await sender.sendMethod(request)
+      } catch (error) {
+        if (error instanceof ConnectError) return await sender.sendMethod(request)
+        throw error
+      }
+    },
+  }
+}
+
+/**
+ * A {@link Transport} built here: unlike a third-party implementation, its M11 (#13) method seam is
+ * **always** present, which is what lets {@link TransportBase} delegate to it without a runtime check
+ * the composition could never fail.
+ */
+export type ComposedTransport = Transport & {
+  callMethod<C extends WireMethodCall>(call: C, options?: MethodCallOptions): Promise<SentMethodCall<WireMethodResultOf<C>>>
+}
+
 /** Build the public `Transport` view over a transport's `RawSend`. */
-export function createCodecTransport(kernel: TransportKernel): Transport {
+export function createCodecTransport(kernel: TransportKernel): ComposedTransport {
   const ids = kernel.ids ?? createRequestIds(kernel.idOptions ?? {})
   const timeoutMs = kernel.timeoutMs ?? DEFAULT_TIMEOUT_MS
   let closed = false
 
-  async function tracedSend(request: JsonRpcRequest, attemptTimeoutMs: number, signal?: AbortSignal): Promise<string> {
+  async function tracedSend(request: RawRequest, attemptTimeoutMs: number, signal?: AbortSignal): Promise<string> {
     const sink = kernel.trace
     const requestId = String(request.id)
     // The outgoing body is redacted for the *sink* only: the device must receive an `enable` input
@@ -97,7 +142,11 @@ export function createCodecTransport(kernel: TransportKernel): Transport {
     }
   }
 
-  const transport: Transport = {
+  // `ComposedTransport`, not `Transport`: the literal below always provides `callMethod`, and since
+  // `Transport#callMethod` is *optional* (that optionality is the point — a pre-M11 third-party
+  // transport need not have it), annotating this as `Transport` would widen the return type and make
+  // `createCodecTransport` fail to satisfy its own signature.
+  const transport: ComposedTransport = {
     kind: kernel.kind,
     address: kernel.address,
     async execute(commands, options: TransportExecOptions = {}) {
@@ -114,6 +163,22 @@ export function createCodecTransport(kernel: TransportKernel): Transport {
       // codec's, because the transport-only three above were destructured off first. Passing them to
       // `buildRequest` untouched would trip its own parameter allow-list (DR-016).
       return sendRequest(sender, commands, { ...codecOptions, ids: options.ids ?? ids })
+    },
+    async callMethod<C extends WireMethodCall>(call: C, options: MethodCallOptions = {}): Promise<SentMethodCall<WireMethodResultOf<C>>> {
+      if (closed) {
+        throw new TransportError(`transport ${kernel.kind} at ${kernel.address} is closed`, { endpoint: kernel.address })
+      }
+      const { timeoutMs: callTimeout, signal, readOnly } = options
+      const attemptTimeoutMs = callTimeout ?? timeoutMs
+      let sender: MethodWireSender = {
+        sendMethod: (request) => tracedSend(request, attemptTimeoutMs, signal),
+      }
+      if (readOnly === true) sender = withReadOnlyMethodRetry(sender)
+      // The policy half lives in the codec, exactly as it does for `execute`: the parameter allow-list
+      // (DR-016), this connection's id (DR-017), and the gate that knows whether the method answers
+      // with a per-command array or one object (`JsonRpcBase.py:156-160`). This file owns only the
+      // bytes, the deadline, the trace sink and the id pairing.
+      return await sendMethodRequest(sender, call, { ids })
     },
     async close(): Promise<void> {
       if (closed) return
@@ -145,7 +210,7 @@ export class TransportBase implements Transport {
   readonly kind: TransportKind
   readonly address: string
   protected readonly description: string
-  private readonly inner: Transport
+  private readonly inner: ComposedTransport
 
   constructor(kernel: TransportKernel) {
     this.kind = kernel.kind
@@ -156,6 +221,15 @@ export class TransportBase implements Transport {
 
   execute(commands: CommandSpec | readonly CommandSpec[], options?: TransportExecOptions): Promise<SendRequestResult> {
     return this.inner.execute(commands, options)
+  }
+
+  /**
+   * The M11 (#13) non-`runCmds` seam, delegated to the same composition as `execute` — which is why
+   * one implementation covers all seven transports: `verifyConfig` goes out over the caller's own
+   * TLS/auth plumbing (DR-013), not a second HTTP stack.
+   */
+  callMethod<C extends WireMethodCall>(call: C, options?: MethodCallOptions): Promise<SentMethodCall<WireMethodResultOf<C>>> {
+    return this.inner.callMethod(call, options)
   }
 
   close(): Promise<void> {

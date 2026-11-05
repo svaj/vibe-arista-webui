@@ -37,7 +37,28 @@ merged suite), coverage 98.14 st / 92.66 br / 99.35 fn / 98.83 ln, `interfaces.t
 funcs/lines, `src/resources/` 99.85 / 99.73 / 100 / 100. **M10 is `in-progress`, not done:** PLAN's exit
 gate is LAG/LACP end-to-end, which needs M10b (`EthernetInterface`) and M10c (`PortchannelInterface`) —
 rows **123-130** and **DR-070+** stay reserved for them, and `interface Ethernet1` creation remains a typed
-refusal that names M10b as its owner. **M12b (#14, CI + fixture-refresh plumbing) is delivered on its
+refusal that names M10b as its owner. **M10b/M10c are delivered on their branch** (superseding that
+reserve sentence: they claimed §5 rows **125-132** + **DR-075-080**, with rows 123-124 and DR-070-074
+declared-skipped; M11's PR takes 115-122 + DR-061-063 and must merge FIRST to keep the §5 table
+ascending). Ethernet sflow/flowcontrol/vrf and the Port-Channel members/mode/minimum-links/LACP family
+ride DR-068 as field groups — members from the config relation by decision, the `all-ports` scrape as a
+separate verb (**DR-075**); branch gate: **49 files / 1,556 client tests** (+82 specs), all-files
+98.22 st / 93.0 br / 99.39 fn / 98.92 ln, `interfaces.ts` 99.48 / 98.11 / 100 / 100. **M10 is still
+`in-progress`, not done:** the `68..9214` MTU-bound box and the 48-port fixture `getAll()` await the
+M12 (#14) §3 capture, and M10d/Vxlan stays deferred to wave 3.
+
+**M12a (#14, live suite + write policy) is delivered on its
+branch** — §5 rows **135-142** + **DR-081-084**: four live suites (9 device-facing specs) that ran
+against a real cEOS-lab 4.28.14M (readiness finding recorded in the band: the guard's EXACT-version
+pin cannot match the image's engineering-build suffix, so the suites hard-fail every model/train
+refusal and tolerate ONLY the suffix-driven mismatch, guard untouched), plus `src/testing/live-session-policy.ts`
+closing DR-035's write side — named session, always-abort finally, persistence ban, no scratch port
+inferred — with an offline MockTransport matrix. Branch gate: **50 files / 1,481 client tests**, all
+files 98.14 st / 92.75 br / 99.35 fn / 98.83 ln; live files skip loudly offline. The lab run left its
+container up for the orchestrator's teardown (verified zero leftovers afterwards) — flagged so the
+next live-CI job never relies on manual cleanup.
+
+**M12b (#14, CI + fixture-refresh plumbing) is delivered on its
 branch** — §5 rows **143-149** + **DR-085-088**: `fixtures:refresh` as an explicit-consent, run-owned
 chain (refuses BEFORE any docker call without confirmation, DR-085); the PR job's coverage step +
 artefact upload; `scripts/dist-smoke.mjs` (dependency-free) plus a node-20 leg proving the artifact,
@@ -46,6 +67,21 @@ not the dev tooling (DR-087, closing ci.yml's own promise); and the never-yet-ex
 (DR-086/DR-088). Branch gate: **49 files / 1,474 client tests** — identical to the merged suite:
 this lane adds NO unit tests (its diff is YAML + `.mjs` scripts, outside the unit coverage set); the
 refusal paths were exercised by hand, and the live job's first CI run is itself a review item.
+
+**M11 (#13) is delivered on its branch** — the non-`runCmds` differentiators: `Node.verifyConfig()` /
+`getCompletions()` / `getCommandHelp()` ride a validated `WIRE_METHODS` table over the new optional
+`Transport#callMethod` seam, and faking them with `runCmds` is refused as unsafe, not inconvenient
+(**DR-061**, §5 rows 115-117); `src/capabilities.ts` probes candidate commands in a throwaway named
+config session with an abort guaranteed on every path and a seven-verdict taxonomy in which ONLY a
+`1002` may ever say *unavailable* (**DR-062**, rows 118-121); `createCapabilityCache` keys answers by
+endpoint + candidates + `batchSize` with a 15-minute TTL and never stores an inconclusive run
+(**DR-063**, row 122). It claims §5 rows **115-122** + **DR-061-063** — the reservation from this
+lane's merged note, and it FILLS the apparent 061-063 DECISIONS gap on purpose (reserved, never
+skipped). Branch gate: **53 files / 1,647 client tests** (webui 3 / 8), coverage 97.85 st / 92.07 br /
+98.84 fn / 98.63 ln, `capabilities.ts` 93.39 / 81.62 / 90.9 / 96.41 against the root-level gate.
+Supersedes the `123-130` / `DR-070+` reserve sentence above: the open lanes' FINAL bands are M11 this
+branch 115-122 / DR-061-063; M10b/c 125-132 / DR-075-080; M12a 135-142 / DR-081-084; M12b 143-149 /
+DR-085-088; declared skips 123-124, 133-134, DR-070-074; safe merge order M11 -> M10b/c -> M12a -> M12b.
 
 **Test infrastructure planning update:** local cEOS-lab **4.28.14M** and vendor install
 instructions are now available under `/home/svaj/development/arista/cEOS/`.

@@ -577,6 +577,76 @@ probe finds `switchport trunk group` unsupported on the target (open item 4), th
 CAPABILITY table, not these verbs' spellings.
 **Related:** DR-037, DR-027, DR-005, DR-050 (never call a staged write a preview); §5 row 97.
 
+### DR-061 — non-runCmds eAPI methods ride a validated method table over an optional `Transport#callMethod` seam; they are never faked with `runCmds` (M11 #13)
+pyeapi has no client half for the methods PLAN §M11 builds on: grepping `verifyConfig`,
+`getCommandCompletions` and `getCommandHelp` through the pinned clone (`develop` `6816d9e`) matches
+nothing in `pyeapi/` — they exist only as SERVER procedures (`JsonCli.py:275-279`, `:174`, `:200`).
+**Decision:** the codec carries `WIRE_METHODS` (`src/internal/wire.ts`): per method a parameter
+allow-list (unknown keys are a local refusal), the one parameter `JsonRpcBase.py:288-293` makes
+required (`configList` / `command`), and a fixed `resultShape` — `array` (list-shaped like
+`runCmds`, `JsonRpcBase.py:160`) or `object`; an answer of the other shape is a parse refusal, never
+a guess (the same do-not-assert-unverifiable stance DR-032 states for limits, now stated for
+answers). Transports gain an optional `callMethod` (`transports/contract.ts`): all seven built-in
+senders and `MockTransport` implement it; a hand-rolled `Transport` without it gets a
+`NotSupportedError` spelling the reason — a configlet sent as a command batch **gets applied**,
+whereas `verifyConfig` runs inside a session the device opens AND aborts itself
+(`JsonCli.py:293-305`), so faking it with `runCmds` is off the table by safety, not laziness.
+**Consequence:** a third request shape crosses the seam (`SentMethodCall` mirrors `SentRequest`),
+`WireMethodResultOf` types each method's parsed answer, every outcome keeps `raw` so unknown fields
+survive (row 8's rule), and the param validators refuse preamble control characters because the
+device executes each preamble entry as one CLI line (`CliApi.py:659-663`).
+**Related:** DR-016, DR-010, DR-011, DR-017 (the id policy covers method calls too), DR-062, DR-063; §5 rows 115-117.
+
+### DR-062 — the probe stages candidate commands in a throwaway named config session, always aborts it, and its verdict set claims nothing beyond a `1002` (M11 #13)
+DR-033 forbids any hard-coded "supported on the 7050TX-64" list, and the per-model feature matrix
+(ArToggles, licensing) cannot be enumerated from offline artifacts — so presence is **probed**, at
+the level the device can actually answer: candidate command TEXTS, never feature names.
+**Decision:** `probeCommands` (`src/capabilities.ts`) stages the candidates as a `stopOnError:false`
+batch inside one throwaway **named** session and classifies each command from
+`errorDetail[]` (`JsonCli.py:441-446`). The abort is guaranteed on every path — including when the
+`onBatch` progress sink throws — and an abort that itself fails is reported through
+`onCleanupFailure` (default: the package's loud `warnOnce`), the one case where a session can
+outlive the function. The session keeps M5's DEFAULT name prefix (DR-047) on purpose:
+`recoverOrphans()`'s filter is prefix-based, so an orphaned `probe-…` name would hide the session
+and leave the config lock held (DR-022/DR-023). Candidates this client refuses to probe — `abort`,
+`commit`, `configure session`, `configure replace`, `copy running-config startup-config`, `reload`
+— are OUR rule, not the device's (a session would run all of them): each would end, commit, replace
+or persist the probe's own state (DR-050's preview rule, DR-024's explicit durability), and
+`reload` reboots the switch. The seven verdicts are the honest version of yes/no: **only `1002` is a
+statement that a command is unavailable**; `1004` (context, not feature), `1005` (privilege),
+`1006` (nothing was probed) and `unknown` are inconclusive by construction, and `supported`
+(observed acceptance) is named apart from `not-rejected` (absent from `errorDetail`) so no caller
+can confuse a reading of vendor-side prose with evidence. Classification keys on the command TEXT,
+never the `errorDetail` index (whose base is the whole wire list, `enable` and opener included),
+and each result records `codeSource` because a batch-level `error.code` is only the FIRST failure
+(`JsonCli.py:436`) — weakest evidence, labelled as such. Feature lists (`FeatureProbeCommands`) label
+verdicts only; the package interprets no name and ships no built-in table (DR-033).
+**Consequence:** the probe cannot change running-config, but it is not free (one session + a batch
+per chunk) — which is why DR-063 exists; every "what the session does on hardware" claim stays
+carried offline evidence inherited from M5's header (the STATUS §3 sweep remains open).
+**Related:** DR-033, DR-050, DR-022, DR-023, DR-024, DR-047, DR-010, DR-011, DR-061; §5 rows 118-121.
+
+### DR-063 — capability answers are cached per endpoint with an explicit TTL, and an inconclusive probe is never a stored fact (M11 #13)
+A probe costs a session, so per-render probing is unusable and per-process caching is wrong: EOS has
+nothing that invalidates a capability answer, and what would change one (an `eos` upgrade, a
+`feature` toggle, an AAA change) is unbounded by offline evidence.
+**Decision:** `createCapabilityCache` stores each probe under endpoint (`Transport#address` — the
+identity an answer belongs to; no globals, no per-`Node` guessing) plus the exact candidates plus
+`batchSize` (both change the answer, so both are in the key). The default TTL
+(`DEFAULT_CAPABILITY_TTL_MS`, 15 min) is OUR rule; `ttlMs: 0` means "store nothing", never "cache
+forever"; the clock is injectable because the offline suite never sleeps. Inconclusive verdicts
+(`config-locked`, `unknown`) and `configLocked` runs are NEVER stored — an unverifiable answer must
+not become a cached fact, the same stance DR-032 takes for limits applied to verdicts (the earlier
+draft citations here said DR-032; they are retargeted to this entry). `peek` reports freshness and
+even a negative remainder so a UI can print "stale since"; `invalidate(endpoint)` belongs after a
+config change the operator made on purpose; `entries()`/`endpoints()` drive a settings screen
+without re-probing.
+**Consequence:** "review changes" screens can answer what the switch SAID without touching the
+switch, and always know when that answer stopped being trusted — the TTL is a trust boundary, not a
+performance knob.
+**Related:** DR-062, DR-033, DR-032 (same stance at the limits), DR-043 (capture separation: an
+answer is worth exactly its endpoint); §5 row 122.
+
 ### DR-064 — recordings are wire artefacts taken at the transport seam, redacted before they exist
 Fixture harnesses usually sit above the client ("capture what the code sent"), which means a
 recording file is built from already-parsed, already-transformed data — anything the harness author
@@ -831,6 +901,197 @@ Nothing is concluded about the target from a container answer: the capture itsel
 a capture forces a re-read of the readers that had guessed — that check is now part of landing M12
 fixtures, and each spellings list cites the file it came from, so a reviewer can open the evidence.
 §5 row 106; `interfaces.ts` divergence 12.
+
+### DR-075 — a Port-Channel's members are read from the config relation, and the live `show` scrape stays a separate verb (M10b/M10c #12)
+`get_members` (`interfaces.py:660-675`) is a text scrape: group id taken from the Port-Channel **name**
+(`:671`), `show port-channel <id> all-ports` in `format:'text'` (`:672-673`), then
+`re.findall(r'\b(?!Peer)Ethernet[\d/]*\b', …)` over the output (`:674-675`). Upstream treats that scrape as
+the **fact** — `get` stamps it into the record (`:611`) and `set_members` diffs against it (`:700`) — so on
+a unit without the command, or against a malformed reply, or for a member the scrape drops, the answer
+silently becomes "no members", and the dropped member's own `channel-group` line is never removed by the
+diff that believes it was never a member. **Decision:** the record's `portChannel.members` comes from the
+members' own `channel-group <id> [mode <word>]` body lines, harvested across sections in one pass
+(`interfacesFromSections`, deduped in device order) — the same config text upstream's `get_lacp_mode` already
+greps per member (`:655-658`), so this stays upstream's source of truth for the relation while dropping the
+scrape's fragility. The scrape itself is **also** ported, as the verb `getMembers`, with the look-around kept
+verbatim (`membersFromOutput`) so an M-LAG `Peer-Ethernet` line can never become a member: "what the switch
+reports right now" and "what the running-config declares" are two facts and a UI is allowed to see them
+disagree — which is why neither is derived from the other. A scrape result this client's grammar cannot name
+(`Ethernet1/1`) is returned as-is and then fails the write guards, so a member can always be removed but
+never silently mis-composed. **Consequence:** `getAll()` answers the membership question with one config
+read and no `show`, `getMembers()` is the only way to ask the device, and M12 (#14) still owes how
+4.28.13.1M spells that show's output on the 7050TX-64 (the pinned scrape shapes are pyeapi's own fixture
+text, DR-043/DR-069's caveat). §5 row 125; `interfaces.ts` divergence 15.
+
+### DR-076 — absence outranks upstream's invented defaults on every new read (M10b/M10c #12)
+The Port-Channel readers answer a question the device never answered: `_parse_minimum_links` returns `0`
+when there is no `port-channel min-links` line (`interfaces.py:618-624`), `_parse_lacp_fallback` returns
+`DEFAULT_LACP_FALLBACK` (`'disabled'`, `:625-631`, `:68`), `_parse_lacp_timeout` returns
+`DEFAULT_LACP_FALLBACK_TIMEOUT` (`90`, `:632-638`, `:69`), and `get_lacp_mode` returns
+`DEFAULT_LACP_MODE` (`'on'`) for a group with no members (`:651-653`). Upstream's own `test_get`
+(`test_api_interfaces.py:318-326`) proves the confusion is load-bearing, because the fixture it pins against
+writes the **negations** `no port-channel min-links` (`running_config.portchannel:18`) and
+`no port-channel lacp fallback` (`:19`) — a device that turned a value off and a device that never mentioned
+it both come back as a value. **Decision:** every M10b/M10c read answers `undefined` for an absent line, and
+`no`/`default` forms are never read as a value — `valueAfterKeyword` anchors at the keyword (row 91), and
+`lacpFallbackFromBlock` additionally skips the `port-channel lacp fallback timeout <n>` line, since the
+timeout **is** the fallback keyword's sub-command and the fixture's `:19`/`:20` pair is exactly that case.
+The reads are total: a non-decimal value is a `ConfigParseError` naming the section rather than a truncated
+`int()` (`ipinterfaces.py:126`'s habit, DR-059). sFlow is the same decision one field over: upstream's
+`'no sflow' not in config` (`:367-380`) fabricates `true` from an absence, so the field is read as exact
+`sflow enable` / `no sflow enable` command lines instead — the same three-answer shape as DR-027 fixed for the
+administrative state — and a `no sflow` pair is never answered as the **fabricated** `true` upstream gives a
+section with no line at all; the `false` half of an explicit `no sflow enable` is reported, never invented
+from silence. **Consequence:** a UI can tell "off", "not configured" and "the device did not say" apart, and
+what the EOS defaults actually are stays an M12 (#14) capture (open item 1, DR-057) instead of being adopted
+as a client-side constant. §5 rows 126 / 127; `interfaces.ts` divergences 13 / 16.
+
+### DR-077 — an invalid verb argument is a refusal, never a `False`, a message-less `ValueError`, or a command the device will misparse (M10b/M10c #12)
+Three upstream styles coexist in this slice: `ValueError('invalid flowcontrol value')` (`:513-515`) and
+`ValueError('invalid direction specified')` (`:517-518`); a **bare** `raise ValueError` with no message on
+`set_sflow` (`:542-543`); and `return False` — silently — for an unknown LACP mode (`set_lacp_mode`,
+`:731-732`, pinned non-raising at `test_api_interfaces.py:424-427`) or an unknown fallback mode
+(`set_lacp_fallback`, `:787-788`, `:371-373`). A fourth case has no answer at all: with no `mode` argument,
+`set_members` interpolates `get_lacp_mode`'s `None` into `channel-group 1 mode None` (`:712-714`), and the
+suite pins **that text** as expected behaviour (`:404-409`). **Decision:** all of them become
+`NotSupportedError`s naming what upstream did (DR-005 deletes the boolean, DR-010 requires a message,
+DR-053 puts the guard in the verb), and the three refusals that buy real safety are: an unknown `mode`
+argument (DR-079), a `setMembers` call that has no mode to write and nothing readable to reuse — refusing
+outranks sending a token whose effect on a LAG is undefined — and `setLacpFallback`'s `'disabled'`, which is
+a *negation*, so it is the verb `unsetLacpFallback` and not a mode string that happens to read as one
+(DR-037); `setLacpFallback('Port-Channel1', 'disabled')` composes nothing — it refuses **before** any
+request, which is the shape DR-053's guards exist to guarantee. The same row also deletes the `default`/`no`
+arms' ambiguity rather than reproducing it. **Consequence:** every bad-input test in this lane asserts
+**zero** requests reaching the device, and the refusal texts quote upstream so a reader can tell a
+client-side rule from a device rule; pyeapi's exception pins cannot be ported as-is because
+`eapi_exception_config_test` ignores its own `cmds` argument (`testlib.py:121-123`). §5 rows 128 / 129;
+`interfaces.ts` divergences 17 / 19.
+
+### DR-078 — a release floor is compared as numbers, and an unclassifiable release composes no command (M10b/M10c #12)
+`set_vrf` decides which keyword to send with `if self.version_number >= '4.23'` (`interfaces.py:568`, arms at
+`:569-575`) — a **string** compare of the device version, so `'4.9' >= '4.23'` is true character-wise and a
+4.9-era box is handed the 4.23 keyword, while `'4.100…'` compares below `'4.23'` although 4.100 is a later
+release. Upstream's suite cannot surface the bug because the mock node pins `'4.17.1.1'`
+(`test/lib/testlib.py:81`), the only arm it exercises being `vrf forwarding testvrf`
+(`test_api_interfaces.py:297-302`). **Decision:** keep the two command texts verbatim and fix only the
+comparison — `vrfKeyword()` asks `Node.getVersion()` (the DR-035 memoised `show version`) and compares the
+leading `major.minor` **segments numerically** (`versionFloorCompare`); 4.9 < 4.23, 4.23 ≤ 4.28. A version
+with no leading `major.minor` (an engineering build that does not start with digits, or a device that will
+not answer `show version`) is **refused**, not defaulted to either arm: guessing which VRF syntax an
+unnameable device accepts is exactly the claim DR-032/DR-057 forbid. **Consequence:** a VRF write costs one
+memoised version read per `Node`, not per verb; both sides of the floor are pinned in the suite; and whether
+the two keywords are interchangeable — or which one the v4 image this build runs actually wants — stays with
+the device, so the `CommandError` arm is pinned and M12 (#14) owns the capture. §5 row 131;
+`interfaces.ts` divergence 18.
+
+### DR-079 — the channel-group mode is validated where it is captured, so one type covers the wire, the record and the arguments (M10b/M10c #12)
+Upstream's mode is an unvalidated string at every step: `get_lacp_mode` hands back `re.search(...)`'s
+`(?P<value>.+)` group from **one** member and returns inside the first loop iteration, so a second member is
+never examined and a first member with no `channel-group … mode` line crashes on
+`re.search(pattern, None)` when its block is missing (`:655-658` + `abstract.py:96-101`); its only write-side
+check is `set_lacp_mode`'s `return False` (`:731-732`), while `set_members` (the verb the UI reaches through
+its diff and its side call — DR-080) accepts any value and interpolates it into
+`channel-group %s mode %s` (`:712-714`). **Decision:** validate the token **at the capture site**
+(`readChannelGroupMode`): a section body line reading `channel-group 1 mode fast` fails the whole table read
+with a `ConfigParseError` naming the section — because `getAll()` builds a typed record, and publishing a
+mode this client's own verbs refuse is a promise of consistency that does not hold. `LacpMode`
+(`active`/`passive`/`on`, the trio at `:731`) is then the single type of the record field, the harvested
+group facts, the lookup answer `getLacpMode()` returns and the argument `setLacpMode()`/`setMembers()` take —
+so a wrong type cannot express `mode None` at all (the type-system half of DR-010/DR-077). `getLacpMode`
+scans **every** member for the first mode-bearing line and answers `undefined` when none names a mode
+(no `DEFAULT_LACP_MODE` invention, DR-076). **Consequence:** one device typo is visible as one named parse
+failure instead of a table that agrees with the next `setLacpMode` about a mode that does not exist, and the
+type is narrower than the device's possible output on purpose, with the overflow reported rather than
+published. §5 row 129; `interfaces.ts` divergence 19.
+
+### DR-080 — a verb that performs writes on the way to its own answer keeps them as separate, pinned transactions (M10b/M10c #12)
+`set_members` is where those verbs live. Upstream's copy
+(1) asks the device for the members, (2) reads the mode from the candidates, and, when a mode is supplied and
+differs, (3) performs its own remove-and-re-add rewrite before applying the diff. Upstream's single test
+sees only the last call, so each side effect is invisible in review. **Decision:** port the side effects
+faithfully — the rewrite stays a distinct
+operation between the read and the diff rather than being folded into one batch — because collapsing
+them into a single transaction would be this client inventing a device behavior that upstream, and
+therefore the operator, does not expect. Each side effect is visible in the recorded `callArgs`; the
+diff-then-rewrite ordering is not reordered silently. **Consequence:** a UI that calls
+`setMembers` must expect more than one round trip, and the test suite's
+per-side-effect pins are what keep a future "optimization" from quietly merging them —
+M12 (#14) will say whether an operator should be warned that a mode change briefly removes every
+member's LACP configuration. §5 row 130; `interfaces.ts` divergence 20.
+
+---
+
+### DR-081 — a live write is applied only through a named session that aborts on failure and never persists (M12a #14)
+The `*.live.test.ts` port of the pyeapi system tests reaches the point where a mutation must actually run
+on a device, and DR-035's write half — *named session, abort-on-failure, no `copy run start`* — was the part
+`src/testing/live-guard.ts` did not yet encode (it gates the endpoint and the scratch-interface name, not
+*how* a write lands). pyeapi makes this easy to get wrong: `configure_session()` is a lazy anonymous `uuid4`
+(`client.py:1003-1006`), there is no `finally`-style rollback in its system tests, and its `abort()` never
+clears `_session_name`, so a later call *re-creates* the session EOS already destroyed (row 63). **Decision:**
+one helper, `runGuardedLiveWriteSession(node, {name, commands, description?})` in `src/testing/live-session-policy.ts`
+(browser-safe, DR-002): the session **name is required** (DR-022/DR-047 — a live write an operator cannot
+name is one they cannot abort by hand after a crash); `commands` is passed as **data**, not an open callback,
+so `assertNoPersistenceCommand` inspects every command *before* the first byte is sent (the reason the
+persist ban is enforceable rather than advisory); the sequence is `configSession(name)` → `run` → `commit`,
+and an **`isOpen`-guarded `abort()` in a `finally`** does the rollback — the `isOpen` test is what makes the
+rollback unconditional without re-aborting a handle already terminal (`committed`) or already dead (`lost`),
+which the state-machine would have thrown on and hidden the real error. `commit()` is called **without**
+`{persist:true}` (DR-024), closing DR-035(c). **Consequence:** every scratch-port live write in this lane
+(switchports default/switchport/no-switchport/mode, interfaces description) goes through it, and the same
+object is unit-tested offline (§5 rows 137-140). Cost: a write test cannot take an arbitrary callback, which
+is the point — smuggled persistence then cannot happen.
+
+### DR-082 — a port that is not an `Ethernet…` scratch name is never a live write, so whole upstream families are skipped rather than faked (M12a #14)
+The pyeapi system suite is not "60 read tests": almost every case is **read-after-write on a name the run
+chose by convenience** — `random_interface(dut)` for switchports, `random_int(2,4094)` VLANs, and
+`Loopback0`/`Port-Channel1`/`Vxlan1`/`Management1`/`Vlan1234`/`Ethernet1.1` for interfaces. DR-035(b) allows a
+live write on **exactly** `EAPI_SCRATCH_INTERFACE` (which `requireScratchInterface` pins to an `Ethernet…`,
+`docs/CEOS.md:131`), and there is deliberately **no** `EAPI_SCRATCH_VLAN`/`..._PORTCHANNEL` gate in
+`live-guard.ts`. **Decision:** do not widen a guard, invent a scratch-VLAN, mutate a LAG/loopback/mgmt port,
+or pad the port with no-op read copies to hit a "~60" number. Port the genuinely write-free reads
+(`vlans.get(1)`, `getAll()`, `interfaces.getAll()` incl. `Management1`, `system.get()` at key/type level) plus
+the writes whose target *is* the named scratch Ethernet port, and record every skipped method with its reason
+in the file's JSDoc ledger (a per-file table: off-limits name / global write / client-side refusal that never
+round-trips / fixture-owned field). **Consequence:** the honest per-file counts are small (system 1/20,
+vlans 2/15, switchports 2 reads + write-integration/8, interfaces 2/~48) and stated as such rather than
+inflated; a reviewer can see which behaviours remain offline-only vs. device-touched. Risk noted: it means the
+live lane does **not** exercise random-VLAN or LAG writes at all — those stay DECISIONS open items and offline
+tests, which is the safer reading of DR-035, not an oversight.
+
+### DR-083 — `MockTransport` scripts full joined session command lists, because an opener-only key silently never matches (M12a #14)
+The policy helper's *only* offline proof that it aborts-but-does-not-persist depends on the exact command
+arrays a config session puts on the wire, and `MockTransport.matches` (mock-transport.ts, `texts.includes(match) || texts.join('\n') === match`)
+has a trap that has already cost this project time: an entry keyed `configure session <name>` matches the run
+batch **only if that whole string is one list element** — but a session batch is
+`[enable, configure session <name>, …tail]`, so the opener sits inside a longer list and an opener-only key
+never matches → the request falls through to `NotSupportedError` with no scripted answer. **Decision:** every
+script key in `live-session-policy.test.ts` spells the **full `\n`-joined list**, `enable` and the opener
+included, with **separate** keys for the `…\ncommit` and `…\nabort` round trips (they are distinct batches,
+each re-entering the session). A `wireKey(name, …tail)` builder makes that join once per test so the intent —
+which operation — reads off the assertion, and the exact-spelling hazard cannot be re-introduced case by case.
+The failure modes this pins are precisely the ones DR-035(c)/DR-023 care about: a `copy run start` in the batch
+is refused with `transport.sent() === []` (guard before wire); a device `1002` **with** `errorDetail` leaves the
+session `open` so the `finally` abort reaches the device; a `1006` `lost` commit must **not** re-abort (the state
+machine already killed the handle). **Consequence:** the helper is falsifiable offline; live CI still owns the
+one real-cEOS confirmation. This is the DR-035 write policy expressed as a *command list*, not prose.
+
+### DR-084 — one bounded real-cEOS validation consumes the lab lane as-is and is reported, never worked around (M12a #14)
+M12 (#14)'s PLAN box that stayed open through the guard/fixture/harness rows is "the live lane provably runs
+*once*". This lane must prove it without owning the harness — `scripts/ceos-lab.mjs`, `docs/CEOS.md`,
+`.github/workflows/ci.yml` and every `package.json` script entry belong to the sibling CI lane. **Decision:**
+run the documented sequence verbatim from the repo root (`lab:up` → `lab:probe`, which prints the 0600 state
+file and cross-checks the published endpoint's TLS fingerprint against the container's `capi.pem` → the eAPI
+child → export those vars plus `EAPI_TARGET_CLASS=lab` and a **real, exposed** `EAPI_SCRATCH_INTERFACE` →
+`test:live -w arista-api-client`), bounded to ~15 min, and **always** `lab:down` afterwards (verified by
+`lab:list` showing zero leftovers), *including on failure*. If any gate refuses the run — the scratch
+interface doesn't resolve, the readiness/version cross-check fails, the harness errors — the exact message is
+reported to the orchestrator; the guard is **never** loosened, no lab script edited, no fixture force-written,
+no fallback to a physical switch (DR-043/DR-066). **Consequence:** a pass says "the guard + transport +
+resource reads + the DR-035 write helper all executed against real EOS 4.28.14M, and the container was torn
+down"; a non-run or partial run says which gate said no and why, and is *not* dressed up as coverage. Container
+results settle software behaviour only (§5 row 141); the DCS-7050TX-64 sweep stays open.
+
+---
 
 ### DR-085 — a fixture refresh is a consent-gated chain over a run it owns, never a flag on probe (M12b #14)
 PLAN §M12 owed "a `fixtures:refresh` npm entry (the capability exists as `lab:probe`'s guarded
