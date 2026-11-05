@@ -10,6 +10,7 @@ that shows what the parser does.
 
 | File | What it pins |
 |---|---|
+| `acl-sections.conf` | `ip access-list standard …` and `ip access-list …` (extended) blocks: `host`/`prefix`/wildcard/`any` rules, operators (`eq 161`, `neq snmp`, `lt 1024`), trailing option tokens, a `no statistics per-entry` line and a body-less ACL (W2b #37) |
 | `banner-eof.conf` | EOF-terminated `banner login` / `banner motd` at indent 0, blank line inside the body |
 | `banner-indented-not-multiline.conf` | the **limitation**: the banner rule is indent-0 only, so an indented `banner` is not a multiline block and its `EOF` becomes a sibling key |
 | `code-unit-control-functions.conf` | `code unit` continuation lines, and the swallowed-rest-of-config consequence of an **indented** `EOF` |
@@ -20,6 +21,7 @@ that shows what the parser does.
 | `switchport-trunk.conf` | `switchport trunk allowed vlan 10-12,20,30-33`, `native vlan`, access mode, quoted `description`, `port-channel … member interface` |
 | `unhandled-literal-blank-line.conf` | **negative**: `ConfigParseError`, blank line + under-length `   !` |
 | `unhandled-literal-short-line.conf` | **negative**: `ConfigParseError`, `   !` shorter than the body indent |
+| `varp-virtual-router.conf` | the global `ip virtual-router mac-address` line, `ip virtual-router address …` on VLAN interfaces (one, two, none), and a routed `interface Ethernet1` VARP line that upstream's `^interface (Vlan\d+)$` scan — and this client — do not read (W2b #37) |
 | `vlan-blocks.conf` | `vlan 1`, `vlan 10 / name`, ranged `vlan 11-13` header, quoted `name`, `state suspend`, two `trunk group` lines |
 
 ## `pyeapi-oracle.json`
