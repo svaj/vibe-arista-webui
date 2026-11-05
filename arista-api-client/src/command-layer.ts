@@ -63,6 +63,7 @@ import { tryVariants } from './internal/variants'
 import type { CliVariant } from './internal/variants'
 import type { ConfigSections } from './config/chunk'
 import type { SectionPattern } from './config/section'
+import type { InterfacesResource } from './resources/interfaces'
 import type { SystemResource } from './resources/system'
 import type { SwitchportsResource } from './resources/switchports'
 import type { VlansResource } from './resources/vlans'
@@ -856,16 +857,27 @@ export class Node {
   }
 
   /**
+   * The `interfaces` resource — same per-`Node` {@link resourceMemo} as {@link system} / {@link vlans} /
+   * {@link switchports} (DR-052): `node.interfaces === node.interfaces === node.resource('interfaces')`.
+   * pyeapi reaches the same object through `node.api('interfaces')`, which loads `pyeapi.api.interfaces`
+   * off the filesystem and calls its `instance(api)` (`interfaces.py:1100-1101`, `client.py:927-950`) —
+   * DR-006's target, which is why there is no upstream accessor to name. Added by M10a (#12).
+   */
+  get interfaces(): InterfacesResource {
+    return this.resource('interfaces')
+  }
+
+  /**
    * The resource for `name` — DR-006's replacement for pyeapi's string-keyed `Node.api(name)`
    * (`client.py:927-950`, where the name is a module path loaded off the filesystem). Here it is a key of
    * the augmentable {@link ResourceKinds} map, checked at compile time and again at runtime
    * (`src/resources/registry.ts`), and the instance is memoised per `Node` rather than rebuilt per call
    * (pyeapi builds a fresh object every call, `client.py:946-949`).
    *
-   * M7 (#9) shipped the map empty, M8 (#10) claimed the first row and M9 (#11) claimed `vlans` /
-   * `switchports`, so an unregistered name — `interfaces` until M10 #12, or a typo — throws a
-   * `NotSupportedError` naming it and listing what is registered. Apps define their own resources with
-   * `createResourceRegistry(factories, node)`.
+   * M7 (#9) shipped the map empty, M8 (#10) claimed the first row, M9 (#11) claimed `vlans` /
+   * `switchports` and M10a (#12) claimed `interfaces`, so an unregistered name — a typo, or a module a
+   * later milestone owes — throws a `NotSupportedError` naming it and listing what is registered. Apps
+   * define their own resources with `createResourceRegistry(factories, node)`.
    *
    * @throws {NotSupportedError} no factory is registered for `name`.
    */

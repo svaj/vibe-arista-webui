@@ -37,7 +37,7 @@
  * banner body — is **not** claimed here: this workspace has no readable image sources and unit tests never
  * reach a device, so those notes read "unverified on hardware, M12 (#14) to capture".
  *
- * `MockTransport` key strings below are whole joined command lists (`testing/mock-transport.ts:167`),
+ * `MockTransport` key strings below are whole joined command lists (`testing/mock-transport.ts:83-88`),
  * except where a single-line matcher (`'configure terminal'`) deliberately catches any batch containing it.
  */
 

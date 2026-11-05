@@ -773,6 +773,65 @@ revert is armed; the client states nothing about what cancels it). A later sweep
 assertions instead of deleting capability a UI needs. Risk accepted: a reader may still over-trust a verb,
 which is why the wording is repeated in USAGE §5 and in the code comments that make a claim.
 
+### DR-067 — an interface name is read by one per-kind grammar, not by a prefix or one shared regex (M10a #12)
+pyeapi answers "what kind of interface is this?" twice and wrongly both times:
+`isvalidinterface` is an **unanchored** `re.match(r'([EPVLM][a-z-C]+)', value)` ∩ `VALID_INTERFACES`
+(`interfaces.py:81-83`, `:71-78`) called only from `marshall` (`:129-133`, the dispatch DR-006 drops), and
+`stp.py:346-363` re-derives the same answer from `value[0:2] in ['Et','Po']`. M7 shipped one compromise
+regex (row 76) whose own doc promised M10 would replace it. **Decision:** one grammar table
+(`INTERFACE_GRAMMAR` in `src/resources/validators.ts`), fully anchored, one row per kind, returning a
+discriminated union `{ kind, index, name, subinterface? }`; only Ethernet and Port-Channel have the `.<n>`
+arm, because those are the two kinds upstream lets carry a suffix at all (`:271-277` plus its own
+`interface Ethernet48.2044` fixture header, `running_config.text:1468`). Reading is total and write-side
+guards are opt-ins over the same answer: `parseInterfaceName` never throws (a reader needs to be able to
+report a header it cannot parse), `isInterfaceName`/`assertInterfaceName` add "and no suffix" —
+**keeping M7's/M9's refusals exactly where open item 7 is still uncaptured**, so widening the guard is a
+one-line change after a capture, not a parser rewrite. An index or suffix that cannot survive
+`Number.isSafeInteger` fails the **parse** rather than answering partially (DR-059's no-invention rule),
+while a legal-but-out-of-range index (`Vlan9999`) stays a valid *name* — the id guard is a different guard
+on a different verb (DR-053). **Consequence:** a consumer switches on `kind` instead of re-testing
+prefixes, so M10b/M10c add fields, not new routing rules; a `Peer-Ethernet1` or `Ethernet1/1` header is a
+parse miss rather than a wrong kind. Risk: the six kind names are still upstream's list, not an EOS 4.28
+claim (open item 1's class of problem), and the code says so. §5 rows 100 / 103.
+
+### DR-068 — a resource models per-kind **fields**, never per-kind **objects** (M10a #12)
+Upstream's `Interfaces` facade hands back a different Python class per interface
+(`INTERFACE_CLASS_MAP` `interfaces.py:1093-1097`, `get_instance` `:120-127`) and stamps the answer with
+`type` — the name of the class that answered (`:174`, `:361`, `:609`, `:851`) — which is why `Vlan1`,
+`Loopback0` and `Management1` quietly fall through to `BaseInterface` while `Ethernet1` reaches
+`EthernetInterface` only through `__getattr__`/`marshall` (DR-006's dropped path). Copying that shape into
+TS would mean a union of classes plus a runtime cast at every call site. **Decision:** one
+`Interface` record whose `kind` field says what the **name** is (DR-067's parse), read the same way for
+every kind today; the behaviour that genuinely differs by kind becomes a statement in the verb
+(`assertPresentName` refuses an Ethernet create/delete and names M10b as the owner;
+`assertEncapsulationName` requires a suffix-capable kind), and per-kind **fields** arrive as optional
+record members in M10b/M10c rather than as new objects. **Consequence:** `get()`/`getAll()` can never
+disagree, a UI table gets one type, and a name this client cannot parse still keeps its row with
+`kind: null` — a device fact (the switch has that section) rather than a silent drop. Cost stated: the
+shared field set means an Ethernet record today looks like every other one, which is *less* specific than
+upstream's M10b answer; `interfaces.ts` divergence 2 pins that the fields, not the label, are what M10b
+adds. §5 row 100.
+
+### DR-069 — a recording outranks a guess: captured field spellings are read first, and any fallback is labelled (M10a #12)
+`show interfaces status` is the first command this client reads whose **own** JSON has been recorded rather
+than inferred — and the guess was wrong in a way nothing else would have caught: the reader shipped with
+pyeapi's vendor-shipped `test/fixtures/show_interfaces.json` spellings (`interfaces` / `interfaceStatus` /
+`hardware` / `mtu`, which belong to the **sibling** `show interfaces` command), while the cEOS-lab 4.28.14M
+recording (`test/fixtures/live/ceos-4.28.14M/show-interfaces-status.json`, PR #29) answers
+`interfaceStatuses` with `linkStatus`/`lineProtocolStatus`/`description`/`bandwidth`/`duplex`/
+`interfaceType`/`vlanInformation` and **no** `mtu`, `hardware` or `interfaceStatus` key at all. Read in the
+guessed spelling, every real device answer silently yields an unenriched table — the failure DR-043 warns
+about, one level down. **Decision:** every such reader names its sources in a **capture-ordered list**
+(`STATUS_ROW_MAP_KEYS`, `STATUS_LINK_COLUMNS` here): the recorded answer for this exact command first, a
+sibling-command spelling only as an explicitly-labelled fallback. A column present in neither capture is
+not read, and a same-sounding key is never substituted (`interfaceType: "EbraTestPhyPort"` is a PHY name,
+not `hardware: "ethernet"`); a wrong-typed column reads absent rather than `0` (row 105's discipline).
+Nothing is concluded about the target from a container answer: the capture itself carries
+`hardwareEvidence:"none"` (DR-043/DR-066) and §3 keeps the 7050TX spelling open. **Consequence:** merging
+a capture forces a re-read of the readers that had guessed — that check is now part of landing M12
+fixtures, and each spellings list cites the file it came from, so a reviewer can open the evidence.
+§5 row 106; `interfaces.ts` divergence 12.
+
 ---
 
 ## Open items (need the device)
