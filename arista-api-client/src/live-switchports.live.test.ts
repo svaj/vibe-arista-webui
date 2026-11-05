@@ -1,5 +1,6 @@
 /**
- * `*.live.test.ts` port of `pyeapi/test/system/test_api_switchports.py` @ `6816d9e` — M12a (#14).
+ * `*.live.test.ts` port of `pyeapi/test/system/test_api_switchports.py` @ `6816d9e` — M12a (#14) opened the
+ * file; **M12c (#14) tranche 2** adds the remaining upstream cases. See the table for the per-case verdict.
  *
  * Loud-skip semantics match `live-system.live.test.ts` (DR-034). This file also proves the **write side**:
  * `src/testing/live-session-policy.ts`'s `runGuardedLiveWriteSession` applied to the scratch port. The write
@@ -10,10 +11,10 @@
  *
  * | upstream (verified line @6816d9e) | ported? | here / why |
  * |---|---|---|
- * | `test_getall` (`:62`) | ✅ read | upstream pre-writes `default interface <intf>` (`:64`) to name a member; here `getAll()` is read on the device's current state and asserted shape-level (a `Map<string, Switchport>`, every value carrying `interfaceName`/`trunkGroups`) — the membership of one random port is a write result, so not claimed in the read case |
+ * | `test_getall` (`:62`) | ✅ read (M12a) + ✅ M12c membership half | upstream pre-writes `default interface <intf>` (`:64`) to name a member; here `getAll()` is read on the device's current state and asserted shape-level (a `Map<string, Switchport>`, every value carrying `interfaceName`/`trunkGroups`). M12c separately claims the `assertIn(intf, result)` half (`:68`) — not for a `random_interface` port, but for the scratch port this run itself configured (§5 row 188) |
  * | `test_get` (`:43`) | ✅ read (scratch) | after a scratch-port `default interface` the port answers `mode access`, `access_vlan '1'`, etc. (`:48-51`). Read against **our own** scratch port (the write goes through the policy helper first), assertion narrowed to shape/types rather than pyeapi's fixed dict |
  * | `test_create_and_return_true` (`:70`), `test_delete_and_return_true` (`:83`) | ✅ write (scratch, integration) | `switchports create/delete` is `switchport` / `no switchport` on the interface. Ported as a guarded session write on the scratch port, then re-read the switchport record — this is the read-after-write the upstream test does, with DR-035's session/abort/never-persist wrapper |
- * | `test_get_returns_none` (`:54`) | ❌ skipped | asserts `get()` is `None` for a `no switchport` (L3) port. This client returns `undefined` (DR-027), and the *command* (`no switchport`) is covered by the delete case above; a dedicated negative read is an offline `switchports.test.ts` fact, not a second live mutation |
+ * | `test_get_returns_none` (`:54`) | ✅ M12c | upstream reaches the L3 state with `default interface <intf>` + `interface <intf>` + `no switchport` (`:56-57`) — the same lines the create/delete case already sends, but on the **named** scratch port, so the negative read becomes an assertion of its own (pyeapi `assertIsNone` at `:60`, DR-027's `undefined` here) rather than a by-product of another case |
  * | `test_set_access_vlan_to_value` (`:94`), `test_set_trunk_native_vlan` (`:107`), `test_set_trunk_allowed_vlans` (`:121`) | ✅ write (scratch) | each is one `switchport …` line on the (scratch) interface plus a `vlan 100` pre-write. `vlan 100` creation is a global write (see the vlans file's policy reason) **not** made here, so trunk/native VLAN ids are exercised only where they do not require creating an unowned VLAN; the access-port write is fully ported, the trunk writes stage the `switchport mode/allowed` lines on the scratch port and re-read. Command lists are also pinned offline (`resources/switchports.test.ts`) |
  *
  * Upstream cites `random_interface(dut)` (a port picked from `show interfaces`) for every case; DR-035(b)

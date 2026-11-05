@@ -1061,46 +1061,95 @@ async function captureJson(pin, cmd) {
 }
 
 /**
- * Extra read-only captures, including deliberate capability probes whose failures are
- * reported verbatim as negative results (a cEOS-lab gap is evidence, not something to
- * hide).
+ * The capture catalog — the read-only commands whose replies become committed fixtures.
+ *
+ * M12b's first run recorded nine files (§5 row 113: `show version[+text]`, `interfaces
+ * status[+text]`, `vlan`, `mlag`, `lldp neighbors`, `management api http-commands[+text]`).
+ * M12c (#14) extends the same machinery to the commands the **wave-1 resource modules**
+ * actually depend on, and the additions are deliberately split by what a parser consumes:
+ *  - `text` is the only format the config-text readers ever see: `src/resources/config-block.ts`,
+ *    `src/resources/system.ts` and the interface/vlan/switchport section readers all parse EOS
+ *    **text**, so `show running-config` (text) is the repository's first device-backed input to
+ *    those parsers instead of hand-authored fixture text (row 113 retired the "synthetic until
+ *    M12" note for nine commands only; this line retires it for the config text itself).
+ *  - `json` is the model shape: `show interfaces` (full, not only the `status` subset) and
+ *    `show port-channel detail` are the operational models M10a/M10c's parsers claim to follow
+ *    without ever having held a capture of the sibling command (`interfaces.ts:179/212` cites the
+ *    `show interfaces status` capture for the status half only).
+ *
+ * Requests are one command each, on the same pinned endpoint the readiness check used; `json`
+ * entries keep `id: 'ceos-lab-capability'` because that id is what the capability-probe refusal
+ * text in row 108's evidence names. A command that fails is returned as a **negative result**
+ * (a cEOS-lab gap is evidence, not something to hide) and simply never becomes a file — §5 row 113's
+ * count is derived from what the device answered, never from what this list hoped for.
+ *
+ * @type {{command: string, format: 'text' | 'json', id: string, note?: string}[]}
+ */
+const CAPTURE_CATALOG = [
+  // CLI text — parser-facing evidence (see the header above).
+  { command: 'show version', format: 'text', id: 'ceos-lab-text' },
+  { command: 'show interfaces status', format: 'text', id: 'ceos-lab-text' },
+  { command: 'show management api http-commands', format: 'text', id: 'ceos-lab-text' },
+  { command: 'show ip interface brief', format: 'text', id: 'ceos-lab-text' },
+  {
+    command: 'show running-config',
+    format: 'text',
+    id: 'ceos-lab-text',
+    note: 'config text for the M6/M9/M10 section parsers — real device text replaces hand-authored fixture prose',
+  },
+  // JSON models.
+  { command: 'show interfaces switching', format: 'json', id: 'ceos-lab-capability' },
+  { command: 'show platform overview', format: 'json', id: 'ceos-lab-capability' },
+  { command: 'show mlag', format: 'json', id: 'ceos-lab-capability' },
+  { command: 'show vlan', format: 'json', id: 'ceos-lab-capability' },
+  { command: 'show lldp neighbors', format: 'json', id: 'ceos-lab-capability' },
+  { command: 'show agents', format: 'json', id: 'ceos-lab-capability' },
+  {
+    command: 'show running-config',
+    format: 'json',
+    id: 'ceos-lab-capability',
+    note: 'JSON envelope of the same config text (`output` string), recorded beside the text capture so a reviewer can diff the two spellings',
+  },
+  {
+    command: 'show interfaces',
+    format: 'json',
+    id: 'ceos-lab-capability',
+    note: 'full per-interface operational model, the sibling of the `show interfaces status` capture M10a cites',
+  },
+  {
+    command: 'show port-channel detail',
+    format: 'json',
+    id: 'ceos-lab-capability',
+    note: 'M10c Port-Channel model; a bare cEOS-lab node has no channel configured, so the device answer (or refusal) is the evidence',
+  },
+]
+
+/**
+ * Run {@link CAPTURE_CATALOG} against the run's own pinned endpoint.
  * @param {ReturnType<typeof labConfig>} cfg @param {Parameters<typeof eapiRunCmds>[0]} pin
  */
 async function captureFromEapi(cfg, pin) {
   /** @type {{command: string, format: string, ok: boolean, result?: any, note?: string, error?: string}[]} */
   const out = []
-  for (const cmd of [
-    'show version',
-    'show interfaces status',
-    'show management api http-commands',
-    'show ip interface brief',
-    'show running-config',
-  ]) {
+  for (const entry of CAPTURE_CATALOG) {
+    const { command, format, id, note } = entry
     try {
-      const reply = await eapiRunCmds(pin, { cmds: [cmd], format: 'text', id: 'ceos-lab-text', timeoutMs: 20_000 })
-      out.push({ command: cmd, format: 'text', ok: true, result: reply.result[0] })
-    } catch (err) {
-      out.push({ command: cmd, format: 'text', ok: false, error: err?.message ?? String(err) })
-    }
-  }
-  for (const cmd of [
-    'show interfaces switching',
-    'show platform overview',
-    'show mlag',
-    'show vlan',
-    'show lldp neighbors',
-    'show agents',
-  ]) {
-    try {
-      const reply = await eapiRunCmds(pin, { cmds: [cmd], format: 'json', id: 'ceos-lab-capability', timeoutMs: 20_000 })
-      out.push({ command: cmd, format: 'json', ok: true, result: reply.result[0], note: 'capability observation' })
+      const reply = await eapiRunCmds(pin, { cmds: [command], format, id, timeoutMs: 20_000 })
+      out.push({
+        command,
+        format,
+        ok: true,
+        result: reply.result[0],
+        ...(note === undefined ? {} : { note }),
+        ...(format === 'json' && note === undefined ? { note: 'capability observation' } : {}),
+      })
     } catch (err) {
       out.push({
-        command: cmd,
-        format: 'json',
+        command,
+        format,
         ok: false,
         error: err?.message ?? String(err),
-        note: 'capability observation — negative result recorded verbatim',
+        note: note === undefined ? 'capability observation — negative result recorded verbatim' : `${note} — negative result recorded verbatim`,
       })
     }
   }
@@ -1141,6 +1190,15 @@ function redactCopy(value, labUsernames = []) {
       const key = userPatterns.length > 0 && labUsernames.includes(k) ? '<redacted-lab-user>' : k
       if (/^(secret|password|passphrase|token|authorization|sshPublic?Key|publicKey|privateKey)$/i.test(key)) {
         out[key] = '<redacted-lab-secret>'
+        continue
+      }
+      // M12c (#14): the catalog grew `show interfaces` and `show port-channel detail`, which carry a
+      // MAC **per interface/peer**, not just the three top-level keys M12b zeroed. Rule is key-name
+      // AND value-shape, so `learnedMacAddressCount: 0` (a number) is real data and stays, while any
+      // MAC-shaped string under a `*mac*` key becomes the documented zero. A container MAC is derived
+      // from the Docker IP allocation (docs/CEOS.md redaction list names MACs as identifying).
+      if (/mac/i.test(key) && typeof v === 'string' && /^([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}$/.test(v)) {
+        out[key] = '00:00:00:00:00:00'
         continue
       }
       out[key] = redactCopy(v, labUsernames)
@@ -1187,12 +1245,10 @@ function writeFixtures(cfg, state, probe) {
     const file = isJson
       ? `${spec.command.replace(/\s+/g, '-').toLowerCase()}.json`
       : `${spec.command.replace(/\s+/g, '-').toLowerCase()}--text.json`
+    // All scrubbing happens in redactCopy (including the MAC rule M12c moved out of this call site,
+    // where it only ever reached the top level of the reply). `result` is a fresh copy; the probe's
+    // in-memory reply object is untouched.
     const result = redactCopy(spec.result, [state.user])
-    if (result && typeof result === 'object') {
-      for (const key of ['systemMacAddress', 'hwMacAddress', 'configMacAddress']) {
-        if (key in result) result[key] = '00:00:00:00:00:00'
-      }
-    }
     const envelope = {
       metadata: {
         targetClass: 'lab',
@@ -1215,7 +1271,7 @@ function writeFixtures(cfg, state, probe) {
         redactionApplied: [
           'username/secret and enable/passphrase text replaced with <redacted-lab-secret>',
           `this run's random lab username replaced with <redacted-lab-user> (API user-stats otherwise leak it)`,
-          'systemMacAddress / hwMacAddress / configMacAddress zeroed',
+          'every MAC-shaped string under a *mac*-named key zeroed, at any depth (M12c: `show interfaces` / `show port-channel detail` carry a MAC per interface, not only systemMacAddress/hwMacAddress/configMacAddress)',
           'no key material: the container keeps the key in a sibling file (capikey.pem) that is never read',
           'serialNumber is the empty string on this cEOS-lab image and is kept verbatim',
         ],
