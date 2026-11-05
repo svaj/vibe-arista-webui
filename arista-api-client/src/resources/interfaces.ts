@@ -53,7 +53,12 @@
  * command (`testing/mock-transport.ts:167` compares a string matcher against the **whole joined command
  * list**, not a prefix).
  *
- * ## Divergences this file owns (raw material for MIGRATION.md §5; the rows are the orchestrator's)
+ * ## Divergences this file owns — numbered in MIGRATION.md §5 rows **99-106** (M10a's band)
+ *
+ * Mapping for a reviewer: 1→99, 2→100, 3→101, 4 and 10→102, 5→103, 6→104, 7→105, and 8/9/11/12→106.
+ * Decisions taken here are **DR-067** (the per-kind grammar), **DR-068** (per-kind fields, never
+ * per-kind objects) and **DR-069** (a recording of the exact command outranks an inferred spelling).
+ * M10b/M10c continue the ledger at rows **123-130**, which PR #29 reserved for this issue.
  *
  * 1. **membership comes from the chunker, and a name must be one token.** Upstream regex-scans the whole
  *    config text with `(?<=^interface\s)(.+)$` (`:108`) under `re.M`, so *any* line that begins with the word
