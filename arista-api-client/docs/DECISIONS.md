@@ -577,6 +577,76 @@ probe finds `switchport trunk group` unsupported on the target (open item 4), th
 CAPABILITY table, not these verbs' spellings.
 **Related:** DR-037, DR-027, DR-005, DR-050 (never call a staged write a preview); §5 row 97.
 
+### DR-061 — non-runCmds eAPI methods ride a validated method table over an optional `Transport#callMethod` seam; they are never faked with `runCmds` (M11 #13)
+pyeapi has no client half for the methods PLAN §M11 builds on: grepping `verifyConfig`,
+`getCommandCompletions` and `getCommandHelp` through the pinned clone (`develop` `6816d9e`) matches
+nothing in `pyeapi/` — they exist only as SERVER procedures (`JsonCli.py:275-279`, `:174`, `:200`).
+**Decision:** the codec carries `WIRE_METHODS` (`src/internal/wire.ts`): per method a parameter
+allow-list (unknown keys are a local refusal), the one parameter `JsonRpcBase.py:288-293` makes
+required (`configList` / `command`), and a fixed `resultShape` — `array` (list-shaped like
+`runCmds`, `JsonRpcBase.py:160`) or `object`; an answer of the other shape is a parse refusal, never
+a guess (the same do-not-assert-unverifiable stance DR-032 states for limits, now stated for
+answers). Transports gain an optional `callMethod` (`transports/contract.ts`): all seven built-in
+senders and `MockTransport` implement it; a hand-rolled `Transport` without it gets a
+`NotSupportedError` spelling the reason — a configlet sent as a command batch **gets applied**,
+whereas `verifyConfig` runs inside a session the device opens AND aborts itself
+(`JsonCli.py:293-305`), so faking it with `runCmds` is off the table by safety, not laziness.
+**Consequence:** a third request shape crosses the seam (`SentMethodCall` mirrors `SentRequest`),
+`WireMethodResultOf` types each method's parsed answer, every outcome keeps `raw` so unknown fields
+survive (row 8's rule), and the param validators refuse preamble control characters because the
+device executes each preamble entry as one CLI line (`CliApi.py:659-663`).
+**Related:** DR-016, DR-010, DR-011, DR-017 (the id policy covers method calls too), DR-062, DR-063; §5 rows 115-117.
+
+### DR-062 — the probe stages candidate commands in a throwaway named config session, always aborts it, and its verdict set claims nothing beyond a `1002` (M11 #13)
+DR-033 forbids any hard-coded "supported on the 7050TX-64" list, and the per-model feature matrix
+(ArToggles, licensing) cannot be enumerated from offline artifacts — so presence is **probed**, at
+the level the device can actually answer: candidate command TEXTS, never feature names.
+**Decision:** `probeCommands` (`src/capabilities.ts`) stages the candidates as a `stopOnError:false`
+batch inside one throwaway **named** session and classifies each command from
+`errorDetail[]` (`JsonCli.py:441-446`). The abort is guaranteed on every path — including when the
+`onBatch` progress sink throws — and an abort that itself fails is reported through
+`onCleanupFailure` (default: the package's loud `warnOnce`), the one case where a session can
+outlive the function. The session keeps M5's DEFAULT name prefix (DR-047) on purpose:
+`recoverOrphans()`'s filter is prefix-based, so an orphaned `probe-…` name would hide the session
+and leave the config lock held (DR-022/DR-023). Candidates this client refuses to probe — `abort`,
+`commit`, `configure session`, `configure replace`, `copy running-config startup-config`, `reload`
+— are OUR rule, not the device's (a session would run all of them): each would end, commit, replace
+or persist the probe's own state (DR-050's preview rule, DR-024's explicit durability), and
+`reload` reboots the switch. The seven verdicts are the honest version of yes/no: **only `1002` is a
+statement that a command is unavailable**; `1004` (context, not feature), `1005` (privilege),
+`1006` (nothing was probed) and `unknown` are inconclusive by construction, and `supported`
+(observed acceptance) is named apart from `not-rejected` (absent from `errorDetail`) so no caller
+can confuse a reading of vendor-side prose with evidence. Classification keys on the command TEXT,
+never the `errorDetail` index (whose base is the whole wire list, `enable` and opener included),
+and each result records `codeSource` because a batch-level `error.code` is only the FIRST failure
+(`JsonCli.py:436`) — weakest evidence, labelled as such. Feature lists (`FeatureProbeCommands`) label
+verdicts only; the package interprets no name and ships no built-in table (DR-033).
+**Consequence:** the probe cannot change running-config, but it is not free (one session + a batch
+per chunk) — which is why DR-063 exists; every "what the session does on hardware" claim stays
+carried offline evidence inherited from M5's header (the STATUS §3 sweep remains open).
+**Related:** DR-033, DR-050, DR-022, DR-023, DR-024, DR-047, DR-010, DR-011, DR-061; §5 rows 118-121.
+
+### DR-063 — capability answers are cached per endpoint with an explicit TTL, and an inconclusive probe is never a stored fact (M11 #13)
+A probe costs a session, so per-render probing is unusable and per-process caching is wrong: EOS has
+nothing that invalidates a capability answer, and what would change one (an `eos` upgrade, a
+`feature` toggle, an AAA change) is unbounded by offline evidence.
+**Decision:** `createCapabilityCache` stores each probe under endpoint (`Transport#address` — the
+identity an answer belongs to; no globals, no per-`Node` guessing) plus the exact candidates plus
+`batchSize` (both change the answer, so both are in the key). The default TTL
+(`DEFAULT_CAPABILITY_TTL_MS`, 15 min) is OUR rule; `ttlMs: 0` means "store nothing", never "cache
+forever"; the clock is injectable because the offline suite never sleeps. Inconclusive verdicts
+(`config-locked`, `unknown`) and `configLocked` runs are NEVER stored — an unverifiable answer must
+not become a cached fact, the same stance DR-032 takes for limits applied to verdicts (the earlier
+draft citations here said DR-032; they are retargeted to this entry). `peek` reports freshness and
+even a negative remainder so a UI can print "stale since"; `invalidate(endpoint)` belongs after a
+config change the operator made on purpose; `entries()`/`endpoints()` drive a settings screen
+without re-probing.
+**Consequence:** "review changes" screens can answer what the switch SAID without touching the
+switch, and always know when that answer stopped being trusted — the TTL is a trust boundary, not a
+performance knob.
+**Related:** DR-062, DR-033, DR-032 (same stance at the limits), DR-043 (capture separation: an
+answer is worth exactly its endpoint); §5 row 122.
+
 ### DR-064 — recordings are wire artefacts taken at the transport seam, redacted before they exist
 Fixture harnesses usually sit above the client ("capture what the code sent"), which means a
 recording file is built from already-parsed, already-transformed data — anything the harness author
