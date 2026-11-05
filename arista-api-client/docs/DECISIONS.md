@@ -832,6 +832,97 @@ a capture forces a re-read of the readers that had guessed — that check is now
 fixtures, and each spellings list cites the file it came from, so a reviewer can open the evidence.
 §5 row 106; `interfaces.ts` divergence 12.
 
+### DR-085 — a fixture refresh is a consent-gated chain over a run it owns, never a flag on probe (M12b #14)
+PLAN §M12 owed "a `fixtures:refresh` npm entry (the capability exists as `lab:probe`'s guarded
+fixture writes + `--fixtures-force`)". Exposing that capability as `probe --fixtures-force` again
+would be the wrong shape: probe presumes someone already started a lab, and a refresh is a whole
+lifecycle — start a disposable node, read it, throw it away — whose output is a **committed,
+reviewed** device capture (docs/CEOS.md: "Refresh is explicit and reviewed"; DR-066 makes the
+provenance envelope the thing a reviewer reads).
+**Decision:** `npm run fixtures:refresh` runs `scripts/ceos-lab.mjs fixtures`, one chain
+(up → probe-with-captures → down) whose `runId` is generated BEFORE `up` so the teardown names the
+run this call owns on every path, including the one where `cmdProbe` throws on a version/model
+mismatch. Consent is checked first, so a refusal cannot have side effects: exit 2 with no `docker
+image inspect`, no container, no network, no eAPI request — a property that is *provable offline*
+(a tripwire `docker` on `PATH` printing `DAEMON-TOUCHED` for any call stayed silent). The refusal
+quotes what it would have done (capture count, target dir, endpoint shape) rather than asking again.
+`--yes` implies `--fixtures-force` **and nothing else**: row 112's path guard still refuses any write
+outside `fixtures/live/ceos-<version>/` with exit 3, so the refresh cannot be aimed at a hardware
+recording (DR-043), and `fixtures --no-fixtures` is a contradiction, not a no-op. A teardown problem
+turns a completed refresh into exit 9, because a leaked privileged container is not a successful run.
+**Consequence:** there is exactly one way to rewrite the cEOS captures, and it names itself in the
+diff review; CI's live job runs `--no-fixtures`, so no scheduled run can author committed evidence.
+The rest of the refresh loop (running it for real, and reviewing 9-file diffs) stays a trusted-host
+human act. **Related:** DR-066, DR-043, DR-035, DR-032; §5 rows 112 / 143.
+
+### DR-086 — the live lane's green is asserted on the printed summary, not on the exit code (M12b #14)
+DR-034's local convention is that an unconsented `test:live` prints a reason, skips everything and
+exits **0**. That is right for a dev shell and is the single most dangerous thing to inherit into a
+requested cEOS job: docs/CEOS.md requires failing on "missing image, credentials, readiness, trust,
+target mismatch, **zero executed tests**, or teardown failure", and TESTING.md §8 already notes
+`passWithNoTests: false` cannot detect an all-skipped suite. So `vitest run --project live` exiting 0
+carries no information, and a CI step that only checks it manufactures coverage out of nothing.
+**Decision:** `scripts/assert-live-run.mjs` reads the captured vitest output and asserts on the
+summary Lines themselves: a missing `Tests` line is a failure (a crash, or the harness refusing
+before the child started, looks identical to green if only the code is consulted); any failed test or
+file fails; `passed == 0` fails with an explicit all-skipped reason; and **any** skip fails, because
+in this lane a skip is a guard refusal (DR-065) or an unported case (TESTING.md §5), never acceptable
+evidence. Counts are parsed as `<n> <word>` pairs rather than a fixed sentence, so a reporter wording
+change shows up as a missing-summary failure instead of a vacuous pass. The skip/refusal lines found
+in the log are printed, so the failing job explains itself before teardown destroys the evidence.
+**Consequence:** the live job can only be green if device tests executed, and the rule is testable
+offline: it was run against two real `vitest --project live` logs (unconsented → exit 1, executed
+wiring proof → exit 0) plus synthetic failed/mixed summaries. Local `npm run test:live` keeps DR-034's
+leniency untouched — the strictness lives at the CI boundary, which is where the misunderstanding
+would otherwise land. `--min-passed` exists so a deliberately narrow dispatch can be honest about how
+narrow it is. **Related:** DR-034, DR-065, DR-043, DR-066; §5 rows 114 / 144 / 145.
+
+### DR-087 — the Node floor is a claim about the artifact, so it is proved on the artifact (M12b #14)
+`engines.node >= 20` (DR-021) has never been exercised: M0's CI matrix had to become **22/24**
+because vitest 5.0.5 (`^22.12.0 || ^24.0.0 || >=26.0.0`) and jsdom 30 die inside Node 20 — a toolchain
+limitation that says nothing about the shipped bundle, and left the floor claim unmeasured. Running
+the offline suite on 20 was never possible; deleting the floor would have been the usual silence.
+**Decision:** the claim is tested where it is made. A `dist-node20` job runs only
+`npm ci && npm run build && node scripts/dist-smoke.mjs`; the smoke has no dependencies of its own and
+imports `dist/index.js` / `dist/node.js` by path, so dev tooling is a fixture of the job, not its
+subject (vite/oxlint/rolldown/plugin-react all accept `^20.19.0`, the patch line `node-version: 20`
+installs). What it checks is what the floor actually depends on: the entries' **relative chunk
+specifiers resolve on disk** (a build/publish split that strands the shared chunk is an ESM resolution
+crash on precisely the runtime the dev tooling never reaches), `./node` still is a superset of
+`./index`, both entries share one `Node`/`EapiError` class, DR-002's browser refusal of
+`kind: 'unix'` survives bundling, `createNode` wires the endpoint with no I/O, redaction and the
+recorded cEOS spellings parse from the artifact. "No device" is mechanical, not a comment: `fetch`
+and `http(s).request/get` are replaced by throwing tripwires before the import, and the floor itself
+is read out of `package.json` so a runtime below it exits 1 instead of passing vacuously.
+**Consequence:** the PR-safe half of M12's CI box is real and offline (header contract intact, now
+explicitly scoped to push/PR jobs), and the coverage gate lands beside it as a step whose **exit code
+is the assertion** — the per-directory thresholds in `vitest.config.ts` stop depending on someone
+remembering to run `npm run coverage`, and the node-22-only artifact is uploaded with `!cancelled()`
+so a threshold miss still ships the report showing what is uncovered, with
+`if-no-files-found: error` so a run that produced no report cannot look green. Node 20 itself remains
+CI-only: no 20.x runtime is installed on the lab machine and pulling an image is out of lane.
+**Related:** DR-021, DR-002, DR-039, DR-066; §5 rows 145 / 146.
+
+### DR-088 — a CI artifact never carries a lab credential: suppress at the print site, then scan at the boundary (M12b #14)
+The harness prints each run's credentials once — deliberately, in `up`'s JSON, because the operator
+needs them (DR-066). Under CI that same stdout is teed into a log that becomes a downloadable
+artifact, so the feature becomes the leak, and docs/CEOS.md's "Archive only redacted diagnostics" has
+no enforcement behind it. Deleting the print would hurt the manual recipe; hoping nobody uploads is
+not a control.
+**Decision:** two independent layers, both cheap enough to keep forever. (a) `--quiet` replaces the
+value at the **print site** with a placeholder pointing at the 0600 state file, which remains the
+only copy and is deleted by teardown; default stays un-suppressed so the operator recipe is
+unchanged. (b) `scripts/assert-live-run.mjs --check-secrets` scans the log for credential-shaped text
+and fails the job — and the upload step is gated on that step's success, so an unscanned log can never
+be published. The scan reports the **pattern name and line number only, never the value**, which is
+live-guard's refusal discipline (DR-065) applied to artifacts, and its patterns are written against
+this repo's own safe output: `<withheld: --quiet>`, `<redacted-lab-secret>`, `user=eapilab…` and
+`EAPI_PASS_VAR=EAPI_LAB_PW` must not match, while a literal `"secret": "…"` must.
+**Consequence:** artifact hygiene is a check with both directions tested offline (a planted credential
+fails; a quiet-shaped log with placeholders and correct variable names does not). A future lane that
+prints something new is caught by the scan rather than by review, and a leak forces a re-collect
+rather than a silent scrub. **Related:** DR-011, DR-065, DR-066, DR-013; §5 rows 109 / 147.
+
 ---
 
 ## Open items (need the device)

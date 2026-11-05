@@ -9,7 +9,9 @@ build (DR-039). The imported Jest skill in [`.github/skills/`](../../.github/ski
 **Preferred live target:** disposable **cEOS-lab 4.28.14M**, not the home switch.
 See the [cEOS runbook](../../docs/CEOS.md) for the local image/vendor instructions,
 manual setup, readiness, planned harness contract, browser E2E, and CI restrictions.
-The harness is still planned. cEOS is real EOS software, but it does not establish
+The harness (`scripts/ceos-lab.mjs`) and its trusted-dispatch CI job now exist
+(MIGRATION.md §5 rows 107-114 and 143-149); the live suites are the half still landing.
+cEOS is real EOS software, but it does not establish
 7050TX-64 hardware behavior or exact **4.28.13.1M** compatibility (DR-043).
 
 ---
@@ -118,6 +120,12 @@ the Node TLS tests) and assert on `init.headers`, `init.signal`, and the body.
   including config-text captures. Record exact version/model, image identity, commands/format,
   and topology alongside captures; redact identifying data as well as credentials.
   cEOS recordings must never overwrite hardware fixtures.
+- Regenerate cEOS captures with **`npm run fixtures:refresh -- --yes`** (root or client workspace;
+  `scripts/ceos-lab.mjs fixtures` chains up → probe-with-captures → down for a run it owns). Without
+  `--yes` it refuses **before any Docker call** and says how many captures it would replace; `--yes`
+  implies `--fixtures-force`, and writes are still confined to `fixtures/live/ceos-<version>/`, so a
+  container capture can never land on a hardware path. The refresh itself is a trusted-host human act:
+  review the diff, and never let a CI job author one (the live lane runs `--no-fixtures`).
 
 ---
 
@@ -202,9 +210,28 @@ typed-imports, no-unused-expressions, no-floating-promises equivalent, consisten
 ## 8. CI
 
 ```
-pr:   npm ci → typecheck → lint → test (unit+fixture) → build → coverage report artifact
+pr:   npm ci → typecheck → lint → test (unit+fixture) → coverage gate → build
+      ├── the coverage step's EXIT CODE is the threshold assertion (vitest.config.ts: global 85/75/60
+      │   plus the per-directory floors); it gates both matrix legs (22 and 24)
+      └── coverage report artifact from the node-22 leg only, uploaded with !cancelled() so a
+          threshold miss still ships the report that shows what went uncovered
+node-20 floor (`dist-node20`): npm ci → build → node scripts/dist-smoke.mjs — no dev tooling at all,
+      because vitest 5.0.5 / jsdom 30 exclude Node 20 (that is why the matrix is 22/24, not 20/22).
+      This leg is what proves `engines.node >= 20` (DR-021) on the built dist/; the smoke forbids
+      network I/O mechanically and fails if the runtime is below the package's own declared floor.
 main: same, plus npm pack smoke test (does the tarball's exports map resolve from the webui?)
-trusted dispatch only: provision cEOS → authenticated readiness → test:live and/or Playwright → always teardown
+      — STILL OWED: packaging stays behind DR-020, and the dist smoke above is not that check.
+trusted dispatch only (`ceos-live`): runs-on [self-hosted, linux, eos-lab] (labels GitHub never
+      hosts, so it queues until a trusted lab runner exists) + `if: github.event_name ==
+      'workflow_dispatch'`; then `lab:list` preflight → `npm run lab:run -- --quiet --no-fixtures
+      --port <n> -- npx vitest run --project live`, teed to a log → `lab:down` under `if: always()`
+      → printed diagnostics → `scripts/assert-live-run.mjs <log> --min-passed 1 --check-secrets`.
+      No secrets, no image reference, no `container:` — the per-run lab credential lives only in the
+      0600 state file, and --quiet keeps the one-time print out of the artifact.
+per-endpoint concurrency: the run group is `ceos-live-endpoint-<port>` with cancel-in-progress:false
+      (push/PR keep `ci-<ref>` + cancel), the harness layers a stale-aware lock file per port, and the
+      `live` vitest project already pins pool 'forks' + fileParallelism:false + maxWorkers:1.
+playwright / browser E2E: still NOT installed — a separate opt-in lane (docs/CEOS.md CI plan).
 hardware dispatch only: explicit target authorization, secrets, per-endpoint concurrency lock
 ```
 
@@ -215,5 +242,11 @@ test files/workers, and Playwright must use one worker per shared target.
 The explicitly requested live/E2E job must fail **visibly** on missing prerequisites,
 readiness/target mismatch, no executed tests, or cleanup failure. Local opt-out may skip
 with a reason (DR-034); that is not a successful CI cEOS run. `passWithNoTests: false`
-alone cannot detect all-skipped suites, so assert that real tests executed. Archive only
+alone cannot detect all-skipped suites, so assert that real tests executed — the assertion
+is `scripts/assert-live-run.mjs` (DR-086, §5 row 144): it reads vitest's printed summary
+lines (missing summary / any failure / any skip / zero passed ⇒ job failure) instead of the
+exit code, because exit 0 with everything skipped is exactly DR-034's local convention.
+The assertion also scans the log for credential-shaped text and the artifact upload is gated
+on that step, so an unscanned log cannot be published (DR-088).
+Archive only
 redacted diagnostics, and tear down run-owned containers/networks even after failure.
