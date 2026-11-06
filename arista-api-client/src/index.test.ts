@@ -208,6 +208,8 @@ describe('what the browser entry exports', () => {
       // M10a (#12): the interfaces facade and the per-kind name parser that §5 row 76 promised, both from
       // `.` (and through `export *` from `./node`) without a deep import.
       'InterfacesResource', 'parseInterfaceName',
+      // W2a (#35): the two wave-2 modules and the user-encryption vocabulary, same entry, no deep import.
+      'UsersResource', 'NtpResource', 'isUserEncryption',
     ] as const
     for (const name of functions) {
       expect(typeof surface[name], name).toBe('function')
@@ -219,14 +221,21 @@ describe('what the browser entry exports', () => {
     // read uses — both pin the same spelling the module header claims (M12 #14 owns the device question).
     expect(surface.INTERFACE_KINDS).toEqual(['Ethernet', 'Management', 'Loopback', 'Port-Channel', 'Vlan', 'Vxlan'])
     expect(surface.INTERFACE_STATUS_COMMAND).toBe('show interfaces status')
+    // `USER_ENCRYPTIONS` is the frozen encoding list and `isUserEncryption` its runtime guard — the
+    // same DR-079 shape `SWITCHPORT_MODES`/`isSwitchportMode` set (pyeapi's ENCRYPTION_MAP keys, users.py:58).
+    expect(surface.USER_ENCRYPTIONS).toEqual(['cleartext', 'md5', 'sha512', 'nologin'])
+    expect(surface.isUserEncryption('sha512')).toBe(true)
+    expect(surface.isUserEncryption('bcrypt')).toBe(false)
     expect(surface.parseInterfaceName('Ethernet1.100')).toEqual({ kind: 'Ethernet', index: 1, name: 'Ethernet1.100', subinterface: 100 })
-    // The registry has four rows now: M8's `system`, M9's `vlans`/`switchports` and M10a's `interfaces`
-    // (§5 row 79).
-    expect(Object.keys(surface.RESOURCE_FACTORIES)).toEqual(['system', 'vlans', 'switchports', 'interfaces'])
+    // The registry has six rows now: M8's `system`, M9's `vlans`/`switchports`, M10a's `interfaces`
+    // and W2a's `users`/`ntp`, appended in merge order (§5 row 79).
+    expect(Object.keys(surface.RESOURCE_FACTORIES)).toEqual(['system', 'vlans', 'switchports', 'interfaces', 'users', 'ntp'])
     expect(new Node(mockTransport()).system).toBeInstanceOf(surface.SystemResource)
     expect(new Node(mockTransport()).vlans).toBeInstanceOf(surface.VlansResource)
     expect(new Node(mockTransport()).switchports).toBeInstanceOf(surface.SwitchportsResource)
     expect(new Node(mockTransport()).interfaces).toBeInstanceOf(surface.InterfacesResource)
+    expect(new Node(mockTransport()).users).toBeInstanceOf(surface.UsersResource)
+    expect(new Node(mockTransport()).ntp).toBeInstanceOf(surface.NtpResource)
     // `assertVlanId` is an assertion function (returns void); the range is pyeapi's —
     // `value in range(1, 4095)`, i.e. VLANs 1..4094 (pyeapi/api/vlans.py:78). M9 (#12) re-checks that
     // bound against the switch's own `switchport access vlan` range on a device.
