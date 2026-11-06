@@ -70,6 +70,9 @@ refusal paths were exercised by hand, and the live job's first CI run is itself 
 
 Wave-2 **lane A** is delivered on its branch (refs #16): `src/resources/users.ts` + `ntp.ts` with registry/Node wiring (rows 150-157, DR-089-091); gate 56 files / 1,799 tests, all five legs green; PR opens with merge-order note A-B-C-D. #35 #36 flip to status:ready-for-review at PR time; issues NOT closed until merge.
 
+
+Wave-2 **lane C** is delivered on its branch (refs #16): `stp.ts` + `ipinterfaces.ts` with wiring (rows 167-174; DR-096/097 delivered, DR-098 declared skipped). The ledger pass corrected 20+ stale test_api_stp.py citations in stp.ts comments and REPORTED BRIEF-ASSERTED upstream bugs that DO NOT EXIST at 6816d9e (dict-leak, vrf-form gate, on-default, >367-line refs) - trust only row-content verified in-tree. Gate 56 / 1,825 green.
+
 **M11 (#13) is delivered on its branch** — the non-`runCmds` differentiators: `Node.verifyConfig()` /
 `getCompletions()` / `getCommandHelp()` ride a validated `WIRE_METHODS` table over the new optional
 `Transport#callMethod` seam, and faking them with `runCmds` is refused as unsafe, not inconvenient

@@ -1246,6 +1246,170 @@ the device. **Related:** DR-077, DR-037, DR-089, DR-005; §5 rows 152/154.
 
 ---
 
+### DR-092 — the ACL facade answers named verbs that resolve the ACL's kind from the switch's own header text, instead of attribute-name dispatch (W2b #37 #38)
+Upstream's `Acls` object answers any method a caller invents: `__getattr__` wraps
+`ProxyCall(self.marshall, name)` (`api/acl.py:114-115`) and `marshall` pulls the ACL name out of
+`args[0]`, then `hasattr`/`getattr` forwards (`:117-124`). The failure modes are probe records: an ACL
+the switch does not have comes back `{name: None}` from `get_instance` (`:126-135`) so a write against it
+dies as `AttributeError` **on that dict** (`'{'unconfigured': None}' object has no attribute
+'add_entry'`), and a type string outside `VALID_ACLS` silently becomes **the other kind** (`:137-142`) —
+upstream's own `test_create_unknown_type_creates_standard` (`test_api_acl.py:112-115`) pins that
+fallback, and a typo'd kind writing `ip access-list standard …` when the operator asked for an extended
+ACL is a config write nobody requested (rows 73/76's widened-guard convention applies, guard asserted
+rather than inherited). This is the same dynamic surface removed for `Interfaces` (DR-006) and against
+per-kind objects (DR-068), now for the third time: the TypeScript type system cannot track a kind chosen
+by `getattr`, and here the kind decides which **command text** goes on the wire.
+**Decision:** the ported facade has named verbs only: `standard`/`extended` accessors hand out the two
+kind-pinned collections (one per `Node`, DR-052/DR-026 memo), `create` takes a typed
+`AclAttrs.type` defaulting to `standard` with anything else refusing, and every kind-sensitive verb —
+`deleteAcl`, `setDefaultAcl`, `addEntry`, `updateEntry`, `removeEntry`, plus the abstract `delete`/
+`setDefault` which route to their kind-reading twins — calls `resolveType`, which matches the committed
+header grammar against the **section keys** and throws `NotFoundError` for a miss. No verb guesses the
+kind, and none needs `hasattr`.
+**Consequence:** every facade verb costs one chunked-config read for kind resolution, absorbed by the
+DR-026 memo so guard + resolve + dispatch is still a single `show running-config` per operation (pinned:
+the facade read-after-write test counts requests). Upstream's two proxy-method tests have no dynamic
+counterpart to port: their intent becomes the named-verb tests and the `NotFoundError` test, and the
+`AclType` union plus `Acl.type` give the UI a discriminator no `getattr` surface can offer.
+**Related:** DR-006, DR-068, DR-037, DR-052, DR-004; §5 rows 160 / 163.
+
+### DR-093 — an ACL collection answers one flat name-keyed table carrying the kind as a field, and its entries a number-keyed Map in device document order (W2b #37 #38)
+pyeapi's answers are nested and stringly: `Acls.getall` returns `{'standard': {…}, 'extended': {…}}`
+with each name sorted into the bucket its header spells (`api/acl.py:104-112`), `Acls.get` indexes a
+probe-shape dict by the name it was handed (`:88-89`), and an ACL's rules key on the **regex string** of
+the sequence number (`:180`, `:257`). Row 96 already corrected that key class for vlans (string ids no
+guard accepts), and DR-068 already decided per-kind **fields** over per-kind objects — but ACLs are the
+first module where the kind changes the *command*, so the field's importance is operational, not
+cosmetic: a UI table that shows `test (extended)` next to `test (standard)` needs one list, and
+`node.acls.get(name)` needs one answer, not "search both buckets" caller code.
+**Decision:** `getAll()` returns `Map<string, Acl>` with `Acl.type` set from the header, and
+`Acl.entries` is a `Map<number, AclEntry>` — keys are the **number** the rule line starts with,
+insertion follows device document order, and nothing renumbers: an `addEntry` with no
+`AclEntryInput.seqno` writes the bare line and lets the device number it, because re-reading to guess
+the next number races any other writer. Upstream's nested pair is *reconstructible by grouping on*
+`type`, and a test pins exactly that reconstruction against `test_api_acl.py:65-69`, so parity is proven
+rather than assumed. A name-less `ip access-list standard` header stays an extended ACL named
+`standard` — the read model keeps the grammar's artifact rather than inventing a refusal (row 158).
+**Consequence:** one table shape feeds the UI, one lookup answers a name, and "sorted by kind" is a
+caller display choice, never a hidden second collection. Float-key/renumbering drift is impossible
+because the key type is pinned numeric-by-construction, and duplicate-name ambiguity is reported (row
+162) instead of resolved by dict insertion order. **Related:** DR-068, DR-027, DR-092, DR-052, DR-026;
+§5 rows 158 / 162.
+
+### DR-094 — a device line this client cannot read fails as a ConfigParseError naming the section and the line, never as an absence, a crash, or a half value (W2b #37 #38)
+Across this wave's two modules pyeapi carries four distinct ways to misreport an unreadable line, and
+all four are device-state lies: (1) **crash** — the standard ACL parser calls `match.groups()` on `None`
+(`api/acl.py:173-174`; probe: `10 p` raises `AttributeError`); (2) **skip** — the extended parser guards
+`if match:` and drops the line (probe: `{}` where the switch has a rule); (3) **invent** —
+`group(5) or 'any'` / `group(9) or 'any'` (`:250`/`:253`) and `srcaddr = ip or '0.0.0.0'` (`:177-178`)
+answer destinations that were never written and turn `any` into a host `/32`; (4) **absence** —
+`_parse_mac_address` answers `None` for a MAC line its pattern misses (`api/varp.py:98-100`, including
+an uppercase one a real operator writes) and `(\S+)$` makes `ip virtual-router address 2.2.2.2 junk`
+vanish from the interface's answer (`:196-199`). Mode (4) is the dangerous one for a management UI: a
+panel would render "not configured" for a switch that *is* configured, violating the honest-state rule —
+and DR-029 already fixed absence-not-equals-absence for vlans.
+**Decision:** every one of those sites becomes a `ConfigParseError` with `{ sectionKey, shortLine }`
+payload (both modules' `cannotParse` helpers; rows 161-162 for ACLs, rows 165-166 for VARP), while
+genuine absence stays `undefined` (DR-027) and is only ever answered when the grammar says *no line is
+here*. Read tolerance is paired with write refusal so bad state stays **manageable**: a `/len` VARP
+address or a device-written uppercase MAC is reported, never silently dropped, and never *added* by this
+client — but the device's own token is a valid removal operand, so nothing an operator can see are they
+unable to clear. A parse failure also blocks dependent writes by construction: VARP's diff verb reads
+first, so an unparseable line aborts before a byte is sent (pinned).
+**Consequence:** the UI gets a reviewable "could not read this section" state distinct from an empty
+table, fixtures may carry the weird-but-real shapes upstream would mishandle and the suite asserts the
+loud answer, and a capture lane (M12 #14) that finds a real cEOS section this grammar rejects fails
+somewhere a human sees the line — which is the evidence that tells the project what to learn next. No
+new error class joins the taxonomy (DR-005/DR-010). **Related:** DR-005, DR-010, DR-027, DR-029, DR-053;
+§5 rows 161 / 162 / 165 / 166.
+
+### DR-095 — verbs this client's collection contract requires but pyeapi never implemented are mapped onto upstream's own emitted texts, never onto invented commands (W2b #37 #38)
+`VarpInterfaces` implements exactly `get`, `getall` and `set_addresses`
+(`api/varp.py:148-194`); the negative and presence texts this resource could need exist **only as flag
+arms** inside `set_addresses` (`:174-177`, `:191-192`), and create/delete/default are not missing
+overridable stubs — `EntityCollection` never defines them at all (`abstract.py:198-224` contributes
+`__call__`/`__getitem__`/`__len__`/`__iter__` plus raising `getall`/`get` only; the same shape `Varp`
+inherits while implementing one `get`). This client's `EntityCollection` contract requires presence
+verbs (DR-068's typed surface says what *the client* offers), and the obvious implementations are traps:
+`delete()` on an interface-keyed collection reads like `no interface Vlan10` — a lifecycle command this
+module never verified, never owned, and would be catastrophic to discover in a "remove the VARP setting"
+button — and `create()` is upstream a no-op arm, not an opener worth copying: the probe shows upstream's
+diff with nothing to change still sends `['interface Vlan4002']`, a bare submode entry that configures
+nothing (row 166).
+**Decision:** every mapped verb names an upstream text and cites its line in its own doc:
+`create(name, {addresses})` = `interface <name>` plus each `ip virtual-router address <addr>` add arm
+(`:189-190`), with zero reads and empty-or-absent addresses a refusal (a no-op opener is not a creation
+anyone asked for); `delete()`/`unsetAddresses()` = `interface <name>` plus the bare
+`no ip virtual-router address` (`:177`/`:191-192`); `setDefault()`/`defaultAddresses()` = the
+`default ip virtual-router address` arm (`:174-175`). Interface lifecycle stays in `interfaces.ts`,
+where that text actually lives. The ACL facade's kind-reading `delete`/`setDefault` (DR-092) is the same
+mapping discipline under the same reasoning: an inherited-or-invented verb must trace to a command the
+module's own read model can also confirm.
+**Consequence:** the scary name is not the scary command: `varp.interfaces.delete('Vlan10')` pins
+`interface Vlan10\nno ip virtual-router address` in a test, and the type surface carries no way to
+destroy an interface from this resource. Reviewers get line-cited arms per verb instead of prose trust,
+and the deliberate *omission* of upstream's `['interface Vlan4002']` no-op artifact is visible in the
+ledger (row 166) rather than discovered as a surprise transaction.
+**Related:** DR-068, DR-037, DR-092, DR-032, DR-094; §5 rows 163 / 166.
+
+---
+
+### DR-096 — the spanning-tree mode list is this client's write grammar, checked even where upstream's own guard skips itself (W2c #39)
+`stp.py` contradicts itself about its one global field three times: `get()`'s docstring draws a `mode`
+key the code never reads (`:109-113` vs `:115-116`); `set_mode` hard-codes its accepted values but only
+checks them when neither flag kwarg is set (`:150` wraps `:151-153`), so its `default`/`disable` arms
+validate nothing; and the module calls `mode` "not defaultable" (`:135-136`) while the `default=True`
+arm emits `default spanning-tree mode` anyway (pinned at `test_api_stp.py:71-74`). The list itself is
+version-scoped prose — "accepted values **for this version**" (`:38-41`) — and the feature-matrix
+reading this repo carries derives Rapid-PVSTP/MST presence from the 7050X family, not from this unit.
+**Decision:** all three faults are corrected as **client grammar**, never recorded as hardware facts.
+`get()` answers `mode`, read from the chunked document's indent-0 keys exactly like `hostname` (DR-055),
+with the token kept verbatim (`string` + `isStpMode`) so a device that spells something else is
+reported, not dropped or narrowed. `setMode`'s guard over `STP_MODES` is the same literal list
+(`stp.py:151`) but **unconditional** — upstream's conditionality is an artifact of its kwargs folding,
+and with three named verbs (DR-037) there is no arm left for a skipped check to hide in. A refusal is a
+`NotSupportedError` naming the value (DR-005/DR-053) whose message points at the M11 (#13) capability
+probe as the feature gate, so no hard-coded list ever pretends to know the SKU (DR-032).
+`default spanning-tree mode` is sent by the verb that names upstream's arm, docstring aside: whether
+EOS 4.28.13.1M accepts it, or `mstp`/`none` at all on a 7050TX-64, is an M12 (#14) capture, and every
+verb has a pinned `CommandError` path as the device's answer channel.
+**Consequence:** the mode set is pinned by code and tests, not by docstring prose; a device token
+outside `mstp`/`none` stays visible on the read side, and widening the write side without an M11 probe
+first is the anti-pattern the refusal message itself names. Upstream's behaviors (mode never readable;
+flag arms unchecked; the "not defaultable" default sent anyway) stay recorded as §5 row 167's pinned
+divergences rather than silently normalized. **Related:** DR-005, DR-032, DR-037, DR-053, DR-055;
+§5 row 167.
+
+### DR-097 — the same `mtu` line is owned by two resources: that is said out loud and pinned, never coordinated (W2c #40)
+The indent-1 `mtu <n>` line inside an `interface <name>` section already belongs to M10a:
+`interfaces.ts` reads and writes it, and its own divergence 7 records that the closest upstream code
+for the field lives in a *different module* — `ipinterfaces.py`, which this lane ported. Upstream
+carried the same duplication with two different guards (`ipinterfaces.py` checks `68..65535` from
+constants that are an IP-MTU reading of RFC 791/8200, not a captured EOS floor or ceiling;
+`interfaces.py` never carries the field at all). The two directions a repo can take — merge the field
+into one resource, or add cross-resource write tracking — both invent promises this client has never
+made, and PLAN's resource boundaries still mirror pyeapi's modules.
+**Decision:** **no** ownership marker, invalidation hook, or coordination primitive. The reads agree by
+construction — both resources parse the same section from the same chunk-and-memoized config
+(DR-026/DR-030) — so one truth per line is a property of the pipeline, not of a protocol. Writes stay
+independent transactions, and the contract is the honest one: whatever the device last accepted is
+what the next read reports, and the client claims nothing beyond that. The guards stay different on
+purpose: `ipinterfaces.setMtu` keeps upstream's `68..65535` because that module is the L3 view and that
+is the range upstream ships (`:54-55`, `:246-249`, with `0` refused as out-of-range, which also closes
+upstream's `value=0` → `no mtu` fall-through); `interfaces.setMtu` refuses only non-integer/non-positive
+input because an L2 field should not be policed by an IP range. Each refusal names the range it checked,
+so calling the wrong resource produces a wrong-range refusal with a legible reason instead of a confusing
+success (DR-053/DR-032), and the range values themselves remain "unverified on hardware, M12 #14 to
+capture".
+**Consequence:** one pin proves the reads agree (`the same line reads identically through interfaces and
+ipinterfaces`) and one pin proves the guards differ (`each refusal says which range it checked`); a UI
+moving between the two resources is told which one it is holding. If a live capture shows the `68` floor
+or the `65535` ceiling wrong on this SKU, it lands against row 174 and these constants, and revisiting
+the split is then a spec question with evidence, not a lane-local reflex.
+**Related:** DR-026, DR-030, DR-032, DR-053, DR-059; §5 rows 102 / 174.
+
+---
+
 ## Open items (need the device)
 
 Use cEOS first for software behavior and schema exploration, recording its model/version;

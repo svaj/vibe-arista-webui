@@ -139,7 +139,7 @@ describe('ResourceRegistry — DR-006 replaces pyeapi node.api() (client.py:927-
     expect(registry.get('probe')).toBe(before)
   })
 
-  it('the built-in factory table is frozen and holds exactly the rows shipped so far (M8 #10 `system`, M9 #11 `vlans`/`switchports`, M10a #12 `interfaces`, W2a #35 `users`/`ntp`)', () => {
+  it('the built-in factory table is frozen and holds exactly the rows shipped so far (M8 #10 `system`, M9 #11 `vlans`/`switchports`, M10a #12 `interfaces`, W2a #35 `users`/`ntp`, W2b #37/#38 `acls`/`varp`, W2c #39/#40 `stp`/`ipinterfaces`)', () => {
     // M7 (#9) shipped this table honest-but-empty; M8 (#10) claimed the first row, M9 (#11) the next two
     // and M10a (#12) the fourth, so the assertion names what exists. A name in `ResourceKinds` without a
     // row here would be a package bug (row 79). A mutable module-level registry is what ARCHITECTURE.md §7
@@ -147,13 +147,20 @@ describe('ResourceRegistry — DR-006 replaces pyeapi node.api() (client.py:927-
     // has shipped it, so it is the honest "still owed" name now that `interfaces` is registered.
     expect(Object.isFrozen(RESOURCE_FACTORIES)).toBe(true)
     const { node } = nodeWith()
-    // W2a (#35) appended `users` and `ntp` at the END of the table (the cross-lane merge rule), so the
-    // ordered assertion carries them last rather than in a lane-chosen slot.
-    expect(new ResourceRegistry(RESOURCE_FACTORIES, node).names()).toEqual(['system', 'vlans', 'switchports', 'interfaces', 'users', 'ntp'])
+    // W2a (#35), W2b (#37 #38) and W2c (#39 #40) each appended their rows at the END of the table (the
+    // cross-lane merge rule), so the ordered assertion carries them in merge order rather than in a
+    // lane-chosen slot.
+    expect(new ResourceRegistry(RESOURCE_FACTORIES, node).names()).toEqual(['system', 'vlans', 'switchports', 'interfaces', 'users', 'ntp', 'acls', 'varp', 'stp', 'ipinterfaces'])
     expect(new ResourceRegistry(RESOURCE_FACTORIES, node).has('vlans')).toBe(true)
     expect(new ResourceRegistry(RESOURCE_FACTORIES, node).has('interfaces')).toBe(true)
     expect(new ResourceRegistry(RESOURCE_FACTORIES, node).has('users')).toBe(true)
     expect(new ResourceRegistry(RESOURCE_FACTORIES, node).has('ntp')).toBe(true)
+    // W2b (#37 #38): pyeapi has both modules (`api/acl.py`, `api/varp.py`), so they are rows now rather
+    // than owed names.
+    expect(new ResourceRegistry(RESOURCE_FACTORIES, node).has('acls')).toBe(true)
+    expect(new ResourceRegistry(RESOURCE_FACTORIES, node).has('varp')).toBe(true)
+    expect(new ResourceRegistry(RESOURCE_FACTORIES, node).has('stp')).toBe(true)
+    expect(new ResourceRegistry(RESOURCE_FACTORIES, node).has('ipinterfaces')).toBe(true)
     expect(new ResourceRegistry(RESOURCE_FACTORIES, node).has('mlag')).toBe(false)
   })
 })
@@ -167,6 +174,10 @@ describe('Node.resource / Node.hasResource — the typed replacement for node.ap
     expect(node.hasResource('interfaces')).toBe(true)
     expect(node.hasResource('users')).toBe(true)
     expect(node.hasResource('ntp')).toBe(true)
+    expect(node.hasResource('acls')).toBe(true)
+    expect(node.hasResource('varp')).toBe(true)
+    expect(node.hasResource('stp')).toBe(true)
+    expect(node.hasResource('ipinterfaces')).toBe(true)
     expect(node.hasResource('mlag')).toBe(false)
     expect(node.hasResource('probe')).toBe(false)
   })
@@ -191,6 +202,19 @@ describe('Node.resource / Node.hasResource — the typed replacement for node.ap
     expect(node.interfaces).toBe(node.interfaces)
     expect(node.interfaces).toBe(node.resource('interfaces'))
     expect(node.interfaces.constructor.name).toBe('InterfacesResource')
+    // W2b (#37 #38) are the seventh and eighth rows. `node.acls.standard`/`.extended` and
+    // `node.varp.interfaces` are the pyeapi sub-objects (`acl.py:126-142`'s `_instances`,
+    // `varp.py:59-63`'s property memo) that the per-Node memo replaces: one object each, identity stable.
+    expect(node.acls).toBe(node.acls)
+    expect(node.acls).toBe(node.resource('acls'))
+    expect(node.acls.constructor.name).toBe('AclsResource')
+    expect(node.acls.standard).toBe(node.acls.standard)
+    expect(node.acls.extended).toBe(node.acls.extended)
+    expect(node.varp).toBe(node.varp)
+    expect(node.varp).toBe(node.resource('varp'))
+    expect(node.varp.constructor.name).toBe('VarpResource')
+    expect(node.varp.interfaces).toBe(node.varp.interfaces)
+    expect(node.varp.interfaces.constructor.name).toBe('VarpInterfacesResource')
     // W2a (#35) appended the fifth and sixth rows: `node.users` (collection) and `node.ntp` (global
     // entity, the `node.system` sibling), each its registry twin under the same memo.
     expect(node.users).toBe(node.users)
@@ -210,7 +234,7 @@ describe('Node.resource / Node.hasResource — the typed replacement for node.ap
     const untyped = 'mlag' as never
     expect(() => node.resource(untyped)).toThrow(NotSupportedError)
     expect(() => node.resource(untyped)).toThrow(/unknown resource mlag — no factory is registered/)
-    expect(() => node.resource(untyped)).toThrow(/registered: system, vlans, switchports, interfaces, users, ntp/)
+    expect(() => node.resource(untyped)).toThrow(/registered: system, vlans, switchports, interfaces, users, ntp, acls, varp, stp, ipinterfaces/)
   })
 
   it('every failed resource call sends nothing to the device (a registry miss is not a device error)', () => {

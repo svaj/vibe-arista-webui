@@ -210,6 +210,16 @@ describe('what the browser entry exports', () => {
       'InterfacesResource', 'parseInterfaceName',
       // W2a (#35): the two wave-2 modules and the user-encryption vocabulary, same entry, no deep import.
       'UsersResource', 'NtpResource', 'isUserEncryption',
+      // W2b (#37 #38): the ACL facade, its two type-pinned collections, the runtime half of the kind union,
+      // the mask/prefixlen helpers PLAN.md §4 schedules with the module, and the two VARP classes — all from
+      // `.` with no deep import (MIGRATION §5 rows 158-166).
+      'AclsResource', 'StandardAclsResource', 'ExtendedAclsResource', 'isAclType', 'maskToPrefixlen', 'prefixlenToMask',
+      'VarpResource', 'VarpInterfacesResource',
+      // W2c (#39 #40): the two wave-2 modules and the vocabularies a UI narrows device tokens with.
+      // `StpInterfacesResource`/`StpInstancesResource` are in the entry because `node.stp.interfaces` /
+      // `node.stp.instances` hand them to the caller (pyeapi's composition, stp.py:118-130).
+      'StpResource', 'StpInterfacesResource', 'StpInstancesResource', 'isStpMode', 'isPortfastType',
+      'IpinterfacesResource',
     ] as const
     for (const name of functions) {
       expect(typeof surface[name], name).toBe('function')
@@ -227,15 +237,41 @@ describe('what the browser entry exports', () => {
     expect(surface.isUserEncryption('sha512')).toBe(true)
     expect(surface.isUserEncryption('bcrypt')).toBe(false)
     expect(surface.parseInterfaceName('Ethernet1.100')).toEqual({ kind: 'Ethernet', index: 1, name: 'Ethernet1.100', subinterface: 100 })
-    // The registry has six rows now: M8's `system`, M9's `vlans`/`switchports`, M10a's `interfaces`
-    // and W2a's `users`/`ntp`, appended in merge order (§5 row 79).
-    expect(Object.keys(surface.RESOURCE_FACTORIES)).toEqual(['system', 'vlans', 'switchports', 'interfaces', 'users', 'ntp'])
+    // The registry has ten rows now: M8's `system`, M9's `vlans`/`switchports`, M10a's `interfaces`, then
+    // W2a's `users`/`ntp`, W2b's `acls`/`varp` and W2c's `stp`/`ipinterfaces`, each appended in merge order
+    // (§5 row 79, rows 167/173).
+    expect(Object.keys(surface.RESOURCE_FACTORIES)).toEqual(['system', 'vlans', 'switchports', 'interfaces', 'users', 'ntp', 'acls', 'varp', 'stp', 'ipinterfaces'])
     expect(new Node(mockTransport()).system).toBeInstanceOf(surface.SystemResource)
     expect(new Node(mockTransport()).vlans).toBeInstanceOf(surface.VlansResource)
     expect(new Node(mockTransport()).switchports).toBeInstanceOf(surface.SwitchportsResource)
     expect(new Node(mockTransport()).interfaces).toBeInstanceOf(surface.InterfacesResource)
     expect(new Node(mockTransport()).users).toBeInstanceOf(surface.UsersResource)
     expect(new Node(mockTransport()).ntp).toBeInstanceOf(surface.NtpResource)
+    expect(new Node(mockTransport()).acls).toBeInstanceOf(surface.AclsResource)
+    expect(new Node(mockTransport()).varp).toBeInstanceOf(surface.VarpResource)
+    // The kind vocabulary and the two helpers are part of the published surface, not module internals: a UI
+    // form builds its ACL-type dropdown from `ACL_TYPES` and validates a mask string with `maskToPrefixlen`.
+    expect(surface.ACL_TYPES).toEqual(['standard', 'extended'])
+    expect(surface.isAclType('extended')).toBe(true)
+    expect(surface.isAclType('ipv6')).toBe(false)
+    expect(surface.maskToPrefixlen('255.255.255.0')).toBe(24)
+    expect(surface.prefixlenToMask(24)).toBe('255.255.255.0')
+    // The VARP sub-object a caller reaches through the facade is the class the package exports, so a test or a
+    // screen can name its type without importing `src/resources/varp` by path.
+    expect(new Node(mockTransport()).varp.interfaces).toBeInstanceOf(surface.VarpInterfacesResource)
+    expect(new Node(mockTransport()).acls.standard).toBeInstanceOf(surface.StandardAclsResource)
+    expect(new Node(mockTransport()).acls.extended).toBeInstanceOf(surface.ExtendedAclsResource)
+    expect(new Node(mockTransport()).stp).toBeInstanceOf(surface.StpResource)
+    expect(new Node(mockTransport()).ipinterfaces).toBeInstanceOf(surface.IpinterfacesResource)
+    // The two vocabulary lists are the write-side sets the modules document (§5 row 167 for the STP modes,
+    // row 174 for the MTU bounds), and the guards narrow rather than assert a hardware fact (DR-032).
+    expect(surface.STP_MODES).toEqual(['mstp', 'none'])
+    expect(surface.PORTFAST_TYPES).toEqual(['edge', 'network', 'normal'])
+    expect(surface.isStpMode('mstp')).toBe(true)
+    expect(surface.isStpMode('rapid-pvst')).toBe(false)
+    expect(surface.isPortfastType('auto')).toBe(false)
+    expect(surface.IP_MTU_MIN).toBe(68)
+    expect(surface.IP_MTU_MAX).toBe(65535)
     // `assertVlanId` is an assertion function (returns void); the range is pyeapi's —
     // `value in range(1, 4095)`, i.e. VLANs 1..4094 (pyeapi/api/vlans.py:78). M9 (#12) re-checks that
     // bound against the switch's own `switchport access vlan` range on a device.
