@@ -354,8 +354,11 @@ import type { Transport } from './transports/contract'
 // consumer adds a name and gets a typed `node.resource(name)`. M8 (#10) registered the first built-in
 // row (`system`, with `Node.system` for it) and M9 (#11) registered `vlans` + `switchports` (with
 // `Node.vlans` / `Node.switchports`); M10a (#12) registered `interfaces` (with `Node.interfaces`) and
-// the per-kind interface-name parser that row 76 promised — MIGRATION §5 row 79. W2c (#39 #40)
-// registered `stp` and `ipinterfaces` (with `Node.stp` / `Node.ipinterfaces`).
+// the per-kind interface-name parser that row 76 promised — MIGRATION §5 row 79. W2a (#35) registered
+// `users` + `ntp` (with `Node.users` / `Node.ntp`), W2b (#37 #38) registered `acls` + `varp` (with
+// `Node.acls` / `Node.varp`) and the mask/prefixlen helpers PLAN.md §4 schedules with the ACL module —
+// MIGRATION §5 rows 158-166 — and W2c (#39 #40) registered `stp` + `ipinterfaces` (with `Node.stp` /
+// `Node.ipinterfaces`).
 export { Entity, EntityCollection, ResourceBase } from './resources/base'
 export { commandBuilder, submodeCommands } from './resources/command-builder'
 export { parseConfigBlock } from './resources/config-block'
@@ -365,6 +368,12 @@ export { InterfacesResource, INTERFACE_STATUS_COMMAND } from './resources/interf
 export { SwitchportsResource, SWITCHPORT_MODES, isSwitchportMode } from './resources/switchports'
 export { SystemResource } from './resources/system'
 export { VlansResource } from './resources/vlans'
+// W2a (#35): the two wave-2 modules ride the same browser-safe entry — `node.users` / `node.ntp`
+// and the encryption vocabulary, no deep imports.
+export { NtpResource } from './resources/ntp'
+export { UsersResource, USER_ENCRYPTIONS, isUserEncryption } from './resources/users'
+export { AclsResource, ACL_TYPES, ExtendedAclsResource, StandardAclsResource, isAclType, maskToPrefixlen, prefixlenToMask } from './resources/acl'
+export { VarpResource, VarpInterfacesResource } from './resources/varp'
 // W2c (#39 #40): the spanning-tree module and the L3 interface module, plus the vocabularies a UI
 // narrows device tokens with. `StpInterfacesResource`/`StpInstancesResource` are exported because
 // `node.stp.interfaces` / `node.stp.instances` hand them to the caller (pyeapi's composition, `stp.py:118-130`).
@@ -404,6 +413,20 @@ export type {
 export type { Switchport, SwitchportAttrs, SwitchportMode, TrunkAttrs } from './resources/switchports'
 export type { SystemBanner, SystemBannerKind, SystemSettings } from './resources/system'
 export type { Vlan, VlanAttrs, VlanState } from './resources/vlans'
+export type { NtpServer, NtpSettings } from './resources/ntp'
+export type { User, UserAttrs, UserEncryption, UserSecretFormat } from './resources/users'
+export type {
+  Acl,
+  AclAction,
+  AclAttrs,
+  AclEntry,
+  AclEntryInput,
+  AclMatch,
+  AclMatchInput,
+  AclMatchKind,
+  AclType,
+} from './resources/acl'
+export type { VarpAttrs, VarpInterface, VarpSettings } from './resources/varp'
 export type { IpInterface, IpInterfaceAttrs } from './resources/ipinterfaces'
 export type { PortfastType, StpInstance, StpInterface, StpMode, StpSettings } from './resources/stp'
 export type {
