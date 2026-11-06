@@ -68,6 +68,8 @@ not the dev tooling (DR-087, closing ci.yml's own promise); and the never-yet-ex
 this lane adds NO unit tests (its diff is YAML + `.mjs` scripts, outside the unit coverage set); the
 refusal paths were exercised by hand, and the live job's first CI run is itself a review item.
 
+Wave-2 **lane D** is delivered on its branch (refs #16): `vrfs.ts`, `staticroute.ts`, `mlag.ts` (+wiring). rows 175-183, DR-099-102 (three-digit DRs land here for the first time - verified). Gate 57 / 1,802, coverage green. First dispatch of this lane returned a model error and wrote nothing; the retry authored everything incl. repairing a mid-file truncation (c3c6449-equivalent on this branch); mlag set_mlag_id deviation is rowed, read it before approving.
+
 **M11 (#13) is delivered on its branch** — the non-`runCmds` differentiators: `Node.verifyConfig()` /
 `getCompletions()` / `getCommandHelp()` ride a validated `WIRE_METHODS` table over the new optional
 `Transport#callMethod` seam, and faking them with `runCmds` is refused as unsafe, not inconvenient
