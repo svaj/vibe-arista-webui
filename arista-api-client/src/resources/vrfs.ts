@@ -148,8 +148,14 @@ import type { ResourceTable } from './types'
  */
 export type VrfDefinitionForm = 'instance' | 'definition'
 
-/** A nameless `vrf configuration-session`-style header line is not a VRF entry either way. */
-const VRF_HEADER = /^vrf (instance|definition) (\S+)$/u
+/**
+ * A `vrf instance`/`vrf definition` header line. The name is NOT baked into the pattern: the remainder
+ * after the keyword rides along verbatim so a header like `vrf definition foo bar` reaches the
+ * {@link ConfigParseError} path below instead of being skipped (divergence 2 — pyeapi would key the
+ * phantom name `'foo'`, `vrfs.py:142-146`). A nameless `vrf configuration session`-style line does not
+ * match at all: the keyword needs its own word boundary and at least one separator here.
+ */
+const VRF_HEADER = /^vrf (instance|definition)\s+(.*)$/u
 
 /** Upstream's `getall` name grammar: `(?<=^vrf instance\s)(\w+)`-style captures (`vrfs:142-146`). */
 const VRF_NAME = /^\w+$/u
@@ -346,19 +352,30 @@ export class VrfsResource extends EntityCollection<Vrf, string, VrfAttrs> {
    * extra round trip after any read, and the first VRF on a fresh device costs exactly the one
    * `show running-config` the config memo had to fetch anyway.
    */
+  private detectedForm: VrfDefinitionForm | undefined
+
   private async resolveVrfForm(): Promise<VrfDefinitionForm> {
+    // Latched once per resource instance: the keyword a device's config text speaks does not change
+    // mid-session, and a config write clears the DR-026 config memo — without the latch every form-
+    // dependent verb after a write would pay a re-read the first detection already answered. The
+    // device stays authoritative the same way (its own CommandError on a wrong keyword, DR-005).
+    if (this.detectedForm !== undefined) return this.detectedForm
     const sections = await this.configSections()
     let sawDefinition = false
     for (const key of sections.keys()) {
       const header = VRF_HEADER.exec(key)
-      if (header?.[1] === 'instance') return 'instance'
+      if (header?.[1] === 'instance') {
+        this.detectedForm = 'instance'
+        return this.detectedForm
+      }
       if (header?.[1] === 'definition') sawDefinition = true
     }
     // No VRF sections at all: the config text carries no evidence either way. The default is this
     // repo's floor (EOS 4.28 per AGENTS.md; upstream's OWN gate also lands on `instance` at ≥4.23),
     // held as a client convention — a device that predates the keyword refuses with its own
     // CommandError, the device staying authoritative (DR-005/DR-032, DR-099).
-    return sawDefinition ? 'definition' : 'instance'
+    this.detectedForm = sawDefinition ? 'definition' : 'instance'
+    return this.detectedForm
   }
 
   /** The exact section-header command for `name` under the detected form — `vrfs.py:169-171` and twins. */

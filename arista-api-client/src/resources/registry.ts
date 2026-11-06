@@ -32,6 +32,7 @@ import { InterfacesResource } from './interfaces'
 import { SwitchportsResource } from './switchports'
 import { SystemResource } from './system'
 import { VlansResource } from './vlans'
+import { VrfsResource } from './vrfs'
 import type { Node } from '../command-layer'
 
 /** A resource constructor: the `Node` it operates on in, the resource instance out (pyeapi's `instance(node)`). */
@@ -64,6 +65,8 @@ export interface ResourceKinds {
   switchports: SwitchportsResource
   /** Every interface's presence and shared configuration — `src/resources/interfaces.ts`, port of pyeapi `api/interfaces.py` (M10a slice). */
   interfaces: InterfacesResource
+  /** The VRF definitions/instances in the running-config — `src/resources/vrfs.ts`, port of pyeapi `api/vrfs.py` (W2d slice, #41). */
+  vrfs: VrfsResource
 }
 
 /** Any name `node.resource()` may be asked for. Grows by one row per resource module (M8-M10). */
@@ -92,6 +95,7 @@ export const RESOURCE_FACTORIES: ResourceFactories<ResourceKinds> = Object.freez
   vlans: (node) => new VlansResource(node),
   switchports: (node) => new SwitchportsResource(node),
   interfaces: (node) => new InterfacesResource(node),
+  vrfs: (node) => new VrfsResource(node),
 })
 
 /**

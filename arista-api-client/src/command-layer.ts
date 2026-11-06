@@ -67,6 +67,7 @@ import type { InterfacesResource } from './resources/interfaces'
 import type { SystemResource } from './resources/system'
 import type { SwitchportsResource } from './resources/switchports'
 import type { VlansResource } from './resources/vlans'
+import type { VrfsResource } from './resources/vrfs'
 import type { ResourceKinds, ResourceName } from './resources/registry'
 import type { MethodCallOptions, Transport, TransportExecOptions } from './transports/contract'
 import type { CommandResult, CommandSpec, RunCmdsFormat, ShowContracts, ShowReply } from './types/eapi'
@@ -865,6 +866,16 @@ export class Node {
    */
   get interfaces(): InterfacesResource {
     return this.resource('interfaces')
+  }
+
+  /**
+   * The `vrfs` resource — same per-`Node` {@link resourceMemo} as {@link interfaces} (DR-052):
+   * `node.vrfs === node.vrfs === node.resource('vrfs')`. pyeapi's equivalent is `node.api('vrfs')`,
+   * which loads `pyeapi.api.vrfs` off the filesystem and calls its `instance(api)`
+   * (`vrfs.py:332-344`, `client.py:927-950`) — DR-006's target. Added by W2d (#41).
+   */
+  get vrfs(): VrfsResource {
+    return this.resource('vrfs')
   }
 
   /**

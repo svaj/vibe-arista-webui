@@ -286,7 +286,7 @@ describe('VrfsResource reads — vrfs.py:67-99 + the DR-030 read budget', () => 
     expect((thrown as Error).message).toMatch(/cannot read the VRF name in 'vrf definition foo bar'/)
     // Upstream probes differently: its `(\w+)` capture answers the key 'foo' for that line — a
     // phantom name truncated from what the device wrote (vrfs.py:142-146).
-    expect(await vrfsFor(textOf(['vrf instance ok_name9', 'end'])).getAll()).toHaveSize(1)
+    expect((await vrfsFor(textOf(['vrf instance ok_name9', 'end'])).getAll()).size).toBe(1)
   })
 
   it('a description mentioning “rd” invents no rd, and rd keeps its whole line remainder (divergence 3)', async () => {
@@ -318,7 +318,9 @@ describe('VrfsResource keyword detection — DR-099 replaces the version compare
       .replies(writeKey(['vrf instance fresh', 'rd 3:3']), [{}, {}, {}, {}])
     await node.vrfs.delete('legacy')
     await node.vrfs.create('fresh', { rd: '3:3' })
-    expect(transport.sent().map((cmds) => cmds.map(String))).toEqual([
+    // The first form-dependent read (the memo fill) precedes the two writes; the latch (DR-099) keeps
+    // the second write from re-reading after the first one cleared the config memo.
+    expect(transport.sent().slice(-2).map((cmds) => cmds.map(String))).toEqual([
       ['enable', 'configure terminal', 'no vrf instance legacy'],
       ['enable', 'configure terminal', 'vrf instance fresh', 'rd 3:3'],
     ])
@@ -491,7 +493,7 @@ describe('VrfsResource setInterface — vrfs.py:305-330 (divergence 8)', () => {
     await node.vrfs.setInterface('Ethernet1', 'testintvrf')
     await node.vrfs.unsetInterface('Ethernet1')
     await node.vrfs.defaultInterface('Ethernet1')
-    expect(transport.sent().map((cmds) => cmds.map(String))).toEqual([
+    expect(transport.sent().slice(-3).map((cmds) => cmds.map(String))).toEqual([
       ['enable', 'configure terminal', 'interface Ethernet1', 'vrf forwarding testintvrf'],
       ['enable', 'configure terminal', 'interface Ethernet1', 'no vrf forwarding'],
       ['enable', 'configure terminal', 'interface Ethernet1', 'default vrf forwarding'],
@@ -527,6 +529,7 @@ describe('VrfsResource guards — vrfs.py validates nothing; refusals cost zero 
 
   it('rd and description values are refused exactly where they could not read back', async () => {
     const { node, transport } = nodeFor(DEFINITION_CONFIG)
+    transport.replies(writeKey(['vrf definition blah', 'no rd']), [{}, {}, {}, {}])
     const vrfs = node.vrfs
     await expectError(() => vrfs.setVrfRd('blah', '  '), /invalid vrf rd/)
     await expectError(() => vrfs.setVrfRd('blah', 'pad '), /leading or trailing whitespace/)
@@ -536,10 +539,11 @@ describe('VrfsResource guards — vrfs.py validates nothing; refusals cost zero 
     await expectError(() => vrfs.setVrfDescription('blah', 'has"quote'), /cannot round-trip/)
     await expectError(() => vrfs.setVrfDescription('blah', 'ing\x07rat'), /control character/)
     await expectError(() => vrfs.setVrfDescription('blah', ''), /empty description is refused/)
-    // The empty-rd clear intent is the named verb, never a falsy value (DR-037):
+    // The empty-rd clear intent is the named verb, never a falsy value (DR-037). The earlier refusals
+    // sent nothing, so the only traffic here is the detection read and this one write.
     await vrfs.unsetVrfRd('blah')
-    expect(transport.sent().map((cmds) => cmds.map(String))).toEqual([
-      ['enable', 'configure terminal', 'vrf definition blah', 'no rd'],
+    expect(transport.sent().at(-1)?.map(String)).toEqual([
+      'enable', 'configure terminal', 'vrf definition blah', 'no rd',
     ])
   })
 

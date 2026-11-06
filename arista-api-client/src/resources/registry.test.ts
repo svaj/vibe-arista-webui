@@ -139,18 +139,20 @@ describe('ResourceRegistry — DR-006 replaces pyeapi node.api() (client.py:927-
     expect(registry.get('probe')).toBe(before)
   })
 
-  it('the built-in factory table is frozen and holds exactly the rows shipped so far (M8 #10 `system`, M9 #11 `vlans`/`switchports`, M10a #12 `interfaces`)', () => {
-    // M7 (#9) shipped this table honest-but-empty; M8 (#10) claimed the first row, M9 (#11) the next two
-    // and M10a (#12) the fourth, so the assertion names what exists. A name in `ResourceKinds` without a
-    // row here would be a package bug (row 79). A mutable module-level registry is what ARCHITECTURE.md §7
-    // forbids. `mlag` is the negative control: pyeapi has that module (`api/mlag.py`), no milestone here
-    // has shipped it, so it is the honest "still owed" name now that `interfaces` is registered.
+  it('the built-in factory table is frozen and holds exactly the rows shipped so far (M8 #10 `system`, M9 #11 `vlans`/`switchports`, M10a #12 `interfaces`, W2d #41 `vrfs`)', () => {
+    // M7 (#9) shipped this table honest-but-empty; M8 (#10) claimed the first row, M9 (#11) the next two,
+    // M10a (#12) the fourth and W2d (#41) the fifth, so the assertion names what exists. A name in
+    // `ResourceKinds` without a row here would be a package bug (row 79). A mutable module-level registry
+    // is what ARCHITECTURE.md §7 forbids. `stp` is the negative control: pyeapi has that module
+    // (`api/stp.py`, 21 unit tests in wave 2), no milestone here has shipped it, so it is the honest
+    // "still owed" name now that `vrfs` is registered.
     expect(Object.isFrozen(RESOURCE_FACTORIES)).toBe(true)
     const { node } = nodeWith()
-    expect(new ResourceRegistry(RESOURCE_FACTORIES, node).names()).toEqual(['system', 'vlans', 'switchports', 'interfaces'])
+    expect(new ResourceRegistry(RESOURCE_FACTORIES, node).names()).toEqual(['system', 'vlans', 'switchports', 'interfaces', 'vrfs'])
     expect(new ResourceRegistry(RESOURCE_FACTORIES, node).has('vlans')).toBe(true)
     expect(new ResourceRegistry(RESOURCE_FACTORIES, node).has('interfaces')).toBe(true)
-    expect(new ResourceRegistry(RESOURCE_FACTORIES, node).has('mlag')).toBe(false)
+    expect(new ResourceRegistry(RESOURCE_FACTORIES, node).has('vrfs')).toBe(true)
+    expect(new ResourceRegistry(RESOURCE_FACTORIES, node).has('stp')).toBe(false)
   })
 })
 
@@ -161,7 +163,8 @@ describe('Node.resource / Node.hasResource — the typed replacement for node.ap
     expect(node.hasResource('vlans')).toBe(true)
     expect(node.hasResource('switchports')).toBe(true)
     expect(node.hasResource('interfaces')).toBe(true)
-    expect(node.hasResource('mlag')).toBe(false)
+    expect(node.hasResource('vrfs')).toBe(true)
+    expect(node.hasResource('stp')).toBe(false)
     expect(node.hasResource('probe')).toBe(false)
   })
 
@@ -185,23 +188,27 @@ describe('Node.resource / Node.hasResource — the typed replacement for node.ap
     expect(node.interfaces).toBe(node.interfaces)
     expect(node.interfaces).toBe(node.resource('interfaces'))
     expect(node.interfaces.constructor.name).toBe('InterfacesResource')
+    // W2d (#41) is the fifth row: `node.vrfs` is the accessor the webui's VRF screens use.
+    expect(node.vrfs).toBe(node.vrfs)
+    expect(node.vrfs).toBe(node.resource('vrfs'))
+    expect(node.vrfs.constructor.name).toBe('VrfsResource')
   })
 
   it('asking for an unregistered resource throws, listing the rows that DO exist', () => {
     const { node } = nodeWith()
     // `ResourceName` is the closed map key union, so this call cannot be written type-correctly from TS —
     // which is the point. The cast is the JS/table-column path the runtime check exists for (row 79).
-    // `mlag` is pyeapi's `api/mlag.py`, which no milestone here has registered; `interfaces` became a real
-    // row with M10a (#12).
-    const untyped = 'mlag' as never
+    // `stp` is pyeapi's `api/stp.py`, which no milestone here has registered; `vrfs` became a real row
+    // with W2d (#41).
+    const untyped = 'stp' as never
     expect(() => node.resource(untyped)).toThrow(NotSupportedError)
-    expect(() => node.resource(untyped)).toThrow(/unknown resource mlag — no factory is registered/)
-    expect(() => node.resource(untyped)).toThrow(/registered: system, vlans, switchports, interfaces/)
+    expect(() => node.resource(untyped)).toThrow(/unknown resource stp — no factory is registered/)
+    expect(() => node.resource(untyped)).toThrow(/registered: system, vlans, switchports, interfaces, vrfs/)
   })
 
   it('every failed resource call sends nothing to the device (a registry miss is not a device error)', () => {
     const { node, transport } = nodeWith()
-    expect(() => node.resource('mlag' as never)).toThrow(NotSupportedError)
+    expect(() => node.resource('stp' as never)).toThrow(NotSupportedError)
     expect(transport.sent()).toEqual([])
     expect(transport.callCount()).toBe(0)
   })
@@ -212,6 +219,7 @@ describe('Node.resource / Node.hasResource — the typed replacement for node.ap
     expect(first.node.vlans).not.toBe(second.node.vlans)
     expect(first.node.switchports).not.toBe(second.node.switchports)
     expect(first.node.interfaces).not.toBe(second.node.interfaces)
-    expect(() => first.node.resource('mlag' as never)).toThrow(/no factory is registered/)
+    expect(first.node.vrfs).not.toBe(second.node.vrfs)
+    expect(() => first.node.resource('stp' as never)).toThrow(/no factory is registered/)
   })
 })
