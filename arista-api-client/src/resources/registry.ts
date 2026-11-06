@@ -33,8 +33,10 @@
 import { NotSupportedError } from '../errors'
 import { AclsResource } from './acl'
 import { InterfacesResource } from './interfaces'
+import { NtpResource } from './ntp'
 import { SwitchportsResource } from './switchports'
 import { SystemResource } from './system'
+import { UsersResource } from './users'
 import { VarpResource } from './varp'
 import { VlansResource } from './vlans'
 import type { Node } from '../command-layer'
@@ -69,6 +71,10 @@ export interface ResourceKinds {
   switchports: SwitchportsResource
   /** Every interface's presence and shared configuration — `src/resources/interfaces.ts`, port of pyeapi `api/interfaces.py` (M10a slice). */
   interfaces: InterfacesResource
+  /** The local usernames — `src/resources/users.ts`, port of pyeapi `api/users.py` (W2a #35). */
+  users: UsersResource
+  /** The global NTP configuration — `src/resources/ntp.ts`, port of pyeapi `api/ntp.py` (W2a #35). */
+  ntp: NtpResource
   /** Both kinds of `ip access-list` section — `src/resources/acl.ts`, port of pyeapi `api/acl.py` (W2b slice, #37). */
   acls: AclsResource
   /** The virtual-router MAC plus the per-interface virtual-router addresses — `src/resources/varp.ts`, port of pyeapi `api/varp.py` (W2b slice, #38). */
@@ -102,6 +108,8 @@ export const RESOURCE_FACTORIES: ResourceFactories<ResourceKinds> = Object.freez
   vlans: (node) => new VlansResource(node),
   switchports: (node) => new SwitchportsResource(node),
   interfaces: (node) => new InterfacesResource(node),
+  users: (node) => new UsersResource(node),
+  ntp: (node) => new NtpResource(node),
   acls: (node) => new AclsResource(node),
   varp: (node) => new VarpResource(node),
 })

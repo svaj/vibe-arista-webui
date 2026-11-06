@@ -366,6 +366,10 @@ export { InterfacesResource, INTERFACE_STATUS_COMMAND } from './resources/interf
 export { SwitchportsResource, SWITCHPORT_MODES, isSwitchportMode } from './resources/switchports'
 export { SystemResource } from './resources/system'
 export { VlansResource } from './resources/vlans'
+// W2a (#35): the two wave-2 modules ride the same browser-safe entry — `node.users` / `node.ntp`
+// and the encryption vocabulary, no deep imports.
+export { NtpResource } from './resources/ntp'
+export { UsersResource, USER_ENCRYPTIONS, isUserEncryption } from './resources/users'
 export { AclsResource, ACL_TYPES, ExtendedAclsResource, StandardAclsResource, isAclType, maskToPrefixlen, prefixlenToMask } from './resources/acl'
 export { VarpResource, VarpInterfacesResource } from './resources/varp'
 export { toArray } from './internal/collections'
@@ -390,6 +394,8 @@ export type {
 export type { Switchport, SwitchportAttrs, SwitchportMode, TrunkAttrs } from './resources/switchports'
 export type { SystemBanner, SystemBannerKind, SystemSettings } from './resources/system'
 export type { Vlan, VlanAttrs, VlanState } from './resources/vlans'
+export type { NtpServer, NtpSettings } from './resources/ntp'
+export type { User, UserAttrs, UserEncryption, UserSecretFormat } from './resources/users'
 export type {
   Acl,
   AclAction,

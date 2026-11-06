@@ -1184,6 +1184,68 @@ fails; a quiet-shaped log with placeholders and correct variable names does not)
 prints something new is caught by the scan rather than by review, and a leak forces a re-collect
 rather than a silent scrub. **Related:** DR-011, DR-065, DR-066, DR-013; §5 rows 109 / 147.
 
+### DR-089 — local-user reads report a secret's format, never the secret (W2a #35)
+pyeapi's `Users.get`/`getall` return the configured secret **text** — its read path puts the hash
+straight out of `username … secret …` into the caller's dict (`users.py:145`; the pinned fixture's
+values at `running_config.text:356-361`), and the docstring treats `format`+`secret` as ordinary
+fields. This client's reads answer a **browser**: a webui table built on `node.users.getAll()` would
+render, cache and re-log whatever the switch stores, and a `cleartext` (`secret 0 …`) user would ship
+the operator's password. DR-088/DR-011 already treat credential leakage as a property of the *output
+channel*, not of intent.
+**Decision:** `User` carries `secretFormat` — the config marker (`0`/`5`/`7`/`sha512`) or `nologin`
+for the `*` spelling this client's own `nologin` create writes — and the secret text is dropped at
+parse time inside `users.ts`, before any record is constructed: there is no code path from a section
+key to a returned `secret`. The asymmetry in upstream's favor is closed too — its reader could not
+even see its own `secret *` write (row 152) — because "the account is locked out" is a fact the UI
+must show. Nothing about the write path changes: secrets still go out exactly as upstream composes
+them.
+**Consequence:** the users table can show *that* an account is locked out or hash-protected without
+the webui ever holding the credential; a future "manage this user's password" screen must be a write
+only. Any later resource whose config embeds a key (`radius-server key`, `ntp authentication-key`,
+the TAPS token materials siblings may meet) inherits the same rule at parse time rather than at print
+time — a field is never added back "just for display". **Related:** DR-088, DR-011, DR-076, DR-027;
+§5 rows 151-152.
+
+### DR-090 — Ntp's Entity-alias presence verbs fold into one source-field verb set (W2a #35)
+`ntp.py` reads like a collection and behaves like a global: `class Ntp(Entity)` with
+`create(name)` that merely delegates to `set_source_interface` (`:107-116`; upstream's own test pins
+`create('Ethernet2')` to the command `ntp source Ethernet2`, `test_api_ntp.py:69-72`), plus
+`delete()`/`default()` that negate/default the **source word** (`:118-141`) while their names read
+like "remove/default all of NTP". One write, three names, two of them misleading about their blast
+radius — in a management UI whose whole safety story is that the label matches the command.
+**Decision:** no aliases. The module exposes `get`, `setSourceInterface`, `unsetSourceInterface`,
+`defaultSourceInterface`, `addServer`, `removeServer`, `removeAllServers` — one name per composed
+write — and `removeAllServers` keeps upstream's command and verb rather than inventing a narrower
+one, with its doc marking the `no ntp` scope claim (upstream's own comment, `:192-193`) as
+unverified-on-hardware (M12 #14 capture) exactly so a UI can treat it as the broad negation it may
+be. The upstream aliases' pinned **commands** are all ported; only their names are not.
+**Consequence:** there is no `Ntp.create`/`.delete`/`.default` for a codebase — or an agent trained
+on pyeapi examples — to find, and `ntp.test.ts` pins that absence on the instance so the decision
+stays visible at the seam. A W2 sibling wiring another upstream `Entity` with the same alias pattern
+(stp/mlag/varp lanes) has a precedent to fold toward instead of a per-module exception.
+**Related:** DR-004, DR-023/DR-030 (Entity base), DR-043; §5 rows 157, 77.
+
+### DR-091 — the `nologin` + `secret` pairing is refused, never composed with the input silently dropped (W2a #35)
+`users.create_with_secret` routes on `secret is not None or encryption == 'nologin'` (`users.py:169`)
+and its nologin arm then composes `username X secret *` **without the secret the caller passed**
+(`:196-199`) — probe of the pinned clone 2026-11-05; upstream's own
+`test_create_with_secret_nologin` (`test_api_users.py:78-81`) feeds `secret=''`
+alongside `nologin` and only the command shape is asserted, so nothing upstream says the argument
+survives. A form that accepts a password, then ignores it, is a UI bug generator: the operator typed
+a credential, pressed save, and got a locked-out account with no signal.
+**Decision:** `encryption: 'nologin'` with **any** `secret` — including `''` — is a refusal naming
+both halves and the upstream line that drops it; the honest call is `nologin` alone (which composes
+the same `username X secret *` line, and the read then reports `secretFormat: 'nologin'` per DR-089's
+marker rule) or a real hash under its own `encryption`. The refusals run before anything is composed,
+pinned with `sent() === []`.
+**Consequence:** the "mutually exclusive" wording the pyeapi docstring only implied
+(`:44-49`) becomes enforced vocabulary at the verb boundary; the pairing bug cannot ride into
+`arista-webui` forms as a silent behavior. And the port's ledger keeps upstream's nologin **command**
+pin intact — the divergence is in what inputs are accepted, recorded at row 154, not in what goes to
+the device. **Related:** DR-077, DR-037, DR-089, DR-005; §5 rows 152/154.
+
+---
+
 ### DR-092 — the ACL facade answers named verbs that resolve the ACL's kind from the switch's own header text, instead of attribute-name dispatch (W2b #37 #38)
 Upstream's `Acls` object answers any method a caller invents: `__getattr__` wraps
 `ProxyCall(self.marshall, name)` (`api/acl.py:114-115`) and `marshall` pulls the ACL name out of

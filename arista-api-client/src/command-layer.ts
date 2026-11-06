@@ -65,8 +65,10 @@ import type { ConfigSections } from './config/chunk'
 import type { SectionPattern } from './config/section'
 import type { AclsResource } from './resources/acl'
 import type { InterfacesResource } from './resources/interfaces'
+import type { NtpResource } from './resources/ntp'
 import type { SystemResource } from './resources/system'
 import type { SwitchportsResource } from './resources/switchports'
+import type { UsersResource } from './resources/users'
 import type { VarpResource } from './resources/varp'
 import type { VlansResource } from './resources/vlans'
 import type { ResourceKinds, ResourceName } from './resources/registry'
@@ -889,6 +891,25 @@ export class Node {
    */
   get varp(): VarpResource {
     return this.resource('varp')
+  }
+
+  /**
+   * The `users` resource — same per-`Node` {@link resourceMemo} as the accessors above (DR-052):
+   * `node.users === node.users === node.resource('users')`. pyeapi reaches it through
+   * `node.api('users')` → `users.py:317-328` `instance(node)`; the accessor itself has no upstream
+   * counterpart (DR-006). Added by W2a (#35).
+   */
+  get users(): UsersResource {
+    return this.resource('users')
+  }
+
+  /**
+   * The `ntp` resource — same per-`Node` {@link resourceMemo} (DR-052):
+   * `node.ntp === node.ntp === node.resource('ntp')`, the global sibling of {@link system}. pyeapi's
+   * factory is `ntp.py:198-208` and its accessor never was (DR-006). Added by W2a (#35).
+   */
+  get ntp(): NtpResource {
+    return this.resource('ntp')
   }
 
   /**
