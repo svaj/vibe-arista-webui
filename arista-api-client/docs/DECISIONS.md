@@ -1184,6 +1184,60 @@ fails; a quiet-shaped log with placeholders and correct variable names does not)
 prints something new is caught by the scan rather than by review, and a leak forces a re-collect
 rather than a silent scrub. **Related:** DR-011, DR-065, DR-066, DR-013; §5 rows 109 / 147.
 
+### DR-096 — the spanning-tree mode list is this client's write grammar, checked even where upstream's own guard skips itself (W2c #39)
+`stp.py` contradicts itself about its one global field three times: `get()`'s docstring draws a `mode`
+key the code never reads (`:109-113` vs `:115-116`); `set_mode` hard-codes its accepted values but only
+checks them when neither flag kwarg is set (`:150` wraps `:151-153`), so its `default`/`disable` arms
+validate nothing; and the module calls `mode` "not defaultable" (`:135-136`) while the `default=True`
+arm emits `default spanning-tree mode` anyway (pinned at `test_api_stp.py:71-74`). The list itself is
+version-scoped prose — "accepted values **for this version**" (`:38-41`) — and the feature-matrix
+reading this repo carries derives Rapid-PVSTP/MST presence from the 7050X family, not from this unit.
+**Decision:** all three faults are corrected as **client grammar**, never recorded as hardware facts.
+`get()` answers `mode`, read from the chunked document's indent-0 keys exactly like `hostname` (DR-055),
+with the token kept verbatim (`string` + `isStpMode`) so a device that spells something else is
+reported, not dropped or narrowed. `setMode`'s guard over `STP_MODES` is the same literal list
+(`stp.py:151`) but **unconditional** — upstream's conditionality is an artifact of its kwargs folding,
+and with three named verbs (DR-037) there is no arm left for a skipped check to hide in. A refusal is a
+`NotSupportedError` naming the value (DR-005/DR-053) whose message points at the M11 (#13) capability
+probe as the feature gate, so no hard-coded list ever pretends to know the SKU (DR-032).
+`default spanning-tree mode` is sent by the verb that names upstream's arm, docstring aside: whether
+EOS 4.28.13.1M accepts it, or `mstp`/`none` at all on a 7050TX-64, is an M12 (#14) capture, and every
+verb has a pinned `CommandError` path as the device's answer channel.
+**Consequence:** the mode set is pinned by code and tests, not by docstring prose; a device token
+outside `mstp`/`none` stays visible on the read side, and widening the write side without an M11 probe
+first is the anti-pattern the refusal message itself names. Upstream's behaviors (mode never readable;
+flag arms unchecked; the "not defaultable" default sent anyway) stay recorded as §5 row 167's pinned
+divergences rather than silently normalized. **Related:** DR-005, DR-032, DR-037, DR-053, DR-055;
+§5 row 167.
+
+### DR-097 — the same `mtu` line is owned by two resources: that is said out loud and pinned, never coordinated (W2c #40)
+The indent-1 `mtu <n>` line inside an `interface <name>` section already belongs to M10a:
+`interfaces.ts` reads and writes it, and its own divergence 7 records that the closest upstream code
+for the field lives in a *different module* — `ipinterfaces.py`, which this lane ported. Upstream
+carried the same duplication with two different guards (`ipinterfaces.py` checks `68..65535` from
+constants that are an IP-MTU reading of RFC 791/8200, not a captured EOS floor or ceiling;
+`interfaces.py` never carries the field at all). The two directions a repo can take — merge the field
+into one resource, or add cross-resource write tracking — both invent promises this client has never
+made, and PLAN's resource boundaries still mirror pyeapi's modules.
+**Decision:** **no** ownership marker, invalidation hook, or coordination primitive. The reads agree by
+construction — both resources parse the same section from the same chunk-and-memoized config
+(DR-026/DR-030) — so one truth per line is a property of the pipeline, not of a protocol. Writes stay
+independent transactions, and the contract is the honest one: whatever the device last accepted is
+what the next read reports, and the client claims nothing beyond that. The guards stay different on
+purpose: `ipinterfaces.setMtu` keeps upstream's `68..65535` because that module is the L3 view and that
+is the range upstream ships (`:54-55`, `:246-249`, with `0` refused as out-of-range, which also closes
+upstream's `value=0` → `no mtu` fall-through); `interfaces.setMtu` refuses only non-integer/non-positive
+input because an L2 field should not be policed by an IP range. Each refusal names the range it checked,
+so calling the wrong resource produces a wrong-range refusal with a legible reason instead of a confusing
+success (DR-053/DR-032), and the range values themselves remain "unverified on hardware, M12 #14 to
+capture".
+**Consequence:** one pin proves the reads agree (`the same line reads identically through interfaces and
+ipinterfaces`) and one pin proves the guards differ (`each refusal says which range it checked`); a UI
+moving between the two resources is told which one it is holding. If a live capture shows the `68` floor
+or the `65535` ceiling wrong on this SKU, it lands against row 174 and these constants, and revisiting
+the split is then a spec question with evidence, not a lane-local reflex.
+**Related:** DR-026, DR-030, DR-032, DR-053, DR-059; §5 rows 102 / 174.
+
 ---
 
 ## Open items (need the device)

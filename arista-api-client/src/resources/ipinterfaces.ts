@@ -26,8 +26,9 @@
  * `test_set_address_invalid_value_raises_value_error` (`:100-108` — which does **not** raise: its own
  * comment says "If command_builder fails because value is None, uncomment above lines", `:102-105`, and it
  * pins `no ip address` instead), `test_set_mtu_with_values` (`:110-115`), `test_set_mtu_with_no_value`
- * (`:117-121`), `test_set_mtu_default` (`:123-127`, which despite its name pins only `default mtu` and
- * ignores the `disable` value it computes at `:124-126`), `test_set_mtu_invalid_value_raises_value_error`
+ * (`:117-121`), `test_set_mtu_default` (`:123-127`, which despite its name pins only the `default mtu`
+ * arm — its whole body is the loop, the one-element `cmds` and the `default=True` call, and no `disable`
+ * value is computed anywhere in it), `test_set_mtu_invalid_value_raises_value_error`
  * (`:129-140`, `67`/`65536`/`'a…'` raise, while `None` again answers `no mtu` per its `:135-137`
  * commentary). The spans this header carried when the lane opened were eight lines early from
  * `test_get` on (`:47-55`, `:62-73`, `:106-111`, …) — those are the `INTERFACES` list at `:47-48` and the
@@ -106,8 +107,9 @@
  *    ports accept 65535, and what the real L2 minimum is, stay M12 (#14) captures (DR-032).
  * 6. **`set`/`unset`/`default` instead of pyeapi's three flag kwargs** (row 174). Upstream's `set_address`
  *    and `set_mtu` both fold a value-less call into the **negated** command (the `value=None` fall-through
- *    at `abstract.py:160-161`, which its own tests pre-armed with comments at `:99-101` and `:133-135`),
- *    and DR-037 splits those three intents into three named verbs here. `setBpduguard`-style
+ *    at `abstract.py:160-161`); its own tests pre-armed that swap with the comments at
+ *    `test_api_ipinterfaces.py:102-105` and `:135-137`. DR-037 splits those three intents into three named
+ *    verbs here. `setBpduguard`-style
  *    booleans do not exist in this module: `setAddress` takes the address string, `setMtu` takes the
  *    number, and negation is a different verb.
  * 7. **input guards where upstream has none** (row 174). Nothing in `ipinterfaces.py` checks a name, so

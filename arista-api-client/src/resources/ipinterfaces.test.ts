@@ -18,13 +18,15 @@
  * The spans `ipinterfaces.ts` cited for that file were **off by eight** — it cited `test_get` at `:47-55`,
  * `test_instance_functions` at `:62-73` and the two pre-armed comments at `:99-101` / `:133-135`, which are
  * the *class* lines (`INTERFACES` is at `:47-48`) and an eight-line shift on everything after; fixed in this
- * commit. The module refs (`ipinterfaces.py:60-256`) and the framework refs (`abstract.py:82-101`,
+ * commit. The module refs (`ipinterfaces.py:60-254` — the class body ends at `:254`; `instance` at `:257-268`
+ * was cited right) and the framework refs (`abstract.py:82-101`,
  * `:129-164`, `:166-178`, `client.py:747-750`, `:789-798`) all resolve as cited.
  *
  * Two upstream test artifacts are worth naming because they shaped what got pinned:
  *  - `test_set_mtu_default` (`:123-127`), despite its name, only ever asserts `default mtu`: its body
- *    iterates a single-element `cmds` list and ignores a `disable` variable it computes (`:124-126`), so the
- *    `no mtu` arm has exactly one pin (`:117-121`). Both arms are pinned separately below.
+ *    (`:124-126`) is the loop, the one-element `cmds` build and the `default=True` call — no `disable`
+ *    value appears anywhere in it — so the `no mtu` arm has exactly one pin (`:117-121`). Both arms are
+ *    pinned separately below.
  *  - `test_set_address_invalid_value_raises_value_error` (`:100-108`) and
  *    `test_set_mtu_invalid_value_raises_value_error` (`:129-140`) each pin the *negation* as a **success**,
  *    because upstream's `command_builder` still answers `value=None` with `'no %s'` (`abstract.py:160-161`).

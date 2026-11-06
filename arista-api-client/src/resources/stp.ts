@@ -18,7 +18,7 @@
  * |---|---|
  * | `Stp(Entity)` (`:61`), `__init__` caching `_interfaces`/`_instances` (`:88-91`) | {@link StpResource} extends `Entity<StpSettings>` (`base.ts:194-206`); the two sub-resources are memoised the same way — {@link StpResource.interfaces} / {@link StpResource.instances} (`:118-130`) |
  * | `get` (`:93-116`): `return dict(interfaces=self.interfaces.getall(), instances=self.instances.getall())` (`:115-116`) — **no `mode` key**, although the docstring's own shape says `{"mode": [mstp, none], …}` (`:109-113`) | {@link StpResource.get} returns `{ mode?, interfaces, instances }`: the two upstream halves plus the `spanning-tree mode …` line the docstring promises and the code never reads (row 167) |
- * | `set_mode` (`:132-156`): `if value not in ['mstp', 'none']: raise ValueError` (`:151-153`), then `command_builder('spanning-tree mode', value=…, default=…, disable=…)` → `self.configure` (`:154-156`) | {@link StpResource.setMode} / {@link StpResource.unsetMode} / {@link StpResource.defaultMode} — the same three command texts, the `default=`/`disable=` kwargs become the mode table (`command-builder.ts`, DR-037), and upstream's `ValueError` becomes a `NotSupportedError` naming the value (DR-005/DR-053) |
+ * | `set_mode` (`:132-156`): `if not default and not disable:` (`:150`) wraps `if value not in ['mstp', 'none']: raise ValueError` (`:151-153`), so the flag arms skip validation entirely; then `command_builder('spanning-tree mode', value=…, default=…, disable=…)` → `self.configure` (`:154-156`) | {@link StpResource.setMode} / {@link StpResource.unsetMode} / {@link StpResource.defaultMode} — the same three command texts, the `default=`/`disable=` kwargs become the mode table (`command-builder.ts`, DR-037), and upstream's `ValueError` becomes a `NotSupportedError` naming the value (DR-005/DR-053), checked unconditionally (row 167, **DR-096**) |
  * | `StpInstances(EntityCollection)` (`:159`), `getall` (`:167-169`) = `# TODO: (privateip, 20150106) stubbed out, needs implementation` + `return dict()` | {@link StpInstancesResource.getAll} answers an **empty table with zero reads**, and its entry type is `never` — the type-level statement that nothing is read here (row 171) |
  * | `StpInterfaces(EntityCollection)` (`:172`), `get` (`:181-211`): `isvalidinterface` gate (`:203-204`), `get_block(r'^interface\s%s$' % name)` (`:206`), three `_parse_*` merged with `dict.update` (`:207-210`) | {@link StpInterfacesResource.get} — same field set, typed record, `undefined` for absence (DR-027) |
  * | `_parse_bpduguard` (`:213-215`) `'spanning-tree bpduguard enable' in config`, `_parse_portfast` (`:217-219`) `'no spanning-tree portfast' not in config`, `_parse_portfast_type` (`:221-228`) `network`/`normal`/`edge` chain | {@link stpInterfaceFromBlock} — command-line-scoped versions of the same three rules (row 170) |
@@ -70,10 +70,15 @@
  *    by name here as it is by upstream — **that refusal in this client is not a hardware claim**: the 4.28
  *    feature matrix derives Rapid-PVSTP/MST presence from the 7050X family, and the feature gate is the
  *    M11 (#13) capability probe, not a hard-coded mode list (DR-005/DR-032, **DR-096**).
- * 2. **`set_mode` refuses a mode this client does not spell** (row 167, same as upstream's `:151-153`
- *    `ValueError`) with `NotSupportedError` naming the value, and `unsetMode`/`defaultMode` carry the two
- *    flag kwargs upstream folds into the same call (`abstract.py:152-155`, pinned by
- *    `test_api_stp.py:67-75`).
+ * 2. **`set_mode` refuses a mode this client does not spell** (row 167) with `NotSupportedError` naming
+ *    the value. Upstream refuses the same way (`ValueError` at `:151-153`) but **conditionally**: its
+ *    `if not default and not disable:` wrapper (`:150`) skips validation for the flag arms, so
+ *    `set_mode('anything', disable=True)` sends `no spanning-tree mode` unchecked, while a no-arg
+ *    `set_mode()` is the `ValueError` (`None` is not in the list) — the split verbs make the
+ *    conditionality meaningless here, so the guard is unconditional. Upstream pins the four texts at
+ *    `test_api_stp.py:65-84` (`mstp`/`none` `:65-69`, `default spanning-tree mode` `:71-74`, `no
+ *    spanning-tree mode` `:76-79`, invalid value `:81-84`); the two flag kwargs land on the same
+ *    command-builder arms (`abstract.py:152-155`), which is what `unsetMode`/`defaultMode` carry.
  * 3. **the spanning-tree name gate is upstream's own, not the M10 grammar** (row 168). `stp.py` ships a
  *    *private* `isvalidinterface` (`:346-363`) that is only `value[0:2] in ['Et','Po']` — a different rule
  *    from `interfaces.py:81-83` and from {@link assertInterfaceName}. Reads keep the two-character gate, so
@@ -83,7 +88,7 @@
  *    kind ∈ {Ethernet, Port-Channel}, so the shorthands (`Et1`, `Po1`), the junk prefixes upstream accepts
  *    (`Poke1`) and the chassis/dotted forms (DECISIONS open item 7) all refuse at zero round trips, naming
  *    why. Upstream's own refusals are `ValueError('invalid interface value specified')` for the same family
- *    (`:251-252`, pinned by `test_api_stp.py:145-148`, `:178-181`, `:207-210`).
+ *    (`:251-252`, pinned by `test_api_stp.py:121-124`, `:153-156`, `:181-184`).
  * 4. **discovery cannot crash and cannot hallucinate** (row 169). Upstream's `getall` regex-scans the
  *    whole config (`:240`) and calls `get` per hit (`:245`), and `get` runs its substring parsers on
  *    whatever `get_block` returned (`:206-210`) — probe: a column-0 `interface Et1` line inside a
@@ -91,7 +96,7 @@
  *    `TypeError: argument of type 'NoneType' is not iterable` (`_parse_bpduguard`, `:214`), and
  *    `get('Et1')`/`get('Ethernet99')` on a section the switch does not have raise the same way rather than
  *    answering the `None` their docstring promises (`:201-204`). Here membership iterates the chunked
- *    document's indent-0 keys (`config/chunk.ts`, `client.py:741-747`) and an absent name answers
+ *    document's indent-0 keys (`config/chunk.ts`, `client.py:741-750`) and an absent name answers
  *    `undefined` (DR-027). One `show running-config all` for the whole table, zero reads for a single-field
  *    write (DR-030).
  * 5. **the records keep the fields, and the defaults are the ones upstream answers** (row 170). An
@@ -123,15 +128,15 @@
  * 8. **the two flag-shaped writers are split into three verbs** (row 172). `set_portfast(name)` with no
  *    value produces the deprecated negation through `command_builder`'s `else:` arm (`:310-311` →
  *    `abstract.py:160-161`), and `set_bpduguard`'s "no value" arm is a **word**, not a negation, because
- *    `value=False` becomes `'disable'` at `:339` — pinned by `test_api_stp.py:160-164`
- *    (`spanning-tree bpduguard disable`) vs `:172-176` (`no spanning-tree bpduguard`). DR-037's
+ *    `value=False` becomes `'disable'` at `:339` — pinned by `test_api_stp.py:135-139`
+ *    (`spanning-tree bpduguard disable`) vs `:147-151` (`no spanning-tree bpduguard`). DR-037's
  *    `set`/`unset`/`default` verbs keep all four command texts distinguishable, and
  *    {@link StpInterfacesResource.setBpduguard} keeps the boolean-to-word mapping upstream has because
  *    those two words are what the config reads back (row 170's reader).
  * 9. **`setPortfastType` has no `None` arm** (row 172). Upstream lists `None` in its accept list (`:274`) and
  *    then interpolates it, so `set_portfast_type('Ethernet1', None)` sends the literal string
  *    `spanning-tree portfast None` (probe: `['interface Ethernet1', 'spanning-tree portfast None']`), and its
- *    `value='normal'` default (`:255`) is what `test_api_stp.py:133-137` pins. Here the value is required and
+ *    `value='normal'` default (`:255`) is what `test_api_stp.py:109-113` pins. Here the value is required and
  *    grammar-checked; a caller wanting `normal` names it.
  */
 
@@ -257,7 +262,7 @@ function refuse(label: string, value: unknown, because: string): never {
  * Ethernet and Port-Channel interfaces", `:194-195`) where its code states a two-character prefix test
  * (`:363`). Upstream validates an STP port name **only** with that prefix test (`:251-252`), so writing to
  * `Et1`/`Poke1` is legal there (`ValueError('invalid interface value specified')` is what `Vlan20` gets —
- * pinned by `test_api_stp.py:145-148`/`:178-181`/`:207-210`). Here both refusals are `NotSupportedError`
+ * pinned by `test_api_stp.py:121-124`/`:153-156`/`:181-184`). Here both refusals are `NotSupportedError`
  * at zero round trips (row 168).
  */
 function assertStpPortName(verb: string, value: unknown): asserts value is string {
@@ -425,8 +430,9 @@ export class StpResource extends Entity<StpSettings> {
 
   /**
    * `spanning-tree mode <mode>` — pyeapi's `set_mode(value=…)` (`:154-155`), whose command texts
-   * `test_api_stp.py:60-65` pins (`mstp`, `none`). The value is {@link assertStpMode}-checked exactly as
-   * upstream checks it (`:151-153`), and the refusal is this client's grammar rather than a hardware
+   * `test_api_stp.py:65-69` pins (`mstp`, `none`). The value is {@link assertStpMode}-checked with the
+   * same list upstream checks (`:151-153`) — but unconditionally, where upstream's check sits inside
+   * its `if not default and not disable:` wrapper at `:150` — and the refusal is this client's grammar rather than a hardware
    * statement (DR-096).
    */
   async setMode(mode: StpMode): Promise<void> {
@@ -434,13 +440,13 @@ export class StpResource extends Entity<StpSettings> {
     await this.configure(this.commandBuilder(MODE_KEYWORD, { value: mode }))
   }
 
-  /** `no spanning-tree mode` — upstream's `set_mode(disable=True)` (`:154-155`; `test_api_stp.py:72-75`). */
+  /** `no spanning-tree mode` — upstream's `set_mode(disable=True)` (`:154-155`; `test_api_stp.py:76-79`). */
   async unsetMode(): Promise<void> {
     await this.configure(this.commandBuilder(MODE_KEYWORD, { mode: 'no' }))
   }
 
   /**
-   * `default spanning-tree mode` — upstream's `set_mode(default=True)` (`test_api_stp.py:67-70`), whose
+   * `default spanning-tree mode` — upstream's `set_mode(default=True)` (`test_api_stp.py:71-74`), whose
    * docstring flags the parameter as "not defaultable" (`:135-136`) while still emitting the command. This
    * client sends what its own verb names and lets the device answer (DR-005); whether EOS 4.28 accepts
    * `default spanning-tree mode` is an M12 (#14) capture, and the pinned upstream test only proves
@@ -526,7 +532,7 @@ export class StpInterfacesResource extends EntityCollection<StpInterface, string
   /**
    * Every spanning-tree interface, keyed by section name in device order — pyeapi's `getall` (`:230-248`)
    * as a `ResourceTable` (row 78) with **one** config read (DR-030) instead of a read-plus-scan per entry.
-   * Upstream's own test only checks the type (`test_api_stp.py:118-120`), so the content here comes from
+   * Upstream's own test only checks the type (`test_api_stp.py:95-97`), so the content here comes from
    * probed upstream answers.
    */
   override async getAll(): Promise<ResourceTable<string, StpInterface>> {
@@ -570,12 +576,12 @@ export class StpInterfacesResource extends EntityCollection<StpInterface, string
   /**
    * `spanning-tree portfast <type>`, plus `spanning-tree portfast auto` for `'edge'` — pyeapi's
    * `set_portfast_type` (`:255-280`). The two-line pair is upstream's, pinned by
-   * `test_api_stp.py:122-131`, and is reproduced verbatim; so is the single line for `network`/`normal`.
+   * `test_api_stp.py:99-107`, and is reproduced verbatim; so is the single line for `network`/`normal`.
    *
    * `value` is required and grammar-checked: upstream's accept list admits `None` (`:274`) and then
    * stringifies it, so upstream's `set_portfast_type('Ethernet1', None)` really sends
    * `spanning-tree portfast None` (probe) — refused here (divergence 9). Upstream's `value='normal'`
-   * **default** (`:255`) is what `test_api_stp.py:133-137` pins for a value-less call; here the caller
+   * **default** (`:255`) is what `test_api_stp.py:109-113` pins for a value-less call; here the caller
    * names `normal`, because DR-037 refuses a verb whose meaning changes when an argument is left out.
    */
   async setPortfastType(name: string, value: PortfastType): Promise<void> {
@@ -587,7 +593,7 @@ export class StpInterfacesResource extends EntityCollection<StpInterface, string
 
   /**
    * `spanning-tree portfast` — pyeapi's `set_portfast(name, value=True)` (`:309-311`,
-   * `test_api_stp.py:183-193`). The bare command is the whole affirmative form; there is no value to pass.
+   * `test_api_stp.py:158-167`). The bare command is the whole affirmative form; there is no value to pass.
    */
   async setPortfast(name: string): Promise<void> {
     await this.configureStpInterface(name, [this.commandBuilder(PORTFAST_KEYWORD, { value: true })])
@@ -595,7 +601,7 @@ export class StpInterfacesResource extends EntityCollection<StpInterface, string
 
   /**
    * `no spanning-tree portfast` — upstream spells this two ways, `value=False` (`:307-308` folds it into
-   * `disable=True`) and `disable=True`, both pinned by `test_api_stp.py:183-199`; a **value-less** call
+   * `disable=True`, pinned at `test_api_stp.py:158-167`) and `disable=True` itself (`:169-173`); a **value-less** call
    * reaches the deprecated fall-through (`abstract.py:160-161`) and lands on the same `no …` text, which is
    * the ambiguity DR-037 removes by naming the intent.
    */
@@ -603,7 +609,7 @@ export class StpInterfacesResource extends EntityCollection<StpInterface, string
     await this.configureStpInterface(name, [this.commandBuilder(PORTFAST_KEYWORD, { mode: 'no' })])
   }
 
-  /** `default spanning-tree portfast` — upstream's `set_portfast(default=True)` (`test_api_stp.py:201-205`). */
+  /** `default spanning-tree portfast` — upstream's `set_portfast(default=True)` (`test_api_stp.py:175-179`). */
   async defaultPortfast(name: string): Promise<void> {
     await this.configureStpInterface(name, [this.commandBuilder(PORTFAST_KEYWORD, { mode: 'default' })])
   }
@@ -612,19 +618,19 @@ export class StpInterfacesResource extends EntityCollection<StpInterface, string
    * `spanning-tree bpduguard enable` / `spanning-tree bpduguard disable` — pyeapi's `set_bpduguard`
    * (`:339-343`), which turns the boolean into one of two **words** rather than into a negated command, and
    * defaults `value=False` (`:314`) so a value-less call writes the disable word (pinned separately by
-   * `test_api_stp.py:150-164`). Keeping the mapping is a read-back contract: {@link StpInterface.bpduguard}
+   * `test_api_stp.py:135-139`; the enable/disable pair itself is `:126-133`). Keeping the mapping is a read-back contract: {@link StpInterface.bpduguard}
    * is the presence of the `enable` line (row 170).
    */
   async setBpduguard(name: string, value: boolean): Promise<void> {
     await this.configureStpInterface(name, [this.commandBuilder(BPDUGUARD_KEYWORD, { value: value ? 'enable' : 'disable' })])
   }
 
-  /** `no spanning-tree bpduguard` — upstream's `set_bpduguard(disable=True)` (`test_api_stp.py:172-176`). */
+  /** `no spanning-tree bpduguard` — upstream's `set_bpduguard(disable=True)` (`test_api_stp.py:147-151`). */
   async unsetBpduguard(name: string): Promise<void> {
     await this.configureStpInterface(name, [this.commandBuilder(BPDUGUARD_KEYWORD, { mode: 'no' })])
   }
 
-  /** `default spanning-tree bpduguard` — upstream's `set_bpduguard(default=True)` (`test_api_stp.py:166-170`). */
+  /** `default spanning-tree bpduguard` — upstream's `set_bpduguard(default=True)` (`test_api_stp.py:141-145`). */
   async defaultBpduguard(name: string): Promise<void> {
     await this.configureStpInterface(name, [this.commandBuilder(BPDUGUARD_KEYWORD, { mode: 'default' })])
   }
