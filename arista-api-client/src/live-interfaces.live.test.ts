@@ -12,14 +12,14 @@
  *
  * | upstream (verified line @6816d9e) | ported? | here / why |
  * |---|---|---|
- * | `TestResourceInterfaces.test_getall` (`:64`) | ✅ read (M12a) + ✅ M12c membership half | upstream pre-writes `default interface <rintf>` (`:66`) then checks `<rintf>` and `Management1` are keys (`:68-70`). `Management1` exists on any bootable target, so M12a read the membership without any write; the **other** key of that loop is by definition a port the run configured, so M12c claims it only after its own guarded scratch write — see the `getall`-membership case below |
+ * | `TestResourceInterfaces.test_getall` (`:64`) | ✅ read (M12a) + ✅ M12c membership half | upstream pre-writes `default interface <rintf>` (`:66`) then checks `<rintf>` and `Management1` are keys (`:68-70`). M12a read the membership without a write and assumed `Management1` exists on any bootable target; the 2026-11-06 run shows that assumption is wrong for this image — `show running-config all` writes no `interface Management…`/`interface Ethernet…` section, and its single `interface …` header is `interface defaults`, which this grammar reads as a `kind: null` entry (§5 row 185). The membership half is therefore claimed only for a class the target writes, and the real membership half stays M12c's scratch-port case |
  * | `TestResourceInterfaces.test_get` (`:45`) | ✅ M12c — read-after-guarded-write | M12a declined this because the values it asserts (`description` `:58`, `shutdown` `:59`, `flowcontrol_send 'off'` `:60`, `flowcontrol_receive 'on'` `:61`, `sflow` False `:62`) are ones it had **just written** (`:48-53`) on a `random_interface` port. The M12c case writes the same five lines on the run's own `EAPI_SCRATCH_INTERFACE` (DR-035(b)) and then reads them through the typed record, so the read side is exercised without asserting a value the device never saw. Exactness is claimed only for what EOS must store; a field a device may treat as default reads absent and is logged instead (§5 row 186) |
  * | `test_create_and_return_true` (`:73`)/`test_delete_and_return_true` (`:86`), `..._sub_interface` (`:99`), `test_ethernet_set_and_unset_encapsulation` (`:115`), portchannel sub-intf (`:411`,`:440`) | ❌ skipped | mutate `Loopback0`, `Ethernet1.1`/`Port-Channel` **subinterfaces**. Loopback and subinterface creation are not the named base scratch port; and this client deliberately *refuses* Ethernet create/delete (`interfaces.ts` `assertPresentName`), an offline fact already asserted in `interfaces.test.ts` — see the two `_raises_not_implemented_error` rows |
  * | `test_create_ethernet_raises_not_implemented_error` (`:81`), `test_delete_ethernet_raises_not_implemented_error` (`:94`) | ❌ skipped | pure **client-side** refusals — no device round trip reaches EOS, so they cannot be *live* tests. They are this module's `NotSupportedError`; pinned offline |
  * | `test_set_encapsulation_*` (`:139`,`:145`), `test_set_vrf` (`:227`) | ❌ skipped | need a subinterface, `Vlan1234`, or a global `vrf instance test` write (`:240`) — the last is a global mutation the guarded session does not scope |
  * | `test_default` (`:151`), `test_set_sflow_enable/disable/default` (`:196`,`:206`,`:216`) | ✅ M12c — guarded scratch-port writes | M12a skipped these because the mutated port came from `random_interface`; on the named scratch port the writes are legal. `test_default`'s before/after read (`show interfaces <intf>` → `interfaces[intf]['interfaceStatus']`, `:154-162`) is answered here by `getStatus()` (this client's status command is `show interfaces status`, whose captured spelling is `linkStatus` — row 106), and upstream's `sleep(10)` link-settle wait (`:158`) is **not** ported: the case asserts the row exists and its columns are strings, and logs the before/after pair instead of encoding a timing assumption (§5 row 187). The sflow reads are `show running-config interfaces <intf>` **text** (`:202-204`, `:212-214`, `:222-224`) — the same text the new `show running-config` capture commits (§5 row 185) |
  * | `TestPortchannelInterface.test_get` (`:255`), member/LACP/minimum-links writes (`:264`–`:479`) | ❌ skipped | every case first `dut.config(['no interface Port-Channel1', 'interface Port-Channel1', …])` (`:256-257`, `:331-332`, `:340-345`, `:384-385`) and several add `channel-group 1 mode …` on **random** member ports (`:266-273`, `:341-343`). `Port-Channel…` is not an `Ethernet…` scratch name (DR-035(b)/DR-082), and a live LAG on ports the run did not name is exactly the mutation that rule exists to stop |
- * | `test_get_members_default` (`:330`), `test_get_lacp_mode_with_default` (`:383`) — **read half only** | ✅ M12c — read-only capability observation | upstream reaches `instance.get_members('Port-Channel1')` (`:335`) / `get_lacp_mode` (`:388`) only after a `Port-Channel1` write (`:331-332`, `:384-385`) this lane will not make. The two reads themselves mutate nothing, so the M12c case performs just them against a node with no channel configured and reports verbatim what the device says — a typed `string[]`, or the typed `CommandError` with the device's code. It does **not** claim upstream's `[]` (`:336`) or `'on'` (`:389`) answer, which belongs to a LAG upstream created; `'on'` is `interfaces.py:67`'s `DEFAULT_LACP_MODE`, this client's divergence 19 (§5 row 189) |
+ * | `test_get_members_default` (`:330`), `test_get_lacp_mode_with_default` (`:383`) — **read half only** | ✅ M12c — read-only capability observation, **settled live on 2026-11-06** | upstream reaches `instance.get_members('Port-Channel1')` (`:335`) / `get_lacp_mode` (`:388`) only after a `Port-Channel1` write (`:331-332`, `:384-385`) this lane will not make. The two reads themselves mutate nothing, so the M12c case performs just them against a node with no channel configured and reports verbatim what the device says. The run answered `getMembers → []` and `getLacpMode → undefined` for an unconfigured group, i.e. `show port-channel 1 all-ports` is **accepted** by eAPI on 4.28.14M (while `show port-channel detail` is a 1002 and `summary` is deprecated by `dense`) and the empty-member answer is the device's, not the `[]` upstream manufactured after creating the LAG. `'on'` remains `interfaces.py:67`'s `DEFAULT_LACP_MODE`, which this client refuses to invent — divergence 19, confirmed live (§5 row 189) |
  * | `TestApiVxlanInterface` (all 16, `:481`–`:659`) | ❌ skipped | `Vxlan1` source-interface/multicast/VTEP/VLAN — `Vxlan…` is neither an Ethernet scratch port nor a resource this client implements yet |
  *
  * M12a's line: it ports `test_getall` as a read and exercises `test_set_description` (`:164`) as the one
@@ -91,14 +91,29 @@ describe.skipIf(!ready)('live read: pyeapi test_api_interfaces.py (TestResourceI
       // parse (e.g. a chassis/ranges form) — both are legitimate, so assert the field exists and is one or the other.
       expect(intf.kind === 'Ethernet' || intf.kind === 'Management' || intf.kind === 'Port-Channel' || intf.kind === 'Loopback' || intf.kind === 'Vlan' || intf.kind === 'Vxlan' || intf.kind === null).toBe(true)
     }
-    // Upstream asserts `Management1` is a key (:70) after its own setup write (:66). This bare cEOS-lab node
-    // boots with an empty running-config and no interfaces on this host, so membership is claimed only when
-    // the target actually reports interface sections; otherwise the read *shape* still holds and the
-    // membership half is reported as not exercised (DR-034/DR-043 — no coverage dressed as a pass).
+    // Upstream asserts `Management1` is a key (:70) after its own setup write (:66). This run's container
+    // writes NEITHER a management nor an Ethernet section into `show running-config all` (§5 row 185), so
+    // membership is claimed only for a class the target actually writes. Everything the target does write
+    // is printed, including the section this client's grammar cannot call an interface, so a reviewer sees
+    // the same evidence the suite saw (DR-034/DR-043: no coverage dressed as a pass).
+    const keys = [...all.keys()]
+    console.log(`live-interfaces: getAll() keys on this target = ${JSON.stringify(keys.slice(0, 12))} (size ${String(all.size)})`)
     if (all.size === 0) {
-      console.warn('live-interfaces: getAll() reported 0 interface sections on this target — Management1 membership half NOT exercised (portless/empty-config container)')
+      console.warn('live-interfaces: getAll() reported 0 interface sections on this target — Management1 membership half NOT exercised (section-less container)')
     } else {
-      expect(all.has('Management1') || all.has('Management0')).toBe(true)
+      const management = keys.filter((name) => /^Management\d/u.test(name))
+      if (management.length === 0) {
+        console.warn('live-interfaces: this target writes no `interface Management…` section, so the Management1 membership half of :70 is NOT claimable here (§5 row 185)')
+      } else {
+        for (const name of management) expect(all.has(name)).toBe(true)
+      }
+      for (const name of keys) {
+        if (!/^(?:Ethernet|Port-Channel|Vlan|Management|Loopback|Vxlan)\d/u.test(name)) {
+          console.warn(
+            `live-interfaces: getAll() yielded ${JSON.stringify(name)} (kind null): \`show running-config all\` on cEOS-lab 4.28.14M contains an \`interface defaults\` block, which this client's grammar reads as an entry. Reported for the resource lane — this suite neither asserts nor blesses it (§5 row 185)`,
+          )
+        }
+      }
     }
   })
 })
@@ -320,9 +335,9 @@ describe.skipIf(!ready)('live read-only observation: pyeapi test_api_interfaces.
   it('the two port-channel READS answer a typed result or a typed device refusal, never a crash (get_members :335, get_lacp_mode :388 — read half only, §5 row 189)', async () => {
     // upstream only reaches these after creating Port-Channel1 (`:331-332`, `:384-385`), which DR-082 forbids
     // here. What is still verifiable without a write is what `show port-channel <grpid> all-ports` — the
-    // command `interfaces.ts:1531` ports from `interfaces.py:671-672` — actually answers on 4.28.14M when
-    // the channel does not exist. `interfaces.ts` currently says the shape of that answer is owed to M12;
-    // this test reports the half a cEOS container can settle, and only that half (DR-043).
+    // command `interfaces.ts` ports from `interfaces.py:671-672` — actually answers on 4.28.14M when
+    // the channel does not exist. The 2026-11-06 run settled it: `[]` and `undefined`. Only that half is
+    // claimed (DR-043).
     const outcomes: Record<string, string> = {}
     for (const verb of ['getMembers', 'getLacpMode'] as const) {
       try {

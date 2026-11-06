@@ -1077,11 +1077,17 @@ async function captureJson(pin, cmd) {
  *    without ever having held a capture of the sibling command (`interfaces.ts:179/212` cites the
  *    `show interfaces status` capture for the status half only).
  *
- * Requests are one command each, on the same pinned endpoint the readiness check used; `json`
- * entries keep `id: 'ceos-lab-capability'` because that id is what the capability-probe refusal
- * text in row 108's evidence names. A command that fails is returned as a **negative result**
- * (a cEOS-lab gap is evidence, not something to hide) and simply never becomes a file — §5 row 113's
- * count is derived from what the device answered, never from what this list hoped for.
+ * Requests are one command each, on the same pinned endpoint the readiness check used, and each is
+ * framed the way this client frames a read: **`enable` is prepended** (`src/command-layer.ts`'s
+ * `sendEnable` default, pyeapi `run_commands` at `client.py:876-925`, MIGRATION.md §5 row 82's
+ * `['enable', 'show running-config all']`). That framing is not cosmetic — observed on 2026-11-06, a
+ * bare `show running-config` / `show running-config all` request answers `1002 invalid command` while
+ * the same command preceded by `enable` answers the config text, so a capture set recorded without it
+ * would report the harness's framing as if it were the device's verdict. `json` entries keep
+ * `id: 'ceos-lab-capability'` because that id is what the capability-probe refusal text in row 108's
+ * evidence names. A command that fails is returned as a **negative result** (a cEOS-lab gap is evidence,
+ * not something to hide) and simply never becomes a file — §5 row 113's count is derived from what the
+ * device answered, never from what this list hoped for.
  *
  * @type {{command: string, format: 'text' | 'json', id: string, note?: string}[]}
  */
@@ -1095,7 +1101,13 @@ const CAPTURE_CATALOG = [
     command: 'show running-config',
     format: 'text',
     id: 'ceos-lab-text',
-    note: 'config text for the M6/M9/M10 section parsers — real device text replaces hand-authored fixture prose',
+    note: 'config text for the M6/M9/M10 section parsers — real device text replaces hand-authored fixture prose. This is the form the CLI shows an operator; over eAPI it answers only when preceded by `enable`, i.e. framed exactly as this client frames a read (both spellings of `show running-config` answered 1002 without it, observed 2026-11-06 — which is why the capture must not be recorded without the opener).',
+  },
+  {
+    command: 'show running-config all',
+    format: 'text',
+    id: 'ceos-lab-text',
+    note: 'the spelling this client actually puts on the wire (`configDefaults` defaults to pyeapi\'s `config_defaults` true, `client.py:506`), so this is the config text the parsers really see',
   },
   // JSON models.
   { command: 'show interfaces switching', format: 'json', id: 'ceos-lab-capability' },
@@ -1111,6 +1123,18 @@ const CAPTURE_CATALOG = [
     note: 'JSON envelope of the same config text (`output` string), recorded beside the text capture so a reviewer can diff the two spellings',
   },
   {
+    command: 'show running-config all',
+    format: 'json',
+    id: 'ceos-lab-capability',
+    note: 'the JSON envelope of the accepted spelling, kept beside the text capture so a reviewer can diff the two transports of the same device text',
+  },
+  {
+    command: 'show interfaces switchport',
+    format: 'json',
+    id: 'ceos-lab-capability',
+    note: 'the model-backed switchport read DR-018/DR-029 have always owed (DECISIONS open item 4). The 2026-11-06 run settled the command exists on 4.28.14M — it answers the JSON model `{"switchports":{}}`, empty because this container has no configured L2 port — while `show interfaces switching` stays a 1002 even with `enable`. So the model is real and the missing half is a configured port, not a missing command',
+  },
+  {
     command: 'show interfaces',
     format: 'json',
     id: 'ceos-lab-capability',
@@ -1120,7 +1144,13 @@ const CAPTURE_CATALOG = [
     command: 'show port-channel detail',
     format: 'json',
     id: 'ceos-lab-capability',
-    note: 'M10c Port-Channel model; a bare cEOS-lab node has no channel configured, so the device answer (or refusal) is the evidence',
+    note: 'M10c Port-Channel model; on cEOS-lab 4.28.14M this is a 1002 refusal and `show port-channel summary` is deprecated by `show port-channel dense` (both observed 2026-11-06), so the negative result is the finding',
+  },
+  {
+    command: 'show port-channel 1 all-ports',
+    format: 'json',
+    id: 'ceos-lab-capability',
+    note: 'the exact command `src/resources/interfaces.ts` sends for `getMembers` (the shape row 125 owed to M12). The 2026-11-06 run settled it: an unconfigured group answers `{"portChannels":{}}` over eAPI, which is why `getMembers` yields `[]` while the CLI says "Port-Channel1 not configured as LAG"',
   },
 ]
 
@@ -1133,13 +1163,19 @@ async function captureFromEapi(cfg, pin) {
   const out = []
   for (const entry of CAPTURE_CATALOG) {
     const { command, format, id, note } = entry
+    // `enable` first, exactly like the client's own round trip, then pop its reply off (`client.py:922-923`
+    // parity, asserted by `src/command-layer.config.test.ts`). The captured reply is the one for `command`.
+    const cmds = ['enable', command]
     try {
-      const reply = await eapiRunCmds(pin, { cmds: [command], format, id, timeoutMs: 20_000 })
+      const reply = await eapiRunCmds(pin, { cmds, format, id, timeoutMs: 20_000 })
+      if (!Array.isArray(reply.result) || reply.result.length < cmds.length) {
+        throw new Error(`runCmds answered ${String(reply.result?.length)} result(s) for ${String(cmds.length)} command(s)`)
+      }
       out.push({
         command,
         format,
         ok: true,
-        result: reply.result[0],
+        result: reply.result[cmds.length - 1],
         ...(note === undefined ? {} : { note }),
         ...(format === 'json' && note === undefined ? { note: 'capability observation' } : {}),
       })
@@ -1162,32 +1198,59 @@ async function captureFromEapi(cfg, pin) {
 /**
  * Fixture scrubbing. Three layers, deliberately blunt so a reviewer can see what was
  * removed:
- *  1. credential-shaped text (`username … secret …`, `enable …`, `secret <value>`);
+ *  1. credential-shaped text (`username … secret [sha512|5|plain] <value>`, `enable … password
+ *     <value>`, `login`/`passphrase`); the encryption-type keyword is part of the command, so the
+ *     token that gets replaced is the one AFTER it — M12c's `show running-config all` capture made
+ *     that distinction load-bearing, because the pre-existing pattern stopped at `secret` and would
+ *     have committed a real `$6$…` SHA-512 hash (observed 2026-11-06 on this image's own config);
  *  2. this run's **random username**, as an object key and inside strings — observed
  *     2026-11-03: `show management api http-commands` reports per-user stats, so the
  *     lab user's name otherwise lands in every API fixture;
  *  3. any string that looks like a PEM private key (never expected, but a fixture
  *     carrying key material is a security incident, not a typo).
+ *
+ * The rules run on **object keys too**: `show running-config` in `json` format answers EOS's
+ * structured config model, whose `cmds` map is keyed by the whole command line (observed
+ * 2026-11-06), so the `username … secret sha512 $6$…` line arrives as a KEY with a null value.
+ * Rewritten keys are made unique so a scrub can never silently drop a neighbouring entry.
+ * @param {string} text
+ * @param {readonly RegExp[]} userPatterns
+ */
+function redactCredentialText(text, userPatterns) {
+  let out = text
+    .replace(/(username\s+\S+\s+(?:privilege\s+\d+\s+)?(?:role\s+\S+\s+)?secret\s+(?:(?:sha512|sha256|md5|plain)\s+|[0-7]\s+)?)[^\s]+/gi, '$1<redacted-lab-secret>')
+    .replace(/(enable\s+algorithm\s+\S+\s+password\s+)[^\s]+/gi, '$1<redacted-lab-secret>')
+    .replace(/(enable\s+password\s+)[^\s]+/gi, '$1<redacted-lab-secret>')
+    .replace(/(username\s+\S+\s+secret\s+)[^\s]+/gi, '$1<redacted-lab-secret>')
+    .replace(/((?:enable|login|passphrase)\s+)(?:\S+)/gi, '$1<redacted-lab-secret>')
+  for (const p of userPatterns) out = out.replace(p, '<redacted-lab-user>')
+  if (/-----BEGIN (RSA |EC )?(PRIVATE KEY|ENCRYPTED)/.test(out)) out = '<redacted-private-key-material>'
+  return out
+}
+
+/**
  * @param {unknown} value
  * @param {string[]} [labUsernames]
  */
 function redactCopy(value, labUsernames = []) {
   const userPatterns = labUsernames.filter((u) => u && u.length >= 3).map((u) => new RegExp(escapeRegExp(u), 'g'))
-  if (typeof value === 'string') {
-    let out = value
-      .replace(/(username\s+\S+\s+privilege\s+\d+\s+role\s+\S+\s+secret\s+)\S+/gi, '$1<redacted-lab-secret>')
-      .replace(/(username\s+\S+\s+secret\s+)\S+/gi, '$1<redacted-lab-secret>')
-      .replace(/((?:enable|login|passphrase)\s+)(?:\S+)/gi, '$1<redacted-lab-secret>')
-    for (const p of userPatterns) out = out.replace(p, '<redacted-lab-user>')
-    if (/-----BEGIN (RSA |EC )?(PRIVATE KEY|ENCRYPTED)/.test(out)) out = '<redacted-private-key-material>'
-    return out
-  }
+  if (typeof value === 'string') return redactCredentialText(value, userPatterns)
   if (Array.isArray(value)) return value.map((v) => redactCopy(v, labUsernames))
   if (value && typeof value === 'object') {
     /** @type {Record<string, unknown>} */
     const out = {}
+    /** @type {Set<string>} */
+    const used = new Set()
     for (const [k, v] of Object.entries(value)) {
-      const key = userPatterns.length > 0 && labUsernames.includes(k) ? '<redacted-lab-user>' : k
+      let key = redactCredentialText(k, userPatterns)
+      if (used.has(key)) {
+        // Only a rewritten key can collide (the device's own map had unique keys), and a collision must
+        // never cost an entry: keep both, visibly.
+        let n = 1
+        while (used.has(`${key} #${String(n)}`)) n += 1
+        key = `${key} #${String(n)}`
+      }
+      used.add(key)
       if (/^(secret|password|passphrase|token|authorization|sshPublic?Key|publicKey|privateKey)$/i.test(key)) {
         out[key] = '<redacted-lab-secret>'
         continue
@@ -1269,7 +1332,7 @@ function writeFixtures(cfg, state, probe) {
         tlsPinFingerprint256: probe.anchor.fingerprint256,
         bootupTimestamp: probe.identity.bootupTimestamp,
         redactionApplied: [
-          'username/secret and enable/passphrase text replaced with <redacted-lab-secret>',
+          'username/secret and enable/passphrase text replaced with <redacted-lab-secret>, including the encryption-type form (`secret sha512 <hash>`, `enable algorithm <algo> password <hash>`) and **object keys**, because `show running-config` in `json` format keys its `cmds` map by the whole command line — the lab `username … secret sha512 $6$…` line is a key there, not a value (observed 2026-11-06)',
           `this run's random lab username replaced with <redacted-lab-user> (API user-stats otherwise leak it)`,
           'every MAC-shaped string under a *mac*-named key zeroed, at any depth (M12c: `show interfaces` / `show port-channel detail` carry a MAC per interface, not only systemMacAddress/hwMacAddress/configMacAddress)',
           'no key material: the container keeps the key in a sibling file (capikey.pem) that is never read',

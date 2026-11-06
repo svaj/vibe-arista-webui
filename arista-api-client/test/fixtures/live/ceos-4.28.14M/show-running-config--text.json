@@ -1,0 +1,38 @@
+{
+  "metadata": {
+    "targetClass": "lab",
+    "targetKind": "ceos-container",
+    "imageTag": "arista/ceos:4.28.14M",
+    "imageId": "sha256:8fd4e31caeba5db82d706eaed00252d67a1caa7d68670e5bd7e2af54935f2e28",
+    "imageRepoDigests": [
+      "arista/ceos@sha256:8fd4e31caeba5db82d706eaed00252d67a1caa7d68670e5bd7e2af54935f2e28"
+    ],
+    "aristaVersion": "4.28.14M-50015774.42814M (engineering build)",
+    "aristaVersionBase": "4.28.14M",
+    "internalVersion": "4.28.14M-50015774.42814M",
+    "modelName": "cEOSLab",
+    "hardwareEvidence": "none — cEOS-lab container capture; not DCS-7050TX-64 / 4.28.13.1M evidence (DR-043)",
+    "runId": "lab-811108-5dcd01",
+    "capturedAt": "2026-11-06T16:11:43.540Z",
+    "capturedBy": "scripts/ceos-lab.mjs",
+    "endpoint": "127.0.0.1:46419",
+    "transport": "https + HTTP basic auth to the run-owned published loopback port; container-side pinned certificate",
+    "tlsPinFingerprint256": "994C09E179BB96187AB4FDDD83FCF3DE5FC4C8FCC3FBCFE6110671A52C062A08",
+    "bootupTimestamp": 1793981465.5379803,
+    "redactionApplied": [
+      "username/secret and enable/passphrase text replaced with <redacted-lab-secret>, including the encryption-type form (`secret sha512 <hash>`, `enable algorithm <algo> password <hash>`) and **object keys**, because `show running-config` in `json` format keys its `cmds` map by the whole command line — the lab `username … secret sha512 $6$…` line is a key there, not a value (observed 2026-11-06)",
+      "this run's random lab username replaced with <redacted-lab-user> (API user-stats otherwise leak it)",
+      "every MAC-shaped string under a *mac*-named key zeroed, at any depth (M12c: `show interfaces` / `show port-channel detail` carry a MAC per interface, not only systemMacAddress/hwMacAddress/configMacAddress)",
+      "no key material: the container keeps the key in a sibling file (capikey.pem) that is never read",
+      "serialNumber is the empty string on this cEOS-lab image and is kept verbatim"
+    ]
+  },
+  "command": "show running-config",
+  "format": "text",
+  "result": {
+    "output": "! Command: show running-config\n! device: 3b7d2ee1fb0f (cEOSLab, EOS-4.28.14M-50015774.42814M (engineering build))\n!\nno aaa root\n!\nusername <redacted-lab-user> privilege 15 role network-admin secret sha512 <redacted-lab-secret>\n!\ntransceiver qsfp default-mode 4x10G\n!\nservice routing protocols model ribd\n!\nagent Bfd shutdown\nagent PowerManager shutdown\nagent LedPolicy shutdown\nagent Thermostat shutdown\nagent PowerFuse shutdown\nagent StandbyCpld shutdown\nagent LicenseManager shutdown\n!\nhostname 3b7d2ee1fb0f\n!\nspanning-tree mode mstp\n!\nmanagement api http-commands\n   no shutdown\n!\nno ip routing\n!\nend\n",
+    "warnings": [
+      "Command: show running-config"
+    ]
+  }
+}
