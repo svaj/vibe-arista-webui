@@ -61,7 +61,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { Node } from '../command-layer'
-import { CommandError, ConfigParseError, EapiErrorCode, NotSupportedError } from '../errors'
+import { CommandError, ConfigParseError, EapiErrorCode } from '../errors'
 import { mockTransport, type MockTransport } from '../testing/mock-transport'
 import type { Vrf, VrfsResource } from './vrfs'
 
@@ -534,11 +534,13 @@ describe('VrfsResource guards — vrfs.py validates nothing; refusals cost zero 
     await expectError(() => vrfs.setVrfRd('blah', '  '), /invalid vrf rd/)
     await expectError(() => vrfs.setVrfRd('blah', 'pad '), /leading or trailing whitespace/)
     await expectError(() => vrfs.setVrfRd('blah', 'in ner'), /one token|inner whitespace/)
+    await expectError(() => vrfs.setVrfRd('blah', 'inner'), /control character/)
     await expectError(() => vrfs.setVrfRd('blah', 1500 as unknown as string), /invalid vrf rd/)
     await expectError(() => vrfs.setVrfDescription('blah', 'PAD '), /leading or trailing whitespace/)
     await expectError(() => vrfs.setVrfDescription('blah', 'has"quote'), /cannot round-trip/)
     await expectError(() => vrfs.setVrfDescription('blah', 'ing\x07rat'), /control character/)
     await expectError(() => vrfs.setVrfDescription('blah', ''), /empty description is refused/)
+    await expectError(() => vrfs.setVrfDescription('blah', 1500 as unknown as string), /expected a string description/)
     // The empty-rd clear intent is the named verb, never a falsy value (DR-037). The earlier refusals
     // sent nothing, so the only traffic here is the detection read and this one write.
     await vrfs.unsetVrfRd('blah')

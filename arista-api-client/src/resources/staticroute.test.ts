@@ -324,7 +324,12 @@ describe('StaticRouteResource guards — staticroute.py validates nothing; refus
     await expectError(() => staticroute.create('1.2.3.0/24', {}), /attrs.nextHop is required/)
     await expectError(() => staticroute.create('1.2.3.0/24'), /attrs.nextHop is required/)
     await expectError(() => staticroute.delete('1.2.3.0/24', { distance: 5 }), /attrs.nextHop is required/)
+    await expectError(() => staticroute.delete('1.2.3.0/24'), /attrs.nextHop is required/)
     await expectError(() => staticroute.setDefault('1.2.3.0/24'), /attrs.nextHop is required/)
+    // Non-string positional-shaped entries ride the same guard family (upstream interpolates them,
+    // staticroute.py:317): the bag spellings a JS caller can produce must refuse, not compose.
+    await expectError(() => staticroute.create('1.2.3.0/24', { nextHop: 7 as unknown as string }), /expected a string interface name or address/)
+    await expectError(() => staticroute.create('1.2.3.0/24', { nextHop: 'Ethernet1', nextHopIp: 7 as unknown as string }), /expected a string dotted address/)
     // Upstream's `set_tag` forces NOTHING — it is plain `_set_route` pass-through (`:271`), so a JS
     // caller who bypasses this client's required-`tag` signature gets exactly the sparse line upstream
     // would compose: the typed field documents the intent, the runtime invents nothing.
@@ -372,6 +377,7 @@ describe('StaticRouteResource guards — staticroute.py validates nothing; refus
     await expectError(() => staticroute.create('1.2.3.0/24', { nextHop: 'Ethernet1', tag: NaN }), /unsigned integer/)
     await expectError(() => staticroute.create('1.2.3.0/24', { nextHop: 'Ethernet1', tag: Infinity }), /unsigned integer/)
     await expectError(() => staticroute.create('1.2.3.0/24', { nextHop: 'Ethernet1', tag: 10n as unknown as number }), /number or digit string/)
+    await expectError(() => staticroute.create('1.2.3.0/24', { nextHop: 'Ethernet1', distance: null as unknown as number }), /number or digit string/)
     await expectError(() => staticroute.create('1.2.3.0/24', { nextHop: 'Ethernet1', tag: '9 9' }), /digits the \\d\+ group/)
     await expectError(() => staticroute.create('1.2.3.0/24', { nextHop: 'Ethernet1', distance: Number.MAX_SAFE_INTEGER + 2 }), /unsigned integer/)
     // 0 reaches the wire (divergence 3) and digit strings ride upstream's own sloppy spelling —
@@ -392,6 +398,7 @@ describe('StaticRouteResource guards — staticroute.py validates nothing; refus
     const { node, transport } = nodeFor(ROUTES_CONFIG)
     const staticroute = node.staticroute
     await expectError(() => staticroute.create('1.2.3.0/24', { nextHop: 'Ethernet1', routeName: '' }), /empty name/)
+    await expectError(() => staticroute.create('1.2.3.0/24', { nextHop: 'Ethernet1', routeName: 7 as unknown as string }), /expected a string route tag name/)
     await expectError(() => staticroute.create('1.2.3.0/24', { nextHop: 'Ethernet1', routeName: 'two words' }), /one \\S\+ token/)
     await expectError(() => staticroute.setRouteName('1.2.3.0/24', 'Ethernet1', { routeName: 'ing\x07rat' }), /control characters/)
     expect(transport.sent()).toEqual([])

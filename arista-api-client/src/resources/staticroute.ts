@@ -341,26 +341,36 @@ export class StaticRouteResource extends EntityCollection<readonly StaticRoute[]
     return (await this.getAll()).get(name)
   }
 
-  /** The five write verbs' shared core — `_build_commands` + `_set_route` (`:299-333`, `:335-371`). */
-  private routeCommand(mode: 'set' | 'no' | 'default', ipDest: string, nextHop: string, fields: Pick<StaticRouteAttrs, 'nextHopIp' | 'distance' | 'tag' | 'routeName'>): string {
+  /**
+   * The five write verbs' shared core — `_build_commands` + `_set_route` (`:299-333`, `:352-363`).
+   * The attrs bag doubles as the fields bag: upstream's `next_hop` lives positionally in the call
+   * (`:182`/`:203`/`:225`) but rides this client's attrs entry, so a bag without it is refused HERE
+   * — one guard covering every verb; the call sites' `attrs ?? {}` is the vehicle that brings a
+   * missing bag to this single guard (both the empty-bag and provided-bag paths are pinned).
+   */
+  private routeCommand(mode: 'set' | 'no' | 'default', ipDest: string, attrs: StaticRouteAttrs): string {
     assertIpDest(ipDest)
+    const nextHop = attrs.nextHop
+    if (nextHop === undefined) {
+      refuse('static-route next hop', undefined, 'attrs.nextHop is required — pyeapi takes the next hop as a POSITIONAL argument (staticroute.py:182/:203/:225); the framework moves it into the attrs bag and this client still demands it')
+    }
     assertNextHop(nextHop)
     let command = `ip route ${ipDest} ${nextHop}`
-    if (fields.nextHopIp !== undefined) {
-      assertNextHopIp(fields.nextHopIp)
-      command += ` ${fields.nextHopIp}`
+    if (attrs.nextHopIp !== undefined) {
+      assertNextHopIp(attrs.nextHopIp)
+      command += ` ${attrs.nextHopIp}`
     }
-    if (fields.distance !== undefined) {
-      assertUnsignedSegment('distance', fields.distance, '72/:162')
-      command += ` ${String(fields.distance)}`
+    if (attrs.distance !== undefined) {
+      assertUnsignedSegment('distance', attrs.distance, '72/:162')
+      command += ` ${String(attrs.distance)}`
     }
-    if (fields.tag !== undefined) {
-      assertUnsignedSegment('tag', fields.tag, '72/:166')
-      command += ` tag ${String(fields.tag)}`
+    if (attrs.tag !== undefined) {
+      assertUnsignedSegment('tag', attrs.tag, '72/:166')
+      command += ` tag ${String(attrs.tag)}`
     }
-    if (fields.routeName !== undefined) {
-      assertRouteName(fields.routeName)
-      command += ` name ${fields.routeName}`
+    if (attrs.routeName !== undefined) {
+      assertRouteName(attrs.routeName)
+      command += ` name ${attrs.routeName}`
     }
     // Same prefix order as `_set_route:356-361`: `no` wins, else `default`, else bare — and both apply to
     // the WHOLE composed line (`"no " + commands`), never just the header.
@@ -370,26 +380,14 @@ export class StaticRouteResource extends EntityCollection<readonly StaticRoute[]
   }
 
   /**
-   * The positional-pair extractor every collection verb needs: upstream's `next_hop` is positional
-   * (`:182`/`:203`/`:225`) but the framework carries one attrs bag (`base.ts` create docs), so a bag
-   * spelled without `nextHop` is a caller mistake refused before the device sees anything.
-   */
-  private requireNextHop(attrs: StaticRouteAttrs | undefined): string {
-    const nextHop = attrs?.nextHop
-    if (nextHop === undefined) {
-      refuse('static-route next hop', undefined, 'attrs.nextHop is required — pyeapi takes the next hop as a POSITIONAL argument (staticroute.py:182/:203/:225); the framework moves it into the attrs bag and this client still demands it')
-    }
-    return nextHop
-  }
 
-  /**
    * Add a route — pyeapi's `create(ip_dest, next_hop, **kwargs)` (`:182-201`) via `_set_route`
    * (`:352`). One top-level command line, submode never entered, and no read of any kind first
    * (divergence 5): `test_api_staticroute.py:152-189` pins exactly `ip route <dest> <hop> [nhip]
    * [dist] [tag N] [name X]` and nothing else.
    */
   override async create(name: string, attrs?: StaticRouteAttrs): Promise<void> {
-    await this.configure(this.routeCommand('set', name, this.requireNextHop(attrs), attrs ?? {}))
+    await this.configure(this.routeCommand('set', name, attrs ?? {}))
   }
 
   /**
@@ -400,7 +398,7 @@ export class StaticRouteResource extends EntityCollection<readonly StaticRoute[]
    * lines.
    */
   override async delete(name: string, attrs?: StaticRouteAttrs): Promise<void> {
-    await this.configure(this.routeCommand('no', name, this.requireNextHop(attrs), attrs ?? {}))
+    await this.configure(this.routeCommand('no', name, attrs ?? {}))
   }
 
   /**
@@ -410,7 +408,7 @@ export class StaticRouteResource extends EntityCollection<readonly StaticRoute[]
    * device question, not this port's to answer.
    */
   override async setDefault(name: string, attrs?: StaticRouteAttrs): Promise<void> {
-    await this.configure(this.routeCommand('default', name, this.requireNextHop(attrs), attrs ?? {}))
+    await this.configure(this.routeCommand('default', name, attrs ?? {}))
   }
 
   /**
@@ -423,7 +421,7 @@ export class StaticRouteResource extends EntityCollection<readonly StaticRoute[]
    * `tag` being present is what makes the verb mean anything, and undefined is refused (divergence 4).
    */
   async setTag(ipDest: string, nextHop: string, fields: StaticRouteFields & { tag: number | string }): Promise<void> {
-    await this.configure(this.routeCommand('set', ipDest, nextHop, fields))
+    await this.configure(this.routeCommand('set', ipDest, { ...fields, nextHop }))
   }
 
   /**
@@ -432,6 +430,6 @@ export class StaticRouteResource extends EntityCollection<readonly StaticRoute[]
    * warning: any existing `tag` must be re-passed or it resets (`:288-291`).
    */
   async setRouteName(ipDest: string, nextHop: string, fields: StaticRouteFields & { routeName: string }): Promise<void> {
-    await this.configure(this.routeCommand('set', ipDest, nextHop, fields))
+    await this.configure(this.routeCommand('set', ipDest, { ...fields, nextHop }))
   }
 }
