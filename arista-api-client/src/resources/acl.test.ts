@@ -380,7 +380,7 @@ describe('AclsResource reads — acl.py:88-112 over the committed fixture', () =
     expect(await aclsFor(oneLine).standard.get('standard')).toBeUndefined()
   })
 
-  it('the entry order is device document order, and the seqno key is the number the line starts with (row 166)', async () => {
+  it('the entry order is device document order, and the seqno key is the number the line starts with (row 158)', async () => {
     const outOfOrder = textOf([
       'ip access-list ordered',
       '   30 permit ip any any',
@@ -788,11 +788,11 @@ describe('ACL writes — the command lists test_api_acl.py pins, reproduced verb
     // `'{'unconfigured': None}' object has no attribute 'add_entry'` (`:117-124`).
   })
 
-  it('the ports and option tail a read reports are deliberately not re-emitted by the write verbs (row 164)', async () => {
+  it('the ports and option tail a read reports are deliberately not re-emitted by the write verbs (row 163)', async () => {
     // The fixture's entry 10 is `permit tcp host 10.10.0.5 eq 161 host 10.40.0.1 log`. Rewriting that seqno
     // through this module writes the matches it can name — the operator and `options` are read-only fields,
     // because silently dropping them would be worse and emitting them is not a shape this client has pinned
-    // against a device. The comment states what the wire does **not** do; §5 row 164 is the record.
+    // against a device. The comment states what the wire does **not** do; §5 row 163 is the record.
     const transport = mockTransport()
       .replies('enable\nshow running-config all', [{}, { output: ACL_FIXTURE }])
       .replies(writeKey(['ip access-list SNMP-EXT', 'no 10', '10 permit tcp host 10.10.0.5 host 10.40.0.1 log', 'exit']), [{}, {}, {}, {}, {}, {}])

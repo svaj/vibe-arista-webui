@@ -76,7 +76,7 @@
  *    is the evidence for divergence 1: this module reads the same lines as an `AclMatch` record with
  *    `prefixlen?: number` and an `options` remainder, and the numbers are numbers.
  *
- * ## Divergences this file owns (raw material for MIGRATION.md §5; rows 158-166 are this lane's band)
+ * ## Divergences this file owns (raw material for MIGRATION.md §5; rows 158-163 are this file's band — varp.ts carries 164-166)
  *
  * 1. **`srclen`/`dstlen` mixed types become `AclMatch.prefixlen: number | undefined`.** Upstream stores the
  *    source length as **whatever produced it**: a `/<NN>` capture is a string (`'24'`, `'8'`) while a mask
@@ -132,7 +132,7 @@
  *    rule is the failure mode an operator cannot review.
  * 8. **an unknown ACL type is refused.** Upstream falls back to `standard`: `create_instance` (`:137-142`)
  *    maps anything outside `VALID_ACLS` to `StandardAcls`, its own test pins that
- *    (`test_create_unknown_type_creates_standard`, `:117-120`), and probe confirms `create('test',
+ *    (`test_create_unknown_type_creates_standard`, `:112-115`), and probe confirms `create('test',
  *    'unknown')` → `['ip access-list standard test']`. Here `{ type: 'unknown' }` is a `NotSupportedError`
  *    naming it (row 163) — the deliberate-widening convention, guard asserted rather than inherited.
  * 9. **the write surface renders the spellings the device itself writes, and refuses the ones upstream
@@ -144,14 +144,14 @@
  *    {@link AclMatchInput} has four arms (`any`, `host <addr>`, `<addr>/<len>`, `<addr> <mask>`), which
  *    reproduce texts seen in device-written ACL blocks (pyeapi's fixture at
  *    `test/fixtures/running_config.text:2012-2020`/`:2022-2031` and the committed `acl-sections.conf`), and a value that
- *    fits no arm is refused with the field named (row 164). The arms upstream could not express at all are
+    * fits no arm is refused with the field named (row 163). The arms upstream could not express at all are
  *    still not writable here: port operators (`eq 161`) and the option tail (`ttl eq 1 tracked`) are read
  *    into `operator`/`options` and deliberately **not** re-emitted by these verbs.
  * 10. **`log` is one field, on both kinds.** Upstream models `log` for standard entries (`:179`) but not
  *    for extended ones, where the word lands in the `other` catch-all (probe: entry 60
  *    `deny ip any any log` answers `other: 'log'`, as does entry 10). Here a trailing `log` token sets
  *    {@link AclEntry.log} on both kinds and is lifted **out of** {@link AclEntry.options}, so the record
- *    does not repeat a token its own write verb re-emits (row 165). Every other option word stays verbatim:
+   * does not repeat a token its own write verb re-emits (row 158). Every other option word stays verbatim:
  *    only a standalone trailing `log` is lifted, so `fragments tracked log` answers
  *    `log: true` plus `options: 'fragments tracked'`.
  * 11. **IPv6 has no surface here.** acl.py has none (`ip access-list` at indent 0, `:104`/`:129`), so this
@@ -231,7 +231,7 @@ export interface AclMatch {
  * {@link Acl.type} saying which fields to expect.
  */
 export interface AclEntry {
-  /** The sequence number the line starts with — as written, not renumbered (row 166). */
+  /** The sequence number the line starts with — as written, not renumbered (row 158). */
   readonly seqno: number
   /** `permit` or `deny`. */
   readonly action: AclAction
@@ -430,7 +430,7 @@ export function prefixlenToMask(prefixlen: string | number | undefined): string 
 function assertAclName(value: unknown): asserts value is string {
   if (typeof value !== 'string') refuse('ACL name', value, 'expected a string ACL name — pyeapi interpolates whatever arrives into the command (acl.py:163, :184, :187, :190), and probe-confirmed create("") sends `ip access-list standard ` with a trailing space')
   if (value.trim() === '') refuse('ACL name', value, 'an empty ACL name is refused — `ip access-list standard ` is a command line this client cannot read back as an ACL (the header grammar needs one character after the kind, acl.py:104)')
-  if (value !== value.trim()) refuse('ACL name', value, 'leading or trailing whitespace cannot read back: a section key is the rstripped line (client.py:741-747) and the name is the header remainder (acl.py:104)')
+  if (value !== value.trim()) refuse('ACL name', value, 'leading or trailing whitespace cannot read back: a section key is the rstripped line (client.py:739, :772-773) and the name is the header remainder (acl.py:104)')
   // Inner whitespace stays legal: upstream creates such an ACL (probe: `create('has space')` sends
   // `ip access-list standard has space`, acl.py:144-148 → :184) and reads it back as the same section key, so
   // refusing it here would make a name this client can report unmanageable.
@@ -527,7 +527,7 @@ function renderEntryBody(type: AclType, entry: AclEntryInput): string {
   return parts.join(' ')
 }
 
-/** The rule line as it goes on the wire: `[<seqno> ]<body>` (upstream `:205-206`, `:285-286`). */
+/** The rule line as it goes on the wire: `[<seqno> ]<body>` (upstream `:205-206`, `:286-287`). */
 function entryCommand(type: AclType, entry: AclEntryInput): string {
   const body = renderEntryBody(type, entry)
   if (entry.seqno === undefined) return body
@@ -844,7 +844,7 @@ export class AclsResource extends EntityCollection<Acl, string, AclAttrs> {
    * Every ACL, of either kind, keyed by name — upstream's `getall()` (`:91-112`) as one flat table.
    *
    * Upstream answers two nested dicts (`{'standard': {…}, 'extended': {…}}`), which is the shape
-   * `test_getall` (`:70-75`) asserts; grouping by the `type` field reconstructs it, and a flat table is
+   * `test_getall` (`:65-69`) asserts; grouping by the `type` field reconstructs it, and a flat table is
    * what a `node.acls.get(name)`-style lookup and a UI table need (DR-068/DR-093, row 158). One
    * `show running-config` for the whole answer, against upstream's scan-plus-a-`get_block`-per-ACL
    * (`:105-111` → `:88-89`/`:162` → `client.py:776-798`).
@@ -853,7 +853,7 @@ export class AclsResource extends EntityCollection<Acl, string, AclAttrs> {
     return aclsFromSections(await this.configSections(), null)
   }
 
-  /** One ACL of either kind, or `undefined` — `test_get_not_configured` (`:77-78`) becomes `undefined` (DR-027). */
+  /** One ACL of either kind, or `undefined` — `test_get_not_configured` (`:71-72`) becomes `undefined` (DR-027). */
   override async get(name: string): Promise<Acl | undefined> {
     assertAclName(name)
     const type = typeOfAcl(await this.configSections(), name)

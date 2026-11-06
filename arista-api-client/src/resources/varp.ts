@@ -21,12 +21,12 @@
  * | `Varp.get` (`:66-93` → `_parse_mac_address` + `_parse_interfaces`), and the record docstring's shape (`:79-90`) | {@link VarpResource.get} — one `show running-config`, one record. Upstream's `EntityCollection` base is inherited but never implemented (`getall`/`create`/`delete`/`default` are absent, and `__call__` would raise `NotImplementedError`); here that half is simply not on the type (DR-068: the surface says what exists) |
  * | `_parse_mac_address` (`:95-100`): `re.compile(r'^ip\svirtual-router\smac-address\s((?:[a-f0-9]{2}:){5}[a-f0-9]{2})$', re.M)` (`:96-97`) with `.search(self.config)` — the whole config text, first hit, else `None` | {@link readMacAddress} over the **chunked document's section keys** ({@link MAC_KEY}), so a body line cannot vote (divergence 1); a `mac-address` line the grammar cannot read is a {@link ConfigParseError}, not a silent `None` (divergence 2) |
  * | `_parse_interfaces` (`:102-104`): builds a **second** `VarpInterfaces(self.node)` and calls `getall()` | the same table through {@link readInterfaces} — one section walk, zero extra reads (DR-030) |
- * | `set_mac_address(mac_address=None, default=False, disable=False)` (`:106-141`): validates only the value arm, re-reads the **current** mac into the command for the negating arms (`:132-137`), then `command_builder` + `configure` (`:139-141`) | {@link VarpResource.setMacAddress} / {@link VarpResource.unsetMacAddress} / {@link VarpResource.defaultMacAddress} — DR-037 turns the two flags into two methods, so the arms that upstream can contradict each other cannot be requested at all (divergence 4). Every command text is reproduced verbatim, current-mac suffix included (row 165) |
+ * | `set_mac_address(mac_address=None, default=False, disable=False)` (`:106-141`): validates only the value arm, re-reads the **current** mac into the command for the negating arms (`:135-138`), then `command_builder` + `configure` (`:139-141`) | {@link VarpResource.setMacAddress} / {@link VarpResource.unsetMacAddress} / {@link VarpResource.defaultMacAddress} — DR-037 turns the two flags into two methods, so the arms that upstream can contradict each other cannot be requested at all (divergence 4). Every command text is reproduced verbatim, current-mac suffix included (row 165) |
  * | `VarpInterfaces(EntityCollection)` (`:144`), `get(name)` (`:148-157`: `get_block('interface %s' % name)`, `None` when absent) | {@link VarpInterfacesResource.get} — an **exact** section-key match (divergence 6), `undefined` for a miss (DR-027) |
  * | `getall()` (`:159-166`): `re.compile(r'^interface\s(Vlan\d+)$', re.M)` (`:161`) over the whole config, then one `get()` **per hit** | {@link VarpInterfacesResource.getAll} — one read over the section keys, Vlan-only parity kept (divergence 1) |
- * | `set_addresses(name, addresses=None, default=False, disable=False)` (`:168-194`): `interface %s` opener, then one of the four arms; the diff arm reads `self.get(name)['addresses']` inside `try/except Exception` (`:178-181`) and loops two `set(...).difference(...)`s (`:183-189`); **no `exit`** | {@link VarpInterfacesResource.setAddresses} / {@link VarpInterfacesResource.unsetAddresses} / {@link VarpInterfacesResource.defaultAddresses} — same texts; removals in device order, adds in caller order, deduped, one transaction (divergence 8). An unchanged list sends **nothing** here (row 166) |
+ * | `set_addresses(name, addresses=None, default=False, disable=False)` (`:168-194`): `interface %s` opener, then one of the four arms; the diff arm reads `self.get(name)['addresses']` inside `try/except Exception` (`:178-182`) and loops two `set(...).difference(...)`s (`:185-190`); **no `exit`** | {@link VarpInterfacesResource.setAddresses} / {@link VarpInterfacesResource.unsetAddresses} / {@link VarpInterfacesResource.defaultAddresses} — same texts; removals in device order, adds in caller order, deduped, one transaction (divergence 8). An unchanged list sends **nothing** here (row 166) |
  * | `_parse_virtual_addresses(config)` (`:196-198`): `^\s+ip\svirtual-router\saddress\s(\S+)$` (`:197-198`) | {@link readAddresses} — `valuesAfterKeyword` (`config-block.ts`) over the parsed block **body**, so the keyword is cut at the keyword and an unreadable value is reported (divergence 7) |
- * | the `{addresses: {}}` seed that `get` overwrites (`:153`) | `VarpInterface.addresses`, always a list; `[]` when the interface has no VARP address (parity with `findall` → `[]`; probe: `get('Vlan4003')` answers `{'addresses': []}`) |
+ * | the `{addresses: {}}` seed that `get` overwrites (`:155`) | `VarpInterface.addresses`, always a list; `[]` when the interface has no VARP address (parity with `findall` → `[]`; probe: `get('Vlan4003')` answers `{'addresses': []}`) |
  *
  * ## Upstream's own suite, and what porting it meant
  *
@@ -47,7 +47,7 @@
  *  - `test_instance` (`:51-53`) — the `varp` row in `RESOURCE_FACTORIES` plus `Node.varp` (DR-006/DR-052);
  *    `test_get` (`:55-60`) — one record with both halves, and `test_get_interfaces_none` /
  *    `_already_defined` (`:62-70`, which call the `interfaces` **property** and then `()` it, i.e.
- *    `EntityCollection.__call__` → `getall()`, `abstract.py:214-215`) are the two paths of the memo below,
+ *    `EntityCollection.__call__` → `getall()`, `abstract.py:208-209`) are the two paths of the memo below,
  *    asserted as identity of `node.varp.interfaces` plus one read for the table.
  *  - `test_set_mac_address_with_value` / `_with_positional_value` (`:72-82`) — one method here, so the two
  *    spellings collapse; `ip virtual-router mac-address aa:bb:cc:dd:ee:ff` pinned verbatim.
@@ -67,7 +67,7 @@
  *    other half: writing to an interface with no section still sends `['interface Vlan10', 'ip
  *    virtual-router address 1.1.1.4']`, so "no section" is not "no interface" and is **not** a
  *    `NotFoundError` (probe: upstream reaches it by swallowing `TypeError: 'NoneType' object is not
- *    subscriptable` in the bare `except Exception` at `:178-181`).
+ *    subscriptable` in the bare `except Exception` at `:181-182`).
  *  - every `set_addresses` text in `:116-147` is reproduced verbatim, including the absence of a trailing
  *    `exit` and the removal-before-add shape. Upstream's own diff test pins one removal (`1.1.1.2`) and one
  *    add (`1.1.1.4`) because a one-element set has one order; the multi-change order is Python's hash
@@ -101,7 +101,7 @@
  *    bodies go to column 0 (`client.py:747-752`) and `search` has no structural idea of a section. Here the
  *    mac comes from the chunked document's indent-0 **keys** and the addresses come from one parsed block
  *    body (`config/chunk.ts`, DR-030), so a banner body line and an indented copy cannot speak for VARP —
- *    the same fix rows 110-ish/`vlans.ts` divergence 3 made for VLANs. A `mac-address` line whose remainder
+ *    the same fix `vlans.ts` divergence 3 made for VLANs. A `mac-address` line whose remainder
  *    this client cannot read (empty, uppercase hex, dashes instead of colons) is a {@link ConfigParseError}
  *    naming the key, where upstream answers `None`, i.e. "the switch has none" (row 165).
  * 3. **the MAC grammar is one value, and it is the same on both sides.** Upstream validates with
@@ -113,7 +113,7 @@
  *    client writes is by construction a value it can read back, uppercase/dashed forms are refused, and a
  *    device that wrote one is reported rather than answered as unconfigured (row 165).
  * 4. **the three arms of `set_mac_address` are three methods, because their flags can lie.** Upstream's
- *    guard `if default or disable and not mac_address:` (`:134`) parses as `default or (disable and not
+ *    guard `if default or disable and not mac_address:` (`:135`) parses as `default or (disable and not
  *    mac_address)`, and `command_builder` evaluates default before disable before value
  *    (`abstract.py:152-159`). Probe, on a device whose mac is `00:11:22:33:44:55`:
  *    `set_mac_address(mac_address='aa:bb:cc:dd:ee:ff', default=True)` → `default ip virtual-router
@@ -121,11 +121,11 @@
  *    `set_mac_address(mac_address='aa:bb:cc:dd:ee:ff', disable=True)` → `no ip virtual-router mac-address`
  *    (the current one is **not** named, the opposite of the `disable=True`-alone text). Neither contradiction is
  *    expressible here; the argument type cannot arrive on the negating verbs at all (DR-037). The validation
- *    asymmetry disappears with them: upstream only validates in the value arm (`:120-131`), so
+ *    asymmetry disappears with them: upstream only validates in the value arm (`:125-134`), so
  *    `set_mac_address(disable=True)` reaches the wire unchecked — it happens to be harmless because that
  *    arm sends no value.
  * 5. **`unset`/`default` cost a read, and the text keeps upstream's suffix.** Both negating verbs re-read
- *    the config to build the command (`:132-137`), so `unsetMacAddress()` on a switch with
+ *    the config to build the command (`:135-138`), so `unsetMacAddress()` on a switch with
  *    `00:1b:1b:00:00:01` sends `no ip virtual-router mac-address 00:1b:1b:00:00:01`, and on a switch with
  *    nothing it sends `no ip virtual-router mac-address` (probe; `default` the same two ways). Reproduced
  *    verbatim rather than "cleaned up" to the bare form: `command_builder`'s output is what
@@ -149,7 +149,7 @@
  *    write-side refusal is the same split `vlans.ts` divergence 8 records (row 166).
  * 8. **the write surface says what it means, and an unchanged set writes nothing.** Upstream's
  *    `set_addresses(name)` with no `addresses` sends the bare `no …` (`:191-192`), and
- *    `addresses=[]` sends the per-address negations (`:183-185`) — probe: `set_addresses('Vlan4001',
+ *    `addresses=[]` sends the per-address negations (`:185-186`) — probe: `set_addresses('Vlan4001',
  *    addresses=[])` → `['interface Vlan4001', 'no ip virtual-router address 1.1.1.2']` — while a set that
  *    already matches still sends the opener: probe `['interface Vlan4002']`, one `configure` transaction
  *    that changes nothing. Here the three arms are three verbs, `[]` is exactly the per-address arm, a
@@ -183,10 +183,10 @@ import type { ConfigSections } from '../config/chunk'
 import type { Node } from '../command-layer'
 import type { ResourceTable } from './types'
 
-/** The global setting's command stem — pyeapi's `base_command` (`varp.py:132`). */
+/** The global setting's command stem — pyeapi's `base_command` (`varp.py:124`). */
 const MAC_KEYWORD = 'ip virtual-router mac-address'
 
-/** The per-interface command stem, `:185`/`:188`/`:190`/`:192` and the `:197-198` read. */
+/** The per-interface command stem, `:175`/`:177`/`:186`/`:190`/`:192` and the `:197-198` read. */
 const ADDRESS_KEYWORD = 'ip virtual-router address'
 
 /**
@@ -238,7 +238,7 @@ function cannotParse(sectionKey: string, found: string, because: string): never 
  * The global virtual-router MAC address, or `undefined` when the switch has no such line —
  * `Varp._parse_mac_address` (`:95-100`) minus its whole-text scan (divergence 2).
  *
- * First matching key in document order wins, which is upstream's `.search` semantics (`:99`) — the two
+ * First matching key in document order wins, which is upstream's `.search` semantics (`:98`) — the two
  * agree because the chunker's keys are in document order (`client.py:737-771`). A key that spells the
  * command but not a readable value is reported: `mac_address: None` would tell an operator the switch has
  * no virtual-router MAC when it has one this client cannot name (divergence 3).
@@ -295,7 +295,7 @@ function interfacesFromSections(sections: ConfigSections): Map<string, VarpInter
 
 /**
  * One interface's VARP record. `name` is repeated alongside the key it is stored under, as `Acl.name` and
- * `Switchport.interfaceName` do — upstream's record is only `{addresses: […]}` (`:153`, `:156`).
+ * `Switchport.interfaceName` do — upstream's record is only `{addresses: […]}` (`:155`, `:156`).
  *
  * {@link addresses} is whatever the switch wrote after the keyword, in device order, and is empty when the
  * interface has no virtual-router address (probe: `VarpInterfaces.get('Vlan4003')` answers
@@ -325,7 +325,7 @@ export interface VarpSettings {
 /**
  * What {@link VarpInterfacesResource.create} may give the new VARP interface. Upstream has no `create` at
  * all on this class, so this bag is a deliberate client-side surface mapped onto the address arm of
- * `set_addresses` (`:186-189`) — DR-095.
+ * `set_addresses` (`:189-190`) — DR-095.
  *
  * A type alias rather than an interface for the reason `VlanAttrs` gives: an object-type literal gets the
  * implicit index signature `EntityCollection`'s attribute parameter needs (`types.ts:67`), and this bag
@@ -345,7 +345,7 @@ export type VarpAttrs = {
  *
  * Upstream extends `EntityCollection` and implements **none** of it: no `getall`, no `create`, no `delete`,
  * no `default`, so `node.api('varp')` inherits four `NotImplementedError` methods and a `__call__` that
- * raises (`abstract.py:214-224`). That is why this class extends `Entity` — one global record, always an
+ * raises (`abstract.py:208-224`). That is why this class extends `Entity` — one global record, always an
  * answer — and hands the collection-shaped half to {@link VarpInterfacesResource}. The `interfaces()`
  * calls in `test_api_varp.py:62-70` are the property plus upstream's `__call__` → `getall()`, which here
  * are an explicit getter and `getAll()` (DR-004).
@@ -389,7 +389,7 @@ export class VarpResource extends Entity<VarpSettings> {
    * what `test_api_varp.py:72-82` pins. Zero reads first, as upstream has none on this arm.
    *
    * @throws {NotSupportedError} `macAddress` is not six lowercase hex octets. Upstream raises `ValueError`
-   *   for `None` and `'0011.2233.4455'` (`:125-131`, and its own tests `:89-95` assert exactly that); the
+   *   for `None` and `'0011.2233.4455'` (`:125-134`, and its own tests `:89-95` assert exactly that); the
    *   taxonomy has no `ValueError`, and a non-string argument reaches upstream as
    *   `TypeError: expected string or bytes-like object` (probe) — both become this (DR-005/DR-010).
    */
@@ -402,7 +402,7 @@ export class VarpResource extends Entity<VarpSettings> {
    * Remove the global virtual-router MAC address. Upstream spells this `set_mac_address(disable=True)`
    * (`:106`), and the text it sends **names the value it is removing** — `no ip virtual-router mac-address
    * 00:11:22:33:44:55`, probe and `test_api_varp.py:84-87` — because it reads the current value into the
-   * command stem first (`:132-137`). That read is reproduced, including the second shape: a switch with no
+   * command stem first (`:135-138`). That read is reproduced, including the second shape: a switch with no
    * MAC configured gets the bare `no ip virtual-router mac-address` (probe). Row 165.
    */
   async unsetMacAddress(): Promise<void> {
@@ -421,9 +421,9 @@ export class VarpResource extends Entity<VarpSettings> {
   }
 }
 
-/** `no`/`default` + the mac-address stem, with the current value appended when the switch has one (`:132-139`). */
+/** `no`/`default` + the mac-address stem, with the current value appended when the switch has one (`:135-138`). */
 function negatedMacAddress(current: string | undefined, mode: 'no' | 'default'): string {
-  // Upstream only suffixes when the re-read found a value (`:134-137`), and its `command_builder` puts
+  // Upstream only suffixes when the re-read found a value (`:136-138`), and its `command_builder` puts
   // `default`/`no` in front of whatever stem it was handed (`abstract.py:152-155`).
   return commandBuilder(current === undefined ? MAC_KEYWORD : `${MAC_KEYWORD} ${current}`, { mode })
 }
@@ -440,7 +440,7 @@ function negatedMacAddress(current: string | undefined, mode: 'no' | 'default'):
 export class VarpInterfacesResource extends EntityCollection<VarpInterface, string, Record<string, never>> {
   /**
    * Every **Vlan** interface with VARP state, keyed by name in document order — pyeapi's `getall`
-   * (`:159-166`), with its `^interface\s(Vlan\d+)$` scan (`:161)`) kept as the rule (divergence 1) and its
+   * (`:159-166`), with its `^interface\s(Vlan\d+)$` scan (`:161`) kept as the rule (divergence 1) and its
    * one-`get_block`-per-hit cost removed (DR-030: one request for the whole table, asserted in the tests).
    */
   override async getAll(): Promise<ResourceTable<string, VarpInterface>> {
@@ -467,7 +467,7 @@ export class VarpInterfacesResource extends EntityCollection<VarpInterface, stri
 
   /**
    * Give an interface virtual-router addresses: `interface <name>` plus one
-   * `ip virtual-router address <addr>` line each — the add arm of `set_addresses` (`:186-189`) with the diff
+   * `ip virtual-router address <addr>` line each — the add arm of `set_addresses` (`:189-190`) with the diff
    * skipped, since a new entry has nothing to diff against. Zero reads: unlike {@link setAddresses}, this
    * verb never looks at the device first.
    *
@@ -505,17 +505,17 @@ export class VarpInterfacesResource extends EntityCollection<VarpInterface, stri
 
   /**
    * Make the interface's virtual-router addresses exactly `addresses`, in one transaction — upstream's
-   * `set_addresses(name, addresses=[…])` diff (`:178-189`).
+   * `set_addresses(name, addresses=[…])` diff (`:178-190`).
    *
    * Upstream reads the current list through `self.get(name)['addresses']` inside a bare
-   * `except Exception` (`:178-181`, probe: on an absent section that is `TypeError: 'NoneType' object is
+   * `except Exception` (`:179-182`, probe: on an absent section that is `TypeError: 'NoneType' object is
    * not subscriptable` → `[]`), then iterates two `set(...).difference(...)` loops, so with more than one
    * change the wire order is Python's hash order — probe over the five-address fixture:
    * `no 1.1.2.4 / 1.1.2.2 / 1.1.2.5 / 1.1.2.3` then `add 9.9.9.9 / 1.1.2.1`. Here the read is explicit,
    * removals follow **device** order, adds follow the **caller's** order, duplicates in the caller's list
    * collapse to one line each, and nothing at all is sent when the interface already matches (row 166).
    * An address this client read with a `/len` is negated with the device's own text and never re-added
-   * (divergence 7). No `exit` line, because upstream sends none (`:186-189`) — matching how `vlans.ts` and
+   * (divergence 7). No `exit` line, because upstream sends none (`:172-192`) — matching how `vlans.ts` and
    * `interfaces.ts` close a submode on this client.
    */
   async setAddresses(name: string, addresses: readonly string[]): Promise<void> {
@@ -528,7 +528,7 @@ export class VarpInterfacesResource extends EntityCollection<VarpInterface, stri
     for (const address of current) {
       // The operand stays **in** the command stem, because `commandBuilder`'s `no` mode drops any `value`
       // it is handed (command-builder.ts, DR-037's precedence) — and upstream's removal text names the
-      // address (`'no ip virtual-router address %s'`, `:185`). The device's own token is what gets negated,
+      // address (`'no ip virtual-router address %s'`, `:186`). The device's own token is what gets negated,
       // even a `/len` form this client would refuse to add (divergence 7).
       if (!wanted.has(address)) commands.push(commandBuilder(`${ADDRESS_KEYWORD} ${address}`, { mode: 'no' }))
     }
