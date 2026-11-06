@@ -208,6 +208,11 @@ describe('what the browser entry exports', () => {
       // M10a (#12): the interfaces facade and the per-kind name parser that §5 row 76 promised, both from
       // `.` (and through `export *` from `./node`) without a deep import.
       'InterfacesResource', 'parseInterfaceName',
+      // W2c (#39 #40): the two wave-2 modules and the vocabularies a UI narrows device tokens with.
+      // `StpInterfacesResource`/`StpInstancesResource` are in the entry because `node.stp.interfaces` /
+      // `node.stp.instances` hand them to the caller (pyeapi's composition, stp.py:118-130).
+      'StpResource', 'StpInterfacesResource', 'StpInstancesResource', 'isStpMode', 'isPortfastType',
+      'IpinterfacesResource',
     ] as const
     for (const name of functions) {
       expect(typeof surface[name], name).toBe('function')
@@ -220,13 +225,24 @@ describe('what the browser entry exports', () => {
     expect(surface.INTERFACE_KINDS).toEqual(['Ethernet', 'Management', 'Loopback', 'Port-Channel', 'Vlan', 'Vxlan'])
     expect(surface.INTERFACE_STATUS_COMMAND).toBe('show interfaces status')
     expect(surface.parseInterfaceName('Ethernet1.100')).toEqual({ kind: 'Ethernet', index: 1, name: 'Ethernet1.100', subinterface: 100 })
-    // The registry has four rows now: M8's `system`, M9's `vlans`/`switchports` and M10a's `interfaces`
-    // (§5 row 79).
-    expect(Object.keys(surface.RESOURCE_FACTORIES)).toEqual(['system', 'vlans', 'switchports', 'interfaces'])
+    // The registry has six rows now: M8's `system`, M9's `vlans`/`switchports`, M10a's `interfaces` and
+    // W2c's `stp`/`ipinterfaces` (§5 row 79, rows 167/173).
+    expect(Object.keys(surface.RESOURCE_FACTORIES)).toEqual(['system', 'vlans', 'switchports', 'interfaces', 'stp', 'ipinterfaces'])
     expect(new Node(mockTransport()).system).toBeInstanceOf(surface.SystemResource)
     expect(new Node(mockTransport()).vlans).toBeInstanceOf(surface.VlansResource)
     expect(new Node(mockTransport()).switchports).toBeInstanceOf(surface.SwitchportsResource)
     expect(new Node(mockTransport()).interfaces).toBeInstanceOf(surface.InterfacesResource)
+    expect(new Node(mockTransport()).stp).toBeInstanceOf(surface.StpResource)
+    expect(new Node(mockTransport()).ipinterfaces).toBeInstanceOf(surface.IpinterfacesResource)
+    // The two vocabulary lists are the write-side sets the modules document (§5 row 167 for the STP modes,
+    // row 174 for the MTU bounds), and the guards narrow rather than assert a hardware fact (DR-032).
+    expect(surface.STP_MODES).toEqual(['mstp', 'none'])
+    expect(surface.PORTFAST_TYPES).toEqual(['edge', 'network', 'normal'])
+    expect(surface.isStpMode('mstp')).toBe(true)
+    expect(surface.isStpMode('rapid-pvst')).toBe(false)
+    expect(surface.isPortfastType('auto')).toBe(false)
+    expect(surface.IP_MTU_MIN).toBe(68)
+    expect(surface.IP_MTU_MAX).toBe(65535)
     // `assertVlanId` is an assertion function (returns void); the range is pyeapi's —
     // `value in range(1, 4095)`, i.e. VLANs 1..4094 (pyeapi/api/vlans.py:78). M9 (#12) re-checks that
     // bound against the switch's own `switchport access vlan` range on a device.

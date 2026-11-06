@@ -14,23 +14,27 @@
  * | `delete` (`:176-194`): `commands = ['interface %s' % name, 'no ip address', 'switchport']` | {@link IpinterfacesResource.delete} — the same three texts; `switchport` back is what makes an L3 section an L2 one |
  * | `set_address` (`:196-219`): `['interface %s', command_builder('ip address', value, default, disable)]` | {@link setAddress} / {@link unsetAddress} / {@link defaultAddress} — `ip address …`, `no ip address`, `default ip address` |
  * | `set_mtu` (`:222-254`): `if value is not None: value = int(value)` + `IP_MTU_MIN <= value <= IP_MTU_MAX` (`:246-249`, constants `:54-55`), then `['interface %s', command_builder('mtu', …)]` | {@link setMtu} / {@link unsetMtu} / {@link defaultMtu} — `mtu <value>`, `no mtu`, `default mtu`; upstream's `ValueError('invalid mtu value')` becomes `NotSupportedError` naming the value |
- * | `@_interpolate_docstr('IP_MTU_MIN','IP_MTU_MAX')` (`:221`, `pyeapi/utils.py:245-260`) — docstring templating only | not ported (DR-004: no runtime docstring rewriting); the two constants are named in the refusal text instead |
+ * | `@_interpolate_docstr('IP_MTU_MIN','IP_MTU_MAX')` (`:221`, `pyeapi/utils.py:277-304`) — docstring templating only | not ported (DR-004: no runtime docstring rewriting); the two constants are named in the refusal text instead |
  * | `instance(node)` (`:257-268`) | the `RESOURCE_FACTORIES.ipinterfaces` row plus `Node.ipinterfaces` (DR-006/DR-052) |
  *
  * Upstream's suite is `pyeapi/test/unit/test_api_ipinterfaces.py` — **11** test methods (AST count,
- * 2026-11-05): `test_get` (`:47-55`, pinning `Loopback0` → `1.1.1.1/32`/1500 and `Loopback2` →
- * `secondary: ['3.255.255.1/24', '4.255.255.1/24']` with `mtu: None`), `test_getall` (`:57-60`, four
- * entries in `test/fixtures/running_config.text`), `test_instance_functions` (`:62-73`, the create/delete
- * command lists above), `test_set_address_with_value` (`:75-80`), `test_set_address_with_no_value`
- * (`:82-86`, `no ip address`), `test_set_address_with_default` (`:88-92`),
- * `test_set_address_invalid_value_raises_value_error` (`:94-104` — which does **not** raise: its own
- * comment says "If command_builder fails because value is None, uncomment above lines", `:99-101`, and it
- * pins `no ip address` instead), `test_set_mtu_with_values` (`:106-111`), `test_set_mtu_with_no_value`
- * (`:113-117`), `test_set_mtu_default` (`:119-123`), `test_set_mtu_invalid_value_raises_value_error`
- * (`:125-139`, `67`/`65536`/`'a…'` raise, while `None` again answers `no mtu` per its `:133-135`
- * commentary). All 11 are ported in {@link file://./ipinterfaces.test.ts}; the two `command_builder`
- * pre-armed comments (`:99-101`, `:133-135`) are exactly what DR-037's `unset*` verbs realise — MIGRATION.md
- * §5 row 73 counts twelve such sites across upstream, two of them in this file.
+ * 2026-11-05): `test_get` (`:55-63`, pinning `Loopback0` → `1.1.1.1/32`/1500 and `Loopback2` →
+ * `secondary: ['3.255.255.1/24', '4.255.255.1/24']` with `mtu: None`), `test_getall` (`:65-68`, four
+ * entries in `test/fixtures/running_config.text`), `test_instance_functions` (`:70-79`, the create/delete
+ * command lists above), `test_set_address_with_value` (`:81-86`), `test_set_address_with_no_value`
+ * (`:88-92`, `no ip address`), `test_set_address_with_default` (`:94-98`),
+ * `test_set_address_invalid_value_raises_value_error` (`:100-108` — which does **not** raise: its own
+ * comment says "If command_builder fails because value is None, uncomment above lines", `:102-105`, and it
+ * pins `no ip address` instead), `test_set_mtu_with_values` (`:110-115`), `test_set_mtu_with_no_value`
+ * (`:117-121`), `test_set_mtu_default` (`:123-127`, which despite its name pins only `default mtu` and
+ * ignores the `disable` value it computes at `:124-126`), `test_set_mtu_invalid_value_raises_value_error`
+ * (`:129-140`, `67`/`65536`/`'a…'` raise, while `None` again answers `no mtu` per its `:135-137`
+ * commentary). The spans this header carried when the lane opened were eight lines early from
+ * `test_get` on (`:47-55`, `:62-73`, `:106-111`, …) — those are the `INTERFACES` list at `:47-48` and the
+ * lines before them; every span above was re-opened in the pinned clone, and the same shift is corrected
+ * throughout this file. All 11 are ported in {@link file://./ipinterfaces.test.ts}; the two
+ * `command_builder` pre-armed comments (`:102-105`, `:135-137`) are exactly what DR-037's `unset*` verbs
+ * realise — MIGRATION.md §5 row 73 counts twelve such sites across upstream, two of them in this file.
  *
  * ## Divergences this file owns (MIGRATION.md §5 rows 173-174)
  *
@@ -47,15 +51,24 @@
  *    "fixed": an `interface …` header on its own is ≥ 10 bytes, so no real block can have its
  *    `no switchport` line start before offset 8 (verified by probe on both the real and a one-space-indent
  *    block — probed 2026-11-05). Here the gate is `Ethernet`/`Port-Channel` **as a kind token** plus an
- *    exact `no switchport` body line, and the difference set is the junk-prefix spellings: an
- *   `interface Et1` section becomes a (field-less) IP-interface record here instead of being filtered out.
+ *    exact `no switchport` body line, and the difference set is the junk-prefix spellings, both halves
+ *    probed: an `interface Et1` section **without** `no switchport` is filtered out upstream (its `Et`
+ *    prefix fires the gate and the block has no such line) while here `Et1` is not an L2-capable kind
+ *    token, so the section is reported — as a record with whatever fields its own lines carry, and none if
+ *    it has none. With `no switchport` written, both answer a record.
  * 2. **an absent section never crashes and never hallucinates** (row 173). `get_block` hands back `None`
  *    for a section the switch does not have (`abstract.py:96-101`), and `ipinterfaces.py` then runs that
  *    `None` through `search`/`findall` — probe: `get('Ethernet4')` on a config without that section raises
  *    `TypeError: expected string or bytes-like object, got 'NoneType'`, and so do `get('Vlan20')`/
  *    `get('NoSuch9')` despite the docstring's promise (`:81-83`) that a missing interface returns `None`.
- *    Upstream's `getall` (`:142-148`) can also read an `interface …` line inside a banner body as a name
- *    (`row 92`/`vlans.ts` divergence 3 have the same probe: `running_config.text:411`). DR-027's `undefined`
+ *    Upstream's `getall` (`:142-148`) can also read an `interface …` line inside a banner body as a name:
+ *    the regex is `re.M` over the whole document, and a banner body is unindented text (`client.py:747-750`
+ *    keeps it inside the banner *section*, which is what the chunked scan here relies on). The pinned
+ *    fixture's banner body carries a column-0 `vlan 1` at `test/fixtures/running_config.text:411` — that is
+ *    the probe `vlans.ts` divergence 3 records; it has **no** column-0 `interface` line in a banner body
+ *    (verified 2026-11-05: all 14 column-0 `interface` lines in that file are real sections), so the
+ *    `getall`-crash-through-a-banner path is pinned in `ipinterfaces.test.ts` on a hand-authored config of
+ *    the same shape rather than on vendor fixture text. DR-027's `undefined`
  *    plus the chunked document replace both, at one read per whole table (DR-030).
  * 3. **which address is primary comes from the `secondary` keyword, not from line order** (row 174).
  *    Upstream takes `match[0]` as the primary and calls every later `ip address` token a secondary
@@ -100,14 +113,14 @@
  * 7. **input guards where upstream has none** (row 174). Nothing in `ipinterfaces.py` checks a name, so
  *    probe-parity is that `create('Nope1')`/`set_address('Vlan77', 'x y')` interpolate whatever arrives
  *    (`:173`, `:216-218`); `set_mtu('Ethernet1', '1500')` **works** upstream because `int(value)` coerces
-    (`:247`). Here the name goes through the shared `isInterfaceName` grammar (`validators.ts:241-249`,
+    (`:247`). Here the name goes through the shared `isInterfaceName` grammar (`validators.ts:267-270`,
     row 76 — the chassis and dotted forms stay refused pending DECISIONS open item 7), the address through
  *    {@link assertInterfaceAddress} (the `A.B.C.D/E` shape the module's own docstring names, `:203-204`,
  *    with the optional `secondary` keyword the CLI writes), and the MTU through
  *    {@link assertInterfaceMtu} (an integer in `68..65535`, no string coercion — a string reaching this
  *    point means a UI forgot to parse a form field). Every refusal is a `NotSupportedError` at zero round
  *    trips, and every verb has a pinned `CommandError` path so the device keeps the final word (DR-005).
- * 8. **`setDefault` refuses** (row 174). `EntityCollection` (`base.ts:243-250`) requires the entry-shape
+ * 8. **`setDefault` refuses** (row 174). `EntityCollection` (`base.ts:221-245`) requires the entry-shape
  *    verbs, and `ipinterfaces.py` implements `create`/`delete` but **no** `default` — where upstream gives
  *    an `AttributeError` (probe-parity with `StpInstances.create`), {@link setDefault} refuses with
  *    `NotSupportedError` and points at the verb that does exist elsewhere in this client:
@@ -199,7 +212,7 @@ const DECIMAL = /^[0-9]+$/u
  */
 const ADDRESS_TOKEN = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})\/([0-9]{1,3})$/u
 
-/** A rejected argument is named in the message (the `refuse` pattern from `validators.ts:64-69`, DR-053). */
+/** A rejected argument is named in the message (the `refuse` pattern from `validators.ts:226-229`, DR-053). */
 function refuse(label: string, value: unknown, because: string): never {
   throw new NotSupportedError(`invalid ${label} ${pythonRepr(value)} — ${because}`, { cause: value })
 }
@@ -218,9 +231,9 @@ function hasControlCharacter(value: string): boolean {
  *
  * Upstream checks nothing in this module — no `isvalidinterface` at all here, unlike
  * `stp.py:346-363`/`interfaces.py:81-83` — so `create('banana')` would send `interface banana` (divergence
- * 7). The six kinds in `validators.ts:73-80` are the kinds pyeapi's own predicate knows, and an
+ * 7). The six kinds in `validators.ts:65-73` are the kinds pyeapi's own predicate knows, and an
  * `interface Vlan20`/`Loopback0`/`Management1` is genuinely an IP interface (upstream's fixture has all
- * three: `test_get`/`test_getall` at `test_api_ipinterfaces.py:47-60` read `Loopback0`, `Loopback2`,
+ * three: `test_get`/`test_getall` at `test_api_ipinterfaces.py:55-68` read `Loopback0`, `Loopback2`,
  * `Management1` and `Vlan10`).
  */
 function assertL3InterfaceName(verb: string, value: unknown): asserts value is string {
@@ -228,7 +241,7 @@ function assertL3InterfaceName(verb: string, value: unknown): asserts value is s
   refuse(
     `${verb} interface`,
     value,
-    `expected one of the six kinds validators.ts:73-80 knows, spelled in full with an index and no subinterface suffix — pyeapi's ipinterfaces module has no name check at all (api/ipinterfaces.py:151-254 interpolate the name into 'interface %s'), and its own fixture reads Loopback0, Loopback2, Management1 and Vlan10 as IP interfaces (test/unit/test_api_ipinterfaces.py:47-60); the chassis and dotted forms stay refused pending DECISIONS open item 7 until M12 #14 captures them`,
+    `expected one of the six kinds validators.ts:65-73 knows, spelled in full with an index and no subinterface suffix — pyeapi's ipinterfaces module has no name check at all (api/ipinterfaces.py:151-254 interpolate the name into 'interface %s'), and its own fixture reads Loopback0, Loopback2, Management1 and Vlan10 as IP interfaces (test/unit/test_api_ipinterfaces.py:55-68); the chassis and dotted forms stay refused pending DECISIONS open item 7 until M12 #14 captures them`,
   )
 }
 
@@ -268,7 +281,8 @@ function assertInterfaceAddress(value: unknown): asserts value is string {
  * upstream runs `int(value)` first (`:247`), so `set_mtu('Ethernet1', '1500')` succeeds there (probe) while
  * a UI handing a form field straight through would hide that coercion here. A non-integer (`1500.5`, which
  * upstream truncates to `1500` by `int()`, probe-parity through the same line) and a booleans/objects are
- * refused the same way `assertVlanId` refuses a string (`validators.ts:96-105`, row 76).
+ * refused the same way `assertVlanId` refuses a string (`validators.ts:253-257` after `isVlanId` at
+ * `:234-241`, row 76).
  *
  * `0` is refused as out of range, which also removes upstream's `value=0` → `else:` → `no mtu` fall-through
  * (`abstract.py:158-161`, DR-037) from this verb — the negation is {@link unsetMtu}.
@@ -363,7 +377,7 @@ function ipInterfaceFromSection(sectionKey: string, name: string, block: ConfigB
  * Upstream's `getall` (`:142-148`) regex-scans the whole document, calls `get` per hit — each of which
  * redoes the `section()` key scan (`client.py:792-797`) and its own two regex passes — and filters with
  * `if interface:` (`:147`), which is how a `None` from the L2 gate disappears from the table. Its own test
- * pins the count for the pinned fixture at **4** (`test_api_ipinterfaces.py:57-60`), and the four are
+ * pins the count for the pinned fixture at **4** (`test_api_ipinterfaces.py:65-68`), and the four are
  * `Loopback0`, `Loopback2`, `Management1`, `Vlan10`, because every `Ethernet…` section in that file is a
  * switchport (probed 2026-11-05).
  */
@@ -394,7 +408,7 @@ export class IpinterfacesResource extends EntityCollection<IpInterface, string, 
    * upstream's answers collapse here: an absent section (`TypeError`, probe), an L2 Ethernet section
    * (`None`, `:85-87`), and a name spelled with a stray `Et`/`Po` prefix (`None`, same two characters).
    * Reads carry **no** name guard: a section header this client cannot write still gets read
-   * (`switchports.ts:411-435`'s read/write asymmetry, row 76's open item).
+   * (`switchports.ts:510-520`'s read/write asymmetry, row 76's open item).
    */
   override async get(name: string): Promise<IpInterface | undefined> {
     return (await this.getAll()).get(name)
@@ -411,7 +425,7 @@ export class IpinterfacesResource extends EntityCollection<IpInterface, string, 
 
   /**
    * Make the section a routed interface: `interface <name>` + `no switchport` — pyeapi's `create`
-   * (`:173-174`), the exact pair `test_api_ipinterfaces.py:62-73` pins, with the optional `ip address` and
+   * (`:173-174`), the exact pair `test_api_ipinterfaces.py:70-79` pins, with the optional `ip address` and
    * `mtu` lines appended in the **same** transaction (upstream needs three calls: `:174`, `:219`, `:254`).
    * Upstream's note that creating an L3 interface removes an existing switchport (`:159-161`) is the device's
    * behaviour, unchanged here and unverified on this unit (M12 #14).
@@ -432,7 +446,7 @@ export class IpinterfacesResource extends EntityCollection<IpInterface, string, 
 
   /**
    * Return the section to L2: `interface <name>` + `no ip address` + `switchport` — pyeapi's `delete`
-   * (`:193-194`), verbatim per `test_api_ipinterfaces.py:62-73`. The order is upstream's, and it matters:
+   * (`:193-194`), verbatim per `test_api_ipinterfaces.py:70-79`. The order is upstream's, and it matters:
    * the address is cleared before the port goes back to switching (whether EOS would refuse the reverse is a
    * device question, M12 #14).
    *
@@ -461,8 +475,8 @@ export class IpinterfacesResource extends EntityCollection<IpInterface, string, 
 
   /**
    * `interface <name>` + `ip address <value>` — pyeapi's `set_address(value=…)` (`:216-219`,
-   * `test_api_ipinterfaces.py:75-80`). The value grammar is divergence 7; upstream's `value=None` arm,
-   * which its own test pre-armed with a comment (`:99-101`) before pinning the negation this client names
+   * `test_api_ipinterfaces.py:81-86`). The value grammar is divergence 7; upstream's `value=None` arm,
+   * which its own test pre-armed with a comment (`:102-105`) before pinning the negation this client names
    * {@link unsetAddress}, is DR-037's deleted fall-through.
    */
   async setAddress(name: string, value: string): Promise<void> {
@@ -471,13 +485,13 @@ export class IpinterfacesResource extends EntityCollection<IpInterface, string, 
     await this.configureInterface(name, [this.commandBuilder(ADDRESS_KEYWORD, { value })])
   }
 
-  /** `no ip address` — upstream's `set_address(disable=True)` (`:217-219`; `test_api_ipinterfaces.py:82-86`). */
+  /** `no ip address` — upstream's `set_address(disable=True)` (`:217-219`; `test_api_ipinterfaces.py:88-92`). */
   async unsetAddress(name: string): Promise<void> {
     assertL3InterfaceName('unsetAddress', name)
     await this.configureInterface(name, [this.commandBuilder(ADDRESS_KEYWORD, { mode: 'no' })])
   }
 
-  /** `default ip address` — upstream's `set_address(default=True)` (`test_api_ipinterfaces.py:88-92`). */
+  /** `default ip address` — upstream's `set_address(default=True)` (`test_api_ipinterfaces.py:94-98`). */
   async defaultAddress(name: string): Promise<void> {
     assertL3InterfaceName('defaultAddress', name)
     await this.configureInterface(name, [this.commandBuilder(ADDRESS_KEYWORD, { mode: 'default' })])
@@ -485,7 +499,7 @@ export class IpinterfacesResource extends EntityCollection<IpInterface, string, 
 
   /**
    * `interface <name>` + `mtu <value>` — pyeapi's `set_mtu(value=…)` (`:251-254`,
-   * `test_api_ipinterfaces.py:106-111`, which pins the `68` and `65535` edges). This is the **same wire line**
+   * `test_api_ipinterfaces.py:110-115`, which pins the `68` and `65535` edges). This is the **same wire line**
    * `node.interfaces.setMtu` writes, and the two guards differ on purpose (divergence 5, **DR-097**).
    */
   async setMtu(name: string, value: number): Promise<void> {
@@ -494,13 +508,13 @@ export class IpinterfacesResource extends EntityCollection<IpInterface, string, 
     await this.configureInterface(name, [this.commandBuilder(MTU_KEYWORD, { value })])
   }
 
-  /** `no mtu` — upstream's `set_mtu(disable=True)` (`:252-254`; `test_api_ipinterfaces.py:113-117`), which is also what a value-less upstream call degrades to (`:133-135`'s own comment, DR-037). */
+  /** `no mtu` — upstream's `set_mtu(disable=True)` (`:252-254`; `test_api_ipinterfaces.py:117-121`), which is also what a value-less upstream call degrades to (`:135-137`'s own comment, DR-037). */
   async unsetMtu(name: string): Promise<void> {
     assertL3InterfaceName('unsetMtu', name)
     await this.configureInterface(name, [this.commandBuilder(MTU_KEYWORD, { mode: 'no' })])
   }
 
-  /** `default mtu` — upstream's `set_mtu(default=True)` (`test_api_ipinterfaces.py:119-123`). */
+  /** `default mtu` — upstream's `set_mtu(default=True)` (`test_api_ipinterfaces.py:123-127`). */
   async defaultMtu(name: string): Promise<void> {
     assertL3InterfaceName('defaultMtu', name)
     await this.configureInterface(name, [this.commandBuilder(MTU_KEYWORD, { mode: 'default' })])

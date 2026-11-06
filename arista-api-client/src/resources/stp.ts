@@ -8,21 +8,22 @@
  * (1.0.4-rc0, `develop` @ `6816d9e`) on 2026-11-05, and every behavioural claim is what the upstream
  * code **actually answers**. The probe column below is not prose: each answer came from running the real
  * classes against a fake `Node` whose `_running_config` is the config text named in the row (the same
- * harness `pyeapi/test/lib/testlib.py:96-118` builds, with `_chunkify`/`section` from `client.py:776-798`
+ * harness `pyeapi/test/lib/testlib.py:67-124` builds — its fake node is wired in `setUp` at `:74-86` — with
+ * `_chunkify`/`section` from `client.py:776-798`
  * reachable), so "upstream answers X" is reproducible, and nothing here claims what the DCS-7050TX-64 or
  * EOS 4.28.13.1M does — unit tests never reach a device, this workspace has no readable CLI sources for
  * the spanning-tree daemon, so every EOS-side rule reads "unverified on hardware, M12 (#14) to capture".
  *
  * | pyeapi (verified refs) | here |
  * |---|---|
- * | `Stp(Entity)` (`:61`), `__init__` caching `_interfaces`/`_instances` (`:88-91`) | {@link StpResource} extends `Entity<StpSettings>` (`base.ts:203-215`); the two sub-resources are memoised the same way — {@link StpResource.interfaces} / {@link StpResource.instances} (`:118-130`) |
- * | `get` (`:93-116`): `return dict(interfaces=self.interfaces.getall(), instances=self.instances.getall())` (`:115-116`) — **no `mode` key**, although the docstring's own shape says `{"mode": [mstp, none], …}` (`:104-108`) | {@link StpResource.get} returns `{ mode?, interfaces, instances }`: the two upstream halves plus the `spanning-tree mode …` line the docstring promises and the code never reads (row 167) |
+ * | `Stp(Entity)` (`:61`), `__init__` caching `_interfaces`/`_instances` (`:88-91`) | {@link StpResource} extends `Entity<StpSettings>` (`base.ts:194-206`); the two sub-resources are memoised the same way — {@link StpResource.interfaces} / {@link StpResource.instances} (`:118-130`) |
+ * | `get` (`:93-116`): `return dict(interfaces=self.interfaces.getall(), instances=self.instances.getall())` (`:115-116`) — **no `mode` key**, although the docstring's own shape says `{"mode": [mstp, none], …}` (`:109-113`) | {@link StpResource.get} returns `{ mode?, interfaces, instances }`: the two upstream halves plus the `spanning-tree mode …` line the docstring promises and the code never reads (row 167) |
  * | `set_mode` (`:132-156`): `if value not in ['mstp', 'none']: raise ValueError` (`:151-153`), then `command_builder('spanning-tree mode', value=…, default=…, disable=…)` → `self.configure` (`:154-156`) | {@link StpResource.setMode} / {@link StpResource.unsetMode} / {@link StpResource.defaultMode} — the same three command texts, the `default=`/`disable=` kwargs become the mode table (`command-builder.ts`, DR-037), and upstream's `ValueError` becomes a `NotSupportedError` naming the value (DR-005/DR-053) |
  * | `StpInstances(EntityCollection)` (`:159`), `getall` (`:167-169`) = `# TODO: (privateip, 20150106) stubbed out, needs implementation` + `return dict()` | {@link StpInstancesResource.getAll} answers an **empty table with zero reads**, and its entry type is `never` — the type-level statement that nothing is read here (row 171) |
  * | `StpInterfaces(EntityCollection)` (`:172`), `get` (`:181-211`): `isvalidinterface` gate (`:203-204`), `get_block(r'^interface\s%s$' % name)` (`:206`), three `_parse_*` merged with `dict.update` (`:207-210`) | {@link StpInterfacesResource.get} — same field set, typed record, `undefined` for absence (DR-027) |
  * | `_parse_bpduguard` (`:213-215`) `'spanning-tree bpduguard enable' in config`, `_parse_portfast` (`:217-219`) `'no spanning-tree portfast' not in config`, `_parse_portfast_type` (`:221-228`) `network`/`normal`/`edge` chain | {@link stpInterfaceFromBlock} — command-line-scoped versions of the same three rules (row 170) |
  * | `getall` (`:230-248`): `re.compile(r'(?<=^interface\s)(.+)$', re.M)` (`:240`) over the whole config, then `if name[0:2] in ['Et','Po']` (`:244`) and a per-name `get` (`:245`) | {@link StpInterfacesResource.getAll} — one chunked read, the same `Et`/`Po` gate, zero per-entry reads (DR-030, row 169) |
- * | `configure_interface` override (`:250-253`): `raise ValueError('invalid interface value specified')` unless `isvalidinterface(name)` | {@link StpInterfacesResource.configureInterface}'s guard is {@link assertStpPortName} — a stricter, asserted refusal (row 168) |
+ * | `configure_interface` override (`:250-253`): `raise ValueError('invalid interface value specified')` unless `isvalidinterface(name)` | {@link StpInterfacesResource.configureStpInterface}'s guard is {@link assertStpPortName} — a stricter, asserted refusal (row 168) |
  * | `set_portfast_type` (`:255-280`): accept list `['network','edge','normal', None]` (`:274-276`), `cmds = ['spanning-tree portfast %s' % value]` plus `spanning-tree portfast auto` when `value == 'edge'` (`:277-279`) | {@link StpInterfacesResource.setPortfastType} — the same two-line pair for `'edge'`, with `None`/junk refused (row 172) |
  * | `set_portfast` (`:282-312`): `if value is False: disable = True` (`:307-308`) then `command_builder('spanning-tree portfast', …)` (`:309-311`) | {@link StpInterfacesResource.setPortfast} / {@link StpInterfacesResource.unsetPortfast} / {@link StpInterfacesResource.defaultPortfast} — `spanning-tree portfast`, `no spanning-tree portfast`, `default spanning-tree portfast` |
  * | `set_bpduguard` (`:314-343`): `value = 'enable' if value else 'disable'` (`:339`) then `command_builder('spanning-tree bpduguard', …)` (`:340-342`) | {@link StpInterfacesResource.setBpduguard} (boolean → the two **words** upstream uses), {@link StpInterfacesResource.unsetBpduguard} (`disable=True` → `no spanning-tree bpduguard`), {@link StpInterfacesResource.defaultBpduguard} (`default=True`) |
@@ -30,32 +31,37 @@
  * | `instance(api)` (`:366-367`) | the `RESOURCE_FACTORIES.stp` row plus `Node.stp` (DR-006/DR-052) |
  *
  * Upstream's own suite is `pyeapi/test/unit/test_api_stp.py` — **21** test methods (AST count on
- * 2026-11-05: 7 in `TestApiStp` at `:44-108`, 14 in `TestApiStpInterfaces` at `:111-216`), i.e. the file
- * this lane's brief called `test/unit/test_stp.py`, which does not exist. All 21 are ported in
- * {@link file://./stp.test.ts}: `test_instance` (`:48-50`), `test_interfaces` (`:52-54`),
- * `test_instances` (`:56-58`), `test_set_mode_with_value` (`:60-65`, pinning `spanning-tree mode mstp` /
- * `spanning-tree mode none`), `test_set_mode_with_default` (`:67-70`, `default spanning-tree mode`),
- * `test_set_mode_with_disable` (`:72-75`, `no spanning-tree mode`),
- * `test_set_mode_invalid_value_raises_value_error` (`:77-80`), `TestApiStpInterfaces.test_getall`
- * (`:118-120`), `test_set_portfast_type_with_value` (`:122-131`, including the second
- * `spanning-tree portfast auto` line for `edge`), `test_set_portfast_type_with_no_value` (`:133-137`,
+ * 2026-11-05: 7 in `TestApiStp` at `:46-84`, 14 in `TestApiStpInterfaces` at `:86-184`), i.e. the file
+ * this lane's brief called `test/unit/test_stp.py`, which does not exist. (The spans this header carried
+ * from the lane's dispatch brief were five lines early throughout — `test_instance` was cited `:48-50`,
+ * `test_set_mode_invalid_value…` `:77-80`, and the last group `:207-210`; every one is re-opened and
+ * corrected below and in `stp.test.ts`.) All 21 are ported in
+ * {@link file://./stp.test.ts}: `test_instance` (`:53-55`), `test_interfaces` (`:57-59`),
+ * `test_instances` (`:61-63`), `test_set_mode_with_value` (`:65-69`, pinning `spanning-tree mode mstp` /
+ * `spanning-tree mode none`), `test_set_mode_with_default` (`:71-74`, `default spanning-tree mode`),
+ * `test_set_mode_with_disable` (`:76-79`, `no spanning-tree mode`),
+ * `test_set_mode_invalid_value_raises_value_error` (`:81-84`), `TestApiStpInterfaces.test_getall`
+ * (`:95-97`), `test_set_portfast_type_with_value` (`:99-107`, including the second
+ * `spanning-tree portfast auto` line for `edge`), `test_set_portfast_type_with_no_value` (`:109-113`,
  * `spanning-tree portfast normal`), `test_set_portfast_type_invalid_value_raises_value_error`
- * (`:139-143`), `test_set_portfast_type_invalid_intf_raises_value_error` (`:145-148`),
- * `test_set_bpduguard_with_value` (`:150-158`, the `enable`/`disable` **words**),
- * `test_set_bpduguard_with_no_value` (`:160-164`, `spanning-tree bpduguard disable` — because `value`
- * defaults to `False` at `:314`), `test_set_bpduguard_with_default` (`:166-170`),
- * `test_set_bpduguard_with_disable` (`:172-176`), `test_set_bpduguard_invalid_intf_raises_value_error`
- * (`:178-181`), `test_set_portfast_with_value` (`:183-193`, `spanning-tree portfast` /
- * `no spanning-tree portfast`), `test_set_portfast_with_no_value` (`:195-199`),
- * `test_set_portfast_with_default` (`:201-205`), `test_set_portfast_invalid_intf_raises_value_error`
- * (`:207-210`). Upstream never tests `Stp.get`, `StpInstances`, `StpInterfaces.get` or `getall`'s content —
- * its `test_getall` (`:118-120`) only asserts `isinstance(result, dict)` — so every read assertion here is
- * against a config of our own, probed against upstream first.
+ * (`:115-119`), `test_set_portfast_type_invalid_intf_raises_value_error` (`:121-124`),
+ * `test_set_bpduguard_with_value` (`:126-133`, the `enable`/`disable` **words**),
+ * `test_set_bpduguard_with_no_value` (`:135-139`, `spanning-tree bpduguard disable` — because `value`
+ * defaults to `False` at `:314`), `test_set_bpduguard_with_default` (`:141-145`),
+ * `test_set_bpduguard_with_disable` (`:147-151`), `test_set_bpduguard_invalid_intf_raises_value_error`
+ * (`:153-156`), `test_set_portfast_with_value` (`:158-167`, `spanning-tree portfast` /
+ * `no spanning-tree portfast`), `test_set_portfast_with_no_value` (`:169-173`),
+ * `test_set_portfast_with_default` (`:175-179`), `test_set_portfast_invalid_intf_raises_value_error`
+ * (`:181-184`). Upstream never tests `Stp.get`, `StpInstances`, `StpInterfaces.get` or `getall`'s content —
+ * its `test_getall` (`:95-97`) only asserts `isinstance(result, dict)` — so every read assertion here is
+ * against a config of our own, probed against upstream first. Upstream's interface list for the writer
+ * loops is `['Ethernet1', 'Ethernet1/1', 'Port-Channel1']` (`:88`), and `Ethernet1/1` is writable there and
+ * refused here (row 168).
  *
  * ## Divergences this file owns (MIGRATION.md §5 rows 167-172)
  *
  * 1. **`mode` is read** (row 167). Upstream's `get()` has no mode in it (`:115-116`) even though its
- *    docstring shows the key (`:104-108`) and `set_mode` writes it (`:154-155`), so a pyeapi caller cannot
+ *    docstring shows the key (`:109-113`) and `set_mode` writes it (`:154-155`), so a pyeapi caller cannot
  *    see what mode the switch is in without scanning the config by hand. Here the mode comes from the
  *    chunked document's indent-0 keys, first `spanning-tree mode <token>` in device order, with the token
  *    kept verbatim (`StpSettings.mode` is `string`, narrowed by {@link isStpMode}). Writing is the closed
@@ -110,9 +116,9 @@
  *    `NotSupportedError` naming what is unbuilt. {@link StpInstance} is `never`, so no caller can invent an
  *    MST field this client has never read; filling this in is an M11 (#13) probe plus a spec question.
  * 7. **`create`/`delete`/`setDefault` refuse on both collections** (row 172). pyeapi has no such method on
- *    `StpInterfaces` (its docstring says "spanning-tree interfaces cannot be created or deleted", `:176-177`),
+ *    `StpInterfaces` (its docstring says "spanning-tree interfaces cannot be created or deleted", `:177-178`),
  *    so where those calls are `AttributeError` upstream, this client's `EntityCollection` contract
- *    (`base.ts:243-250`) forces them to exist and they refuse with the upstream sentence in the message
+ * (`base.ts:221-245`, the abstract verbs a collection must answer) forces them to exist and they refuse with the upstream sentence in the message
  *    (DR-005: an explicit refusal, never a half-working verb).
  * 8. **the two flag-shaped writers are split into three verbs** (row 172). `set_portfast(name)` with no
  *    value produces the deprecated negation through `command_builder`'s `else:` arm (`:310-311` →
@@ -159,7 +165,7 @@ export function isStpMode(value: unknown): value is StpMode {
 /**
  * The three `spanning-tree portfast <type>` values upstream's parse chain can produce (`stp.py:221-228`)
  * and its writer accepts (`:274`: `['network', 'edge', 'normal', None]` — the `None` is divergence 9).
- * `disabled`, which the *module* docstring lists as the accepted `portfast` value (`:48-50`), appears
+ * `disabled`, which the *module* docstring lists as the accepted `portfast` value (`:49-50`), appears
  * nowhere in the code: the interface docstring at `:189-190` says `"edge", "network", "normal"`, and so
  * does this client's grammar (row 170).
  */
@@ -236,7 +242,7 @@ function hasStpPortPrefix(name: string): boolean {
   return name.startsWith('Et') || name.startsWith('Po')
 }
 
-/** A rejected argument is named in the message (the `refuse` pattern from `validators.ts:64-69`, DR-053). */
+/** A rejected argument is named in the message (the `refuse` pattern from `validators.ts:226-229`, DR-053). */
 function refuse(label: string, value: unknown, because: string): never {
   throw new NotSupportedError(`invalid ${label} ${pythonRepr(value)} — ${because}`, { cause: value })
 }
@@ -245,7 +251,7 @@ function refuse(label: string, value: unknown, because: string): never {
  * Require an interface name this client may write spanning-tree commands to.
  *
  * Two guards, in this order, because they answer different questions and upstream only has the weak one:
- * {@link assertInterfaceName} (`validators.ts:271-280`, the anchored per-kind grammar — DECISIONS open
+ * {@link assertInterfaceName} (`validators.ts:296-301`, the anchored per-kind grammar — DECISIONS open
  * item 7 keeps the chassis and dotted forms refused on this unit until M12 #14 captures them) and the
  * kind test, which is what `stp.py`'s docstring states ("Spanning-tree interfaces are only supported on
  * Ethernet and Port-Channel interfaces", `:194-195`) where its code states a two-character prefix test
@@ -271,7 +277,7 @@ function assertStpMode(value: unknown): asserts value is StpMode {
   refuse(
     'spanning-tree mode',
     value,
-    `expected one of ${STP_MODES.join(' / ')} — that is the literal set pyeapi checks at api/stp.py:151 and documents for its own version at :38-41, and it is a write-side policy, NOT a claim about this SKU: Rapid-PVSTP/MST support in the 4.28 feature matrix is 7050X-derived, the device decides (DR-032), and the feature gate is the M11 #13 capability probe`,
+    `expected one of ${STP_MODES.join(' / ')} — that is the literal set pyeapi checks at api/stp.py:151 and documents for its own version at :38-41, and it is a write-side policy, NOT a claim about this SKU: Rapid-PVSTP/MST support in the 4.28 feature matrix is 7050X-family-derived, the device decides (DR-032/DR-096), and the feature gate is the M11 #13 capability probe`,
   )
 }
 
@@ -435,7 +441,7 @@ export class StpResource extends Entity<StpSettings> {
 
   /**
    * `default spanning-tree mode` — upstream's `set_mode(default=True)` (`test_api_stp.py:67-70`), whose
-   * docstring flags the parameter as "not defaultable" (`:134-135`) while still emitting the command. This
+   * docstring flags the parameter as "not defaultable" (`:135-136`) while still emitting the command. This
    * client sends what its own verb names and lets the device answer (DR-005); whether EOS 4.28 accepts
    * `default spanning-tree mode` is an M12 (#14) capture, and the pinned upstream test only proves
    * pyeapi **sends** it.
@@ -498,7 +504,7 @@ export class StpInstancesResource extends EntityCollection<StpInstance, string> 
  * (`stp.py:172`), the module's own §5-row-168 name gate and its three portfast/bpduguard writers.
  *
  * A {@link StpInterface} record cannot be created or deleted, here or upstream: "Note that spanning-tree
- * interfaces cannot be created or deleted" (`:176-177`). What spans the two kinds is the *verb* — a
+ * interfaces cannot be created or deleted" (`:177-178`). What spans the two kinds is the *verb* — a
  * `spanning-tree …` line inside an interface section, which the L2/L3 state of that section (the
  * `switchports`/`ipinterfaces` resources) does not touch.
  */
@@ -511,7 +517,7 @@ export class StpInterfacesResource extends EntityCollection<StpInterface, string
    *
    * No name guard on the read path, deliberately: a read reports the device, including a section spelled
    * `interface Et1` that this client would refuse to write (row 168's asymmetry, the same split
-   * `switchports.ts:411-435` documents).
+   * `switchports.ts:510-520` documents).
    */
   override async get(name: string): Promise<StpInterface | undefined> {
     return (await this.getAll()).get(name)
@@ -527,12 +533,12 @@ export class StpInterfacesResource extends EntityCollection<StpInterface, string
     return stpInterfacesFromSections(await this.configSections())
   }
 
-  /** Refused, with upstream's own words: spanning-tree interfaces cannot be created (`stp.py:176-177`). */
+  /** Refused, with upstream's own words: spanning-tree interfaces cannot be created (`stp.py:177-178`). */
   override async create(name: string): Promise<void> {
     throw this.noEntryVerbs('create', name)
   }
 
-  /** Refused, with upstream's own words: spanning-tree interfaces cannot be deleted (`stp.py:176-177`). */
+  /** Refused, with upstream's own words: spanning-tree interfaces cannot be deleted (`stp.py:177-178`). */
   override async delete(name: string): Promise<void> {
     throw this.noEntryVerbs('delete', name)
   }
@@ -544,7 +550,7 @@ export class StpInterfacesResource extends EntityCollection<StpInterface, string
 
   private noEntryVerbs(verb: string, name: string): NotSupportedError {
     const error = new NotSupportedError(
-      `stp interfaces: ${verb}(${pythonRepr(name)}) is not a thing a spanning-tree interface is — pyeapi's StpInterfaces docstring says spanning-tree interfaces cannot be created or deleted (api/stp.py:176-177) and implements no such method (probe: AttributeError). The entry belongs to the interface itself: see node.interfaces / node.switchports`,
+      `stp interfaces: ${verb}(${pythonRepr(name)}) is not a thing a spanning-tree interface is — pyeapi's StpInterfaces docstring says spanning-tree interfaces cannot be created or deleted (api/stp.py:177-178) and implements no such method (probe: AttributeError). The entry belongs to the interface itself: see node.interfaces / node.switchports`,
       { cause: name },
     )
     return error
@@ -554,7 +560,7 @@ export class StpInterfacesResource extends EntityCollection<StpInterface, string
    * Enter `interface <name>` and send `cmds` — pyeapi's `configure_interface` override (`:250-253`), which
    * raises `ValueError('invalid interface value specified')` unless its two-character gate passes. Here the
    * gate is {@link assertStpPortName} and the parent line comes from the non-mutating
-   * {@link ResourceBase.configureInterface} (`base.ts:186-190`, row 71).
+   * {@link ResourceBase.configureInterface} (`base.ts:179-182`, row 71).
    */
   protected async configureStpInterface(name: string, commands: readonly string[]): Promise<void> {
     assertStpPortName('configure_interface', name)

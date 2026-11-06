@@ -147,9 +147,13 @@ describe('ResourceRegistry — DR-006 replaces pyeapi node.api() (client.py:927-
     // has shipped it, so it is the honest "still owed" name now that `interfaces` is registered.
     expect(Object.isFrozen(RESOURCE_FACTORIES)).toBe(true)
     const { node } = nodeWith()
-    expect(new ResourceRegistry(RESOURCE_FACTORIES, node).names()).toEqual(['system', 'vlans', 'switchports', 'interfaces'])
+    // W2c (#39 #40) appended the fifth and sixth rows, `stp` then `ipinterfaces`, in the order the
+    // `RESOURCE_FACTORIES` table is appended (registry.ts:102-103).
+    expect(new ResourceRegistry(RESOURCE_FACTORIES, node).names()).toEqual(['system', 'vlans', 'switchports', 'interfaces', 'stp', 'ipinterfaces'])
     expect(new ResourceRegistry(RESOURCE_FACTORIES, node).has('vlans')).toBe(true)
     expect(new ResourceRegistry(RESOURCE_FACTORIES, node).has('interfaces')).toBe(true)
+    expect(new ResourceRegistry(RESOURCE_FACTORIES, node).has('stp')).toBe(true)
+    expect(new ResourceRegistry(RESOURCE_FACTORIES, node).has('ipinterfaces')).toBe(true)
     expect(new ResourceRegistry(RESOURCE_FACTORIES, node).has('mlag')).toBe(false)
   })
 })
@@ -161,6 +165,8 @@ describe('Node.resource / Node.hasResource — the typed replacement for node.ap
     expect(node.hasResource('vlans')).toBe(true)
     expect(node.hasResource('switchports')).toBe(true)
     expect(node.hasResource('interfaces')).toBe(true)
+    expect(node.hasResource('stp')).toBe(true)
+    expect(node.hasResource('ipinterfaces')).toBe(true)
     expect(node.hasResource('mlag')).toBe(false)
     expect(node.hasResource('probe')).toBe(false)
   })
