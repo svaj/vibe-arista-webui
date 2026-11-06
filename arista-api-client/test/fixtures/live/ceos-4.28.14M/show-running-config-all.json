@@ -1,0 +1,1461 @@
+{
+  "metadata": {
+    "targetClass": "lab",
+    "targetKind": "ceos-container",
+    "imageTag": "arista/ceos:4.28.14M",
+    "imageId": "sha256:8fd4e31caeba5db82d706eaed00252d67a1caa7d68670e5bd7e2af54935f2e28",
+    "imageRepoDigests": [
+      "arista/ceos@sha256:8fd4e31caeba5db82d706eaed00252d67a1caa7d68670e5bd7e2af54935f2e28"
+    ],
+    "aristaVersion": "4.28.14M-50015774.42814M (engineering build)",
+    "aristaVersionBase": "4.28.14M",
+    "internalVersion": "4.28.14M-50015774.42814M",
+    "modelName": "cEOSLab",
+    "hardwareEvidence": "none — cEOS-lab container capture; not DCS-7050TX-64 / 4.28.13.1M evidence (DR-043)",
+    "runId": "lab-811108-5dcd01",
+    "capturedAt": "2026-11-06T16:11:43.554Z",
+    "capturedBy": "scripts/ceos-lab.mjs",
+    "endpoint": "127.0.0.1:46419",
+    "transport": "https + HTTP basic auth to the run-owned published loopback port; container-side pinned certificate",
+    "tlsPinFingerprint256": "994C09E179BB96187AB4FDDD83FCF3DE5FC4C8FCC3FBCFE6110671A52C062A08",
+    "bootupTimestamp": 1793981465.5379803,
+    "redactionApplied": [
+      "username/secret and enable/passphrase text replaced with <redacted-lab-secret>, including the encryption-type form (`secret sha512 <hash>`, `enable algorithm <algo> password <hash>`) and **object keys**, because `show running-config` in `json` format keys its `cmds` map by the whole command line — the lab `username … secret sha512 $6$…` line is a key there, not a value (observed 2026-11-06)",
+      "this run's random lab username replaced with <redacted-lab-user> (API user-stats otherwise leak it)",
+      "every MAC-shaped string under a *mac*-named key zeroed, at any depth (M12c: `show interfaces` / `show port-channel detail` carry a MAC per interface, not only systemMacAddress/hwMacAddress/configMacAddress)",
+      "no key material: the container keeps the key in a sibling file (capikey.pem) that is never read",
+      "serialNumber is the empty string on this cEOS-lab image and is kept verbatim"
+    ]
+  },
+  "command": "show running-config all",
+  "format": "json",
+  "result": {
+    "header": [
+      "! device: 3b7d2ee1fb0f (cEOSLab, EOS-4.28.14M-50015774.42814M (engineering build))\n!\n"
+    ],
+    "comments": [],
+    "cmds": {
+      "no service interface inactive expose": null,
+      "no transceiver media 40gbase-plrl4 temperature cooling-target": null,
+      "no power threshold": null,
+      "router kernel": {
+        "comments": [],
+        "cmds": {
+          "no protocol udp unknown-port send-unreachable": null
+        }
+      },
+      "no transceiver media 100gbase-ar4 temperature cooling-target": null,
+      "no ip address duplicate detection": null,
+      "no transceiver media 200gbase-cr4 temperature cooling-target": null,
+      "ip igmp snooping querier last-member-query-interval 1": null,
+      "logging level CLEAR debugging": null,
+      "default hardware access-list update default-result permit": {
+        "comments": [],
+        "cmds": {}
+      },
+      "no hardware access-list ipv4 egress resource sharing routed-interfaces": null,
+      "mac address-table aging-time 300": null,
+      "no transceiver media 25gbase-crn temperature cooling-target": null,
+      "no ip igmp snooping querier last-member-query-count": null,
+      "no performance-monitoring period": null,
+      "no transceiver media 100ge-dwdm2 temperature cooling-target": null,
+      "no ip hardware fib optimize disable-vrf": null,
+      "lldp tlv transmit system-description": null,
+      "mpls tunnel encapsulation model ttl uniform exp uniform": null,
+      "lldp tlv transmit port-description": null,
+      "default ip igmp snooping vlan 1 querier": null,
+      "logging level ACL debugging": null,
+      "no mpls fec ip sharing disabled": null,
+      "mpls oam standard arista": null,
+      "mpls evpn": {
+        "comments": [],
+        "cmds": {
+          "no vlan service dot1q remove outer": null,
+          "no label-stack entropy-label": null,
+          "label-stack control-word": null
+        }
+      },
+      "logging level LOOPBACK debugging": null,
+      "no transceiver media 100gbase-swdm4 temperature cooling-target": null,
+      "no event-monitor route backup path": null,
+      "logging event link-status global": null,
+      "logging level CAPACITY debugging": null,
+      "no mpls ip": null,
+      "logging level QOS debugging": null,
+      "spanning-tree mode mstp": null,
+      "no ip igmp snooping vlan 1 querier version": null,
+      "default snmp-server enable <redacted-lab-secret> isis rejected-adjacency": null,
+      "no ip igmp snooping vlan 1 querier startup-query-interval": null,
+      "no radius-server attribute 32 include-in-access-req": null,
+      "no snmp-server chassis-id": null,
+      "ip security": {
+        "comments": [],
+        "cmds": {
+          "no fips restrictions": null,
+          "no ip access-group": null
+        }
+      },
+      "hardware console persistent logging": null,
+      "no lldp tlv transmit vlan-name": null,
+      "default queue-monitor length global-buffer": null,
+      "no ip dhcp relay all-subnets default": null,
+      "agent Thermostat shutdown": null,
+      "no service configuration session max pending": null,
+      "no logging event login <redacted-lab-secret>": null,
+      "no snmp-server contact": null,
+      "logging level DHCP debugging": null,
+      "logging level RIB debugging": null,
+      "router vpls": {
+        "comments": [],
+        "cmds": {}
+      },
+      "no transceiver media 25gbase-ar temperature cooling-target": null,
+      "router general": {
+        "comments": [],
+        "cmds": {
+          "route cache": {
+            "comments": [],
+            "cmds": {
+              "hardware utilization threshold high 95 percent idle-limit 100 seconds": null,
+              "hardware utilization threshold medium 90 percent idle-limit 300 seconds": null,
+              "hardware utilization threshold low 85 percent idle-limit 1100 seconds": null
+            }
+          }
+        }
+      },
+      "no ip domain proxy": null,
+      "vlan internal order ascending": null,
+      "agent fatal-error action reload": null,
+      "no switchport default phone vlan": null,
+      "no ip igmp snooping vlan 1 querier last-member-query-interval": null,
+      "ip virtual-router mac-address 00:00:00:00:00:00": null,
+      "no aaa accounting commands all console": null,
+      "no event-monitor route6 backup path": null,
+      "lldp tlv transmit system-capabilities": null,
+      "management api http-commands": {
+        "comments": [],
+        "cmds": {
+          "no protocol unix-socket": null,
+          "default-services": null,
+          "no header csp frame-ancestors": null,
+          "no cors allowed-origin": null,
+          "no log-level": null,
+          "qos dscp 0": null,
+          "protocol https port 443": null,
+          "no protocol https certificate": null,
+          "no protocol http port 80": null,
+          "no shutdown": null,
+          "no protocol https ssl profile": null,
+          "no protocol http localhost port 8080": null
+        }
+      },
+      "logging level XMPP debugging": null,
+      "no transceiver media 10gbase-cr temperature cooling-target": null,
+      "no lacp port-id range": null,
+      "hostname 3b7d2ee1fb0f": null,
+      "no mpls oam downstream validation enabled": null,
+      "default snmp-server enable <redacted-lab-secret> pim": null,
+      "username <redacted-lab-user> privilege 15 role network-admin secret sha512 <redacted-lab-secret>": null,
+      "router multicast": {
+        "comments": [],
+        "cmds": {
+          "no mvpn ipv4 static pmsi": null
+        }
+      },
+      "no transceiver media 100gbase-cwdm4 temperature cooling-target": null,
+      "no switchport ethernet llc validation": null,
+      "no transceiver media 40gbase-plr4 temperature cooling-target": null,
+      "no aaa authorization commands all default": null,
+      "logging level MSDP debugging": null,
+      "no vrrp ipv4 authentication anti-replay": null,
+      "event-monitor stpunstable": null,
+      "management package": {
+        "comments": [],
+        "cmds": {
+          "no shutdown": null
+        }
+      },
+      "logging level SECURITY debugging": null,
+      "no ip hardware fib hierarchical next-hop urpf": null,
+      "no transceiver media 100gbase-fr temperature cooling-target": null,
+      "no hardware access-list resource sharing ipv4-ipv6 qos-policy in": null,
+      "default snmp-server enable <redacted-lab-secret> msdp established": null,
+      "event-monitor route6": null,
+      "no transceiver media 100gbase-lr temperature cooling-target": null,
+      "no transceiver media 40gbase-lr4 temperature cooling-target": null,
+      "no ip igmp snooping querier startup-query-count": null,
+      "mac address-table notification host-flap detection moves 5": null,
+      "no service configuration terminal disabled": null,
+      "logging level TRAFFICPOLICY debugging": null,
+      "no transceiver media 200g-optical temperature cooling-target": null,
+      "default snmp-server enable <redacted-lab-secret> isis area-mismatch": null,
+      "no ip igmp snooping querier": null,
+      "no logging synchronous": null,
+      "no logging event storm-control discards global": null,
+      "radius-server qos dscp 0": null,
+      "no ip policy match protocol bgp": null,
+      "no transceiver media 100base-fx temperature cooling-target": null,
+      "transceiver qsfp default-mode 4x10G": null,
+      "logging level SYS debugging": null,
+      "no queue-monitor length mirror": null,
+      "no ip dhcp relay access-group": null,
+      "default snmp-server enable <redacted-lab-secret> ospfv3 if-state-change": null,
+      "no switchport port-security persistence disabled": null,
+      "logging level BFD debugging": null,
+      "default system mac-address": null,
+      "no lldp management-address": null,
+      "no queue-monitor length": null,
+      "monitor hadoop": {
+        "comments": [],
+        "cmds": {
+          "shutdown": null
+        }
+      },
+      "snmp-server qos dscp 0": null,
+      "no aaa accounting commands all default": null,
+      "no port-channel min-links review interval": null,
+      "no ip ping client source-interface": null,
+      "logging level MSRP debugging": null,
+      "event-monitor neighbor": null,
+      "logging level LOADBALANCER debugging": null,
+      "logging level AGENT debugging": null,
+      "no sflow hardware acceleration datagram": null,
+      "no ip igmp snooping proxy": null,
+      "logging level LINEPROTO debugging": null,
+      "logging level IPRIB debugging": null,
+      "event-monitor mroute": null,
+      "management cli": {
+        "comments": [],
+        "cmds": {
+          "no command deprecated log": null
+        }
+      },
+      "spanning-tree bpduguard rate-limit default": null,
+      "no errdisable recovery cause bpduguard": null,
+      "queue-monitor length global-buffer thresholds 512 256": null,
+      "tacacs-server qos dscp 0": null,
+      "lacp system-priority 32768": null,
+      "default snmp-server enable <redacted-lab-secret> isis own-lsp-purge": null,
+      "default snmp-server enable <redacted-lab-secret> capacity": null,
+      "logging level DATAPLANE debugging": null,
+      "logging level BGP debugging": null,
+      "mpls ldp": {
+        "comments": [],
+        "cmds": {
+          "discovery hello hold-time 15": null,
+          "no router-id": null,
+          "label local-termination implicit-null": null,
+          "no graceful-restart role helper": null,
+          "no ip access-group": null,
+          "no graceful-restart role speaker": null,
+          "no authentication index active": null,
+          "neighbor hello-redundancy none": null,
+          "no transport-address": null,
+          "shutdown": null,
+          "no neighbor end-of-lib": null,
+          "discovery hello interval 5": null,
+          "mldp": {
+            "comments": [],
+            "cmds": {
+              "shutdown": null
+            }
+          },
+          "discovery targeted-hello hold-time 45": null,
+          "pseudowires": {
+            "comments": [],
+            "cmds": {
+              "mtu ignore": null,
+              "neighbor resolution tunnel-rib colored system-colored-tunnel-rib tunnel-rib system-tunnel-rib": null,
+              "no mtu": null
+            }
+          },
+          "no password": null,
+          "no tunnel source-protocol bgp ipv4 labeled-unicast": null,
+          "no interface disabled default": null,
+          "discovery targeted-hello interval 15": null,
+          "no fec filter": null,
+          "igp sync holddown 60": null,
+          "igp sync delay 5": null,
+          "no entropy-label": null
+        }
+      },
+      "logging level MONITORSECURITY debugging": null,
+      "mpls label range l2evpn 1036288 12288": null,
+      "default snmp-server enable <redacted-lab-secret> capacity arista-hardware-utilization-alert": null,
+      "agent PowerManager shutdown": null,
+      "default snmp-server enable <redacted-lab-secret> vrrp trap-new-master": null,
+      "default hardware access-list ipv6 implicit-permit icmpv6": null,
+      "spanning-tree mst 0 priority 32768": null,
+      "no logging policy": null,
+      "no transceiver media 100gbase-plr4 temperature cooling-target": null,
+      "service routing configuration route-map set-operations merged": null,
+      "logging level IGMP debugging": null,
+      "clock source ntp": null,
+      "no transceiver media 25gbase-cr temperature cooling-target": null,
+      "schedule config max-concurrent-jobs 1 ": null,
+      "tap aggregation": {
+        "comments": [],
+        "cmds": {
+          "no mode": null
+        }
+      },
+      "management api external-services": {
+        "comments": [],
+        "cmds": {
+          "shutdown": null
+        }
+      },
+      "bfd slow-timer 2000": null,
+      "no mpls segment-routing is-is fec ip sharing disabled": null,
+      "default snmp-server enable <redacted-lab-secret> isis database-overload": null,
+      "no transceiver dom-threshold file": null,
+      "logging level DMF debugging": null,
+      "no errdisable recovery cause lacp-rate-limit": null,
+      "mpls label range static 16 99984": null,
+      "no ip host": null,
+      "snmp-server vrf default": null,
+      "mlag configuration": {
+        "comments": [],
+        "cmds": {
+          "no dual-primary detection": null,
+          "no reload-delay": null,
+          "no reload-delay mode": null,
+          "no peer-address heartbeat": null,
+          "no dual-primary recovery delay": null,
+          "no reload-delay non-mlag": null,
+          "no peer-link": null,
+          "no peer-address": null,
+          "heartbeat-interval 4000": null,
+          "no domain-id": null,
+          "no shutdown": null,
+          "no local-interface": null
+        }
+      },
+      "no logging format sequence-numbers": null,
+      "no radius-server tls ssl-profile": null,
+      "interface defaults": {
+        "comments": [],
+        "cmds": {
+          "ethernet": {
+            "comments": [],
+            "cmds": {
+              "no shutdown": null
+            }
+          }
+        }
+      },
+      "no transceiver media 200gbase-cr8s temperature cooling-target": null,
+      "default snmp-server enable <redacted-lab-secret> vrrp": null,
+      "no aaa accounting exec default": null,
+      "no transceiver media 400gbase-sr8 temperature cooling-target": null,
+      "default snmp-server enable <redacted-lab-secret> ospfv3 nssa-translator-status-change": null,
+      "spanning-tree max-hops 20": null,
+      "logging level PSEUDOWIRE debugging": null,
+      "no transceiver media 10gbase-erlbd-d temperature cooling-target": null,
+      "no mpls icmp ttl-exceeded tunneling": null,
+      "no snmp-server objects mac-address-tables disable": null,
+      "logging level OPENFLOW debugging": null,
+      "no aaa authorization serial-console": null,
+      "no transceiver media 50gbase-sr temperature cooling-target": null,
+      "ip as-path regex-mode asn": null,
+      "monitor security awake": {
+        "comments": [],
+        "cmds": {
+          "disabled": null,
+          "ipfix listener port 4739": null,
+          "topic packet-analysis-sessions": null,
+          "flow table size 16384 entries": null,
+          "monitor-point identifier 0": null
+        }
+      },
+      "default snmp-server enable <redacted-lab-secret> bgp arista-established": null,
+      "logging level VRF debugging": null,
+      "no ip hardware fib maximum routes": null,
+      "no transceiver media 100gbase-lr4 temperature cooling-target": null,
+      "no ntp authenticate": null,
+      "no ip hardware fib next-hop multi-path maximum": null,
+      "no ntp serve all": null,
+      "default snmp-server enable <redacted-lab-secret> pim neighbor-loss": null,
+      "no ip igmp snooping report-flooding": null,
+      "logging level SSO debugging": null,
+      "no transceiver media 1000base-sx temperature cooling-target": null,
+      "default snmp-server enable <redacted-lab-secret> mpls-ldp mpls-ldp-session-up": null,
+      "logging level MLAG debugging": null,
+      "no ipv6 dhcp relay option link-layer address": null,
+      "no transceiver media 100g-dwdm temperature cooling-target": null,
+      "no hardware access-list resource sharing ipv4-ipv6 mirroring-policy in": null,
+      "no transceiver media 10gbase-sr temperature cooling-target": null,
+      "no dcbx application": null,
+      "no ip hardware fib hierarchical next-hop flattening weight-expansion ucmp": null,
+      "no ip hardware fib next-hop sharing": null,
+      "no aaa authorization policy local default-role": null,
+      "logging level TUNNELINTF debugging": null,
+      "monitor loop-protection": {
+        "comments": [],
+        "cmds": {
+          "rate-limit 1000": null,
+          "transmit-interval 5": null,
+          "disabled-time 604800": null
+        }
+      },
+      "monitor rfc2544 generators": {
+        "comments": [],
+        "cmds": {
+          "disabled": null
+        }
+      },
+      "logging level DOT1XHTTP debugging": null,
+      "logging level RADIUS debugging": null,
+      "default snmp-server enable <redacted-lab-secret> msdp backward-transition": null,
+      "mac address-table notification host-flap detection window 15": null,
+      "no dot1x protocol lldp bypass": null,
+      "no errdisable recovery cause link-flap": null,
+      "default snmp-server enable <redacted-lab-secret> snmpConfigManEvent arista-config-man-event": null,
+      "no spanning-tree mst pvst border": null,
+      "logging facility local4": null,
+      "no transceiver media 800gbase-dr8 temperature cooling-target": null,
+      "no transceiver media 40gbase-ar4 temperature cooling-target": null,
+      "default dns cache size": null,
+      "logging level HTTPSERVICE debugging": null,
+      "vrf defaults": {
+        "comments": [],
+        "cmds": {
+          "no route expected count": null
+        }
+      },
+      "logging level SERVERMONITOR debugging": null,
+      "aaa authentication enable <redacted-lab-secret> local": null,
+      "vlan 1": {
+        "comments": [],
+        "cmds": {
+          "no private-vlan": null,
+          "name default": null,
+          "state active": null,
+          "mac address forwarding multicast miss action flood": null,
+          "no e-tree role leaf": null,
+          "mac address forwarding unicast miss action flood": null,
+          "mac address learning": null
+        }
+      },
+      "power poll-interval 5": null,
+      "default snmp-server enable <redacted-lab-secret> test": null,
+      "default snmp-server enable <redacted-lab-secret> ospfv3 nbr-state-change": null,
+      "management ssh": {
+        "comments": [],
+        "cmds": {
+          "rekey interval 0 seconds": null,
+          "no fips restrictions": null,
+          "default client-alive count-max": null,
+          "log-level info": null,
+          "login <redacted-lab-secret> 120": null,
+          "qos dscp 0": null,
+          "server-port 22": null,
+          "idle-timeout 0": null,
+          "no shutdown": null,
+          "cipher aes256-gcm@openssh.com aes128-gcm@openssh.com aes256-ctr aes192-ctr aes128-ctr": null,
+          "no logging target system": null,
+          "no user-keys revoke-list": null,
+          "authentication protocol keyboard-interactive public-key": null,
+          "authentication empty-passwords auto": null,
+          "key-exchange curve25519-sha256@libssh.org ecdh-sha2-nistp521 ecdh-sha2-nistp256 ecdh-sha2-nistp384 diffie-hellman-group14-sha1": null,
+          "mac hmac-sha2-512-etm@openssh.com hmac-sha2-256-etm@openssh.com hmac-sha1-etm@openssh.com hmac-sha2-512 hmac-sha2-256 hmac-sha1": null,
+          "no trusted-ca key public": null,
+          "no authorized-principals command": null,
+          "connection limit 50": null,
+          "connection per-host 20": null,
+          "rekey frequency 3 gbytes": null,
+          "hostkey server ecdsa-nistp521 ed25519 rsa": null,
+          "no hostkey client strict-checking": null,
+          "no hostkey server cert": null,
+          "default client-alive interval": null
+        }
+      },
+      "logging level SPANTREE debugging": null,
+      "agent LedPolicy shutdown": null,
+      "environment fan-speed auto": null,
+      "environment insufficient-fans action shutdown": null,
+      "no ipv6 hardware fib optimize": null,
+      "default snmp-server enable <redacted-lab-secret> bridge arista-mac-learn": null,
+      "logging level BMP debugging": null,
+      "mac address-table notification host-flap logging": null,
+      "no ipv6 hardware fib maximum routes": null,
+      "no bfd shutdown": null,
+      "management api models": {
+        "comments": [],
+        "cmds": {
+          "no models": null,
+          "no provider aft": null,
+          "no provider isis": null,
+          "no provider ipfix": null,
+          "no provider sysdb": null,
+          "no provider smash": null,
+          "no provider http-commands": null,
+          "no provider sflow": null
+        }
+      },
+      "no transceiver media 10gbase-zr temperature cooling-target": null,
+      "no switchport port-security violation protect chip-based": null,
+      "no logging format rfc5424": null,
+      "no transceiver media 50gbase-cr temperature cooling-target": null,
+      "bfd interval 300 min_rx 300 multiplier 3 default": null,
+      "management accounts": {
+        "comments": [],
+        "cmds": {
+          "no session default-limit": null
+        }
+      },
+      "no errdisable recovery cause portchannelguard": null,
+      "no radius-server deadtime": null,
+      "no ip igmp snooping vlan 1 querier startup-query-count": null,
+      "errdisable detect cause acl": null,
+      "no transceiver media 200gbase-ar4 temperature cooling-target": null,
+      "monitor system": {
+        "comments": [],
+        "cmds": {
+          "memory exhaustion": {
+            "comments": [],
+            "cmds": {
+              "no action agent non-critical hold-down": null
+            }
+          }
+        }
+      },
+      "errdisable detect cause link-change": null,
+      "no transceiver media 40gbase-psm4 temperature cooling-target": null,
+      "no transceiver media 400gbase-cr8n temperature cooling-target": null,
+      "no ipv6 dhcp relay access-group": null,
+      "no radius-server key": null,
+      "logging level FLOWTRACKING debugging": null,
+      "no transceiver media 100gbase-dr temperature cooling-target": null,
+      "logging level ARP debugging": null,
+      "no transceiver media 800gbase-cr8 temperature cooling-target": null,
+      "no transceiver media 10gbase-erbd-u temperature cooling-target": null,
+      "no ip dhcp relay information option": null,
+      "no ip http client local-interface": null,
+      "spanning-tree hello-time 2000": null,
+      "no ipv6 dhcp relay all-subnets default": null,
+      "no logging relogging-interval": null,
+      "mpls label range dynamic 100000 262144": null,
+      "ip igmp snooping": null,
+      "event-monitor vxlanmac": null,
+      "no ip ssh client source-interface": null,
+      "lldp tlv transmit system-name": null,
+      "no transceiver media 800gbase-2fr4 temperature cooling-target": null,
+      "spanning-tree max-age 20": null,
+      "no ip hardware fib route delete delay": null,
+      "management security": {
+        "comments": [],
+        "cmds": {
+          "no entropy source": null,
+          "no signature-verification extension": null,
+          "no password minimum length": null,
+          "no entropy source hardware exclusive": null,
+          "ssl profile ARISTA_DEFAULT_PROFILE": {
+            "comments": [],
+            "cmds": {
+              "no fips restrictions": null,
+              "trust certificate ARISTA_SIGNING_CA.crt": null,
+              "no certificate requirement extended-key-usage": null,
+              "no trust certificate requirement basic-constraint ca true": null,
+              "trust certificate ARISTA_ROOT_CA.crt": null,
+              "no crl policy expiry-date ignore": null,
+              "no peer certificate requirement hostname match": null,
+              "diffie-hellman parameters generated": null,
+              "no certificate policy expiry-date ignore": null,
+              "no trust certificate requirement hostname fqdn": null,
+              "no trust certificate policy expiry-date ignore": null,
+              "no chain certificate requirement basic-constraint ca true": null,
+              "tls versions 1.0 1.1 1.2": null,
+              "no certificate requirement hostname match": null,
+              "no cipher-list": null,
+              "no chain certificate requirement include root-ca": null
+            }
+          },
+          "no password encryption-key common": null,
+          "no fips logging": null,
+          "no password encryption reversible aes-256-gcm": null
+        }
+      },
+      "no ip tacacs source-interface": null,
+      "aaa authorization config-commands": null,
+      "role network-admin": {
+        "comments": [],
+        "cmds": {
+          "10 permit command .*": null
+        }
+      },
+      "lldp tlv transmit max-frame-size": null,
+      "no transceiver media 10gbase-erbd-d temperature cooling-target": null,
+      "no vxlan vni notation dotted": null,
+      "no event-monitor vxlanmac backup path": null,
+      "radius-server retransmit 3": null,
+      "no snmp-server location": null,
+      "no ntp trusted-key": null,
+      "no ip icmp source-interface": null,
+      "no ip dhcp snooping information option": null,
+      "no aaa accounting commands all secure-monitor": null,
+      "no event-monitor arp backup path": null,
+      "no ip hardware fib programmed monitor": null,
+      "no snmp-server ifmib ifspeed shape-rate": null,
+      "logging level INFLUXTELEMETRY debugging": null,
+      "no ip dhcp snooping bridging": null,
+      "no aaa authentication policy on-failure log": null,
+      "no transceiver media 400gbase-lr4 temperature cooling-target": null,
+      "no logging source-interface": null,
+      "logging level DSCP debugging": null,
+      "no transceiver media 400gbase-cr4n temperature cooling-target": null,
+      "no transceiver media 100gbase-zr4 temperature cooling-target": null,
+      "no spanning-tree guard loop default": null,
+      "logging level OSPF3 debugging": null,
+      "no ipv6 unicast-routing": null,
+      "logging level CAPI debugging": null,
+      "no banner motd": null,
+      "no ip hardware fib default route protected": null,
+      "no transceiver media 25gbase-arn temperature cooling-target": null,
+      "no transceiver media 100gbase-cr2 temperature cooling-target": null,
+      "no environment temperature transceiver third-party invalid action ignore": null,
+      "no event-monitor mroute backup path": null,
+      "logging level PFC debugging": null,
+      "logging level REDUNDANCY debugging": null,
+      "no ip ftp client source-interface": null,
+      "default snmp-server enable <redacted-lab-secret> bridge arista-mac-age": null,
+      "no transceiver media 800g-optical temperature cooling-target": null,
+      "no ip hardware fib hierarchical next-hop max-level": null,
+      "no switchport vlan tag validation": null,
+      "management telnet": {
+        "comments": [],
+        "cmds": {
+          "session-limit per-host 20": null,
+          "shutdown": null,
+          "session-limit 20": null,
+          "idle-timeout 0": null
+        }
+      },
+      "lldp timer 30": null,
+      "no transceiver media 100gbase-cr2n temperature cooling-target": null,
+      "logging level OPENCONFIG debugging": null,
+      "flow tracking sampled": {
+        "comments": [],
+        "cmds": {
+          "no record rewrite dscp": null,
+          "no hardware offload ipv4 ipv6": null,
+          "shutdown": null,
+          "no encapsulation": null,
+          "sample 1048576": null
+        }
+      },
+      "no mpls tunnel termination model": null,
+      "ip igmp snooping interface-restart-query 2000": null,
+      "logging level ISIS debugging": null,
+      "no ip hardware fib hierarchical next-hop disabled": null,
+      "no transceiver media 400gbase-xdr4 temperature cooling-target": null,
+      "agent PowerFuse shutdown": null,
+      "logging level MRP debugging": null,
+      "ip icmp redirect": null,
+      "no transceiver media 100gbase-cr4s temperature cooling-target": null,
+      "environment temperature poll-interval 5 seconds": null,
+      "default snmp-server enable <redacted-lab-secret> isis adjacency-change": null,
+      "no ip igmp snooping querier startup-query-interval": null,
+      "no spanning-tree root super": null,
+      "no ip telnet client source-interface": null,
+      "ip dhcp snooping information option circuit-id type 0 format %p:%v": null,
+      "prompt %H%R%v%P": null,
+      "no transceiver media 1000base-bx10-d temperature cooling-target": null,
+      "default snmp-server enable <redacted-lab-secret> lldp rem-tables-change": null,
+      "default snmp-server enable <redacted-lab-secret> ospf": null,
+      "msrp": {
+        "comments": [],
+        "cmds": {
+          "default shaping multiplier": null,
+          "no streams load-file": null
+        }
+      },
+      "schedule config prepend-hostname-logfile": null,
+      "no transceiver media 100gbase-erl4 temperature cooling-target": null,
+      "environment power controller poll-interval 60 seconds": null,
+      "logging level AAA debugging": null,
+      "logging level DOT1X debugging": null,
+      "monitor link qualification generators": {
+        "comments": [],
+        "cmds": {
+          "disabled": null
+        }
+      },
+      "logging level HEALTH debugging": null,
+      "default snmp-server enable <redacted-lab-secret> ospfv3 restart-status-change": null,
+      "no ip policy mac address aging": null,
+      "default ip igmp snooping vlan 1": null,
+      "no bfd local-address": null,
+      "no aaa authentication policy local allow-nopassword-remote-login": null,
+      "logging level MKA debugging": null,
+      "flow tracking telemetry inband": {
+        "comments": [],
+        "cmds": {
+          "shutdown": null
+        }
+      },
+      "default snmp-server transport tcp": null,
+      "default snmp-server enable <redacted-lab-secret> ospf nbr-state-change": null,
+      "no spanning-tree portchannel guard misconfig": null,
+      "default snmp-server enable <redacted-lab-secret> external-alarm arista-external-alarm-deasserted-notif": null,
+      "no ipv6 dhcp snooping remote-id option": null,
+      "no ip igmp snooping restart query-interval": null,
+      "default snmp-server enable <redacted-lab-secret> snmpConfigManEvent": null,
+      "no hardware speed-group default single-slot auto": null,
+      "hardware fpga error action log": null,
+      "no transceiver media 25gbase-sr temperature cooling-target": null,
+      "default switch fabric insufficient-bandwidth action": null,
+      "no aaa accounting dot1x default": null,
+      "no transceiver media 40gbase-srbd temperature cooling-target": null,
+      "logging level PWRMGMT debugging": null,
+      "no transceiver media 10gbase-lr temperature cooling-target": null,
+      "no service interface shutdown delay": null,
+      "default snmp-server enable <redacted-lab-secret> snmp authentication": null,
+      "no transceiver media 200gbase-cr8 temperature cooling-target": null,
+      "logging level PTP debugging": null,
+      "default snmp-server enable <redacted-lab-secret> isis attempt-to-exceed-max-sequence": null,
+      "no virtual-cable": null,
+      "lldp tlv transmit med network-policy": null,
+      "default snmp-server enable <redacted-lab-secret> ospfv3 nbr-restart-helper-status-change": null,
+      "no deep-inspection payload l2 skip": null,
+      "no event-monitor lacp backup path": null,
+      "logging level TRANSCEIVER debugging": null,
+      "no spanning-tree edge-port bpduguard default": null,
+      "no arp monitor mac-address": null,
+      "default arp aging timeout default": null,
+      "system control-plane": {
+        "comments": [],
+        "cmds": {
+          "no tcp mss ceiling": null,
+          "ip access-group default-control-plane-acl in": null,
+          "ipv6 access-group default-control-plane-acl in": null
+        }
+      },
+      "logging level IP6ROUTING debugging": null,
+      "logging level FLOW debugging": null,
+      "no event-monitor stpunstable backup path": null,
+      "no transceiver media 25gbase-xsr temperature cooling-target": null,
+      "no ip hardware forwarding mpls gre-key": null,
+      "lldp run": null,
+      "no hardware access-list ipv6 security-acl  key-width in": null,
+      "no traceroute qos dscp": null,
+      "no transceiver media 100g-dwdm-e temperature cooling-target": null,
+      "default snmp-server enable <redacted-lab-secret> msdp": null,
+      "logging level MAPREDUCEMONITOR debugging": null,
+      "no switchport port-security mac-address aging": null,
+      "no transceiver media 100gbase-ar4n temperature cooling-target": null,
+      "errdisable detect cause tapagg": null,
+      "default event-monitor": null,
+      "logging level LAG debugging": null,
+      "default ip igmp snooping vlan 1 fast-leave": null,
+      "no ip hardware fib next-hop sharing resolved ip sr-te": null,
+      "logging on": null,
+      "no transceiver media 100gbase-cr2s temperature cooling-target": null,
+      "default snmp-server enable <redacted-lab-secret> entity ent-state-oper-disabled": null,
+      "logging level PORTSECURITY debugging": null,
+      "no lldp receive packet tagged drop": null,
+      "default snmp-server enable <redacted-lab-secret> isis sequence-number-skip": null,
+      "tacacs-server timeout 5": null,
+      "no ip tftp client source-interface": null,
+      "no lldp management-address ipv6": null,
+      "mpls label range srlb 965536 65536": null,
+      "no ip radius source-interface": null,
+      "logging level EXTENSION debugging": null,
+      "no logging persistent": null,
+      "no deep-inspection payload l4 skip": null,
+      "logging level QUEUEMONITOR debugging": null,
+      "default snmp-server enable <redacted-lab-secret>": null,
+      "no transceiver media 100base-lx10 temperature cooling-target": null,
+      "ipv6 dhcp relay option remote-id format %m:%i": null,
+      "no transceiver media 10gbase-erlbd-u temperature cooling-target": null,
+      "no transceiver media 400gbase-cra8 temperature cooling-target": null,
+      "no ip igmp snooping vlan 1 querier query-interval": null,
+      "no logging qos dscp": null,
+      "default snmp-server enable <redacted-lab-secret> bgp": null,
+      "no errdisable recovery cause dot1x": null,
+      "no aaa accounting exec console": null,
+      "ip igmp snooping fast-leave": null,
+      "logging level MCS debugging": null,
+      "event-monitor buffer max-size 32": null,
+      "no queue-monitor length tx-latency": null,
+      "no transceiver media 1000base-bx10-u temperature cooling-target": null,
+      "no hardware access-list ipv6 qos-policy  key-width in": null,
+      "default sflow hardware acceleration": null,
+      "no ipv6 nd ra consistency-check default": null,
+      "no transceiver media 100gbase-lrl4 temperature cooling-target": null,
+      "logging level PIMBSR debugging": null,
+      "logging event port-channel member-status global": null,
+      "no transceiver media 10gbase-er temperature cooling-target": null,
+      "ip igmp snooping robustness-variable 2": null,
+      "no service running-config timestamp": null,
+      "no ip hardware fib optimize prefixes": null,
+      "logging format timestamp traditional": null,
+      "logging level MMODE debugging": null,
+      "email": {
+        "comments": [],
+        "cmds": {
+          "no tls": null,
+          "no auth username": null,
+          "no server": null,
+          "no auth password": null,
+          "no from-user": null
+        }
+      },
+      "default snmp-server enable <redacted-lab-secret> switchover": null,
+      "logging level ACCOUNTING debugging": null,
+      "router segment-security": {
+        "comments": [],
+        "cmds": {
+          "shutdown": null
+        }
+      },
+      "role network-operator": {
+        "comments": [],
+        "cmds": {
+          "20 permit mode exec command .*": null,
+          "10 deny mode exec command configure|bash|python-shell|\\|": null
+        }
+      },
+      "event-handler VoqDeleteEventHandler": {
+        "comments": [],
+        "cmds": {
+          "repeat interval 0": null,
+          "threshold 900 count 3": null,
+          "trigger on-counters": {
+            "comments": [],
+            "cmds": {
+              "granularity per-source": null,
+              "condition *.voqDeleteEvent.delta > 0": null,
+              "poll interval 30": null
+            }
+          },
+          "action log": null,
+          "no action increment device-health metric": null,
+          "delay 0": null,
+          "timeout 20": null,
+          "no asynchronous": null,
+          "no trigger on-config disabled": null
+        }
+      },
+      "no transceiver media 100gbase-cra4 temperature cooling-target": null,
+      "no transceiver media 10gbase-t temperature cooling-target": null,
+      "no ip dhcp relay qos dscp": null,
+      "no event-monitor mac backup path": null,
+      "clock timezone UTC": null,
+      "service routing protocols model ribd": null,
+      "no username root ssh principal": null,
+      "no snmp-server engineID local": null,
+      "no mac pause-frame pass-through": null,
+      "no transceiver media 25gbase-crs temperature cooling-target": null,
+      "no transceiver media 50gbase-cr2n temperature cooling-target": null,
+      "default snmp-server enable <redacted-lab-secret> ospfv3": null,
+      "dot1x": {
+        "comments": [],
+        "cmds": {
+          "no captive-portal": null,
+          "no radius av-pair framed-mtu": null,
+          "no eapol vlan change logoff disabled": null,
+          "result-caching": {
+            "comments": [],
+            "cmds": {
+              "no eapol logoff ignore": null
+            }
+          },
+          "no aaa accounting update interval": null,
+          "no supplicant disconnect cached-results timeout": null,
+          "aaa unresponsive eap response success": null,
+          "no statistics packets dropped": null,
+          "no eapol unresponsive action traffic allow": null,
+          "no supplicant logging": null,
+          "no event mac logged-off action send request-identity unicast": null,
+          "no mac based authentication hold period": null,
+          "no aaa unresponsive action": null,
+          "no aaa unresponsive recovery action reauthenticate": null,
+          "no event mac new action send request-identity unicast": null,
+          "no radius av-pair service-type": null,
+          "no captive-portal access-list ipv4": null,
+          "no aaa unresponsive phone action": null,
+          "no mac based authentication delay": null,
+          "no mac-based-auth radius av-pair user-name": null,
+          "no access-list dot1x priority low": null
+        }
+      },
+      "schedule tech-support interval 60 timeout 30 max-log-files 100 command show tech-support": null,
+      "default snmp-server enable <redacted-lab-secret> external-alarm": null,
+      "no mpls tunnel termination php model": null,
+      "management ldap": {
+        "comments": [],
+        "cmds": {
+          "server defaults": {
+            "comments": [],
+            "cmds": {
+              "timeout 30": null
+            }
+          }
+        }
+      },
+      "spanning-tree mst configuration": {
+        "comments": [],
+        "cmds": {
+          "no name": null,
+          "revision 0": null
+        }
+      },
+      "no transceiver media 200gbase-sr4 temperature cooling-target": null,
+      "logging level SYSDB debugging": null,
+      "errdisable detect cause dot1x": null,
+      "logging trap informational": null,
+      "management console": {
+        "comments": [],
+        "cmds": {
+          "no login <redacted-lab-secret> hostname fqdn": null,
+          "idle-timeout 0": null
+        }
+      },
+      "no transceiver media 40gbase-er4 temperature cooling-target": null,
+      "no errdisable recovery cause uplink-failure-detection": null,
+      "logging level INTF debugging": null,
+      "no radius-server dynamic-authorization tls ssl-profile": null,
+      "no transceiver media 1000base-t temperature cooling-target": null,
+      "vlan dynamic range 1-4094": null,
+      "no transceiver media 400gbase-dr4 temperature cooling-target": null,
+      "no transceiver media 800gbase-cr8n temperature cooling-target": null,
+      "event-monitor lacp": null,
+      "default snmp-server enable <redacted-lab-secret> lldp": null,
+      "no transceiver media 40gbase-lrl4 temperature cooling-target": null,
+      "default snmp-server enable <redacted-lab-secret> isis authentication-type-failure": null,
+      "no errdisable recovery cause hitless-reload-down": null,
+      "no transceiver media 100gbase-fr-fec temperature cooling-target": null,
+      "bfd debug rbfd 1": null,
+      "no ipv6 dhcp relay qos dscp": null,
+      "no ip igmp snooping vlan 1 querier last-member-query-count": null,
+      "no spanning-tree edge-port bpdufilter default": null,
+      "lacp rate-limit default": null,
+      "tacacs-server username max-length 255": null,
+      "no radius-server dynamic-authorization port": null,
+      "no ip igmp snooping querier version": null,
+      "default logging event congestion-drops": null,
+      "default snmp-server enable <redacted-lab-secret> entity arista-ent-sensor-alarm": null,
+      "no transceiver media 10gbase-ar temperature cooling-target": null,
+      "logging level MLDSNOOPING debugging": null,
+      "default snmp-server enable <redacted-lab-secret> bgp established": null,
+      "no switchport default phone trunk untagged": null,
+      "logging level FRU debugging": null,
+      "no aaa root": null,
+      "switchport default phone cos 5": null,
+      "bfd multihop interval 300 min_rx 300 multiplier 3": null,
+      "default snmp-server enable <redacted-lab-secret> external-alarm arista-external-alarm-asserted-notif": null,
+      "service configuration checkpoint max saved 20": null,
+      "logging level VMTRACERSESS debugging": null,
+      "default snmp-server enable <redacted-lab-secret> isis": null,
+      "errdisable recovery interval 300": null,
+      "username admin privilege 1 role network-admin nopassword": null,
+      "no dns domain": null,
+      "cvx": {
+        "comments": [],
+        "cmds": {
+          "service pcs": {
+            "comments": [],
+            "cmds": {
+              "shutdown": null,
+              "controller 0.0.0.0 443": null
+            }
+          },
+          "service debug": {
+            "comments": [],
+            "cmds": {
+              "interval 1": null,
+              "no pingpong": null,
+              "stats interval 1.000000": null,
+              "no shutdown": null
+            }
+          },
+          "peer timeout 10": null,
+          "service mss": {
+            "comments": [],
+            "cmds": {
+              "no vxlan traffic inspect": null,
+              "shutdown": null,
+              "policy enforcement consistency best-effort": null,
+              "policy enforcement rules group verbatim": null,
+              "no policy offload traffic logging": null
+            }
+          },
+          "heartbeat-interval 20": null,
+          "heartbeat-timeout 60": null,
+          "no ssl profile": null,
+          "no connection state preserve": null,
+          "no source-interface": null,
+          "no peer host": null,
+          "service openstack": {
+            "comments": [],
+            "cmds": {
+              "network type-driver vlan default": null,
+              "shutdown": null,
+              "name-resolution interval 21600": null,
+              "grace-period 60": null
+            }
+          },
+          "service mcs": {
+            "comments": [],
+            "cmds": {
+              "shutdown": null
+            }
+          },
+          "shutdown": null,
+          "service hsc": {
+            "comments": [],
+            "cmds": {
+              "log-syslog disabled": null,
+              "no error-reporting": null,
+              "persist-database": null,
+              "shutdown": null,
+              "vtep flood list type any": null,
+              "no ovsdb-shutdown": null,
+              "log-file disabled": null,
+              "log-console disabled": null,
+              "no ssl profile": null,
+              "routing direct": null
+            }
+          },
+          "service vxlan": {
+            "comments": [],
+            "cmds": {
+              "resync-period 300": null,
+              "vtep vni mapping vlan": null,
+              "shutdown": null,
+              "no flood vtep": null,
+              "no vni flood vtep": null,
+              "vtep mac-learning control-plane": null,
+              "redistribute bgp evpn vxlan": null,
+              "no arp reply relay vtep ": null
+            }
+          },
+          "port 9979": null,
+          "service container tracer": {
+            "comments": [],
+            "cmds": {
+              "shutdown": null
+            }
+          }
+        }
+      },
+      "no ip policy unresolved-nexthop action": null,
+      "logging level LICENSE debugging": null,
+      "no transceiver media 100gbase-xsr4 temperature cooling-target": null,
+      "no ip dhcp snooping": null,
+      "no ip hardware fib next-hop weight-deviation": null,
+      "event-monitor arp": null,
+      "no transceiver media 400gbase-lr8 temperature cooling-target": null,
+      "no transceiver media 800gbase-xdr8 temperature cooling-target": null,
+      "router igmp": {
+        "comments": [],
+        "cmds": {
+          "no ssm aware": null
+        }
+      },
+      "snmp-server notification log entry limit 500": null,
+      "no transceiver media 800gbase-cr8s temperature cooling-target": null,
+      "no logging repeat-messages": null,
+      "no event-monitor neighbor backup path": null,
+      "ip igmp snooping querier query-interval 125": null,
+      "agent LicenseManager shutdown": null,
+      "router l2-vpn": {
+        "comments": [],
+        "cmds": {
+          "no arp flooding": null,
+          "no virtual-router arp advertisement flooding disabled": null,
+          "no nd proxy prefix-list": null,
+          "no nd dad flooding disabled": null,
+          "no flooding default disabled": null,
+          "no virtual-router neighbor advertisement flooding disabled": null,
+          "no nd flooding": null,
+          "no nd rs flooding disabled": null,
+          "no nd learning bridged": null,
+          "no arp selective-install": null,
+          "no arp learning bridged": null,
+          "no arp proxy prefix-list": null
+        }
+      },
+      "no transceiver media 1000base-lx temperature cooling-target": null,
+      "ipv6 icmp redirect": null,
+      "no transceiver media 100gbase-psm4 temperature cooling-target": null,
+      "logging level LLDP debugging": null,
+      "no transceiver media 400gbase-ar8 temperature cooling-target": null,
+      "agent Bfd shutdown": null,
+      "lldp tlv transmit power-via-mdi": null,
+      "no transceiver media 400gbase-zr temperature cooling-target": null,
+      "no snmp-server vrf default local-interface": null,
+      "no ip igmp snooping querier address": null,
+      "no transceiver media 200gbase-fr4 temperature cooling-target": null,
+      "logging level ROUTING debugging": null,
+      "no performance-monitoring transceiver default": null,
+      "logging level HARDWARE debugging": null,
+      "no power limit current": null,
+      "radius-server timeout 5": null,
+      "no errdisable recovery cause no-internal-vlan": null,
+      "mcs client": {
+        "comments": [],
+        "cmds": {
+          "cvx secondary default": {
+            "comments": [],
+            "cmds": {
+              "no source-interface": null,
+              "vrf default": null,
+              "no server host": null,
+              "shutdown": null,
+              "heartbeat-timeout 60": null,
+              "no ssl profile": null,
+              "heartbeat-interval 20": null
+            }
+          },
+          "shutdown": null
+        }
+      },
+      "logging level TUNNEL debugging": null,
+      "default ip igmp snooping vlan 1 proxy": null,
+      "logging level KERNELFIB debugging": null,
+      "no dns qos dscp": null,
+      "no transceiver media 100gbase-sr2 temperature cooling-target": null,
+      "no switchport default phone access-list bypass": null,
+      "default snmp-server enable <redacted-lab-secret> entity ent-config-change": null,
+      "no errdisable recovery cause tapagg": null,
+      "logging level VMWAREVI debugging": null,
+      "default snmp-server enable <redacted-lab-secret> bridge arista-mac-move": null,
+      "logging level IRA debugging": null,
+      "no sflow hardware acceleration profile": null,
+      "no ipv6 dhcp snooping": null,
+      "mpls label range bgp-sr 900000 65536": null,
+      "no enable <redacted-lab-secret>": null,
+      "default snmp-server enable <redacted-lab-secret> entity ent-state-oper": null,
+      "tunnel-ribs": {
+        "comments": [],
+        "cmds": {
+          "tunnel-rib system-tunnel-rib": {
+            "comments": [],
+            "cmds": {
+              "source-protocol isis flex-algo": null,
+              "source-protocol nexthop-group": null,
+              "source-protocol ldp": null,
+              "source-protocol static": null,
+              "source-protocol rsvp-ler": null,
+              "source-protocol bgp labeled-unicast": null,
+              "source-protocol isis segment-routing": null
+            }
+          }
+        }
+      },
+      "no transceiver media 400gbase-zrp temperature cooling-target": null,
+      "lldp timer reinitialization 2": null,
+      "logging level ENVMON debugging": null,
+      "no twserver": null,
+      "no aaa authentication login <redacted-lab-secret>": null,
+      "default snmp-server enable <redacted-lab-secret> snmp link-up": null,
+      "no service routing configuration bgp no-equals-default": null,
+      "no hardware access-list mechanism": null,
+      "management cvx": {
+        "comments": [],
+        "cmds": {
+          "no source-interface": null,
+          "vrf default": null,
+          "service mss": {
+            "comments": [],
+            "cmds": {
+              "no disabled": null
+            }
+          },
+          "shutdown": null,
+          "service debug": {
+            "comments": [],
+            "cmds": {
+              "interval 1": null,
+              "no pingpong": null,
+              "no shutdown": null
+            }
+          },
+          "no server host": null,
+          "heartbeat-timeout 60": null,
+          "no ssl profile": null,
+          "heartbeat-interval 20": null
+        }
+      },
+      "no port-channel speed minimum review interval": null,
+      "no aaa authorization exec default": null,
+      "mpls lookup label count 1": null,
+      "no transceiver media 400g-optical temperature cooling-target": null,
+      "default snmp-server enable <redacted-lab-secret> mpls-ldp mpls-ldp-session-down": null,
+      "no transceiver media 100gbase-cr4n temperature cooling-target": null,
+      "no transceiver media 100gbase-xcwdm4 temperature cooling-target": null,
+      "no logging message all severity": null,
+      "no transceiver media 100g-optical temperature cooling-target": null,
+      "logging level MVRP debugging": null,
+      "default snmp-server enable <redacted-lab-secret> switchover arista-redundancy-switch-over-notif": null,
+      "logging console errors": null,
+      "no transceiver media 400gbase-cr4s temperature cooling-target": null,
+      "event-monitor backup max-size 10": null,
+      "no ip routing": null,
+      "no ipv6 host": null,
+      "default snmp-server enable <redacted-lab-secret> bridge": null,
+      "arp proxy max-delay 800": null,
+      "no bfd debug-seq-num": null,
+      "no transceiver media 400gbase-fr4 temperature cooling-target": null,
+      "logging level LOGMGR debugging": null,
+      "flow tracking mirror-on-drop": {
+        "comments": [],
+        "cmds": {
+          "shutdown": null
+        }
+      },
+      "no errdisable recovery cause acl": null,
+      "no logging event storm-control discards interval": null,
+      "logging level STAGEMGR debugging": null,
+      "no transceiver media 10gbase-dwdm-er temperature cooling-target": null,
+      "no aaa authentication policy lockout": null,
+      "aaa authentication login <redacted-lab-secret> local": null,
+      "lldp hold-time 120": null,
+      "system coredump compressed": null,
+      "default switch forwarding-mode": null,
+      "no errdisable recovery cause arp-inspection": null,
+      "mac security": {
+        "comments": [],
+        "cmds": {
+          "no fips restrictions": null,
+          "no l2-protocol ethernet-flow-control": null,
+          "no eapol mac destination": null,
+          "no ptp bypass": null,
+          "no shutdown": null,
+          " no delay protection": null,
+          "no license": null
+        }
+      },
+      "no transceiver media 40gbase-sr4 temperature cooling-target": null,
+      "no transceiver media 25gbase-lrl temperature cooling-target": null,
+      "no service interface unconnected expose": null,
+      "router traffic-engineering": {
+        "comments": [],
+        "cmds": {
+          "cspf delay initial 100 back-off 200 max 1000": null
+        }
+      },
+      "no priority-flow-control pause watchdog hardware monitor priority  7": null,
+      "no priority-flow-control pause watchdog hardware monitor priority  6": null,
+      "no priority-flow-control pause watchdog hardware monitor priority  5": null,
+      "no priority-flow-control pause watchdog hardware monitor priority  4": null,
+      "no priority-flow-control pause watchdog hardware monitor priority  3": null,
+      "lldp tlv transmit link-aggregation": null,
+      "no priority-flow-control pause watchdog hardware monitor priority  1": null,
+      "no priority-flow-control pause watchdog hardware monitor priority  0": null,
+      "no service configuration session max completed": null,
+      "no ip domain lookup source-interface": null,
+      "default snmp-server enable <redacted-lab-secret> mpls-ldp": null,
+      "spanning-tree transmit active": null,
+      "no transceiver media 400gbase-cr4 temperature cooling-target": null,
+      "logging level CVX debugging": null,
+      "default load-interval default": null,
+      "logging level LAUNCHER debugging": null,
+      "no service running-config copy use-config-session": null,
+      "no transceiver media 100gbase-srbd temperature cooling-target": null,
+      "default snmp-server enable <redacted-lab-secret> snmp": null,
+      "no hardware access-list ipv4-ipv6 mirroring-policy  key-width in": null,
+      "default snmp-server enable <redacted-lab-secret> ospfv3 if-config-error": null,
+      "default snmp-server enable <redacted-lab-secret> bgp backward-transition": null,
+      "ipv6 nd enhanced-dad default": null,
+      "no transceiver media 25gbase-lr temperature cooling-target": null,
+      "mpls label range isis-sr 900000 65536": null,
+      "default snmp-server enable <redacted-lab-secret> entity ent-state-oper-enabled": null,
+      "no service interface inactive port-id allocation disabled": null,
+      "no banner login": null,
+      "no queue-monitor length notifying": null,
+      "event-monitor mac": null,
+      "errdisable detect cause arp-inspection": null,
+      "switchport default mode access": null,
+      "no dot1x dynamic-authorization": null,
+      "logging event spanning-tree global": null,
+      "no transceiver media 40gbase-xsr4 temperature cooling-target": null,
+      "event-monitor route": null,
+      "load-balance policies": {
+        "comments": [],
+        "cmds": {}
+      },
+      "no transceiver media 200gbase-cr8n temperature cooling-target": null,
+      "no transceiver media 50gbase-cr2s temperature cooling-target": null,
+      "no hardware access-list resource sharing ipv4-ipv6 security-acl in": null,
+      "logging level LDP debugging": null,
+      "no transceiver media 40gbase-univ temperature cooling-target": null,
+      "no mac address-table flushing interface vlan aggregation disabled": null,
+      "no transceiver media 10gbase-lrl temperature cooling-target": null,
+      "logging level FHRP debugging": null,
+      "no transceiver media 100gbase-lr-fec temperature cooling-target": null,
+      "logging level POSTCARDTELEMETRY debugging": null,
+      "no power budget": null,
+      "no ip igmp snooping vlan 1 querier max-response-time": null,
+      "logging level GMP debugging": null,
+      "lldp tlv transmit port-vlan": null,
+      "environment overheat action shutdown": null,
+      "logging buffered 32 debugging": null,
+      "logging level LOOPPROTECT debugging": null,
+      "mpls label range l2evpn ethernet-segment 1031072 1024": null,
+      "logging level EVENTMON debugging": null,
+      "monitor connectivity": {
+        "comments": [],
+        "cmds": {
+          "shutdown": null,
+          "no interval": null
+        }
+      },
+      "default snmp-server enable <redacted-lab-secret> test arista-test-notification": null,
+      "no aaa accounting system default": null,
+      "no ip dhcp relay always-on": null,
+      "logging level ETH debugging": null,
+      "no transceiver media 400gbase-plr4 temperature cooling-target": null,
+      "flow tracking hardware": {
+        "comments": [],
+        "cmds": {
+          "no record format ipfix standard timestamps counters": null,
+          "shutdown": null
+        }
+      },
+      "default snmp-server enable <redacted-lab-secret> ospf if-auth-failure": null,
+      "no hardware fec programmed all": null,
+      "no transceiver media 10gbase-dwdm temperature cooling-target": null,
+      "mdns": {
+        "comments": [],
+        "cmds": {
+          "disabled": null,
+          "no dso server ipv4": null,
+          "no remote-gateway ipv4": null
+        }
+      },
+      "ip virtual-router mac-address advertisement-interval 30": null,
+      "no transceiver media 200gbase-2lr4 temperature cooling-target": null,
+      "no ip traceroute client source-interface": null,
+      "spanning-tree bpdu tx hold-count 6": null,
+      "logging level FORWARDING debugging": null,
+      "no alias commands path": null,
+      "no environment temperature invalid action ignore": null,
+      "agent StandbyCpld shutdown": null,
+      "platform sfe control-plane receive-limit 100 mbps": null,
+      "ip igmp snooping querier max-response-time 10": null,
+      "logging level IGMPSNOOPING debugging": null,
+      "no hardware fec multi-path maximum": null,
+      "spanning-tree forward-time 15": null,
+      "no transceiver media 100gbase-er4 temperature cooling-target": null,
+      "no priority-flow-control pause watchdog hardware monitor priority  2": null,
+      "no logging format hostname": null,
+      "default snmp-server enable <redacted-lab-secret> ospf if-config-error": null,
+      "no switchport port-security mac-address moveable": null,
+      "logging level MSSPOLICYMONITOR debugging": null,
+      "monitor security audit": {
+        "comments": [],
+        "cmds": {
+          "no output logging": null,
+          "no monitor group all": null
+        }
+      },
+      "no ip virtual-router mac-address mlag-peer": null,
+      "no event-monitor igmpsnooping backup path": null,
+      "no ip name-server": null,
+      "no transceiver media 10gbase-dwdm-zr temperature cooling-target": null,
+      "no transceiver media 50gbase-lr temperature cooling-target": null,
+      "no transceiver media 100gbase-plrl4 temperature cooling-target": null,
+      "management xmpp": {
+        "comments": [],
+        "cmds": {
+          "no source-interface": null,
+          "vrf default": null,
+          "shutdown": null,
+          "session privilege 1": null,
+          "no connection unencrypted permit": null,
+          "qos dscp 0": null
+        }
+      },
+      "no transceiver media 100gbase-xsr10 temperature cooling-target": null,
+      "logging level TCP debugging": null,
+      "no errdisable recovery cause portsec": null,
+      "default sflow hardware acceleration sample": null,
+      "event-handler DropCountersHandler": {
+        "comments": [],
+        "cmds": {
+          "repeat interval 0": null,
+          "action bash DropCounterLog.py -l": null,
+          "trigger on-counters": {
+            "comments": [],
+            "cmds": {
+              "poll interval 60": null,
+              "condition bashCmd.\"DropCounterMonitor.py\" > 0": null
+            }
+          },
+          "action increment device-health metric hardware-drops": null,
+          "no asynchronous": null,
+          "delay 0": null,
+          "timeout 20": null,
+          "no trigger on-config disabled": null,
+          "threshold 0 count 1": null
+        }
+      },
+      "no ip hardware fib next-hop resource optimization disabled": null,
+      "lldp tlv transmit management-address": null,
+      "ip hardware fib next-hop update event bfd": null,
+      "default snmp-server enable <redacted-lab-secret> entity ent-state-oper interfaces": null,
+      "default snmp-server enable <redacted-lab-secret> bgp arista-backward-transition": null,
+      "event-monitor igmpsnooping": null,
+      "no ip igmp snooping vlan 1 max-groups": null,
+      "no transceiver media 100gbase-cr4 temperature cooling-target": null,
+      "no aaa authentication policy on-success log": null,
+      "no transceiver media 100gbase-ar2 temperature cooling-target": null,
+      "no ip igmp snooping vlan 1 querier address": null,
+      "no mpls next-hop resolution allow default-route": null,
+      "patch panel": {
+        "comments": [],
+        "cmds": {
+          "no connector interface patch bgp vpws remote-failure errdisable": null,
+          "connector interface recovery review delay 30 45": null
+        }
+      },
+      "logging level VRRP debugging": null,
+      "no transceiver media 50gbase-cr2 temperature cooling-target": null,
+      "power budget exceeded action hold-down": null,
+      "no terminal confirmation disabled": null,
+      "errdisable flap-setting cause link-flap max-flaps 5 time 10": null,
+      "management defaults": {
+        "comments": [],
+        "cmds": {
+          "secret hash sha512": null
+        }
+      },
+      "logging level NAT debugging": null,
+      "logging level VMWAREVS debugging": null,
+      "default snmp-server enable <redacted-lab-secret> snmp link-down": null,
+      "logging level INT debugging": null,
+      "logging level PACKAGE debugging": null,
+      "logging level ZTP debugging": null,
+      "no dot1x system-auth-control": null,
+      "no transceiver media 400gbase-cr8s temperature cooling-target": null,
+      "logging level OSPF debugging": null,
+      "platform etba multicast-routing kernel": null,
+      "logging level FWK debugging": null,
+      "logging level LACP debugging": null,
+      "default snmp-server enable <redacted-lab-secret> ospfv3 if-rx-bad-packet": null,
+      "no snmp-server objects route-tables disable": null,
+      "no transceiver media 10gbase-srl temperature cooling-target": null,
+      "no event-monitor backup path": null,
+      "no transceiver media 400gbase-cr8 temperature cooling-target": null,
+      "no transceiver media 400gbase-2fr4 temperature cooling-target": null,
+      "logging level TAPAGG debugging": null,
+      "no vrrp ipv6 mac range ipv4": null,
+      "default monitor device-health": null,
+      "no ip fhrp accept-mode": null,
+      "no transceiver media 40gbase-cr4 temperature cooling-target": null,
+      "default snmp-server enable <redacted-lab-secret> entity": null,
+      "default snmp-server enable <redacted-lab-secret> ospf if-state-change": null,
+      "no tacacs-server key": null,
+      "logging level MIRRORING debugging": null,
+      "logging level VXLAN debugging": null,
+      "logging level ALE debugging": null,
+      "no transceiver media 100gbase-sr4 temperature cooling-target": null,
+      "snmp-server transmit max-size 65536": null,
+      "no transceiver media 100gbase-sr10 temperature cooling-target": null,
+      "logging level MROUTE debugging": null
+    }
+  }
+}

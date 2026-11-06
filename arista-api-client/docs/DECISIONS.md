@@ -1524,6 +1524,59 @@ change across pinned arrays, docs and upstream mapping rows rather than a silent
 
 ---
 
+### DR-103 — a capture must be framed exactly as this client frames the request; a recording made with different framing records the harness, not the device (M12c #14)
+The 2026-11-06 lab run answered `show running-config` (and `show running-config all`) with
+**1002 invalid command** over a bare `runCmds` request — while the SAME commands preceded by
+`enable` answer the full config text. `enable` is what this client itself puts first
+(`command-layer.ts`'s `sendEnable` default), and pyeapi's `run_commands` does the same and pops
+enable's reply (`client.py:876-925`, `:922-923`; §5 rows 73/82 already pinned that shape). Had the
+harness asked bare, the committed evidence would have recorded *the harness's framing choice* as if
+it were *the device's verdict* — and `show running-config`, the single most load-bearing capture of
+this tranche, would have looked unsupported. **Decision:** every catalog entry is sent as
+`['enable', command]` and the captured reply is `result[cmds.length - 1]`, with the capture ABORTING
+(loudly, before writing anything) when `runCmds` answers fewer results than commands, so an
+off-by-one indexing accident can never masquerade as a fixture. **Consequence:** fixture files are
+only ever comparable to what `node.runCmds` would see, which is what makes the running-config
+captures directly consumable by the M6/M9/M10 section parsers (row 184's claim); and any future
+catalog entry inherits the framing rule instead of re-asking it.
+
+### DR-104 — redaction is structural, not a name list: credential scrubbing covers the encryption-type arm and runs on object KEYS as well as values, and no scrub may silently drop an entry (M12c #14)
+Two facts from the first committed `show running-config all` capture (2026-11-06) made M12b's
+redactor insufficient: (1) its `json` reply keys the EOS config model's `cmds` map by the **whole
+command line**, so the lab's `username … secret sha512 $6$…` line arrives as an object KEY with a
+null value — a value-only scrub commits the hash; (2) M12b's patterns stopped at the `secret`
+keyword, but the encryption type (`sha512`/`md5`/`plain`, or a leading `[0-7]`) is part of the
+command, so even at a value position the pre-M12c regex would have committed the real `$6$…` that
+follows it. (Also observed: `show interfaces`/Port-Channel models carry a MAC **per interface**, not
+just the three top-level keys M12b zeroed, and a container MAC is derived from the Docker IP
+allocation, which docs/CEOS.md's own redaction list names as identifying.) **Decision:** the
+credential rules run through one `redactCredentialText` applied to BOTH string values and object
+keys; the `username` arm accepts the optional encryption-type token; `enable algorithm … password`
+and `enable password` are their own arms; a rewritten key that would collide is made unique with a
+visible ` #n` suffix — losing a neighbouring entry to a scrub is forbidden; and the MAC rule is
+key-name AND value-shape at any depth, so `learnedMacAddressCount: 0` stays (a count is not an
+identifier) while every MAC-shaped string under a `*mac*` key zeroes. **Consequence:** the
+`redactionApplied` envelope list is the contract a reviewer diffs against the code, and a committed
+capture is NEVER hand-edited afterwards — if a scrub is wrong, the rule changes and the lab is
+re-run (that rule re-verified itself the same day: the M12b nine re-captured under the stronger
+scrub and their bodies moved only in run-dependent numbers). The scrubber is shared with the
+7050TX sweep, so the hardware captures inherit the hardened machine.
+
+### DR-105 — a device refusal is recorded evidence, never a fixture file; committed counts derive from what the device answered, and per-run identity churn is expected in diffs (M12c #14)
+The catalog asks 20 commands; the run committed 16 files. `show interfaces switching` stays a 1002
+behind `enable`, `show port-channel detail` is a 1002 and its `summary` sibling is deprecated by
+`dense` on 4.28.14M, and `show ip interface brief` was as negative as in the 2026-11-03 run — all
+printed verbatim in the probe output, none papered over with a synthetic file, none deleted from
+the catalog. Two corollaries this lane holds to: a `switchports: {}` model on a container with no
+configured L2 port is evidence the COMMAND exists (it partly settles the DR-018/DR-029 open item)
+while the configured-port half stays open for the hardware sweep — an empty container answer must
+never be quoted as "the switch answers nothing"; and re-capturing the previous nine legitimately
+rewrites their identity envelopes (`runId lab-811108-5dcd01`, timestamps, published port, TLS pin,
+uptime/memory), so fixture diffs are read as identity deltas, not tampering, and the reviewer's
+check is the `result` BODY. **Consequence:** the §5 fixture count for a tranche is the number of
+files, and each entry's `note` states what its absence or presence proved; zero-leftover teardown
+evidence (no container, no network, no pinfile after `lab:down`) is part of the run report, not
+optional garnish.
 ## Open items (need the device)
 
 Use cEOS first for software behavior and schema exploration, recording its model/version;
