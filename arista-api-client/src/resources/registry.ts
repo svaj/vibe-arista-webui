@@ -34,13 +34,16 @@ import { NotSupportedError } from '../errors'
 import { AclsResource } from './acl'
 import { InterfacesResource } from './interfaces'
 import { IpinterfacesResource } from './ipinterfaces'
+import { MlagResource } from './mlag'
 import { NtpResource } from './ntp'
+import { StaticRouteResource } from './staticroute'
 import { StpResource } from './stp'
 import { SwitchportsResource } from './switchports'
 import { SystemResource } from './system'
 import { UsersResource } from './users'
 import { VarpResource } from './varp'
 import { VlansResource } from './vlans'
+import { VrfsResource } from './vrfs'
 import type { Node } from '../command-layer'
 
 /** A resource constructor: the `Node` it operates on in, the resource instance out (pyeapi's `instance(node)`). */
@@ -61,7 +64,8 @@ export type ResourceFactory<T> = (node: Node) => T
  * ```
  *
  * The first rows are M8's (`system`, #10) and M9's (`vlans`, `switchports`, #11); M10a (#12) added
- * `interfaces`. W2c (#39 #40) appended `stp` and `ipinterfaces`. A name in this interface without a
+ * `interfaces`. Wave 2 appended, in merge order, `users`/`ntp` (W2a #35), `acls`/`varp` (W2b #37 #38),
+ * `stp`/`ipinterfaces` (W2c #39 #40) and `vrfs`/`staticroute`/`mlag` (W2d #41-#43). A name in this interface without a
  * factory in {@link RESOURCE_FACTORIES} is a bug in this package, and {@link ResourceRegistry.get} throws
  * rather than returning `undefined` (row 79).
  */
@@ -86,6 +90,12 @@ export interface ResourceKinds {
   stp: StpResource
   /** The layer-3 view of each interface (its `ip address` lines and `mtu`) — `src/resources/ipinterfaces.ts`, port of pyeapi `api/ipinterfaces.py` (W2c #40). */
   ipinterfaces: IpinterfacesResource
+  /** The VRF definitions/instances in the running-config — `src/resources/vrfs.ts`, port of pyeapi `api/vrfs.py` (W2d slice, #41). */
+  vrfs: VrfsResource
+  /** The IPv4 static routes in the running-config — `src/resources/staticroute.ts`, port of pyeapi `api/staticroute.py` (W2d slice, #42). */
+  staticroute: StaticRouteResource
+  /** The MLAG configuration — `src/resources/mlag.ts`, port of pyeapi `api/mlag.py` (W2d slice, #43). */
+  mlag: MlagResource
 }
 
 /** Any name `node.resource()` may be asked for. Grows by one row per resource module (M8-M10). */
@@ -121,6 +131,9 @@ export const RESOURCE_FACTORIES: ResourceFactories<ResourceKinds> = Object.freez
   varp: (node) => new VarpResource(node),
   stp: (node) => new StpResource(node),
   ipinterfaces: (node) => new IpinterfacesResource(node),
+  vrfs: (node) => new VrfsResource(node),
+  staticroute: (node) => new StaticRouteResource(node),
+  mlag: (node) => new MlagResource(node),
 })
 
 /**

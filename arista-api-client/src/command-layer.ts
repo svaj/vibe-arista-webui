@@ -73,6 +73,9 @@ import type { SwitchportsResource } from './resources/switchports'
 import type { UsersResource } from './resources/users'
 import type { VarpResource } from './resources/varp'
 import type { VlansResource } from './resources/vlans'
+import type { VrfsResource } from './resources/vrfs'
+import type { StaticRouteResource } from './resources/staticroute'
+import type { MlagResource } from './resources/mlag'
 import type { ResourceKinds, ResourceName } from './resources/registry'
 import type { MethodCallOptions, Transport, TransportExecOptions } from './transports/contract'
 import type { CommandResult, CommandSpec, RunCmdsFormat, ShowContracts, ShowReply } from './types/eapi'
@@ -933,6 +936,38 @@ export class Node {
    */
   get ntp(): NtpResource {
     return this.resource('ntp')
+  }
+
+  /**
+   * The `vrfs` resource — same per-`Node` {@link resourceMemo} as {@link interfaces} (DR-052):
+   * `node.vrfs === node.vrfs === node.resource('vrfs')`. pyeapi's equivalent is `node.api('vrfs')`,
+   * which loads `pyeapi.api.vrfs` off the filesystem and calls its `instance(api)`
+   * (`vrfs.py:332-344`, `client.py:927-950`) — DR-006's target. Added by W2d (#41).
+   */
+  get vrfs(): VrfsResource {
+    return this.resource('vrfs')
+  }
+
+  /**
+   * The `staticroute` resource — same per-`Node` {@link resourceMemo} (DR-052):
+   * `node.staticroute === node.staticroute === node.resource('staticroute')`. The name is upstream's
+   * module spelling, one token, exactly like the registry key — pyeapi loads `pyeapi.api.staticroute`
+   * and calls its `instance(api)` (`staticroute.py:373-384`, `client.py:927-950`); DR-102 pins the
+   * no-camel-hump choice. Added by W2d (#42).
+   */
+  get staticroute(): StaticRouteResource {
+    return this.resource('staticroute')
+  }
+
+  /**
+   * The `mlag` resource — same per-`Node` {@link resourceMemo} (DR-052): `node.mlag === node.mlag ===
+   * node.resource('mlag')`. pyeapi reaches it through `node.api('mlag')` loading
+   * `pyeapi.api.mlag` and calling its `instance(api)` (`mlag.py:292-302`, `client.py:927-950`).
+   * The name once lived here only as the registry's NEGATIVE control (a module this repo owed);
+   * W2d (#43) registers it like the sibling lanes promised. Added by W2d (#43).
+   */
+  get mlag(): MlagResource {
+    return this.resource('mlag')
   }
 
   /**

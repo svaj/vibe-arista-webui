@@ -1410,6 +1410,120 @@ the split is then a spec question with evidence, not a lane-local reflex.
 
 ---
 
+### DR-099 — the VRF keyword comes from the device's own config text, never from a version-string compare (W2d #41)
+pyeapi gates seven `Vrfs` verbs on `self.version_number >= '4.23'` (`vrfs.py:79, :142, :169, :186,
+:201, :218, :323` — all re-verified at `6816d9e`), where `version_number` is a **string scraped from
+`show version`** and the compare is character-wise: `'4.9' >= '4.23'` is True, exactly the bug class
+DR-078 already recorded for `interfaces.set_vrf`. Issue #16 flagged that this lane owes the 4.28 pin,
+and DR-033's probe-first rule plus DR-078's numeric-floor precedent both point away from hard-coding a
+version answer.
+**Decision:** `VrfsResource` never asks the device what version it is. Reads accept BOTH section
+keywords in one chunked pass and record per entry which keyword the header used (`Vrf.definitionForm`),
+so a mixed-form config — an upgraded box keeping `vrf definition` sections while new VRFs get
+`vrf instance` — is read truthfully. Writes take the keyword from the text the device itself wrote:
+any `vrf instance` header wins (the box demonstrably speaks the newer keyword), definition-only
+sections answer `definition`, and no VRF sections at all fall to this repo's floor (`instance`; EOS
+4.28 per AGENTS.md, which is also where upstream's own gate lands at ≥4.23) **held as a stated client
+convention, not a platform claim** — a device predating the keyword answers with its own
+`CommandError` and the caller sees `failedCommand` (DR-005). The detection scans the DR-026 config
+memo, so it costs no extra round trip after any read, and the answer **latches per resource
+instance**: the keyword a box speaks does not change mid-session, and a config write clears the
+config memo, so without the latch every later form-dependent verb would re-read. The latch is
+pinned by request counts. M11's `verifyConfig`/completion capability surface is deliberately NOT
+consulted from this module even though it exists: a probe is a round trip and a throwaway config
+session over evidence every read already carries (DR-030's budget), and a capability answer that
+disagrees with the sections the device just wrote would be the worse authority.
+**Consequence:** upstream's suite can never exercise the modern arm (its fake node pins
+`'4.17.1.1'`, `test/lib/testlib.py:75`) while both arms are pinned here against the configs that
+produce them; the drift case — `interfaces.setVrf` still version-floored per DR-078 — is recorded
+rather than silently harmonised, waiting on an M12 (#14) capture of which signal the v4 image keys
+the keyword choice on. The device stays the instrument; the client only reads its handwriting.
+**Related:** DR-033, DR-078, DR-026/DR-030, DR-005, DR-032; §5 rows 175-177.
+
+### DR-100 — the static-route read model is flat typed records; every ROUTES_RE quirk stays pinned where it bites (W2d #42)
+pyeapi's `StaticRoute.getall` composes a dict-of-dicts per destination whose keys include a Python
+`None` (the no-next-hop-ip slot, `staticroute.py:161`) and integer distances (`:162`), built by the
+chained `routes[a] = routes.get(a, {})` assignments at `:170-176`; its `ROUTES_RE` (`:68-74`, verified
+module-scope) requires the distance segment, demands the CIDR immediately behind `ip route ` (so every
+`ip route vrf …` line is invisible), has no IPv6 half at all, and runs through `findall` over the raw
+config (`:152`) so a banner body's column-0 look-alike votes.
+**Decision:** `StaticRouteResource.getAll` answers `destination → readonly StaticRoute[]` — flat typed
+records, `None` slots as absent optional fields, the distance/tag ints as numbers — with the chained-
+assignment semantics kept where they carry meaning: an identical `(ipDest, nextHop, nextHopIp,
+distance)` line collapses to ONE record, last line winning, first position kept (pinned). Candidate
+lines are the chunker's indent-0 leaf keys, which removes the banner vote (the `vlans`/`vrfs`
+same-rule family) but nothing else is repaired: the required-distance invisibility, the fixed
+segment order, the end-open tail and the VRF/IPv6 LEAKS stay exactly upstream's, pinned by tests that
+say so. The write side composes through `is not None`-style `!== undefined` appends verbatim
+(so `0` is a value in both directions — the deliberate contrast with the `command_builder` falsy
+family at row 73), accepts both spellings upstream's tests use (`99` and `'99'`), and adds only the
+guard family that refuses what NEITHER grammar could echo back (dotted slots dotted, `\S+` slots
+single-token, digit slots digits, a single shared missing-`nextHop` refusal for the positional that
+the framework moved into the attrs bag). Nothing reads the device before a route write.
+**Consequence:** a UI consumes the table without re-flattening, and the leaks cannot be silently
+"fixed" because they wear test pins naming the line numbers that cause them. Reading vrf-bound or
+IPv6 static routes is honestly recorded as a capability this module (and upstream's pinned file) does
+not have — owed upward to a wave that specifies a vrf-scoped route record, not invented mid-lane.
+Whether 4.28 really treats `default ip route …` as `no ip route …` (upstream's docstring equivalence
+note at `:50-52`) is an M12 (#14) capture; both texts stay distinct until then.
+**Related:** DR-027, DR-029, DR-053, DR-030, DR-037 (by contrast); §5 rows 178-180.
+
+### DR-101 — the MLAG port is pinned to what 6816d9e actually says, and the dispatch's variant-shaped refs are reported, not obeyed (W2d #43)
+The dispatch refs for this module (`set_interface_mlag_id :46-:70`, `verify_local :204-:218`, the
+"THE interface-vs-switch command bug" for `set_mlag_id`, int-coerced `set_domain_id`, falsy-0 bugs at
+`:158/:252`) and the `staticroute` dispatch refs (IPv4/IPv6 dispatch `:99-:108`, vrf create/delete
+asymmetry `:244`/`:334-:335`, `_parse_*` bare-match `:357-:359`) match NO code at the pinned SHA:
+`mlag.py` is 302 lines with seven public verbs and a CORRECT `configure_interface` call at `:288`,
+`staticroute.py` is 384 lines and IPv4-only. The brief's own decision question — whether `Mlag.get()`
+reads `show mlag` JSON, config, or both — checks out as **config text only**; the module issues no
+`show` command, and the repo's real cEOS `show-mlag.json` capture is cited in the module header as
+vocabulary cross-reference only (container evidence, DR-066 envelope untouched, `hardwareEvidence`
+stays false — the MLAG *state* JSON contract remains an M12 #14 question).
+**Decision:** implement the checked revision faithfully and record the citation drift as ledger
+(row 183) rather than coding to the stale refs: `setMlagId` is an interface verb and no
+`NotSupportedError` is owed for a bug this tree does not contain. The port's own divergences (rows
+181-182) are the ones the clone shows: upstream's `get()` CRASHES (TypeError via a None section,
+`:99/:119`) where this client answers an empty record with `shutdown` absent rather than invented;
+`'no shutdown' not in config` (`:175`) is kept as a derivation but made exact-line; upstream's
+substring `re.search(r'mlag (\d+)')` reads a `no mlag 7` negation as a configured id while this
+reader lets only keyword-starting body lines vote (and keeps upstream's drop-unmatched for real
+non-matches); and the falsy-zero family that row 73 records in the abstract builder is LIVE here
+(`set_mlag_id(i, 0)` → `no mlag` upstream) and is repaired the way DR-037 chose — `0` composes
+`mlag 0`, negation is the named verb. The per-interface id stays a STRING (match.group(1), `:191`);
+the docstring's 1..2000 range is quoted and never enforced (DR-032). `pyeapi/test/system/
+test_api_mlag.py`'s 21 paired-switch methods are declared skipped in the test header — an MLAG
+domain is two boxes and this lane has one node per record; faking them would manufacture evidence
+TESTING.md §5 exists to forbid.
+**Consequence:** the registry's favourite wave-1 negative control (`mlag`) becomes a real row and
+`stp` inherits the "still owed" slot in `registry.test.ts`/`index.test.ts`; and every future lane
+gets a second worked example (after row 148's) that inherited or dispatched refs must be re-opened
+at the pinned SHA before a single line is ported — several did not survive the check, and the
+reporting obligation (COMMON's "citations found WRONG, with corrections") is how the orchestrator
+learns which docs to distrust.
+**Related:** DR-005, DR-037, DR-030, DR-029/DR-027, DR-066, DR-043, DR-032; §5 rows 181-183.
+
+### DR-102 — registry keys and static accessors keep upstream's one-word module spellings: `staticroute`, not `staticRoute` (W2d #41 #42 #43)
+Three of wave 2's modules are `vrfs`, `staticroute` and `mlag` in pyeapi's filesystem — and
+`node.api('staticroute')` resolves that EXACT string as a module path (`client.py:927-950`). The
+registry replaced that autoload with a closed map whose keys consumers can type AND tables can hold
+as plain strings (row 79), and `Node` grew a static getter per row (DR-052). One of the three names
+is multi-word to a human eye and raises the camelCase question for both the key and the getter.
+**Decision:** registry keys are upstream's module spellings verbatim — `vrfs`, `staticroute`, `mlag`,
+appended in order at the end of `ResourceKinds`/`RESOURCE_FACTORIES` (append-only across the sibling
+lanes) — and the `Node` accessors mirror the key character-for-character (`node.staticroute`), NOT a
+camel-cased alias: one spelling greps identically through pyeapi, the epics/PLAN's own wording, the
+registry key, the getter and the docs. The CLASS name takes the repo's existing
+`<PascalName>Resource` form (`StaticRouteResource`) because class-name casing is a TS-side concern
+already settled by every sibling. The pinned spellings live in `registry.test.ts`'s `names()` array
+and `index.test.ts`'s factory-keys array — the two lists a merge-conflict-prone sibling lane must
+both agree on — and issue #14's epic wording (`staticroute`) is what the test message quotes.
+**Consequence:** a UI table holding a `string` resource column types into `node.resource(name)` with
+no translation layer, and a rename (say, to `staticRoutes`) becomes a deliberately visible breaking
+change across pinned arrays, docs and upstream mapping rows rather than a silent accessor alias.
+**Related:** DR-006, DR-052, DR-040; §5 row 79.
+
+---
+
 ## Open items (need the device)
 
 Use cEOS first for software behavior and schema exploration, recording its model/version;

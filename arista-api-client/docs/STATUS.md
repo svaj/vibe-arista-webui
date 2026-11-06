@@ -73,6 +73,8 @@ Wave-2 **lane A** is delivered on its branch (refs #16): `src/resources/users.ts
 
 Wave-2 **lane C** is delivered on its branch (refs #16): `stp.ts` + `ipinterfaces.ts` with wiring (rows 167-174; DR-096/097 delivered, DR-098 declared skipped). The ledger pass corrected 20+ stale test_api_stp.py citations in stp.ts comments and REPORTED BRIEF-ASSERTED upstream bugs that DO NOT EXIST at 6816d9e (dict-leak, vrf-form gate, on-default, >367-line refs) - trust only row-content verified in-tree. Gate 56 / 1,825 green.
 
+Wave-2 **lane D** is delivered on its branch (refs #16): `vrfs.ts`, `staticroute.ts`, `mlag.ts` (+wiring). rows 175-183, DR-099-102 (three-digit DRs land here for the first time - verified). Gate 57 / 1,802, coverage green. First dispatch of this lane returned a model error and wrote nothing; the retry authored everything incl. repairing a mid-file truncation (c3c6449-equivalent on this branch); mlag set_mlag_id deviation is rowed, read it before approving.
+
 **M11 (#13) is delivered on its branch** — the non-`runCmds` differentiators: `Node.verifyConfig()` /
 `getCompletions()` / `getCommandHelp()` ride a validated `WIRE_METHODS` table over the new optional
 `Transport#callMethod` seam, and faking them with `runCmds` is refused as unsafe, not inconvenient

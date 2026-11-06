@@ -358,7 +358,8 @@ import type { Transport } from './transports/contract'
 // `users` + `ntp` (with `Node.users` / `Node.ntp`), W2b (#37 #38) registered `acls` + `varp` (with
 // `Node.acls` / `Node.varp`) and the mask/prefixlen helpers PLAN.md §4 schedules with the ACL module —
 // MIGRATION §5 rows 158-166 — and W2c (#39 #40) registered `stp` + `ipinterfaces` (with `Node.stp` /
-// `Node.ipinterfaces`).
+// `Node.ipinterfaces`), W2d (#41-#43) registered `vrfs` + `staticroute` + `mlag` (with `Node.vrfs` /
+// `Node.staticroute` / `Node.mlag`; DR-102 pins the one-token module names).
 export { Entity, EntityCollection, ResourceBase } from './resources/base'
 export { commandBuilder, submodeCommands } from './resources/command-builder'
 export { parseConfigBlock } from './resources/config-block'
@@ -391,6 +392,11 @@ export {
   isStpMode,
   isPortfastType,
 } from './resources/stp'
+// W2d (#41-#43): the VRF table, the static-route table (upstream's one-token `staticroute` spelling,
+// DR-102) and the MLAG global — the last one was the registry's negative control until #43 shipped it.
+export { VrfsResource } from './resources/vrfs'
+export { StaticRouteResource } from './resources/staticroute'
+export { MlagResource } from './resources/mlag'
 export { toArray } from './internal/collections'
 export type {
   CommandInput,
@@ -429,6 +435,9 @@ export type {
 export type { VarpAttrs, VarpInterface, VarpSettings } from './resources/varp'
 export type { IpInterface, IpInterfaceAttrs } from './resources/ipinterfaces'
 export type { PortfastType, StpInstance, StpInterface, StpMode, StpSettings } from './resources/stp'
+export type { Vrf, VrfAttrs, VrfDefinitionForm } from './resources/vrfs'
+export type { StaticRoute, StaticRouteAttrs, StaticRouteFields } from './resources/staticroute'
+export type { MlagGlobalConfig, MlagInterface, MlagState } from './resources/mlag'
 export type {
   EthernetInterfaceName,
   InterfaceKind,
