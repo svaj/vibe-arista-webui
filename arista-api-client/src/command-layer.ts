@@ -69,6 +69,7 @@ import type { SwitchportsResource } from './resources/switchports'
 import type { VlansResource } from './resources/vlans'
 import type { VrfsResource } from './resources/vrfs'
 import type { StaticRouteResource } from './resources/staticroute'
+import type { MlagResource } from './resources/mlag'
 import type { ResourceKinds, ResourceName } from './resources/registry'
 import type { MethodCallOptions, Transport, TransportExecOptions } from './transports/contract'
 import type { CommandResult, CommandSpec, RunCmdsFormat, ShowContracts, ShowReply } from './types/eapi'
@@ -888,6 +889,17 @@ export class Node {
    */
   get staticroute(): StaticRouteResource {
     return this.resource('staticroute')
+  }
+
+  /**
+   * The `mlag` resource — same per-`Node` {@link resourceMemo} (DR-052): `node.mlag === node.mlag ===
+   * node.resource('mlag')`. pyeapi reaches it through `node.api('mlag')` loading
+   * `pyeapi.api.mlag` and calling its `instance(api)` (`mlag.py:292-302`, `client.py:927-950`).
+   * The name once lived here only as the registry's NEGATIVE control (a module this repo owed);
+   * W2d (#43) registers it like the sibling lanes promised. Added by W2d (#43).
+   */
+  get mlag(): MlagResource {
+    return this.resource('mlag')
   }
 
   /**

@@ -366,6 +366,7 @@ export { SystemResource } from './resources/system'
 export { VlansResource } from './resources/vlans'
 export { VrfsResource } from './resources/vrfs'
 export { StaticRouteResource } from './resources/staticroute'
+export { MlagResource } from './resources/mlag'
 export { toArray } from './internal/collections'
 export type {
   CommandInput,
@@ -390,6 +391,7 @@ export type { SystemBanner, SystemBannerKind, SystemSettings } from './resources
 export type { Vlan, VlanAttrs, VlanState } from './resources/vlans'
 export type { Vrf, VrfAttrs, VrfDefinitionForm } from './resources/vrfs'
 export type { StaticRoute, StaticRouteAttrs, StaticRouteFields } from './resources/staticroute'
+export type { MlagGlobalConfig, MlagInterface, MlagState } from './resources/mlag'
 export type {
   EthernetInterfaceName,
   InterfaceKind,

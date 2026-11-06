@@ -29,6 +29,7 @@
 
 import { NotSupportedError } from '../errors'
 import { InterfacesResource } from './interfaces'
+import { MlagResource } from './mlag'
 import { StaticRouteResource } from './staticroute'
 import { SwitchportsResource } from './switchports'
 import { SystemResource } from './system'
@@ -70,6 +71,8 @@ export interface ResourceKinds {
   vrfs: VrfsResource
   /** The IPv4 static routes in the running-config — `src/resources/staticroute.ts`, port of pyeapi `api/staticroute.py` (W2d slice, #42). */
   staticroute: StaticRouteResource
+  /** The MLAG configuration — `src/resources/mlag.ts`, port of pyeapi `api/mlag.py` (W2d slice, #43). */
+  mlag: MlagResource
 }
 
 /** Any name `node.resource()` may be asked for. Grows by one row per resource module (M8-M10). */
@@ -100,6 +103,7 @@ export const RESOURCE_FACTORIES: ResourceFactories<ResourceKinds> = Object.freez
   interfaces: (node) => new InterfacesResource(node),
   vrfs: (node) => new VrfsResource(node),
   staticroute: (node) => new StaticRouteResource(node),
+  mlag: (node) => new MlagResource(node),
 })
 
 /**
