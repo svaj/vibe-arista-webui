@@ -365,6 +365,7 @@ export { SwitchportsResource, SWITCHPORT_MODES, isSwitchportMode } from './resou
 export { SystemResource } from './resources/system'
 export { VlansResource } from './resources/vlans'
 export { VrfsResource } from './resources/vrfs'
+export { StaticRouteResource } from './resources/staticroute'
 export { toArray } from './internal/collections'
 export type {
   CommandInput,
@@ -388,6 +389,7 @@ export type { Switchport, SwitchportAttrs, SwitchportMode, TrunkAttrs } from './
 export type { SystemBanner, SystemBannerKind, SystemSettings } from './resources/system'
 export type { Vlan, VlanAttrs, VlanState } from './resources/vlans'
 export type { Vrf, VrfAttrs, VrfDefinitionForm } from './resources/vrfs'
+export type { StaticRoute, StaticRouteAttrs, StaticRouteFields } from './resources/staticroute'
 export type {
   EthernetInterfaceName,
   InterfaceKind,

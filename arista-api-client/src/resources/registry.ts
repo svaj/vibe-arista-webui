@@ -29,6 +29,7 @@
 
 import { NotSupportedError } from '../errors'
 import { InterfacesResource } from './interfaces'
+import { StaticRouteResource } from './staticroute'
 import { SwitchportsResource } from './switchports'
 import { SystemResource } from './system'
 import { VlansResource } from './vlans'
@@ -67,6 +68,8 @@ export interface ResourceKinds {
   interfaces: InterfacesResource
   /** The VRF definitions/instances in the running-config — `src/resources/vrfs.ts`, port of pyeapi `api/vrfs.py` (W2d slice, #41). */
   vrfs: VrfsResource
+  /** The IPv4 static routes in the running-config — `src/resources/staticroute.ts`, port of pyeapi `api/staticroute.py` (W2d slice, #42). */
+  staticroute: StaticRouteResource
 }
 
 /** Any name `node.resource()` may be asked for. Grows by one row per resource module (M8-M10). */
@@ -96,6 +99,7 @@ export const RESOURCE_FACTORIES: ResourceFactories<ResourceKinds> = Object.freez
   switchports: (node) => new SwitchportsResource(node),
   interfaces: (node) => new InterfacesResource(node),
   vrfs: (node) => new VrfsResource(node),
+  staticroute: (node) => new StaticRouteResource(node),
 })
 
 /**

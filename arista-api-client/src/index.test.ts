@@ -208,9 +208,9 @@ describe('what the browser entry exports', () => {
       // M10a (#12): the interfaces facade and the per-kind name parser that §5 row 76 promised, both from
       // `.` (and through `export *` from `./node`) without a deep import.
       'InterfacesResource', 'parseInterfaceName',
-      // W2d (#41): the VRF collection module rides the same entry — `node.vrfs` and
-      // `new VrfsResource(node)` from `.` with no deep import.
-      'VrfsResource',
+      // W2d (#41/#42): the VRF and static-route collection modules ride the same entry —
+      // `node.vrfs`/`node.staticroute` and their classes from `.` with no deep import.
+      'VrfsResource', 'StaticRouteResource',
     ] as const
     for (const name of functions) {
       expect(typeof surface[name], name).toBe('function')
@@ -223,14 +223,15 @@ describe('what the browser entry exports', () => {
     expect(surface.INTERFACE_KINDS).toEqual(['Ethernet', 'Management', 'Loopback', 'Port-Channel', 'Vlan', 'Vxlan'])
     expect(surface.INTERFACE_STATUS_COMMAND).toBe('show interfaces status')
     expect(surface.parseInterfaceName('Ethernet1.100')).toEqual({ kind: 'Ethernet', index: 1, name: 'Ethernet1.100', subinterface: 100 })
-    // The registry has five rows now: M8's `system`, M9's `vlans`/`switchports`, M10a's `interfaces`
-    // and W2d's `vrfs` (§5 row 79).
-    expect(Object.keys(surface.RESOURCE_FACTORIES)).toEqual(['system', 'vlans', 'switchports', 'interfaces', 'vrfs'])
+    // The registry has six rows now: M8's `system`, M9's `vlans`/`switchports`, M10a's `interfaces`
+    // and W2d's `vrfs`/`staticroute` (§5 row 79).
+    expect(Object.keys(surface.RESOURCE_FACTORIES)).toEqual(['system', 'vlans', 'switchports', 'interfaces', 'vrfs', 'staticroute'])
     expect(new Node(mockTransport()).system).toBeInstanceOf(surface.SystemResource)
     expect(new Node(mockTransport()).vlans).toBeInstanceOf(surface.VlansResource)
     expect(new Node(mockTransport()).switchports).toBeInstanceOf(surface.SwitchportsResource)
     expect(new Node(mockTransport()).interfaces).toBeInstanceOf(surface.InterfacesResource)
     expect(new Node(mockTransport()).vrfs).toBeInstanceOf(surface.VrfsResource)
+    expect(new Node(mockTransport()).staticroute).toBeInstanceOf(surface.StaticRouteResource)
     // `assertVlanId` is an assertion function (returns void); the range is pyeapi's —
     // `value in range(1, 4095)`, i.e. VLANs 1..4094 (pyeapi/api/vlans.py:78). M9 (#12) re-checks that
     // bound against the switch's own `switchport access vlan` range on a device.

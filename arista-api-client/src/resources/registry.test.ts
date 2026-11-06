@@ -139,7 +139,7 @@ describe('ResourceRegistry — DR-006 replaces pyeapi node.api() (client.py:927-
     expect(registry.get('probe')).toBe(before)
   })
 
-  it('the built-in factory table is frozen and holds exactly the rows shipped so far (M8 #10 `system`, M9 #11 `vlans`/`switchports`, M10a #12 `interfaces`, W2d #41 `vrfs`)', () => {
+  it('the built-in factory table is frozen and holds exactly the rows shipped so far (M8 #10 `system`, M9 #11 `vlans`/`switchports`, M10a #12 `interfaces`, W2d #41 `vrfs`, W2d #42 `staticroute`)', () => {
     // M7 (#9) shipped this table honest-but-empty; M8 (#10) claimed the first row, M9 (#11) the next two,
     // M10a (#12) the fourth and W2d (#41) the fifth, so the assertion names what exists. A name in
     // `ResourceKinds` without a row here would be a package bug (row 79). A mutable module-level registry
@@ -148,10 +148,11 @@ describe('ResourceRegistry — DR-006 replaces pyeapi node.api() (client.py:927-
     // "still owed" name now that `vrfs` is registered.
     expect(Object.isFrozen(RESOURCE_FACTORIES)).toBe(true)
     const { node } = nodeWith()
-    expect(new ResourceRegistry(RESOURCE_FACTORIES, node).names()).toEqual(['system', 'vlans', 'switchports', 'interfaces', 'vrfs'])
+    expect(new ResourceRegistry(RESOURCE_FACTORIES, node).names()).toEqual(['system', 'vlans', 'switchports', 'interfaces', 'vrfs', 'staticroute'])
     expect(new ResourceRegistry(RESOURCE_FACTORIES, node).has('vlans')).toBe(true)
     expect(new ResourceRegistry(RESOURCE_FACTORIES, node).has('interfaces')).toBe(true)
     expect(new ResourceRegistry(RESOURCE_FACTORIES, node).has('vrfs')).toBe(true)
+    expect(new ResourceRegistry(RESOURCE_FACTORIES, node).has('staticroute')).toBe(true)
     expect(new ResourceRegistry(RESOURCE_FACTORIES, node).has('stp')).toBe(false)
   })
 })
@@ -164,6 +165,7 @@ describe('Node.resource / Node.hasResource — the typed replacement for node.ap
     expect(node.hasResource('switchports')).toBe(true)
     expect(node.hasResource('interfaces')).toBe(true)
     expect(node.hasResource('vrfs')).toBe(true)
+    expect(node.hasResource('staticroute')).toBe(true)
     expect(node.hasResource('stp')).toBe(false)
     expect(node.hasResource('probe')).toBe(false)
   })
@@ -188,10 +190,14 @@ describe('Node.resource / Node.hasResource — the typed replacement for node.ap
     expect(node.interfaces).toBe(node.interfaces)
     expect(node.interfaces).toBe(node.resource('interfaces'))
     expect(node.interfaces.constructor.name).toBe('InterfacesResource')
-    // W2d (#41) is the fifth row: `node.vrfs` is the accessor the webui's VRF screens use.
+    // W2d (#41) is the fifth row: `node.vrfs` is the accessor the webui's VRF screens use. W2d (#42)
+    // adds the sixth, `node.staticroute` — one token exactly like the registry key (DR-102).
     expect(node.vrfs).toBe(node.vrfs)
     expect(node.vrfs).toBe(node.resource('vrfs'))
     expect(node.vrfs.constructor.name).toBe('VrfsResource')
+    expect(node.staticroute).toBe(node.staticroute)
+    expect(node.staticroute).toBe(node.resource('staticroute'))
+    expect(node.staticroute.constructor.name).toBe('StaticRouteResource')
   })
 
   it('asking for an unregistered resource throws, listing the rows that DO exist', () => {
@@ -203,7 +209,7 @@ describe('Node.resource / Node.hasResource — the typed replacement for node.ap
     const untyped = 'stp' as never
     expect(() => node.resource(untyped)).toThrow(NotSupportedError)
     expect(() => node.resource(untyped)).toThrow(/unknown resource stp — no factory is registered/)
-    expect(() => node.resource(untyped)).toThrow(/registered: system, vlans, switchports, interfaces, vrfs/)
+    expect(() => node.resource(untyped)).toThrow(/registered: system, vlans, switchports, interfaces, vrfs, staticroute/)
   })
 
   it('every failed resource call sends nothing to the device (a registry miss is not a device error)', () => {
@@ -220,6 +226,7 @@ describe('Node.resource / Node.hasResource — the typed replacement for node.ap
     expect(first.node.switchports).not.toBe(second.node.switchports)
     expect(first.node.interfaces).not.toBe(second.node.interfaces)
     expect(first.node.vrfs).not.toBe(second.node.vrfs)
+    expect(first.node.staticroute).not.toBe(second.node.staticroute)
     expect(() => first.node.resource('stp' as never)).toThrow(/no factory is registered/)
   })
 })

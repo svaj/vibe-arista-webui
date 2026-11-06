@@ -68,6 +68,7 @@ import type { SystemResource } from './resources/system'
 import type { SwitchportsResource } from './resources/switchports'
 import type { VlansResource } from './resources/vlans'
 import type { VrfsResource } from './resources/vrfs'
+import type { StaticRouteResource } from './resources/staticroute'
 import type { ResourceKinds, ResourceName } from './resources/registry'
 import type { MethodCallOptions, Transport, TransportExecOptions } from './transports/contract'
 import type { CommandResult, CommandSpec, RunCmdsFormat, ShowContracts, ShowReply } from './types/eapi'
@@ -876,6 +877,17 @@ export class Node {
    */
   get vrfs(): VrfsResource {
     return this.resource('vrfs')
+  }
+
+  /**
+   * The `staticroute` resource — same per-`Node` {@link resourceMemo} (DR-052):
+   * `node.staticroute === node.staticroute === node.resource('staticroute')`. The name is upstream's
+   * module spelling, one token, exactly like the registry key — pyeapi loads `pyeapi.api.staticroute`
+   * and calls its `instance(api)` (`staticroute.py:373-384`, `client.py:927-950`); DR-102 pins the
+   * no-camel-hump choice. Added by W2d (#42).
+   */
+  get staticroute(): StaticRouteResource {
+    return this.resource('staticroute')
   }
 
   /**
