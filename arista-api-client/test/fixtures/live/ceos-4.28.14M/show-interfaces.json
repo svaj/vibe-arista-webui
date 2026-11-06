@@ -1,0 +1,35 @@
+{
+  "metadata": {
+    "targetClass": "lab",
+    "targetKind": "ceos-container",
+    "imageTag": "arista/ceos:4.28.14M",
+    "imageId": "sha256:8fd4e31caeba5db82d706eaed00252d67a1caa7d68670e5bd7e2af54935f2e28",
+    "imageRepoDigests": [
+      "arista/ceos@sha256:8fd4e31caeba5db82d706eaed00252d67a1caa7d68670e5bd7e2af54935f2e28"
+    ],
+    "aristaVersion": "4.28.14M-50015774.42814M (engineering build)",
+    "aristaVersionBase": "4.28.14M",
+    "internalVersion": "4.28.14M-50015774.42814M",
+    "modelName": "cEOSLab",
+    "hardwareEvidence": "none — cEOS-lab container capture; not DCS-7050TX-64 / 4.28.13.1M evidence (DR-043)",
+    "runId": "lab-468908-bbf636",
+    "capturedAt": "2026-11-06T00:14:41.399Z",
+    "capturedBy": "scripts/ceos-lab.mjs",
+    "endpoint": "127.0.0.1:45861",
+    "transport": "https + HTTP basic auth to the run-owned published loopback port; container-side pinned certificate",
+    "tlsPinFingerprint256": "25FEB3668C488118AD06FC88AB56E263C0E4A824C473950E2215E88BD2B5A022",
+    "bootupTimestamp": 1793923933.566048,
+    "redactionApplied": [
+      "username/secret and enable/passphrase text replaced with <redacted-lab-secret>",
+      "this run's random lab username replaced with <redacted-lab-user> (API user-stats otherwise leak it)",
+      "every MAC-shaped string under a *mac*-named key zeroed, at any depth (M12c: `show interfaces` / `show port-channel detail` carry a MAC per interface, not only systemMacAddress/hwMacAddress/configMacAddress)",
+      "no key material: the container keeps the key in a sibling file (capikey.pem) that is never read",
+      "serialNumber is the empty string on this cEOS-lab image and is kept verbatim"
+    ]
+  },
+  "command": "show interfaces",
+  "format": "json",
+  "result": {
+    "interfaces": {}
+  }
+}
