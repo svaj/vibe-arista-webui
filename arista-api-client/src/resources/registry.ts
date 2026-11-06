@@ -19,8 +19,11 @@
  * is what needs the plumbing — PLAN.md M7's exit gate is "the first resource module (M8) requires ~30
  * lines of new plumbing at most", and `base.test.ts` measures that cost against a throwaway entity.
  * **M8 (#10) claimed the first row** (`system`, with `Node.system` for it), and **M9 (#11) claimed the
- * next two** (`vlans`, `switchports`, with `Node.vlans` / `Node.switchports`), and **M10a (#12) claimed
- * the fourth** (`interfaces`, with `Node.interfaces`).
+ * next two** (`vlans`, `switchports`, with `Node.vlans` / `Node.switchports`), **M10a (#12) claimed the
+ * fourth** (`interfaces`, with `Node.interfaces`), and **W2b (#37 #38) claimed the fifth and sixth**
+ * (`acls` / `varp`, with `Node.acls` / `Node.varp`) — pyeapi's factories for those two are `acl.py:302-303`
+ * and `varp.py:202`, and `acl.py:299`'s `ACL_CLASS_MAP` is the per-kind lookup this table makes unnecessary
+ * (DR-068/DR-092).
  *
  * Instances are memoised **per `Node`**, not globally: `ResourceRegistry` is constructed with the `Node`
  * it drives, so two switches get two resource objects and no module-level mutable singleton exists
@@ -28,10 +31,19 @@
  */
 
 import { NotSupportedError } from '../errors'
+import { AclsResource } from './acl'
 import { InterfacesResource } from './interfaces'
+import { IpinterfacesResource } from './ipinterfaces'
+import { MlagResource } from './mlag'
+import { NtpResource } from './ntp'
+import { StaticRouteResource } from './staticroute'
+import { StpResource } from './stp'
 import { SwitchportsResource } from './switchports'
 import { SystemResource } from './system'
+import { UsersResource } from './users'
+import { VarpResource } from './varp'
 import { VlansResource } from './vlans'
+import { VrfsResource } from './vrfs'
 import type { Node } from '../command-layer'
 
 /** A resource constructor: the `Node` it operates on in, the resource instance out (pyeapi's `instance(node)`). */
@@ -52,8 +64,10 @@ export type ResourceFactory<T> = (node: Node) => T
  * ```
  *
  * The first rows are M8's (`system`, #10) and M9's (`vlans`, `switchports`, #11); M10a (#12) added
- * `interfaces`. A name in this interface without a factory in {@link RESOURCE_FACTORIES} is a bug in this
- * package, and {@link ResourceRegistry.get} throws rather than returning `undefined` (row 79).
+ * `interfaces`. Wave 2 appended, in merge order, `users`/`ntp` (W2a #35), `acls`/`varp` (W2b #37 #38),
+ * `stp`/`ipinterfaces` (W2c #39 #40) and `vrfs`/`staticroute`/`mlag` (W2d #41-#43). A name in this interface without a
+ * factory in {@link RESOURCE_FACTORIES} is a bug in this package, and {@link ResourceRegistry.get} throws
+ * rather than returning `undefined` (row 79).
  */
 export interface ResourceKinds {
   /** The global system settings — `src/resources/system.ts`, port of pyeapi `api/system.py`. */
@@ -64,6 +78,24 @@ export interface ResourceKinds {
   switchports: SwitchportsResource
   /** Every interface's presence and shared configuration — `src/resources/interfaces.ts`, port of pyeapi `api/interfaces.py` (M10a slice). */
   interfaces: InterfacesResource
+  /** The local usernames — `src/resources/users.ts`, port of pyeapi `api/users.py` (W2a #35). */
+  users: UsersResource
+  /** The global NTP configuration — `src/resources/ntp.ts`, port of pyeapi `api/ntp.py` (W2a #35). */
+  ntp: NtpResource
+  /** Both kinds of `ip access-list` section — `src/resources/acl.ts`, port of pyeapi `api/acl.py` (W2b slice, #37). */
+  acls: AclsResource
+  /** The virtual-router MAC plus the per-interface virtual-router addresses — `src/resources/varp.ts`, port of pyeapi `api/varp.py` (W2b slice, #38). */
+  varp: VarpResource
+  /** Global spanning-tree state plus the per-interface portfast/bpduguard view — `src/resources/stp.ts`, port of pyeapi `api/stp.py` (W2c #39). */
+  stp: StpResource
+  /** The layer-3 view of each interface (its `ip address` lines and `mtu`) — `src/resources/ipinterfaces.ts`, port of pyeapi `api/ipinterfaces.py` (W2c #40). */
+  ipinterfaces: IpinterfacesResource
+  /** The VRF definitions/instances in the running-config — `src/resources/vrfs.ts`, port of pyeapi `api/vrfs.py` (W2d slice, #41). */
+  vrfs: VrfsResource
+  /** The IPv4 static routes in the running-config — `src/resources/staticroute.ts`, port of pyeapi `api/staticroute.py` (W2d slice, #42). */
+  staticroute: StaticRouteResource
+  /** The MLAG configuration — `src/resources/mlag.ts`, port of pyeapi `api/mlag.py` (W2d slice, #43). */
+  mlag: MlagResource
 }
 
 /** Any name `node.resource()` may be asked for. Grows by one row per resource module (M8-M10). */
@@ -83,7 +115,8 @@ type AnyResource = unknown
  * App-defined resources go in their own {@link ResourceRegistry} instead.
  *
  * One row per shipped module — pyeapi's `instance(api)` factories (`system.py:183-186`,
- * `vlans.py:361-372`, `switchports.py:406-417`) are the thing this table replaces, and pyeapi resolves
+ * `vlans.py:361-372`, `switchports.py:406-417`, `acl.py:302-303`, `varp.py:202`) are the thing this table
+ * replaces, and pyeapi resolves the
  * the **name** to a module path at call time (`client.py:927-950`), which is what DR-006 removes. `ResourceFactories<ResourceKinds>`
  * is exhaustive, so a `ResourceKinds` row without a factory here is a compile error (row 79).
  */
@@ -92,6 +125,15 @@ export const RESOURCE_FACTORIES: ResourceFactories<ResourceKinds> = Object.freez
   vlans: (node) => new VlansResource(node),
   switchports: (node) => new SwitchportsResource(node),
   interfaces: (node) => new InterfacesResource(node),
+  users: (node) => new UsersResource(node),
+  ntp: (node) => new NtpResource(node),
+  acls: (node) => new AclsResource(node),
+  varp: (node) => new VarpResource(node),
+  stp: (node) => new StpResource(node),
+  ipinterfaces: (node) => new IpinterfacesResource(node),
+  vrfs: (node) => new VrfsResource(node),
+  staticroute: (node) => new StaticRouteResource(node),
+  mlag: (node) => new MlagResource(node),
 })
 
 /**
@@ -141,7 +183,7 @@ export class ResourceRegistry<K extends object = ResourceKinds> {
       const known = this.names().map(String)
       throw new NotSupportedError(
         `unknown resource ${String(name)} — no factory is registered for it${
-          known.length === 0 ? '. This registry holds no factories at all, which for the built-in map would mean no resource module has been registered (M8 #10 shipped `system`, M9 #11 `vlans`/`switchports` and M10a #12 `interfaces`) — an app-defined registry is created with createResourceRegistry(factories, node).' : `; registered: ${known.join(', ')}`
+          known.length === 0 ? '. This registry holds no factories at all, which for the built-in map would mean no resource module has been registered (M8 #10 shipped `system`, M9 #11 `vlans`/`switchports`, M10a #12 `interfaces` and W2b #37/#38 `acls`/`varp`) — an app-defined registry is created with createResourceRegistry(factories, node).' : `; registered: ${known.join(', ')}`
         }`,
         { cause: name },
       )

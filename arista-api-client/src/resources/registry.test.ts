@@ -139,18 +139,31 @@ describe('ResourceRegistry — DR-006 replaces pyeapi node.api() (client.py:927-
     expect(registry.get('probe')).toBe(before)
   })
 
-  it('the built-in factory table is frozen and holds exactly the rows shipped so far (M8 #10 `system`, M9 #11 `vlans`/`switchports`, M10a #12 `interfaces`)', () => {
-    // M7 (#9) shipped this table honest-but-empty; M8 (#10) claimed the first row, M9 (#11) the next two
-    // and M10a (#12) the fourth, so the assertion names what exists. A name in `ResourceKinds` without a
-    // row here would be a package bug (row 79). A mutable module-level registry is what ARCHITECTURE.md §7
-    // forbids. `mlag` is the negative control: pyeapi has that module (`api/mlag.py`), no milestone here
-    // has shipped it, so it is the honest "still owed" name now that `interfaces` is registered.
+  it('the built-in factory table is frozen and holds exactly the rows shipped so far (M8 #10 `system`, M9 #11 `vlans`/`switchports`, M10a #12 `interfaces`, W2a #35 `users`/`ntp`, W2b #37/#38 `acls`/`varp`, W2c #39/#40 `stp`/`ipinterfaces`, W2d #41/#42/#43 `vrfs`/`staticroute`/`mlag`)', () => {
+    // M7 (#9) shipped this table honest-but-empty; each milestone since claimed its rows at the END of
+    // the table (the cross-lane merge rule), so the ordered assertion carries them in merge order rather
+    // than in a lane-chosen slot. A name in `ResourceKinds` without a row here would be a package bug
+    // (row 79). A mutable module-level registry is what ARCHITECTURE.md §7 forbids. The NEGATIVE CONTROL
+    // has moved twice: `mlag` held the slot through waves 1-2 (W2d #43 collected it), `stp` briefly
+    // during W2d's own development (W2c #39 shipped it mid-lane), and `ospf` now — pyeapi's
+    // `api/ospf.py`, owed to wave 3 (#17), the honest "still owed" name.
     expect(Object.isFrozen(RESOURCE_FACTORIES)).toBe(true)
     const { node } = nodeWith()
-    expect(new ResourceRegistry(RESOURCE_FACTORIES, node).names()).toEqual(['system', 'vlans', 'switchports', 'interfaces'])
+    expect(new ResourceRegistry(RESOURCE_FACTORIES, node).names()).toEqual(['system', 'vlans', 'switchports', 'interfaces', 'users', 'ntp', 'acls', 'varp', 'stp', 'ipinterfaces', 'vrfs', 'staticroute', 'mlag'])
     expect(new ResourceRegistry(RESOURCE_FACTORIES, node).has('vlans')).toBe(true)
     expect(new ResourceRegistry(RESOURCE_FACTORIES, node).has('interfaces')).toBe(true)
-    expect(new ResourceRegistry(RESOURCE_FACTORIES, node).has('mlag')).toBe(false)
+    expect(new ResourceRegistry(RESOURCE_FACTORIES, node).has('users')).toBe(true)
+    expect(new ResourceRegistry(RESOURCE_FACTORIES, node).has('ntp')).toBe(true)
+    expect(new ResourceRegistry(RESOURCE_FACTORIES, node).has('acls')).toBe(true)
+    expect(new ResourceRegistry(RESOURCE_FACTORIES, node).has('varp')).toBe(true)
+    expect(new ResourceRegistry(RESOURCE_FACTORIES, node).has('stp')).toBe(true)
+    expect(new ResourceRegistry(RESOURCE_FACTORIES, node).has('ipinterfaces')).toBe(true)
+    expect(new ResourceRegistry(RESOURCE_FACTORIES, node).has('vrfs')).toBe(true)
+    // W2d (#42): one token, exactly like the registry key (DR-102). (#43): `mlag` was this suite's
+    // favorite unregistered name for two waves; it is a real row now.
+    expect(new ResourceRegistry(RESOURCE_FACTORIES, node).has('staticroute')).toBe(true)
+    expect(new ResourceRegistry(RESOURCE_FACTORIES, node).has('mlag')).toBe(true)
+    expect(new ResourceRegistry(RESOURCE_FACTORIES, node).has('ospf')).toBe(false)
   })
 })
 
@@ -161,7 +174,16 @@ describe('Node.resource / Node.hasResource — the typed replacement for node.ap
     expect(node.hasResource('vlans')).toBe(true)
     expect(node.hasResource('switchports')).toBe(true)
     expect(node.hasResource('interfaces')).toBe(true)
-    expect(node.hasResource('mlag')).toBe(false)
+    expect(node.hasResource('users')).toBe(true)
+    expect(node.hasResource('ntp')).toBe(true)
+    expect(node.hasResource('acls')).toBe(true)
+    expect(node.hasResource('varp')).toBe(true)
+    expect(node.hasResource('stp')).toBe(true)
+    expect(node.hasResource('ipinterfaces')).toBe(true)
+    expect(node.hasResource('vrfs')).toBe(true)
+    expect(node.hasResource('staticroute')).toBe(true)
+    expect(node.hasResource('mlag')).toBe(true)
+    expect(node.hasResource('ospf')).toBe(false)
     expect(node.hasResource('probe')).toBe(false)
   })
 
@@ -185,23 +207,56 @@ describe('Node.resource / Node.hasResource — the typed replacement for node.ap
     expect(node.interfaces).toBe(node.interfaces)
     expect(node.interfaces).toBe(node.resource('interfaces'))
     expect(node.interfaces.constructor.name).toBe('InterfacesResource')
+    // W2a (#35) appended the fifth and sixth rows: `node.users` (collection) and `node.ntp` (global
+    // entity, the `node.system` sibling), each its registry twin under the same memo.
+    expect(node.users).toBe(node.users)
+    expect(node.users).toBe(node.resource('users'))
+    expect(node.users.constructor.name).toBe('UsersResource')
+    expect(node.ntp).toBe(node.ntp)
+    expect(node.ntp).toBe(node.resource('ntp'))
+    expect(node.ntp.constructor.name).toBe('NtpResource')
+    // W2b (#37 #38) are the seventh and eighth rows. `node.acls.standard`/`.extended` and
+    // `node.varp.interfaces` are the pyeapi sub-objects (`acl.py:126-142`'s `_instances`,
+    // `varp.py:59-63`'s property memo) that the per-Node memo replaces: one object each, identity stable.
+    expect(node.acls).toBe(node.acls)
+    expect(node.acls).toBe(node.resource('acls'))
+    expect(node.acls.constructor.name).toBe('AclsResource')
+    expect(node.acls.standard).toBe(node.acls.standard)
+    expect(node.acls.extended).toBe(node.acls.extended)
+    expect(node.varp).toBe(node.varp)
+    expect(node.varp).toBe(node.resource('varp'))
+    expect(node.varp.constructor.name).toBe('VarpResource')
+    expect(node.varp.interfaces).toBe(node.varp.interfaces)
+    expect(node.varp.interfaces.constructor.name).toBe('VarpInterfacesResource')
+    // W2d (#41-#43) are the eleventh, twelfth and thirteenth rows: `node.vrfs`, `node.staticroute`
+    // (one token exactly like the registry key, DR-102), and `node.mlag` — the name that served as this
+    // suite's negative control for two waves is a real row now.
+    expect(node.vrfs).toBe(node.vrfs)
+    expect(node.vrfs).toBe(node.resource('vrfs'))
+    expect(node.vrfs.constructor.name).toBe('VrfsResource')
+    expect(node.staticroute).toBe(node.staticroute)
+    expect(node.staticroute).toBe(node.resource('staticroute'))
+    expect(node.staticroute.constructor.name).toBe('StaticRouteResource')
+    expect(node.mlag).toBe(node.mlag)
+    expect(node.mlag).toBe(node.resource('mlag'))
+    expect(node.mlag.constructor.name).toBe('MlagResource')
   })
 
   it('asking for an unregistered resource throws, listing the rows that DO exist', () => {
     const { node } = nodeWith()
     // `ResourceName` is the closed map key union, so this call cannot be written type-correctly from TS —
     // which is the point. The cast is the JS/table-column path the runtime check exists for (row 79).
-    // `mlag` is pyeapi's `api/mlag.py`, which no milestone here has registered; `interfaces` became a real
-    // row with M10a (#12).
-    const untyped = 'mlag' as never
+    // `ospf` is pyeapi's `api/ospf.py`, owed to wave 3 (#17) and unregistered here; `mlag` served as this
+    // test's unregistered name until W2d (#43) registered it.
+    const untyped = 'ospf' as never
     expect(() => node.resource(untyped)).toThrow(NotSupportedError)
-    expect(() => node.resource(untyped)).toThrow(/unknown resource mlag — no factory is registered/)
-    expect(() => node.resource(untyped)).toThrow(/registered: system, vlans, switchports, interfaces/)
+    expect(() => node.resource(untyped)).toThrow(/unknown resource ospf — no factory is registered/)
+    expect(() => node.resource(untyped)).toThrow(/registered: system, vlans, switchports, interfaces, users, ntp, acls, varp, stp, ipinterfaces, vrfs, staticroute, mlag/)
   })
 
   it('every failed resource call sends nothing to the device (a registry miss is not a device error)', () => {
     const { node, transport } = nodeWith()
-    expect(() => node.resource('mlag' as never)).toThrow(NotSupportedError)
+    expect(() => node.resource('ospf' as never)).toThrow(NotSupportedError)
     expect(transport.sent()).toEqual([])
     expect(transport.callCount()).toBe(0)
   })
@@ -212,6 +267,9 @@ describe('Node.resource / Node.hasResource — the typed replacement for node.ap
     expect(first.node.vlans).not.toBe(second.node.vlans)
     expect(first.node.switchports).not.toBe(second.node.switchports)
     expect(first.node.interfaces).not.toBe(second.node.interfaces)
-    expect(() => first.node.resource('mlag' as never)).toThrow(/no factory is registered/)
+    expect(first.node.vrfs).not.toBe(second.node.vrfs)
+    expect(first.node.staticroute).not.toBe(second.node.staticroute)
+    expect(first.node.mlag).not.toBe(second.node.mlag)
+    expect(() => first.node.resource('ospf' as never)).toThrow(/no factory is registered/)
   })
 })
