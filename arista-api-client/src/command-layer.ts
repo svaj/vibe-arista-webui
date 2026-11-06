@@ -63,9 +63,11 @@ import { tryVariants } from './internal/variants'
 import type { CliVariant } from './internal/variants'
 import type { ConfigSections } from './config/chunk'
 import type { SectionPattern } from './config/section'
+import type { AclsResource } from './resources/acl'
 import type { InterfacesResource } from './resources/interfaces'
 import type { SystemResource } from './resources/system'
 import type { SwitchportsResource } from './resources/switchports'
+import type { VarpResource } from './resources/varp'
 import type { VlansResource } from './resources/vlans'
 import type { ResourceKinds, ResourceName } from './resources/registry'
 import type { MethodCallOptions, Transport, TransportExecOptions } from './transports/contract'
@@ -868,6 +870,28 @@ export class Node {
   }
 
   /**
+   * The `acls` resource — same per-`Node` {@link resourceMemo} as {@link interfaces} (DR-052):
+   * `node.acls === node.acls === node.resource('acls')`, and its `standard` / `extended` halves are one
+   * object each on that instance. pyeapi reaches the same thing through `node.api('acls')`, which loads
+   * `pyeapi.api.acl` off the filesystem and calls its `instance(api)` (`acl.py:302-303`,
+   * `client.py:927-950`), and then routes every entry verb through `__getattr__`/`marshall` (`:114-124`)
+   * — the dispatch DR-092 replaces with named methods. Added by W2b (#37).
+   */
+  get acls(): AclsResource {
+    return this.resource('acls')
+  }
+
+  /**
+   * The `varp` resource — same memo, same reasoning as {@link acls}. pyeapi's factory is `varp.py:202`
+   * (`instance(node)` → `Varp(node)`), reached only as `node.api('varp')`; the per-interface half hangs off
+   * it as `node.varp.interfaces`, which is upstream's `interfaces` property (`varp.py:59-63`). Added by
+   * W2b (#38).
+   */
+  get varp(): VarpResource {
+    return this.resource('varp')
+  }
+
+  /**
    * The resource for `name` — DR-006's replacement for pyeapi's string-keyed `Node.api(name)`
    * (`client.py:927-950`, where the name is a module path loaded off the filesystem). Here it is a key of
    * the augmentable {@link ResourceKinds} map, checked at compile time and again at runtime
@@ -875,8 +899,9 @@ export class Node {
    * (pyeapi builds a fresh object every call, `client.py:946-949`).
    *
    * M7 (#9) shipped the map empty, M8 (#10) claimed the first row, M9 (#11) claimed `vlans` /
-   * `switchports` and M10a (#12) claimed `interfaces`, so an unregistered name — a typo, or a module a
-   * later milestone owes — throws a `NotSupportedError` naming it and listing what is registered. Apps
+   * `switchports`, M10a (#12) claimed `interfaces` and W2b (#37 #38) claimed `acls` / `varp`, so an
+   * unregistered name — a typo, or a module a later milestone owes — throws a `NotSupportedError` naming it
+   * and listing what is registered. Apps
    * define their own resources with `createResourceRegistry(factories, node)`.
    *
    * @throws {NotSupportedError} no factory is registered for `name`.

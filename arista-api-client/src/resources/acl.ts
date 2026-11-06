@@ -28,50 +28,50 @@
  * | `create/delete/default` (`:183-190`: `ip access-list standard %s` / `no …` / `default …`) | {@link StandardAclsResource.create} / {@link delete} / {@link setDefault} — the same three texts through `commandBuilder` (DR-037) |
  * | `update_entry` (`:192-200`), `add_entry` (`:202-211`), `remove_entry` (`:213-216`) | {@link StandardAclsResource.updateEntry} / {@link addEntry} / {@link removeEntry} — same command texts, one options object instead of six positional params (MIGRATION.md §4) |
  * | `ExtendedAcls` (`:218`) with the same six verbs (`:234-297`) and `entry_re` (`:220-232`) | {@link ExtendedAclsResource} and {@link parseExtendedEntry} |
- * | `ACL_CLASS_MAP` (`:300`) / `instance(node)` (`:302-303`) | the `acls` row in `RESOURCE_FACTORIES` and `Node.acls` (DR-006/DR-052) |
+ * | `ACL_CLASS_MAP` (`:299`) / `instance(node)` (`:302-303`) | the `acls` row in `RESOURCE_FACTORIES` and `Node.acls` (DR-006/DR-052) |
  *
  * ## Upstream's own suite, and what porting it meant
  *
- * `pyeapi/test/unit/test_api_acl.py` — **32** test methods (`grep -c 'def test'` on 2026-11-05, in four
- * classes: `TestApiAclFunctions` `:49-57` (2), `TestApiAcls` `:60-149` (12),
- * `TestApiStandardAcls` `:152-215` (9), `TestApiExtendedAcls` `:218-297` (9)). Note the filename: the
+ * `pyeapi/test/unit/test_api_acl.py` — **32** test methods (`grep -n 'def test'` on 2026-11-05, in four
+ * classes: `TestApiAclFunctions` `:43-51` (2), `TestApiAcls` `:54-124` (12),
+ * `TestApiStandardAcls` `:126-192` (9), `TestApiExtendedAcls` `:194-271` (9)). Note the filename: the
  * brief for this lane cited `test/unit/test_acl.py`, which **does not exist** upstream — the real files are
  * `test_api_acl.py` and `test_api_varp.py`. The spans above are from the real file (verified by opening it).
  *
  * Ported as behaviour, not shape-for-shape, because several upstream assertions pin answers this client
  * refuses to give:
- *  - `test_mask_to_prefixlen` (`:50-52`) / `test_prefixlen_to_mask` (`:54-57`) — ported verbatim
+ *  - `test_mask_to_prefixlen` (`:45-47`) / `test_prefixlen_to_mask` (`:49-51`) — ported verbatim
  *    (`255.255.255.0` → `24`, `24` → `'255.255.255.0'`) and extended with the netaddr behaviour the two
  *    helpers actually have (`0.0.0.255` → `32`, `'255.0.255.0'` → `32`, `'0.0.0.0'` → `0`,
  *    `'32'`-as-a-mask and `'banana'` → a `NotSupportedError` instead of `netaddr.AddrFormatError`) —
  *    divergences 1 and 2.
- *  - `test_instance` (`:66-68`) — the registry row + `Node.acls` pin the same thing.
- *  - `test_getall` (`:70-75`), `test_get` (`:80-83`), `test_get_not_configured` (`:77-78`) — the nested
+ *  - `test_instance` (`:61-63`) — the registry row + `Node.acls` pin the same thing.
+ *  - `test_getall` (`:65-69`), `test_get` (`:74-77`), `test_get_not_configured` (`:71-72`) — the nested
  *    `{'standard','extended'}` dict becomes a flat `Map` keyed by name with `type` on the record
  *    (DR-093); `None` becomes `undefined` (DR-027).
- *  - `test_get_instance` (`:85-96`), `test_create_instance_standard`/`_extended` (`:98-105`) — the class
+ *  - `test_get_instance` (`:79-90`), `test_create_instance_standard`/`_extended` (`:92-100`) — the class
  *    identity they assert (`StandardAcls` vs `ExtendedAcls`) is the `type` field plus the two named
  *    accessors; the `_instances` count they assert is the memo this facade keeps per **type**, not per
  *    name (divergence 5's other half).
- *  - `test_create_standard` (`:107-110`), `test_create_extended` (`:112-115`) — both texts pinned verbatim
+ *  - `test_create_standard` (`:102-105`), `test_create_extended` (`:107-110`) — both texts pinned verbatim
  *    (`ip access-list test` for the extended form, `ip access-list standard test` for the default).
- *  - `test_create_unknown_type_creates_standard` (`:117-120`) — **not** ported as a passing behaviour:
+ *  - `test_create_unknown_type_creates_standard` (`:112-115`) — **not** ported as a passing behaviour:
  *    probe-confirmed `create('test', 'unknown')` sends `ip access-list standard test`, and
  *    `create_instance('x', 'banana')` returns a `StandardAcls` (probe). A typo'd kind silently writing the
  *    *other* kind of ACL is a config write the operator did not ask for, so this is a refusal with an
  *    asserted test (divergence 8) — the widened-guard pattern rows 73/76 record.
- *  - `test_proxy_method_success` (`:122-124`) and `test_proxy_method_raises_attribute_error` (`:126-129`)
+ *  - `test_proxy_method_success` (`:117-119`) and `test_proxy_method_raises_attribute_error` (`:121-124`)
  *    — the dynamic half of the facade, not ported (DR-006/DR-068/DR-092). Their intent is kept two ways:
  *    the named facade verbs below, and a test that a name the switch does not have is a `NotFoundError`
  *    rather than upstream's `AttributeError` (probe: `'<StandardAcls object>' object has no attribute
  *    'nonmethod'`, and `add_entry` on an unconfigured ACL raises
  *    `'{'unconfigured': None}' object has no attribute 'add_entry'`).
- *  - every command text in `TestApiStandardAcls.test_acl_functions` (`:166-173`),
- *    `test_update_entry`/`_no_log` (`:175-185`), `test_add_entry`/`_no_log`/`_with_seqno` (`:187-203`),
- *    `test_remove_entry` (`:183-185` region) and the mirrored `TestApiExtendedAcls` cases
- *    (`:232-239`, `:241-251`, `:253-269`) is reproduced **verbatim** below, including `no <seq>` ahead of
+ *  - every command text in `TestApiStandardAcls.test_acl_functions` (`:142-151`),
+ *    `test_update_entry`/`_no_log` (`:153-165`), `test_add_entry`/`_no_log`/`_with_seqno` (`:172-192`),
+ *    `test_remove_entry` (`:167-170`) and the mirrored `TestApiExtendedAcls` cases
+ *    (`:222-231`, `:233-245`, `:247-271`) is reproduced **verbatim** below, including `no <seq>` ahead of
  *    the replacement line and the trailing `exit`.
- *  - `TestApiExtendedAcls.test_get` (`:221-230`) asserts the two fixture entries **field by field**,
+ *  - `TestApiExtendedAcls.test_get` (`:201-217`) asserts the two fixture entries **field by field**,
  *    `srclen: None` next to `srclen: '24'` and `other: 'urg ttl eq 24 fragments tracked log'`. That test
  *    is the evidence for divergence 1: this module reads the same lines as an `AclMatch` record with
  *    `prefixlen?: number` and an `options` remainder, and the numbers are numbers.
@@ -91,23 +91,23 @@
  *    `mask_to_prefixlen` (`:178`), which counts **netmask** bits — probe: `0.0.0.255` → `32`,
  *    `0.255.255.255` → `32`, `1.2.3.4` → `32`. So a /24-wildcard source reads back as a single host, and
  *    `255.255.0.0` reads as `16` (the fixture's `20 permit 1.2.3.4 255.255.0.0`,
- *    `test/fixtures/running_config.text:2014`). Here the wildcard token is kept verbatim in
+ *    `test/fixtures/running_config.text:2016`). Here the wildcard token is kept verbatim in
  *    `AclMatch.mask` and the conversion helpers are **never** used by the parser (row 159).
  * 3. **`any` is not a host.** Upstream's standard parser throws the `any` marker away:
  *    `entry['srcaddr'] = ip or '0.0.0.0'` and `entry['srclen'] = mlen or mask_to_prefixlen(mask)`
- *    (`:176-177`), so `30 deny any` answers `{srcaddr: '0.0.0.0', srclen: 32}` — a `/32`, i.e. one host —
+ *    (`:177-178`), so `30 deny any` answers `{srcaddr: '0.0.0.0', srclen: 32}` — a `/32`, i.e. one host —
  *    and `60 permit any log` the same. Here `kind: 'any'` with no address, and `host <addr>` keeps its
  *    marker (`kind: 'host'`), which upstream also discards (probe: `10 permit host 1.2.3.4 log` answers
  *    `srcaddr 1.2.3.4, srclen 32`, identical to a bare address).
  * 4. **the entry line must *start* at the rule.** Upstream finds rules with
- *    `re.finditer(r'\d+ [p|d].*$', config, re.M)` (`:171`, `:243`) — unanchored, and `[p|d]` is the
+ *    `re.finditer(r'\d+ [p|d].*$', config, re.M)` (`:172`, `:244`) — unanchored, and `[p|d]` is the
  *    character class `p`, `|`, `d`. So any line *containing* `<digits> <p…|d…|…>` becomes a rule: probe —
  *    `description matches 1500 permit everything` inside an extended ACL adds the entry
  *    `{"1500": {action: 'permit', protocol: 'everything', srcaddr: 'any', …}}`, and in a standard ACL
  *    `name 20 permit me` adds `{"20": {action: 'permit', srcaddr: '0.0.0.0', srclen: 32}}`. Here a rule is a
  *    body line whose **first** token is a decimal sequence number (row 160).
  * 5. **names are looked up by equality, not as patterns.** Upstream builds a regex out of the caller's ACL
- *    name in `get_instance` (`:129-130`) and passes `%s` into `get_block` the same way (`:163`, `:183`,
+ *    name in `get_instance` (`:129-130`) and passes `%s` into `get_block` the same way (`:163`, `:184`,
  *    `abstract.py:98`), which the M6 `getBlock` contract deliberately keeps **as written** for a parent
  *    string — but a facade `get()` then indexes the answer with the caller's string anyway. Probe:
  *    with only `ip access-list standard stdname` in the config, `get('std.*')` returns a complete record
@@ -117,11 +117,11 @@
  *    `ip access-list standard <name>`, and {@link assertAclName} refuses a write-side name with whitespace
  *    or a control character (row 160).
  * 6. **an unparseable rule is reported, by both kinds.** Upstream's extended parser guards with
- *    `if match:` (`:244-245`) while the standard one does not (`:172-173`, `match.groups()` on `None`):
+ *    `if match:` (`:246`) while the standard one does not (`:173-174`, `match.groups()` on `None`):
  *    probe — a block with `10 p` answers `{}` from `ExtendedAcls.get` and raises
  *    `AttributeError: 'NoneType' object has no attribute 'groups'` from `StandardAcls.get`. And upstream
  *    *invents* the missing half of an extended rule: `match.group(5) or 'any'` / `group(9) or 'any'`
- *    (`:249`, `:252`), so `10 permit tcp any` answers `dstaddr: 'any'` for a line with no destination.
+ *    (`:250`, `:253`), so `10 permit tcp any` answers `dstaddr: 'any'` for a line with no destination.
  *    Here a body line that starts with a sequence number is a rule, and a rule the grammar cannot read is a
  *    `ConfigParseError` naming the section and the line — for both kinds (row 161).
  * 7. **duplicate sequence numbers are a parse failure, not a silent overwrite.** Rules go into a `dict`
@@ -143,7 +143,7 @@
  *    *read* of `host …`/`any` produced, so upstream cannot round-trip its own read model. Here
  *    {@link AclMatchInput} has four arms (`any`, `host <addr>`, `<addr>/<len>`, `<addr> <mask>`), which
  *    reproduce texts seen in device-written ACL blocks (pyeapi's fixture at
- *    `test/fixtures/running_config.text:2013-2018` and the committed `acl-sections.conf`), and a value that
+ *    `test/fixtures/running_config.text:2012-2020`/`:2022-2031` and the committed `acl-sections.conf`), and a value that
  *    fits no arm is refused with the field named (row 164). The arms upstream could not express at all are
  *    still not writable here: port operators (`eq 161`) and the option tail (`ttl eq 1 tracked`) are read
  *    into `operator`/`options` and deliberately **not** re-emitted by these verbs.
@@ -190,7 +190,7 @@ export function isAclType(value: unknown): value is AclType {
   return ACL_TYPES.includes(value as AclType)
 }
 
-/** The two rule actions. Upstream's `[p|d]\w+` (`:155`, `:222`) accepts far more than this (divergence 4). */
+/** The two rule actions. Upstream's `[p|d]\w+` (`:154`, `:221`) accepts far more than this (divergence 4). */
 export type AclAction = 'permit' | 'deny'
 
 /** The actions in message order. */
@@ -198,9 +198,10 @@ const ACL_ACTIONS: readonly AclAction[] = ['permit', 'deny']
 
 /**
  * How one side of a rule was **written**. Upstream collapses this distinction: the `host` marker is
- * captured then dropped (`:157`/`:161`, unused in `_parse_entries`), a missing source becomes
- * `'0.0.0.0'` + `srclen 32` (`:176-177`), and an extended destination that the line does not contain
- * becomes `'any'` (`:249`/`:252`). `kind` is the half of the line that carries meaning, and
+ * captured then dropped (its `(any)`/`(host)` groups at `:155`/`:156`, `:223`/`:227`, unused in
+ * `_parse_entries`), a missing source becomes
+ * `'0.0.0.0'` + `srclen 32` (`:177-178`), and an extended destination that the line does not contain
+ * becomes `'any'` (`:250`/`:253`). `kind` is the half of the line that carries meaning, and
  * {@link AclMatch.mask} keeps the rest (divergences 2 and 3).
  */
 export type AclMatchKind = 'any' | 'host' | 'address'
@@ -292,7 +293,7 @@ export interface AclEntryInput {
   readonly log?: boolean
   /**
    * The sequence number to give the rule. Absent means the line carries none, which is what upstream's
-   * `seqno=None` default does (`:204`, `:285`) — the **device** picks the number (there is no
+   * `seqno=None` default does (`:202`, `:281`) — the **device** picks the number (there is no
    * client-side numbering anywhere in acl.py).
    */
   readonly seqno?: number
@@ -308,19 +309,24 @@ export type AclMatchInput =
 /**
  * The section header grammar, at pyeapi's own charset: `^ip access-list (?:(standard) )?(.+)$`
  * (`:104`/`:129`). Applied to **section keys**, not to the whole config text — the `getall` over-match
- * upstream pays for with a `get_block` per hit is what divergence 4/5's key lookup replaces. A key of
- * `ip access-list standard` (no name) is not an ACL section, which is also upstream's answer
- * (`(standard) ` needs the space, `(.+)` needs a character).
+ * upstream pays for with a `get_block` per hit is what divergence 4/5's key lookup replaces. The one
+ * ambiguity the charset carries is kept as upstream carries it: a header of `ip access-list standard` with
+ * **no** name is not a standard section (the `(standard) ` alternative needs its trailing space) and does
+ * match `(.+)`, so it reads as an extended ACL named `standard` here exactly as it does upstream — probe:
+ * `Acls.getall()` over such a section answers `{'standard': {}, 'extended': {'standard': …}}`, and
+ * `get_instance('standard')` picks `ExtendedAcls` the same way (`:129-134`). EOS writes an ACL name after
+ * the kind; whether it can ever write one without is unverified on hardware, M12 (#14) to capture, so the
+ * artifact is pinned (§5 row 158) rather than "fixed" into a section the client would then not report.
  */
 const ACL_HEADER = /^ip access-list (?:(standard) )?(.+)$/u
 
-/** A rule line's first token — the sequence number. Upstream's `(\d+)` (**:154**, **:221**). */
+/** A rule line's first token — the sequence number. Upstream's `(\d+)` (**:153**, **:220**). */
 const SEQ_TOKEN = /^[0-9]+$/u
 
-/** A protocol token: `ip`, `tcp`, `udp`, `icmp`, … or a decimal protocol number. Upstream's `(\w+|\d+)` (`:223`). */
+/** A protocol token: `ip`, `tcp`, `udp`, `icmp`, … or a decimal protocol number. Upstream's `(\w+|\d+)` (`:222`). */
 const PROTOCOL_TOKEN = /^[A-Za-z0-9]+$/u
 
-/** The port operators EOS writes between a match and its port (`eq|gt|lt|neq|range`, upstream `:227`/`:230`). */
+/** The port operators EOS writes between a match and its port (`eq|gt|lt|neq|range`, upstream `:226`/`:231`). */
 const PORT_OPERATORS: readonly string[] = ['eq', 'gt', 'lt', 'neq', 'range']
 
 /** A dotted-quad IPv4 address, each octet 0-255. Refuses `1.2.3` and `1.2.3.4.5`, which upstream's regexes accept as *some* group. */
@@ -372,7 +378,7 @@ function cannotParse(sectionKey: string, line: string, because: string): never {
  * but never used by the parser: a standard ACL writes **wildcards**, and this function answers `32` for
  * every one of them (divergence 2, row 159).
  *
- * `undefined` and `''` fall back to `255.255.255.255` → 32, as upstream's `mask = mask or …` (`:63`) does
+ * `undefined` and `''` fall back to `255.255.255.255` → 32, as upstream's `mask = mask or …` (`:64`) does
  * for `None`/empty (probe). A token that is not an IPv4 address is a {@link NotSupportedError} naming it —
  * upstream pays `netaddr.AddrFormatError: failed to detect a valid IP address from '32'` (probe), a foreign
  * exception class this taxonomy has no place for (DR-005/DR-010: no new error classes).
@@ -403,14 +409,14 @@ export function maskToPrefixlen(mask: string | undefined): number {
  * `str(netaddr.IPNetwork('0.0.0.0/%s' % prefixlen).netmask)`.
  *
  * Two upstream facts worth pinning, both probe-confirmed: `undefined`/`''` fall back to
- * `'255.255.255.255'` (its `prefixlen = prefixlen or '32'` at `:76`), **and** a numeric `0` falls back the
+ * `'255.255.255.255'` (its `prefixlen = prefixlen or '32'` at `:77`), **and** a numeric `0` falls back the
  * same way because Python's `or` treats 0 as false — so upstream answers `'255.255.255.255'` for `0` and
  * `'0.0.0.0'` for `'0'`. Here `0` is `0.0.0.0` and only `undefined`/`''` take the default (row 159).
  * Out-of-range or non-integral lengths (`33`, `-1`, `'30.5'`, `'banana'`) are refusals rather than
  * `netaddr.AddrFormatError: invalid IPNetwork 0.0.0.0/33` (probe).
  */
 export function prefixlenToMask(prefixlen: string | number | undefined): string {
-  // `prefixlen = prefixlen or '32'` (`:76`): the empty string and None take the /32 default, and so does
+  // `prefixlen = prefixlen or '32'` (`:77`): the empty string and None take the /32 default, and so does
   // the number 0 — the divergence row says why 0 is not treated that way here.
   if (prefixlen === undefined || (typeof prefixlen === 'string' && prefixlen.trim() === '')) return bitsToIpv4(IPV4_BITS)
   const length = typeof prefixlen === 'number' ? prefixlen : Number(prefixlen)
@@ -422,12 +428,12 @@ export function prefixlenToMask(prefixlen: string | number | undefined): string 
 
 /** Refuse an ACL name a section key could not carry. */
 function assertAclName(value: unknown): asserts value is string {
-  if (typeof value !== 'string') refuse('ACL name', value, 'expected a string ACL name — pyeapi interpolates whatever arrives into the command (acl.py:164, :183, :186, :189), and probe-confirmed create("") sends `ip access-list standard ` with a trailing space')
+  if (typeof value !== 'string') refuse('ACL name', value, 'expected a string ACL name — pyeapi interpolates whatever arrives into the command (acl.py:163, :184, :187, :190), and probe-confirmed create("") sends `ip access-list standard ` with a trailing space')
   if (value.trim() === '') refuse('ACL name', value, 'an empty ACL name is refused — `ip access-list standard ` is a command line this client cannot read back as an ACL (the header grammar needs one character after the kind, acl.py:104)')
   if (value !== value.trim()) refuse('ACL name', value, 'leading or trailing whitespace cannot read back: a section key is the rstripped line (client.py:741-747) and the name is the header remainder (acl.py:104)')
   // Inner whitespace stays legal: upstream creates such an ACL (probe: `create('has space')` sends
-  // `ip access-list standard has space`) and reads it back as the same section key, so refusing it here
-  // would make a name this client can report unmanageable.
+  // `ip access-list standard has space`, acl.py:144-148 → :184) and reads it back as the same section key, so
+  // refusing it here would make a name this client can report unmanageable.
   for (let index = 0; index < value.length; index += 1) {
     const code = value.charCodeAt(index)
     if (code < 0x20 || code === 0x7f) refuse('ACL name', value, 'a control character would break the config line this client reads back (the same reason command-builder.ts refuses a value with a line boundary, MIGRATION.md §5 row 74)')
@@ -437,28 +443,28 @@ function assertAclName(value: unknown): asserts value is string {
 /** Refuse a sequence number the read model could not key (divergence 7's grammar is the bound). */
 function assertAclSeqno(value: unknown): asserts value is number {
   if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0) {
-    refuse('ACL sequence number', value, 'expected a non-negative safe integer — the read side keys rules by the decimal a line starts with (acl.py:154, :221), and upstream interpolates anything: probe `add_entry(…, 0)` sends `0 permit 0.0.0.0/32` and a string seqno would send whatever it spells')
+    refuse('ACL sequence number', value, 'expected a non-negative safe integer — the read side keys rules by the decimal a line starts with (acl.py:153, :180, :220, :257), and upstream interpolates anything: probe `add_entry(…, 0)` sends `0 permit 0.0.0.0/32` and a string seqno would send whatever it spells')
   }
 }
 
 /** Refuse an action outside the two ACL actions. */
 function assertAclAction(value: unknown): asserts value is AclAction {
   if (!ACL_ACTIONS.includes(value as AclAction)) {
-    refuse('ACL action', value, `expected one of ${ACL_ACTIONS.join(' / ')} — upstream's rule regex is the class [p|d] followed by any word (acl.py:155, :222), so it would accept "pwn" and send it`)
+    refuse('ACL action', value, `expected one of ${ACL_ACTIONS.join(' / ')} — upstream's rule regex is the class [p|d] followed by any word (acl.py:154, :221), so it would accept "pwn" and send it`)
   }
 }
 
 /** Refuse a protocol token that is not one word. */
 function assertAclProtocol(value: unknown): asserts value is string {
   if (typeof value !== 'string' || !PROTOCOL_TOKEN.test(value)) {
-    refuse('ACL protocol', value, 'expected one token such as ip / tcp / udp / icmp / 47 — the extended regex reads a single \\w+ word (acl.py:223)')
+    refuse('ACL protocol', value, 'expected one token such as ip / tcp / udp / icmp / 47 — the extended regex reads a single \\w+ word (acl.py:222)')
   }
 }
 
 /** Refuse an IPv4-shaped argument (address, host or mask) that is not a dotted quad. */
 function assertIpv4(label: string, value: unknown): asserts value is string {
   if (typeof value !== 'string' || !IPV4.test(value)) {
-    refuse(label, value, 'expected a dotted-quad IPv4 address (each octet 0..255) — pyeapi checks nothing here: it interpolates the token straight into the rule text (acl.py:199, :210, :277, :291)')
+    refuse(label, value, 'expected a dotted-quad IPv4 address (each octet 0..255) — pyeapi checks nothing here: it interpolates the token straight into the rule text (acl.py:195, :204, :272-273, :283-284)')
   }
 }
 
@@ -488,12 +494,12 @@ function renderMatch(label: string, match: AclMatchInput, allowMask: boolean): s
     }
     if (bag['mask'] !== undefined) {
       if (!allowMask) {
-        refuse(`${label} mask`, bag['mask'], 'the `<address> <mask>` arm is a standard-ACL spelling — upstream reads bare quads on the extended side as the **destination** instead (probe: `permit icmp 3.3.3.0 0.0.0.255 any` answers 0.0.0.255 as dstaddr, acl.py:225-230)')
+        refuse(`${label} mask`, bag['mask'], 'the `<address> <mask>` arm is a standard-ACL spelling — upstream reads bare quads on the extended side as the **destination** instead (probe: `permit icmp 3.3.3.0 0.0.0.255 any` answers 0.0.0.255 as dstaddr, acl.py:224-231)')
       }
       assertIpv4(`${label} mask`, bag['mask'])
       return `${bag['address']} ${bag['mask']}`
     }
-    refuse(`${label} match`, match, `an address needs either a prefix length or a mask — upstream formats the missing one as the string None (probe: \`permit any/None\`, acl.py:207)`)
+    refuse(`${label} match`, match, `an address needs either a prefix length or a mask — upstream formats the missing one as the string None (probe: \`permit any/None\`, acl.py:204)`)
   }
   refuse(`${label} match`, match, 'expected one of { any: true } / { host } / { address, prefixlen } / { address, mask }')
 }
@@ -511,7 +517,7 @@ function renderEntryBody(type: AclType, entry: AclEntryInput): string {
   parts.push(renderMatch('source', entry.src, type === 'standard'))
   if (type === 'extended') {
     if (entry.dst === undefined) {
-      refuse('destination', entry.dst, 'an extended ACL rule needs a destination — upstream defaults it to the string undefined/None in TS terms and to `None` in its own text (probe: `permit ip any any/None`, acl.py:281-292), and its **reader** invents `any` for a line that omits one (acl.py:252)')
+      refuse('destination', entry.dst, 'an extended ACL rule needs a destination — upstream formats a missing one as the string None in its own text (probe: `permit ip any any/None`, acl.py:283-284), and its **reader** invents `any` for a line that omits one (acl.py:253)')
     }
     parts.push(renderMatch('destination', entry.dst, false))
   } else if (entry.dst !== undefined) {
@@ -521,7 +527,7 @@ function renderEntryBody(type: AclType, entry: AclEntryInput): string {
   return parts.join(' ')
 }
 
-/** The rule line as it goes on the wire: `[<seqno> ]<body>` (upstream `:206-209`, `:288-292`). */
+/** The rule line as it goes on the wire: `[<seqno> ]<body>` (upstream `:205-206`, `:285-286`). */
 function entryCommand(type: AclType, entry: AclEntryInput): string {
   const body = renderEntryBody(type, entry)
   if (entry.seqno === undefined) return body
@@ -549,44 +555,49 @@ function readAddress(token: string, sectionKey: string, line: string): { readonl
   return { match: { kind: 'address', address: token } }
 }
 
-/** Read one side of a rule, and report where the next token starts. */
+/**
+ * Read one side of a rule, and report where the next token starts. The port operator is read after **every**
+ * extended arm, `any` included: upstream's `((?:eq|gt|lt|neq|range) [\w-]+)` groups sit after each address
+ * group (`:226`, `:231`), so it reads `permit tcp any eq 80 any` with `srcport: 'eq 80'`, and an operator
+ * that this reader refused to accept after `any` would land in {@link AclEntry.options} instead — the
+ * remainder field is where unmodelled text belongs, not mis-attributed text. (Whether 4.28 writes a source
+ * port after `any` is unverified on hardware, M12 #14 to capture; upstream reading it is enough to keep it.)
+ */
 function readMatch(tokens: readonly string[], index: number, options: { readonly allowMask: boolean; readonly allowOperator: boolean }, sectionKey: string, line: string): { readonly match: AclMatch; readonly next: number } {
   const token = tokens[index]
   if (token === undefined) cannotParse(sectionKey, line, options.allowOperator ? 'an extended rule needs a source and a destination' : 'the rule carries no source')
-  if (token === 'any') return { match: { kind: 'any' }, next: index + 1 }
-  if (token === 'host') {
+  let base: AclMatch
+  let cursor: number
+  if (token === 'any') {
+    base = { kind: 'any' }
+    cursor = index + 1
+  } else if (token === 'host') {
     const address = tokens[index + 1]
-    if (address === undefined || !IPV4.test(address)) cannotParse(sectionKey, line, `\`host\` needs a dotted-quad address (upstream reads the marker and then drops it, acl.py:157, :161)`)
-    const match: AclMatch = { kind: 'host', address }
-    const operator = readOperator(tokens, index + 2, options, sectionKey, line)
-    return operator === undefined ? { match, next: index + 2 } : { match: { ...match, operator: operator.operator }, next: operator.next }
+    if (address === undefined || !IPV4.test(address)) cannotParse(sectionKey, line, `\`host\` needs a dotted-quad address (upstream reads the marker in its own (host) group at acl.py:156, :227 and then drops it — probe: a rule \`10 permit host 1.2.3.4 log\` answers srcaddr 1.2.3.4 with srclen 32, indistinguishable from a bare address)`)
+    base = { kind: 'host', address }
+    cursor = index + 2
+  } else {
+    base = readAddress(token, sectionKey, line).match
+    cursor = index + 1
   }
-  const read = readAddress(token, sectionKey, line)
-  let next = index + 1
-  let match = read.match
-  const operator = readOperator(tokens, next, options, sectionKey, line)
-  if (operator !== undefined) {
-    match = { ...match, operator: operator.operator }
-    next = operator.next
-  } else if (options.allowMask) {
-    const mask = tokens[next]
-    if (mask !== undefined && IPV4.test(mask)) {
-      // The standard-ACL wildcard spelling. Kept verbatim: `mask_to_prefixlen` would answer 32 for
-      // 0.0.255.255 and call the source a single host (divergence 2).
-      match = { ...match, mask }
-      next += 1
-    }
+  const operator = readOperator(tokens, cursor, options, sectionKey, line)
+  if (operator !== undefined) return { match: { ...base, operator: operator.operator }, next: operator.next }
+  if (options.allowMask && token !== 'any' && token !== 'host') {
+    // The standard-ACL wildcard spelling. Kept verbatim: `mask_to_prefixlen` would answer 32 for
+    // 0.0.255.255 and call the source a single host (divergence 2).
+    const mask = tokens[cursor]
+    if (mask !== undefined && IPV4.test(mask)) return { match: { ...base, mask }, next: cursor + 1 }
   }
-  return { match, next }
+  return { match: base, next: cursor }
 }
 
-/** `eq 161` / `neq snmp` / `range 1024 2048` — upstream's `((?:eq|gt|lt|neq|range) [\w-]+)` (`:227`, `:230`). */
+/** `eq 161` / `neq snmp` / `range 1024 2048` — upstream's `((?:eq|gt|lt|neq|range) [\w-]+)` (`:226`, `:231`). */
 function readOperator(tokens: readonly string[], index: number, options: { readonly allowOperator: boolean }, sectionKey: string, line: string): { readonly operator: string; readonly next: number } | undefined {
   if (!options.allowOperator) return undefined
   const keyword = tokens[index]
   if (keyword === undefined || !PORT_OPERATORS.includes(keyword)) return undefined
   const operand = tokens[index + 1]
-  if (operand === undefined || !/^[\w-]+$/u.test(operand)) cannotParse(sectionKey, line, `the port operator ${pythonRepr(keyword)} needs one operand (upstream's regex requires [\\w-]+ and would end the match before an empty one, acl.py:227)`)
+  if (operand === undefined || !/^[\w-]+$/u.test(operand)) cannotParse(sectionKey, line, `the port operator ${pythonRepr(keyword)} needs one operand (upstream's regex requires [\\w-]+ and would end the match before an empty one, acl.py:226, :231)`)
   if (keyword === 'range') {
     const second = tokens[index + 2]
     if (second === undefined || !/^[\w-]+$/u.test(second)) cannotParse(sectionKey, line, 'the `range` operator needs two ports')
@@ -604,7 +615,7 @@ function parseEntries(lines: readonly ConfigLine[], sectionKey: string, type: Ac
     if (!SEQ_TOKEN.test(first)) continue
     const seqno = Number(first)
     if (!Number.isSafeInteger(seqno)) {
-      cannotParse(sectionKey, line.text, `the sequence number ${first} has more digits than this client can key a rule by — upstream keys its dict with Python's unbounded int (acl.py:170-181)`)
+      cannotParse(sectionKey, line.text, `the sequence number ${first} has more digits than this client can key a rule by — upstream keys its dict with Python's unbounded int (acl.py:180, :257)`)
     }
     if (entries.has(seqno)) {
       cannotParse(sectionKey, line.text, `the sequence number ${String(seqno)} appears more than once — upstream's rule dict silently keeps the LAST one and drops the earlier rule from its answer entirely (probe: three lines with 10/20/10 answer two entries)`)
@@ -618,7 +629,7 @@ function parseEntries(lines: readonly ConfigLine[], sectionKey: string, type: Ac
 function parseStandardEntry(tokens: readonly string[], sectionKey: string, line: string, seqno: number): AclEntry {
   const action = tokens[1]
   if (action !== 'permit' && action !== 'deny') {
-    cannotParse(sectionKey, line, `the action token ${pythonRepr(action)} is not permit or deny — upstream's [p|d]\\w+ class accepts any word beginning with p, d or the literal | and its standard parser then crashes with AttributeError when the rest of the line does not fit (probe: a rule \`10 p\` raises, acl.py:171-173)`)
+    cannotParse(sectionKey, line, `the action token ${pythonRepr(action)} is not permit or deny — upstream's [p|d]\\w+ class accepts any word beginning with p, d or the literal | and its standard parser then crashes with AttributeError when the rest of the line does not fit (probe: a rule \`10 p\` raises, acl.py:172-174)`)
   }
   const source = readMatch(tokens, 2, { allowMask: true, allowOperator: false }, sectionKey, line)
   let index = source.next
@@ -641,7 +652,7 @@ function parseStandardEntry(tokens: readonly string[], sectionKey: string, line:
 function parseExtendedEntry(tokens: readonly string[], sectionKey: string, line: string, seqno: number): AclEntry {
   const action = tokens[1]
   if (action !== 'permit' && action !== 'deny') {
-    cannotParse(sectionKey, line, `the action token ${pythonRepr(action)} is not permit or deny — upstream silently skips a rule its regex cannot match here, and its own fixture block lines such as \`no statistics per-entry\` are skipped by the \\d+ [p|d] probe instead (acl.py:243-245)`)
+    cannotParse(sectionKey, line, `the action token ${pythonRepr(action)} is not permit or deny — upstream silently skips a rule its regex cannot match here, and its own fixture block lines such as \`no statistics per-entry\` are skipped by the \\d+ [p|d] probe instead (acl.py:244-246)`)
   }
   const protocol = tokens[2]
   if (protocol === undefined || !PROTOCOL_TOKEN.test(protocol)) {
@@ -730,10 +741,15 @@ abstract class AclCollectionBase extends EntityCollection<Acl, string, Record<st
     return { name, type: this.aclType, entries: parseEntries(parseBlock(text).body, this.aclType === 'standard' ? `ip access-list standard ${name}` : `ip access-list ${name}`, this.aclType) }
   }
 
-  /** `ip access-list [standard] <name>` — upstream `:183-185` / `:260-262`. */
+  /**
+   * `ip access-list [standard] <name>` — upstream `:183-185` / `:260-262`, which hands the bare header to
+   * `configure`. {@link commandBuilder} cannot be called with no options (DR-037 removed upstream's
+   * "no value means the `no` form" fall-through at `abstract.py:160-164`), so the bare command is spelled
+   * with `value: true`, which is upstream's own `value=True` arm (`abstract.py:156-157`).
+   */
   override async create(name: string): Promise<void> {
     assertAclName(name)
-    await this.configure(commandBuilder(aclStem(this.aclType, name)))
+    await this.configure(commandBuilder(aclStem(this.aclType, name), { value: true }))
   }
 
   /** `no ip access-list [standard] <name>` — upstream `:186-188` / `:263-265`. */
@@ -751,7 +767,7 @@ abstract class AclCollectionBase extends EntityCollection<Acl, string, Record<st
   /**
    * Replace one rule: enter the ACL, negate the old sequence number, write the new line, exit —
    * upstream's `update_entry` (`:192-200` standard, `:269-279` extended), whose command list
-   * `test_api_acl.py:175-185` and `:241-251` pin verbatim.
+   * `test_api_acl.py:153-158` standard and `:233-238` extended pin verbatim.
    */
   async updateEntry(name: string, seqno: number, entry: AclEntryInput): Promise<void> {
     assertAclName(name)
@@ -854,7 +870,7 @@ export class AclsResource extends EntityCollection<Acl, string, AclAttrs> {
     assertAclName(name)
     const requested = attrs?.type ?? 'standard'
     if (!isAclType(requested)) {
-      refuse('ACL type', requested, `expected one of ${ACL_TYPES.join(' / ')} — pyeapi maps anything else to StandardAcls and its own test pins that (acl.py:137-142, test_api_acl.py:117-120)`)
+      refuse('ACL type', requested, `expected one of ${ACL_TYPES.join(' / ')} — pyeapi maps anything else to StandardAcls and its own test pins that (acl.py:137-142, test_api_acl.py:112-115)`)
     }
     await this.for(requested).create(name)
   }
@@ -863,7 +879,7 @@ export class AclsResource extends EntityCollection<Acl, string, AclAttrs> {
    * The kind of an ACL the switch has. Used by every kind-sensitive verb below.
    *
    * @throws {NotFoundError} the switch has no such ACL. Upstream reaches the same branch and pays an
-   *   `AttributeError`: `get_instance` returns `{name: None}` (`:136`) and `marshall` then fails its
+   *   `AttributeError`: `get_instance` returns `{name: None}` (`:135`) and `marshall` then fails its
    *   `hasattr` test (probe: `'{'unconfigured': None}' object has no attribute 'add_entry'`).
    */
   private async resolveType(name: string): Promise<AclType> {
@@ -871,7 +887,7 @@ export class AclsResource extends EntityCollection<Acl, string, AclAttrs> {
     const type = typeOfAcl(await this.configSections(), name)
     if (type === undefined) {
       throw new NotFoundError(
-        `acls: the switch has no ACL named ${pythonRepr(name)} — pyeapi hands the miss to marshall(), which raises AttributeError on the None it stored for the name (api/acl.py:126-136, :117-124)`,
+        `acls: the switch has no ACL named ${pythonRepr(name)} — pyeapi hands the miss to marshall(), which raises AttributeError on the None it stored for the name (api/acl.py:126-135, :117-124)`,
         { cause: name },
       )
     }
