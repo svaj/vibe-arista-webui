@@ -73,7 +73,7 @@ import {
   maskToPrefixlen,
   prefixlenToMask,
   type Acl,
-  type AclEntryInput,
+  type AclMatchInput,
 } from './acl'
 
 /** Join lines into config text so a trailing-space line cannot be lost to an editor. */
@@ -713,7 +713,7 @@ describe('ACL writes — the command lists test_api_acl.py pins, reproduced verb
     // §5's TS note: `as unknown as number`, not a bare `as number`, which is itself a type error).
     await expectError(() => extended.addEntry('exttest', { action: 'permit', protocol: 'ip', src: { address: '1.1.1.0', prefixlen: '20' as unknown as number }, dst: { any: true } }), /invalid ACL prefix length '20'/)
     await expectError(() => extended.addEntry('exttest', { action: 'permit', protocol: 'ip', src: undefined as never, dst: { any: true } }), /invalid source match/)
-    await expectError(() => extended.addEntry('exttest', { action: 'permit', protocol: 'ip', src: {}, dst: { any: true } }), /invalid source match/)
+    await expectError(() => extended.addEntry('exttest', { action: 'permit', protocol: 'ip', src: {} as unknown as AclMatchInput, dst: { any: true } }), /invalid source match/)
     await expectError(() => extended.addEntry('exttest', { action: 'permit', protocol: 'ip', src: { address: '1.1.1.0' } as never, dst: { any: true } }), /an address needs either a prefix length or a mask/)
     // Sequence numbers: 0 is legal (probe: upstream's `add_entry(..., seqno=0)` sends `0 permit …`), a negative
     // or fractional one is not.
