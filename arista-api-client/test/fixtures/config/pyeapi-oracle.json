@@ -1,5 +1,41 @@
 {
   "fixtures": {
+    "acl-sections.conf": {
+      "entries": [
+        [
+          "hostname acl-lab",
+          "hostname acl-lab\n"
+        ],
+        [
+          "!",
+          "!\n"
+        ],
+        [
+          "vlan 40",
+          "vlan 40\n   name L3-ACL-TEST\n"
+        ],
+        [
+          "interface Vlan40",
+          "interface Vlan40\n   ip address 10.40.0.1/24\n"
+        ],
+        [
+          "ip access-list standard ADMIN-STD",
+          "ip access-list standard ADMIN-STD\n   10 permit host 10.10.0.7 log\n   20 permit 10.20.0.0 0.0.255.255\n   30 deny any\n"
+        ],
+        [
+          "ip access-list SNMP-EXT",
+          "ip access-list SNMP-EXT\n   no statistics per-entry\n   10 permit tcp host 10.10.0.5 eq 161 host 10.40.0.1 log\n   20 permit udp 172.16.4.0/24 neq snmp host 172.16.9.9 lt 1024 fragments\n   30 permit icmp 192.168.0.0/16 any ttl eq 1 tracked\n   40 permit ip any any\n"
+        ],
+        [
+          "ip access-list standard EMPTY-STD",
+          "ip access-list standard EMPTY-STD\n"
+        ],
+        [
+          "end",
+          "end\n"
+        ]
+      ]
+    },
     "banner-eof.conf": {
       "entries": [
         [
@@ -215,6 +251,54 @@
         "message": "Unable to parse section 'router unsupported-literal' at indent 6 due to short line '   !'; likely unhandled multiline literal block (EOF-terminated)",
         "type": "ValueError"
       }
+    },
+    "varp-virtual-router.conf": {
+      "entries": [
+        [
+          "hostname varp-lab",
+          "hostname varp-lab\n"
+        ],
+        [
+          "!",
+          "!\n"
+        ],
+        [
+          "ip virtual-router mac-address 00:1b:1b:00:00:01",
+          "ip virtual-router mac-address 00:1b:1b:00:00:01\n"
+        ],
+        [
+          "vlan 10",
+          "vlan 10\n   name VARP-A\n"
+        ],
+        [
+          "vlan 20",
+          "vlan 20\n   name VARP-B\n"
+        ],
+        [
+          "vlan 30",
+          "vlan 30\n   name VARP-C\n"
+        ],
+        [
+          "interface Vlan10",
+          "interface Vlan10\n   ip address 10.10.0.1/24\n   ip virtual-router address 10.10.0.254\n"
+        ],
+        [
+          "interface Vlan20",
+          "interface Vlan20\n   ip address 10.20.0.1/24\n   ip virtual-router address 10.20.0.254\n   ip virtual-router address 10.20.0.253\n"
+        ],
+        [
+          "interface Vlan30",
+          "interface Vlan30\n   no ip address\n"
+        ],
+        [
+          "interface Ethernet1",
+          "interface Ethernet1\n   no switchport\n   ip address 10.99.0.1/30\n   ip virtual-router address 10.99.0.2\n"
+        ],
+        [
+          "end",
+          "end\n"
+        ]
+      ]
     },
     "vlan-blocks.conf": {
       "entries": [

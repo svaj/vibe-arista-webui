@@ -63,9 +63,15 @@ import { tryVariants } from './internal/variants'
 import type { CliVariant } from './internal/variants'
 import type { ConfigSections } from './config/chunk'
 import type { SectionPattern } from './config/section'
+import type { AclsResource } from './resources/acl'
 import type { InterfacesResource } from './resources/interfaces'
+import type { IpinterfacesResource } from './resources/ipinterfaces'
+import type { NtpResource } from './resources/ntp'
+import type { StpResource } from './resources/stp'
 import type { SystemResource } from './resources/system'
 import type { SwitchportsResource } from './resources/switchports'
+import type { UsersResource } from './resources/users'
+import type { VarpResource } from './resources/varp'
 import type { VlansResource } from './resources/vlans'
 import type { VrfsResource } from './resources/vrfs'
 import type { StaticRouteResource } from './resources/staticroute'
@@ -871,6 +877,68 @@ export class Node {
   }
 
   /**
+   * The `stp` resource — the same per-`Node` {@link resourceMemo} as {@link interfaces} (DR-052):
+   * `node.stp === node.stp === node.resource('stp')`, and its `interfaces` / `instances` sub-views are
+   * memoised inside it the way pyeapi memoises `Stp._interfaces` / `Stp._instances` (`stp.py:88-91`,
+   * `:118-130`). pyeapi reaches the object through `node.api('stp')` → `stp.py:366-367`'s `instance(api)`,
+   * which DR-006 removes. Added by W2c (#39).
+   */
+  get stp(): StpResource {
+    return this.resource('stp')
+  }
+
+  /**
+   * The `ipinterfaces` resource — same memo, same reasoning as {@link stp}; pyeapi's factory is
+   * `ipinterfaces.py:257-268` and its accessor never was (DR-006). The L3 view is a **separate** resource
+   * from `node.interfaces` on upstream's terms and stays one here: the two read the same `mtu` line and
+   * write it as separate transactions (MIGRATION.md §5 row 174 / DR-097). Added by W2c (#40).
+   */
+  get ipinterfaces(): IpinterfacesResource {
+    return this.resource('ipinterfaces')
+  }
+
+  /**
+   * The `acls` resource — same per-`Node` {@link resourceMemo} as {@link interfaces} (DR-052):
+   * `node.acls === node.acls === node.resource('acls')`, and its `standard` / `extended` halves are one
+   * object each on that instance. pyeapi reaches the same thing through `node.api('acls')`, which loads
+   * `pyeapi.api.acl` off the filesystem and calls its `instance(api)` (`acl.py:302-303`,
+   * `client.py:927-950`), and then routes every entry verb through `__getattr__`/`marshall` (`:114-124`)
+   * — the dispatch DR-092 replaces with named methods. Added by W2b (#37).
+   */
+  get acls(): AclsResource {
+    return this.resource('acls')
+  }
+
+  /**
+   * The `varp` resource — same memo, same reasoning as {@link acls}. pyeapi's factory is `varp.py:202`
+   * (`instance(node)` → `Varp(node)`), reached only as `node.api('varp')`; the per-interface half hangs off
+   * it as `node.varp.interfaces`, which is upstream's `interfaces` property (`varp.py:59-63`). Added by
+   * W2b (#38).
+   */
+  get varp(): VarpResource {
+    return this.resource('varp')
+  }
+
+  /**
+   * The `users` resource — same per-`Node` {@link resourceMemo} as the accessors above (DR-052):
+   * `node.users === node.users === node.resource('users')`. pyeapi reaches it through
+   * `node.api('users')` → `users.py:317-328` `instance(node)`; the accessor itself has no upstream
+   * counterpart (DR-006). Added by W2a (#35).
+   */
+  get users(): UsersResource {
+    return this.resource('users')
+  }
+
+  /**
+   * The `ntp` resource — same per-`Node` {@link resourceMemo} (DR-052):
+   * `node.ntp === node.ntp === node.resource('ntp')`, the global sibling of {@link system}. pyeapi's
+   * factory is `ntp.py:198-208` and its accessor never was (DR-006). Added by W2a (#35).
+   */
+  get ntp(): NtpResource {
+    return this.resource('ntp')
+  }
+
+  /**
    * The `vrfs` resource — same per-`Node` {@link resourceMemo} as {@link interfaces} (DR-052):
    * `node.vrfs === node.vrfs === node.resource('vrfs')`. pyeapi's equivalent is `node.api('vrfs')`,
    * which loads `pyeapi.api.vrfs` off the filesystem and calls its `instance(api)`
@@ -910,8 +978,9 @@ export class Node {
    * (pyeapi builds a fresh object every call, `client.py:946-949`).
    *
    * M7 (#9) shipped the map empty, M8 (#10) claimed the first row, M9 (#11) claimed `vlans` /
-   * `switchports` and M10a (#12) claimed `interfaces`, so an unregistered name — a typo, or a module a
-   * later milestone owes — throws a `NotSupportedError` naming it and listing what is registered. Apps
+   * `switchports`, M10a (#12) claimed `interfaces` and W2b (#37 #38) claimed `acls` / `varp`, so an
+   * unregistered name — a typo, or a module a later milestone owes — throws a `NotSupportedError` naming it
+   * and listing what is registered. Apps
    * define their own resources with `createResourceRegistry(factories, node)`.
    *
    * @throws {NotSupportedError} no factory is registered for `name`.
