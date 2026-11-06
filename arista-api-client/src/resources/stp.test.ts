@@ -132,12 +132,6 @@ function outcome(fn: () => Promise<unknown>): Promise<unknown> {
   return fn().then(() => 'resolved' as const, (thrown: unknown) => thrown)
 }
 
-async function expectError(fn: () => Promise<unknown>, message: RegExp): Promise<void> {
-  const thrown = await outcome(fn)
-  expect(thrown, String(message)).toBeInstanceOf(Error)
-  expect((thrown as Error).message).toMatch(message)
-}
-
 /**
  * A guard rejection: the class, then the message. The refusal form is `invalid <label> <repr> — <why>`
  * (`refuse` in `stp.ts`, the same shape as `validators.ts:226-229`), so `label` is a substring pin on the
@@ -225,7 +219,7 @@ describe('StpResource.get — stp.py:93-116 plus the mode its docstring (:109-11
     expect(settings.interfaces.size).toBe(0)
     expect(settings.instances.size).toBe(0)
     expect('mode' in settings).toBe(false)
-    const empty: StpSettings = { interfaces: new Map(), instances: new Map() }
+    const empty: StpSettings = { interfaces: new Map<string, never>(), instances: new Map<string, never>() }
     expect(settings).toEqual(empty)
   })
 
