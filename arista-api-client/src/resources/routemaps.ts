@@ -21,8 +21,9 @@
  * — the thing `create`/`delete`/`default`/every field verb addresses — is `(name, action, seqno)`. Upstream
  * `get(name)` answers that nested shape directly (`:57-99` docstring, materialised by `_parse_entries`
  * `:110-128` + `_merge_entries` `:130-139`): `{ action: { seqno(int): {match,set,continue,description} } }`.
- * **The per-entry `name`/`action`/`seqno` fields `_parse_entries` builds (`:124`) are DISCARDED by
- * `_merge_entries`**, which indexes only `e['attr']` at `response[action][int(seqno)]` (`:135-138`) — the
+ * **The per-entry `name`/`action`/`seqno` fields `_parse_entries` builds (`:121`) are DISCARDED by
+ * `_merge_entries`**, which reads only `e['action']`/`e['seqno']` as coordinates (`:133-134`, `seqno`
+ * coerced with `int()`) and stores only `e['attr']` at `response[action][seqno]` (`:137`) — the
  * three coordinates survive purely as the two levels of the returned dict nesting, never as fields on the
  * leaf. The TS port keeps that faithful shape: a route-map **name** is the collection key (`K = string`),
  * {@link getOne} returns a {@link RoutemapEntry} keyed `action → seqno(number) → {@link RoutemapEntryAttrs}`
@@ -36,14 +37,14 @@
  * | `Routemaps(EntityCollection)` (`:50`) | {@link RoutemapsResource} extends `EntityCollection<RoutemapEntry \| undefined, string, RoutemapClauseAttrs>` (`base.ts`) — `K` is the name, the nested entry is `T` |
  * | `get(name)` (`:57-99`): `if not self.get_block(r'route-map\s%s\s\w+\s\d+' % name): return None` (`:96-97`) then `_parse_entries(name)` (`:99`) | {@link RoutemapsResource.get} — the whole name's entry from the shared table; existence is the table lookup, and the name is **never** interpolated into a regex (divergence 1, DR-093 pattern) |
  * | `getall()` (`:101-109`): `re.compile(r'^route-map\s([\w-]+)\s\w+\s\d+$', re.M).findall(self.config)` (`:103`), `resources[name] = self.get(name)` per hit — N re-scans | {@link RoutemapsResource.getAll} — one pass over the chunked document's `route-map …` section keys (DR-030, request-count pinned), keyed by name with clause-order preserved |
- * | `_parse_entries` (`:110-128`): `^route-map\s%s\s(\w+)\s(\d+)$` findall (`:112-113`), a get_block per clause (`:117-118`), the four `_parse_*` merges (`:124-127`) | private {@link readEntry} — one pass, the same keyword-anchored body extraction `vlans.ts`/`staticroute.ts` use (match/set findAll, continue/description first-match) |
- * | `_merge_entries` (`:130-139`): `response[action][int(seqno)] = e['attr']` — the LAST clause for a repeated `(action, seqno)` REPLACES the whole attr dict (`:134-138`), and the entry's own `name`/`action`/`seqno` fields are dropped | private table build: `clauseMap.set(seqno, attrs)` keeps the first clause's POSITION but the last one's attrs — the identical Map-level rule `staticroute.ts`'s divergence-2 note spells out, pinned against the fixture's doubled `FOOBAR permit 20` |
+ * | `_parse_entries` (`:110-128`): `^route-map\s%s\s(\w+)\s(\d+)$` findall (`:112-113`, driving `findall` at `:115`), a get_block per clause (`:118-119`), the four `_parse_*` merges (`:121-125`) | private {@link readOneClause} + {@link readAttrs} — one pass, the same keyword-anchored body extraction `vlans.ts`/`staticroute.ts` use (match/set findAll, continue/description first-match) |
+ * | `_merge_entries` (`:130-139`): `seqno = int(e['seqno'])` at `:134`, then `response[action][seqno] = e['attr']` at `:137` — the LAST clause for a repeated `(action, seqno)` REPLACES the whole attr dict, and the entry's own `name`/`action`/`seqno` fields are never stored | private table build: `clauses.set(Number(seqno), attrs)` keeps the first clause's POSITION but the last one's attrs — the identical Map-level rule `staticroute.ts`'s divergence-2 note spells out, pinned against the fixture's doubled `FOOBAR permit 20` (`:24`,`:30` of `test/fixtures/running_config.routemaps`) |
  * | `_parse_match_statements` (`:141-143`, `^\s+match\s(.+)$` findall) / `_parse_set_statements` (`:145-147`) / `_parse_continue_statement` (`:149-153`, `^\s+continue\s(\d+)$` search → int else None) / `_parse_description` (`:155-158`, `^\s+description\s(.+)$` search, first only) | {@link readAttrs} via `valuesAfterKeyword` (all) and `valueAfterKeyword` (first) from `./config-block`, with `continue` coerced to a `number` only when it is all-digits — the `None` answers become field ABSENCE (DR-027/DR-029 family) |
- * | `create/delete/default(name, action, seqno)` (`:161-220`): bare `'route-map %s %s %s'` (`:178`), `'no route-map …'` (`:197`), `'default route-map …'` (`:219`) | {@link RoutemapsResource.create}/{@link delete}/{@link setDefault} (row 77 rename) — same three command texts, one transaction, submode never entered, **no existence check** (upstream `:163-171`/`:182-190`/`:201-212` docstrings are explicit that these are unconditional) |
- * | `set_match_statements` (`:222-257`) / `set_set_statements` (`:259-293`): diff the CURRENT clause statements (`get(name)[action][seqno]['match']` in a `try/except Exception: []`, `:235-238`) — emit `route-map …` + `no match X` for every REMOVED entry (`:240-244`), then `route-map …` + `match X` for every ADDED entry (`:246-250`); `configure(commands) if commands else True` (`:252`) | {@link setMatchStatements}/{@link setSetStatements} — the same removed-then-added diff, opening the clause header once per emitted statement line — the **replace** verb, not an add verb (divergence 3, the delicate one) |
- * | `set_continue(name, action, seqno, value, default, disable)` (`:295-321`): header then `default continue`/`no continue`/`continue %s` with `if not str(value).isdigit() or value < 1: raise ValueError('seqno must be a positive integer …')` (`:316-318`) | {@link setContinue}/{@link unsetContinue}/{@link defaultContinue} — same three texts; the positive-integer guard throws DR-005's `NotSupportedError` and its message keeps upstream's mislabel ("**seqno** must be …", a copy-paste of the `create` docstring — the guard is on the CONTINUE value, pinned verbatim) |
- * | `set_description(name, action, seqno, value, default, disable)` (`:323-345`): header; **if `value is not None` push `'no description'` FIRST** (`:338-340`, `command_builder('description', disable=True)`), then `command_builder('description', value, default, disable)` (`:341-343`) — and `value=None` with no flag sends `'no description'` (its OWN test pins that at `test_api_routemaps.py:151-159` with the pre-armed "uncomment if command_builder fails" comment) | {@link setDescription}/{@link unsetDescription}/{@link defaultDescription} — the same clear-before-set ordering when a value is written; `unset` is the named-negation verb DR-037 splits out of the `value=None`/`disable` arms |
- * | `instance(node)` (`:347-357`) | the `RESOURCE_FACTORIES.routemaps` row plus `Node.routemaps` (DR-006/DR-052) |
+ * | `create/delete/default(name, action, seqno)` (`:161-220`): bare `'route-map %s %s %s'` (`:178`), `'no route-map …'` (`:197`), `'default route-map …'` (`:219`) | {@link RoutemapsResource.create}/{@link delete}/{@link setDefault} (row 77 rename) — same three command texts, one transaction, submode never entered, **no existence check** (upstream's own doc notes say so verbatim: "regardless if the routemap exists or not" at `:164-167`, and the delete/default "does not exist … still return True" notes at `:183-186`/`:203-208`) |
+ * | `set_match_statements` (`:222-257`) / `set_set_statements` (`:259-293`): read the CURRENT clause statements in `try: current_statements = self.get(name)[action][seqno]['match'|'set']` / `except Exception: current_statements = []` (`:240-243` and `:276-279`) — emit `route-map …` + `no match X` for each REMOVED entry (`:247-250` / `:283-286`), then `route-map …` + `match X` for each ADDED entry (`:252-255` / `:288-291`); `self.configure(commands) if commands else True` (`:257` / `:293`) | {@link setMatch}/{@link setSet} — the same removed-then-added diff, opening the clause header once per emitted statement line — the **replace** verb, not an add verb (divergence 3, the delicate one) |
+ * | `set_continue(name, action, seqno, value, default, disable)` (`:295-321`): header at `:310`, then `default continue` (`:311-312`) / `no continue` (`:313-314`) / `continue %s` (`:319`), guarded by `if not str(value).isdigit() or value < 1: raise ValueError('seqno must be a positive integer …')` (`:316-318`) | {@link setContinue}/{@link unsetContinue}/{@link defaultContinue} — same three texts; the positive-integer guard throws DR-005's `NotSupportedError` and its message keeps upstream's mislabel ("**seqno** must be …", a copy-paste of the `create` docstring — the guard is on the CONTINUE value, pinned verbatim) |
+ * | `set_description(name, action, seqno, value, default, disable)` (`:323-345`): header at `:338`; **if `value is not None` push `'no description'` FIRST** (`:339-341`, `command_builder('description', disable=True)`), then `command_builder('description', value, default, disable)` (`:342-343`) — and `value=None` with no flag sends `'no description'` (its OWN test pins that at `test_api_routemaps.py:151-159` with the pre-armed "uncomment if command_builder fails" comment) | {@link setDescription}/{@link unsetDescription}/{@link defaultDescription} — the same clear-before-set ordering when a value is written; `unset` is the named-negation verb DR-037 splits out of the `value=None`/`disable` arms |
+ * | `instance(node)` (`:347-357`; `return Routemaps(node)` at `:357`) | the `RESOURCE_FACTORIES.routemaps` row plus `Node.routemaps` (DR-006/DR-052) |
  *
  * Upstream's own suite is `pyeapi/test/unit/test_api_routemaps.py` — **18** test methods (verified in the
  * pinned clone on 2026-11-06): `test_instance` (`:51-53`), `test_get` (`:55-58`),
@@ -72,45 +73,47 @@
  *    divergence 1 / `vrfs.ts` divergence 2, and the same `assertRoutemapName` guard the writers need
  *    anyway (divergence 5) is what lets the read keep the chunker's key path.
  * 2. **`getAll()` answers the name, with the clause nesting `get(name)` returns.** Upstream `getall`
- *    (`:103`) scans for names then re-runs the whole `get` per name (up to `O(clauses)` re-reads), and
+ *    `getall()` scans for names with `re.compile(r'^route-map\s([\w-]+)\s\w+\s\d+$', re.M).findall` (`:103-104`),
+ *    then re-runs the whole `get` per name (`:105-107`, up to `O(names)` re-reads), and
  *    because the regex is over raw `self.config`, a column-0 `route-map Ghost permit 1` line inside a
  *    `banner` body is a route-map for pyeapi. Here the names AND the clauses come from the chunker's
  *    indent-0 section keys in one pass (DR-030, request-count pinned), banner bodies cannot vote (a
- *    `!`-free `banner` section is one key the loop simply does not match), and the doubled
- *    `route-map FOOBAR permit 20` in the upstream fixture collapses to ONE `permit`/`20` entry by the last-wins
- *    Map rule — matching `_merge_entries` (`:134-138`) rather than the config's literal line count.
- *    `getall`'s `if routemap:` truthiness skip (`:107-108`) is kept too: a name whose every clause reads
- *    back with no statements still yields `{}` and is retained (it is a real clause), and it is NOT
- *    dropped — a faithful port of "dict() is falsy" is impossible here because the entry is populated the
- *    moment a clause header exists. This is a documented non-quirk rather than a divergence: upstream's
- *    skip can only fire if `_parse_entries` produced no clauses at all, which cannot happen for a name
- *    `getall` matched. `getAll()` answers names in config-line order.
+ *    `banner …` section carries its body inside the one key, so an indented `route-map Ghost permit 1` is
+ *    a body line the loop never matches), and the doubled `route-map FOOBAR permit 20` of the fixture
+ *    (`:24` and `:30`) collapses to ONE `permit`/`20` entry by the last-wins Map rule — matching
+ *    `_merge_entries` (`:133-137`) rather than the config's literal line count. `getall`'s `if routemap:`
+ *    truthiness skip (`:106-107`) has no live branch to port here: a matched clause header always produces
+ *    a non-empty entry (`{ match: [], set: [] }` at minimum), so upstream's skip is unreachable for any
+ *    name its own `findall` returned — this is a documented no-op rather than a divergence, and the
+ *    getAll order/merge pins stand in for it. `getAll()` answers names in config-line order.
  * 3. **`setMatchStatements`/`setSetStatements` are REPLACE verbs — that is what upstream does, and the
  *    naming has to say so.** Upstream diffs the clause's current statements against the passed list and
  *    emits `no match`/`no set` for everything in current-but-not-passed and `match`/`set` for everything
- *    in passed-but-not-current (`:240-250`, `:277-287`); the final config equals the passed list exactly.
+ *    in passed-but-not-current (`:247-255` for match, `:283-291` for set); the final config equals the passed list exactly.
  *    The framework's naming rule (`base.ts` header) reserves `add<X>`/`remove<X>` for membership, so the
  *    upstream method name `set_match_statements` maps to `setMatchStatements` (a `set<Field>` verb) and
  *    NOT an `add` verb — pinning that the verb replaces the set, and the two pinned `_remove_extraneous`
  *    upstream tests (`:87-94`, `:102-109`) become the "an omitted statement is removed" pins here. The
  *    order of emitted lines is upstream's: **all removals first (header per removal), then all additions
  *    (header per addition)**, and upstream opens the `route-map …` clause before EVERY emitted body line
- *    (it appends the header inside each loop, `:241`/`:247`) rather than once per transaction — preserved
- *    verbatim, because the MockTransport joined-key pins in `routemaps.test.ts` compare the whole script.
- *    A diff that nets to zero commands sends nothing (upstream's `if commands else True`, `:252`), so a
- *    no-op `setMatchStatements` is ZERO round trips.
+ *    (it appends the header inside each loop, `:249`/`:254` for match and `:285`/`:290` for set) rather
+ *    than once per transaction — preserved verbatim, because the MockTransport joined-key pins in
+ *    `routemaps.test.ts` compare the whole script. A diff that nets to zero commands sends nothing
+ *    (upstream's `if commands else True`, `:257` / `:293`), so a no-op `setMatch` is ZERO writes.
  * 4. **`continue` is a number here; `description` is first-match-wins; the negated body lines do not
- *    vote.** Upstream's `continue` parser casts to `int` (`:152`); here `continue` is `number | undefined`
+ *    vote.** Upstream's `continue` parser casts to `int` only when its `^\s+continue\s(\d+)$` matched
+ *    (`:149-153`, the coercion at `:152`); here `continue` is `number | undefined`
  *    and only an all-digits value coerces — a body line `continue 100` yields `100`, but `continue` with
  *    a non-digit tail (unmodelled on EOS, unverified, M12) is left ABSENT, not a `NaN`, because upstream's
  *    `(\d+)$` would not have matched it either. `description` reads the FIRST `description …` line
- *    (upstream `search`, `:157`) and `match`/`set` read ALL their lines (upstream `findAll`, `:143`/`:147`)
+ *    (upstream `search`, `:157`) and `match`/`set` read ALL their lines (upstream `findall`, `:143`/`:147`)
  *    — that asymmetry is deliberate and pinned. A `no description`/`no continue`/`no match …`/
  *    `no set …` body line is a negation and contributes nothing, the same keyword-anchored rule every
  *    wave-2 sibling uses (`valueAfterKeyword` skips it because `no …` is not the bare keyword).
  * 5. **input guards where upstream has none — and the continue guard's own message.** `create`/`delete`/
  *    `default`/every field verb interpolate `name`/`action`/`seqno` with no validation (`:178`, `:197`,
- *    `:219`, `:241`, `:309`, `:339`), and `set_continue`'s only check is the `str(value).isdigit()` +
+ *    `:219`, `:249`/`:254`, `:285`/`:290`, `:310`) and never touch `value` (`:319`, `:342-343`), and
+ *    `set_continue`'s only check is the `str(value).isdigit()` +
  *    `< 1` guard that raises a `ValueError` whose TEXT says "seqno" although it is testing the CONTINUE
  *    value (`:316-318` — a copy-paste from `create`'s docstring; `test_api_routemaps.py:116-122` only
  *    checks the exception TYPE, never the message). Here {@link assertRoutemapName} /
@@ -121,8 +124,8 @@
  *    positive-integer refusal reuses upstream's wording verbatim, including the "seqno" mislabel, so a
  *    caller comparing against an upstream error string sees the same text — the mislabel is upstream's,
  *    not this port's invention, and this port does not silently fix a user-visible string. `seqno` accepts
- *    a `number` or a digit `string` (upstream's `:101` findall yields the digit string, and `int(seqno)`
- *    at `:137` decides) and refuses negatives, fractions and oversized numerics that neither the reader
+ *    a `number` or a digit `string` (upstream's `:104` findall yields the digit string, and `int(seqno)`
+ *    at `:134` decides) and refuses negatives, fractions and oversized numerics that neither the reader
  *    nor `\d+` can echo back. Whether EOS enforces a seqno step (typically 10) or a name length is a
  *    device answer (DR-032); nothing here claims one.
  *
@@ -330,8 +333,8 @@ export class RoutemapsResource extends EntityCollection<RoutemapEntry, string, R
    * Every route-map in the config, keyed by name and in config-line order — pyeapi's
    * `getall()` (`:101-109`) as a `ResourceTable` (row 78), built from the chunked document in ONE pass
    * rather than a `findall` of names followed by a full `get` per name (upstream's O(names) re-scans,
-   * `:105-108`; DR-030 pinned by a request-count assertion). The doubled `FOOBAR permit 20` line collapses
-   * to one clause like `_merge_entries` collapses it (`:134-138`).
+   * `:105-107`; DR-030 pinned by a request-count assertion). The doubled `FOOBAR permit 20` line collapses
+   * to one clause like `_merge_entries` collapses it (`:134`/`:137`).
    */
   override async getAll(): Promise<ReadonlyMap<string, RoutemapEntry>> {
     return this.buildTable(await this.configSections())
@@ -353,7 +356,7 @@ export class RoutemapsResource extends EntityCollection<RoutemapEntry, string, R
    * The chunked pass. Iteration order is the document's (`config/chunk.ts`, device-order keys), so the
    * names come out in config order; within a name the action→seqno nesting is built clause-by-clause and
    * a repeated `(action, seqno)` REPLACES the prior `attr` at the same position — the exact Map rule
-   * `staticroute.ts` documents for upstream's nested dict assignment (`_merge_entries` `:134-138`).
+   * `staticroute.ts` documents for upstream's nested dict assignment (`_merge_entries` `:134`/`:137`).
    */
   private buildTable(sections: ConfigSections): Map<string, Map<string, Map<number, RoutemapEntryAttrs>>> {
     const byName = new Map<string, Map<string, Map<number, RoutemapEntryAttrs>>>()
@@ -372,13 +375,13 @@ export class RoutemapsResource extends EntityCollection<RoutemapEntry, string, R
         actions.set(action, clauses)
       }
       // `Map.set` keeps this Map's insertion position but stores the LAST value — the faithful stand-in
-      // for pyeapi's `response[action][int(seqno)] = e['attr']` assignment (`:138`), where a later clause
-      // with the same action + seqno overwrites the earlier one's whole attr dict. The key is a NUMBER —
-      // `_merge_entries` coerces with `int(e['seqno'])` (`:137`) and indexes with that; keeping the table
-      //'s leaf key numeric is what makes {@link get}/{@link setMatch}/{@link setSet}'s
-      // (`action`, `seqno`-as-number) lookups agree with the section-header parse, and what pins the
-      // "seqno is an int in the returned structure" shape. `(\d+)` from {@link readOneClause} guarantees
-      // `Number(...)` here is round-trip-safe (the same digits the composed header uses).
+      // for pyeapi's `response[action][seqno] = e['attr']` assignment (`:137`), following its
+      // `seqno = int(e['seqno'])` coercion at `:134`; a later clause with the same action + seqno
+      // overwrites the earlier one's whole attr dict. Keeping the Map's leaf key a NUMBER is what matches
+      // upstream's int coercion (`:137`) and makes the `get`/{@link setMatch}/{@link setSet} lookups agree
+      // with the section-header parse: `readOneClause`'s `(\d+)` capture guarantees `Number(...)` here is
+      // round-trip-safe (the same digits the composed header re-emits). `staticroute.ts`'s identity-map
+      // note records the same Map-semantics rule one level down.
       clauses.set(Number(seqno), readAttrs(text))
     }
     return byName
@@ -387,7 +390,7 @@ export class RoutemapsResource extends EntityCollection<RoutemapEntry, string, R
   /**
    * Bring a clause into existence — pyeapi's `create(name, action, seqno)` (`:161-179`), whose own
    * docstring states it creates "regardless if the routemap exists or not" and returns True (idempotent,
-   * `:163-168`). One bare line, no read first, submode not entered — the device opens the clause when
+   * `:164-167`). One bare line, no read first, submode not entered — the device opens the clause when
    * asked to configure it.
    */
   override async create(name: string, attrs?: RoutemapClauseAttrs): Promise<void> {
@@ -397,7 +400,7 @@ export class RoutemapsResource extends EntityCollection<RoutemapEntry, string, R
 
   /**
    * Remove one clause — pyeapi's `delete(name, action, seqno)` (`:180-198`), unconditional and True even
-   * when the clause is absent (`:182-189`). The whole `no route-map NAME ACTION SEQNO` line, not a
+   * when the clause is absent (`:183-186`). The whole `no route-map NAME ACTION SEQNO` line, not a
    * name-only negation: an EOS route-map name exists only through its clauses, so deleting the last one is
    * how a name disappears. `name`-only would be a capability neither pyeapi nor the framework models.
    */
@@ -408,10 +411,10 @@ export class RoutemapsResource extends EntityCollection<RoutemapEntry, string, R
 
   /**
    * `default route-map NAME ACTION SEQNO` — pyeapi's `default` (`:199-220`), renamed `setDefault` per
-   * row 77. Upstream's docstring is explicit that since route-maps do not exist by default the default is
-   * "essentially a negation": the removal of the clause. The TEXT stays distinct from {@link delete}
-   * because that is what was asked for; whether EOS treats the two identically here is M12's (#14) device
-   * question, not this port's to collapse.
+   * row 77. Upstream's docstring note (`:203-208`) is explicit that since route-maps do not exist by
+   * default the default is "essentially a negation": the removal of the clause. The TEXT stays distinct
+   * from {@link delete} because that is what was asked for; whether EOS treats the two identically here is
+   * M12's (#14) device question, not this port's to collapse.
    */
   override async setDefault(name: string, attrs?: RoutemapClauseAttrs): Promise<void> {
     const clause = requireClause(name, attrs)
@@ -422,10 +425,11 @@ export class RoutemapsResource extends EntityCollection<RoutemapEntry, string, R
    * Replace the clause's `match` statements — pyeapi's `set_match_statements(name, action, seqno,
    * statements)` (`:222-257`). It is a **replace** verb (divergence 3): it reads the clause's current
    * match list, then emits `no match <old>` for everything not in the passed list and `match <new>` for
-   * everything not already there, opening the clause header before EVERY emitted body line (`:240-250`).
-   * The current list comes straight from {@link get} upstream (`:236`); if the clause does not exist it is
-   * empty (`:235-238`'s `try/except`), which is exactly what a table miss yields here. A no-op diff sends
-   * nothing (upstream's `configure(commands) if commands else True`, `:252`).
+   * everything not already there, opening the clause header before EVERY emitted body line (`:247-255`).
+   * The current list comes straight from `self.get(name)[action][seqno]['match']` (`:241`); if the clause
+   * does not exist it is empty (`:240-243`'s `try`/`except Exception → []`), which is exactly what a
+   * table miss yields here. A no-op diff sends nothing (upstream's
+   * `self.configure(commands) if commands else True`, `:257`).
    */
   async setMatch(name: string, action: RoutemapAction, seqno: number | string, statements: readonly string[]): Promise<void> {
     await this.replaceStatements('match', name, action, seqno, statements)
@@ -433,10 +437,11 @@ export class RoutemapsResource extends EntityCollection<RoutemapEntry, string, R
 
   /**
    * Replace the clause's `set` statements — pyeapi's `set_set_statements` (`:259-293`), same replace
-   * semantics as {@link setMatch} with `set`/`no set` (upstream's comment text for both bodies says "set"
-   * regardless — a copy-paste, `:240`/`:246` under `set_match_statements` says "remove set statements";
-   * the EMITTED text is correct for the verb it is in and only the comment is wrong. Not a divergence, the
-   * composition is faithful).
+   * semantics as {@link setMatch} with `set`/`no set` (upstream's *inline comments* in **both** bodies
+   * say "set" — `:247`/`:252` inside `set_match_statements` read "remove set statements"/"add new set
+   * statements" even though the emitted text there is `no match`/`match`: a copy-paste in the comments,
+   * and the EMITTED text at `:250`/`:255` is correct for the verb its body is in. Not a divergence — the
+   * composition faithfully follows upstream's emitted text; only its comments are sloppy).
    */
   async setSet(name: string, action: RoutemapAction, seqno: number | string, statements: readonly string[]): Promise<void> {
     await this.replaceStatements('set', name, action, seqno, statements)
@@ -462,7 +467,7 @@ export class RoutemapsResource extends EntityCollection<RoutemapEntry, string, R
     assertRoutemapAction(action)
     assertRoutemapSeqno(seqno)
     if (!Array.isArray(statements)) {
-      refuse(`route-map ${keyword} statements`, statements, 'expected an array of statements — pyeapi iterates it with `set(statements).difference(...)` (routemaps.py:246, :283), so a non-iterable is a programming error, not a device condition')
+      refuse(`route-map ${keyword} statements`, statements, 'expected an array of statements — pyeapi iterates it with `set(statements).difference(...)` (routemaps.py:253, :289), so a non-iterable is a programming error, not a device condition')
     }
     const wanted = [...statements]
     for (const statement of wanted) assertStatement(statement, keyword)
@@ -473,23 +478,24 @@ export class RoutemapsResource extends EntityCollection<RoutemapEntry, string, R
     const header = clauseHeader({ name, action, seqno: seqnoText(seqno) })
 
     const commands: string[] = []
-    // Removals first, in current order (upstream's first loop, `:240-244` / `:277-281`).
+    // Removals first, in current order (upstream's first loop: `:248-250` in set_match_statements,
+    // `:284-286` in set_set_statements — each appends the clause header per removed statement).
     for (const statement of current) {
       if (wantedSet.has(statement)) continue
       commands.push(header)
       commands.push(`no ${keyword} ${statement}`)
     }
-    // Then additions, in the argument's order (upstream's second loop, `:246-250` / `:283-287`).
+    // Then additions, in the argument's order (upstream's second loop: `:253-255` and `:289-291`).
     for (const statement of wanted) {
       if (currentSet.has(statement)) continue
       commands.push(header)
       commands.push(`${keyword} ${statement}`)
     }
-    if (commands.length === 0) return // upstream returns True without configuring (`:252`)
+    if (commands.length === 0) return // upstream `self.configure(commands) if commands else True`, :257/:293
     await this.configure(commands)
   }
 
-  /** The clause's current match/set list from the table — upstream's `get(name)[action][seqno][keyword]`, `:236`. */
+  /** The clause's current match/set list from the table — upstream's `get(name)[action][seqno]['match'|'set']`, `:241`/`:277`. */
   private async currentStatements(
     keyword: 'match' | 'set',
     name: string,
@@ -499,7 +505,7 @@ export class RoutemapsResource extends EntityCollection<RoutemapEntry, string, R
     const entry = await this.get(name)
     const clauses = entry?.get(action)
     const attrs = clauses?.get(seqnoKey(seqno))
-    if (attrs === undefined) return [] // upstream's `except Exception: current_statements = []`, :235-238
+    if (attrs === undefined) return [] // upstream's `except Exception: current_statements = []`, :242-243 / :278-279
     return keyword === 'match' ? attrs.match : attrs.set
   }
 
@@ -532,9 +538,9 @@ export class RoutemapsResource extends EntityCollection<RoutemapEntry, string, R
   /**
    * Write the clause `description` — pyeapi's `set_description(..., value=…)` (`:323-345`). The quirk is
    * real and upstream-pinned: when a value is provided, it first pushes a `no description` line to clear
-   * any existing one, THEN the new `description <value>` (`:338-343`). Both lines ride one transaction,
-   * header first. `test_api_routemaps.py:134-139` pins exactly `['route-map TEST permit 10', 'no
-   * description', 'description <value>']`.
+   * any existing one (`:339-341`), THEN the new `description <value>` (`:342-343`). Both lines ride one
+   * transaction, header first (`:338`). `test_api_routemaps.py:134-139` pins exactly `['route-map TEST
+   * permit 10', 'no description', 'description <value>']`.
    */
   async setDescription(name: string, action: RoutemapAction, seqno: number | string, value: string): Promise<void> {
     assertRoutemapName(name)
@@ -542,18 +548,19 @@ export class RoutemapsResource extends EntityCollection<RoutemapEntry, string, R
     assertRoutemapSeqno(seqno)
     assertRoutemapDescription(value)
     const header = clauseHeader({ name, action, seqno: seqnoText(seqno) })
-    // Clear first, then set — the ordering upstream's own value test pins (`:339-340` pushes `no
-    // description` before `description <value>`).
+    // Clear first, then set — the ordering upstream's own value test pins: `:339` (`value is not None`)
+    // gates the `no description` append at `:341`, and the value line follows at `:342-343`.
     await this.configure([header, 'no description', `description ${value}`])
   }
 
   /**
    * Negate the clause `description` — pyeapi reaches this two ways: `set_description(..., disable=True)`
-   * (`:341` via `command_builder disable`) sends `no description`, and so does the `value=None`-with-no-
-   * flag fall-through that `test_api_routemaps.py:151-159` pins as `['route-map TEST permit 10', 'no
-   * description']` (upstream's own test comments show the ValueError arm is disabled because its
-   * `command_builder` would fail on `None`). DR-037 splits that fall-through into THIS named verb, so a
-   * caller never reaches the deprecated `no <bare>` arm accidentally. Same header-first one line.
+   * (`:342-343` via `command_builder`'s `disable` arm) sends `no description`, and so does the
+   * `value=None`-with-no-flag fall-through that `test_api_routemaps.py:151-159` pins as `['route-map TEST
+   * permit 10', 'no description']` (upstream's own test comments at `:152-155` show the ValueError arm is
+   * disabled because its `command_builder` would fail on `None`). DR-037 splits that fall-through into THIS
+   * named verb, so a caller never reaches the deprecated `no <bare>` arm accidentally. Same header-first
+   * one line.
    */
   async unsetDescription(name: string, action: RoutemapAction, seqno: number | string): Promise<void> {
     await this.configure([clauseHeader(requireClauseShape(name, action, seqno)), 'no description'])

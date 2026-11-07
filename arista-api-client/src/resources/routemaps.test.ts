@@ -6,8 +6,8 @@
  * clauses (`:1-18`), FOO (`:20-24`) and FOO-BAR (`:37-52`) bodies are copied verbatim; the doubled
  * `route-map FOOBAR permit 20` header pair (`:26`,`:32`) is kept but the two bodies were EDITED
  * (`as 1111`/`continue 200` then `as 2222`/`continue 300`) because upstream's two copies are identical,
- * which makes `_merge_entries`' LAST-wins collapse (`routemaps.py:130-138`) unobservable in the original
- * fixture. NEVER captured from any device.
+ * which makes `_merge_entries`' LAST-wins collapse (`routemaps.py:130-139`, the store at `:137`) is
+ * unobservable in the original fixture. NEVER captured from any device.
  *
  * ## Upstream port ledger (the 18 methods in `test_api_routemaps.py`, 6816d9e, re-verified 2026-11-06)
  * `test_instance` (`:51-53`) is the registry/accessor identity — a **wiring pin in `registry.test.ts` /
@@ -16,7 +16,8 @@
  *  - `test_get_not_configured` (`:60-61`) — `get('blah')` is `undefined` (upstream `None`).
  *  - `test_getall` (`:63-68`) — `len(keys()) == 4`; doubled FOOBAR is ONE name and ONE clause.
  *  - `test_routemaps_functions` (`:70-79`) — the `('new','permit',100)` trio composes the bare /
- *    `no` / `default` `route-map` lines verbatim (its three loop arms at `:71`/`:74`/`:77`).
+ *    `no` / `default` `route-map` lines verbatim (its three loop arms at `:72-77`, dispatched by the
+ *    `if/elif/elif` at `:72`/`:74`/`:76`).
  *  - `test_set_set_statement_clean` (`:81-85`) → `['route-map new permit 100','set weight 100']`;
  *  - `test_set_set_statement_remove_extraneous` (`:87-94`) →
  *    `['route-map TEST permit 10','no set tag 50','route-map TEST permit 10','set weight 100']`;
@@ -121,7 +122,7 @@ function nodeFor(config: string): { node: Node; transport: MockTransport } {
 const writeKey = (cmds: readonly string[]): string => ['enable', 'configure terminal', ...cmds].join('\n')
 const sentScripts = (transport: MockTransport): string[][] => transport.sent().map((cmds) => cmds.map(String))
 /** Only the scripts that entered configuration mode — drop the `show running-config` read a diff verb
- *  performs to learn a clause's current statements (mirrors upstream calling `self.get` first, `:236`). */
+ *  performs to learn a clause's current statements (mirrors upstream calling `self.get` at `:241` first). */
 const writeScripts = (transport: MockTransport): string[][] =>
   sentScripts(transport).filter((cmds) => cmds[1] === 'configure terminal')
 
@@ -150,7 +151,7 @@ describe('routemaps reads — getAll / get (port :55-68)', () => {
     expect([...table.keys()]).toEqual(['TEST', 'FOO', 'FOOBAR', 'FOO-BAR'])
     expect([...table.get('TEST')?.keys() ?? []]).toEqual(['permit', 'deny'])
     expect([...(table.get('TEST')?.get('permit')?.keys() ?? [])]).toEqual([10, 20])
-    // upstream re-runs the whole `get` per name inside getall (`:105-108`); the chunk memo means one read.
+    // upstream re-runs the whole `get` per name inside getall (`:105-107`); the chunk memo means one read.
     expect(transport.callCount()).toBe(1)
   })
 
@@ -160,7 +161,7 @@ describe('routemaps reads — getAll / get (port :55-68)', () => {
     expect(transport.callCount()).toBe(1)
   })
 
-  it('a clause carries exactly continue/match/set, and NO description key where there is no description line (the four `_parse_*` merges, :124-158; absence-not-None per DR-027)', async () => {
+  it('a clause carries exactly continue/match/set, and NO description key where there is no description line (the four `_parse_*` merges, :121-125 / pyeapi.py:141-159; absence-not-None per DR-027)', async () => {
     const { node } = nodeFor(ROUTEMAPS_FIXTURE)
     const a10 = attrsOf(await node.routemaps.get('TEST'), 'permit', 10)
     expect(Object.keys(a10).sort()).toEqual(['continue', 'match', 'set'])
@@ -208,13 +209,14 @@ describe('routemaps reads — getAll / get (port :55-68)', () => {
     expect(deny30.continue).toBe(200)
   })
 
-  it('the doubled `route-map FOOBAR permit 20` collapses to ONE clause, LAST-wins, seqno an INT key (the delicate rule, _merge_entries :130-138)', async () => {
+  it('the doubled `route-map FOOBAR permit 20` collapses to ONE clause, LAST-wins, seqno an INT key (the delicate rule, _merge_entries :130-139 with the store at :137)', async () => {
     const { node } = nodeFor(ROUTEMAPS_FIXTURE)
     const foobar = await node.routemaps.get('FOOBAR')
     expect(foobar?.get('permit')?.size).toBe(1)
     const collapsed = attrsOf(foobar, 'permit', 20)
-    // upstream stores `e['attr']` AT `response[action][int(seqno)]` (:137-138) — a later same
-    // (name, action, seqno) clause REPLACES the earlier clause's whole attr dict: copy two wins.
+    // upstream stores `e['attr']` AT `response[action][seqno]` after coercing the key at `:134` and
+    // assigning at `:137` — a later same (name, action, seqno) clause REPLACES the earlier clause's whole
+    // attr dict: copy two wins.
     expect(collapsed).toEqual({ continue: 300, match: ['as 2222'], set: [] })
   })
 
@@ -346,7 +348,7 @@ describe('routemaps setMatch / setSet — the REPLACE verbs (port :81-109, diver
     ])
   })
 
-  it("setMatch against the clause's own current list writes NOTHING but still paid the one diff read (upstream `configure(commands) if commands else True` :252)", async () => {
+  it("setMatch against the clause's own current list writes NOTHING but still paid the one diff read (upstream `self.configure(commands) if commands else True` :257)", async () => {
     const { node, transport } = nodeFor(ROUTEMAPS_FIXTURE)
     await node.routemaps.setMatch('TEST', 'permit', 10, ['interface Ethernet1'])
     expect(writeScripts(transport)).toEqual([])
@@ -400,7 +402,7 @@ describe('routemaps setMatch / setSet — the REPLACE verbs (port :81-109, diver
     expect(writeScripts(transport)).toEqual([])
   })
 
-  it('a clause that does not exist at all diffs against an empty current → pure additions (upstream `try/except Exception: []`, :235-238)', async () => {
+  it('a clause that does not exist at all diffs against an empty current → pure additions (upstream `try/except Exception: []`, :240-243 match / :276-279 set)', async () => {
     const { node, transport } = nodeFor(ROUTEMAPS_FIXTURE)
     const key = writeKey(['route-map ABSENT permit 5', 'set metric 10'])
     transport.replies(key, [{}, {}, {}, {}])
