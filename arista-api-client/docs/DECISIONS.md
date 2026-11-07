@@ -1577,6 +1577,159 @@ check is the `result` BODY. **Consequence:** the §5 fixture count for a tranche
 files, and each entry's `note` states what its absence or presence proved; zero-leftover teardown
 evidence (no container, no network, no pinfile after `lab:down`) is part of the run report, not
 optional garnish.
+
+### DR-111 — a route-map clause is a THREE-coordinate identity, and the typed model keeps upstream's nesting rather than inventing coordinates (W3b #50)
+pyeapi's `Routemaps` is an `EntityCollection` keyed by ONE word (the name) — `getall` builds
+`resources[name]` (`routemaps.py:101-109`) — while every verb that changes anything addresses a
+clause by `(name, action, seqno)`: `create`/`delete`/`default` take the triple positionally
+(`:161`, `:180`, `:199`), as do the field writers (`:222`, `:259`, `:295`, `:323`). `get(name)`
+answers `{action: {seqno: attr}}` (`:57-99`, materialised by `_parse_entries` `:110-128` and
+`_merge_entries` `:130-139`), and `_merge_entries` **throws away** the `name`/`action`/`seqno`
+fields `_parse_entries` built at `:121`, keeping them only as the two dict levels it indexes
+(`:133-134`, `:137`). The framework this module is built on cannot express that in its presence
+verbs at all: `EntityCollection.create(name, attrs)` has one coordinate slot (row 78). So the
+lane had to choose between flattening the identity into the leaf record (the shape a consumer
+would find convenient) and keeping a nesting that no other module in the registry has.
+**Decision:** keep upstream's shape, and say what the three coordinates are. `K = string` (the
+name); `RoutemapEntry = ReadonlyMap<action, ReadonlyMap<number, RoutemapEntryAttrs>>`
+(`routemaps.ts:214`) carries the other two as levels, with the seqno level keyed by a `number`
+because `_merge_entries` coerces with `int()` (`:134`); `RoutemapEntryAttrs` (`:195`) carries
+**exactly** upstream's four `attr` keys, with no `name`/`action`/`seqno` fields added, because
+upstream has none at that level and this client does not manufacture fields the device never
+answers. The clause verbs take the triple positionally ({@link setMatch} `:441`,
+{@link setContinue} `:527`, {@link setDescription} `:552`) — a deliberate mismatch with the
+one-key collection verbs, matching upstream's own signatures; and where the framework's
+`create`/`delete`/`setDefault` cannot express it, the missing two coordinates ride
+`RoutemapClauseAttrs` (`:227`) and `requireClause` (`:626`) refuses a half-filled bag before any
+traffic rather than composing the truncated `route-map NAME` line that the reader's own grammar
+(`:103`) could never match. **Consequence:** a UI table iterates one collection read and gets a
+clause keying that matches what the CLI writes and what `get` returns — the same triple is the
+lookup key for `setMatch`-style diffs, so no caller can address a clause the read never reported.
+The cost is one shape in the registry with two nesting levels, which is why the type alias (not
+an interface) and the coordinate names are documentation-bearing; and DR-093 (a name-keyed table
+with a number-keyed Map in document order) and DR-100 (a composite identity flattened into
+records) now have a third point in the family: an identity the framework has **no** slot for.
+**Related:** DR-093, DR-100, DR-027/DR-029, DR-030, DR-052; §5 rows 203-206.
+
+### DR-112 — an upstream unit fixture is quoted verbatim or edited with the edit declared, and the reason an inline block beats a fixture file is stated (W3b #50 #52)
+Both modules needed the config text pyeapi wrote for its own tests: the route-map collection's
+47-line `test/fixtures/running_config.routemaps` and `VxlanInterface`'s 50-line
+`running_config.vxlan`. Neither is a device capture — they are hand-written test material, and
+this repo's fixture box requires every file under `test/fixtures/config/` to carry a
+`manifest.json` entry, an oracle regeneration (`scripts/config-chunkify-oracle.py`) and a README
+row, with an inventory guard test that fails when the manifest, the oracle and the files on disk
+disagree. Two W3 lanes touching those three files in parallel is the collision W2d already avoided
+by going inline — `vrfs.test.ts:5-9` and `staticroute.test.ts:4-6` say so in their headers — and the
+wave-3 brief reserved fixture work to neither lane. Meanwhile the route-map fixture has a real
+problem for a port that wants to pin a rule: its doubled `route-map FOOBAR permit 20` headers
+(`:24` and `:30`) carry byte-identical bodies, so `_merge_entries`' last-wins replacement
+(`routemaps.py:137`) cannot be observed with upstream's own text.
+**Decision:** quote pyeapi verbatim and put the text inline. `interfaces.test.ts`'s `VXLAN_FIXTURE`
+is a byte-exact copy of all 50 lines (`interface Vxlan1` at `:1`, the VXLAN family lines at `:39-49`,
+the closing `!` at `:50`) labelled at the const as pyeapi's own test material and never a device
+capture;
+`routemaps.test.ts` inlines a reduced copy whose TEST/FOO/FOO-BAR bodies are verbatim, with ONE
+declared edit — the two FOOBAR bodies are made different (`as 1111`/`continue 200` and
+`as 2222`/`continue 300`) so the winner of `:137` is observable and the collision itself is still
+exercised. The header states what was copied, what was edited, and why; nothing is presented as a
+capture. pyeapi's orphan `test/fixtures/vxlan.json` (referenced by no upstream test at the pinned
+SHA) is recorded, not ported. **Consequence:** the fixture inventory stays a single-writer file
+across the parallel lanes, each lane's provenance claim is greppable in the file that makes it, and
+an intentional deviation from upstream data is auditable instead of looking like a transcription
+error — the price is two inline blocks that a future fixture-consolidation lane must reconcile with
+the manifest, which is a cheaper conflict than four lanes editing one oracle at once.
+**Related:** DR-043, DR-105, DR-066; §5 rows 205, 209, 212.
+
+### DR-113 — the statement-list writer that upstream ships is a REPLACE, so the port names it as one and refuses to invent the add/remove half the issue asked about (W3b #50)
+The dispatch's question — add or replace? — has a documented answer: `set_match_statements`
+states the semantics in its own docstring ('match statements found in the routemap that are not
+specified in the statements attribute will be removed', `routemaps.py:222-227`, mirrored at
+`:259-264`) and implements it as a set-diff against the CURRENT clause list (`:247-255`,
+`:283-291`) whose final state equals the passed list exactly. And there is no add/remove pair for
+route-maps anywhere in this revision of `pyeapi/api/` — contrast `switchports.py:379`/
+`:392`, whose `add_trunk_group`/`remove_trunk_group` are the real thing `base.ts`'s `add<X>`/`remove<X>` naming
+rule exists for. So naming this verb `addMatch` would be doubly wrong: the framework reserves that
+spelling for membership, and the semantics are replacement. Upstream's diff also runs through
+CPython `set(...).difference(...)` (`:248`, `:253`), so an emission order cannot be asserted at
+all, and upstream's `testlib` cannot pin one even if it were deterministic.
+**Decision:** port the replacement, name the replacement, and pin the multiset. {@link setMatch}
+/ {@link setSet} (`routemaps.ts:441`, `:453`) are `set<Field>` verbs; the module's header says in
+plain words that an additive single-statement verb is NOT shipped because upstream has none, and
+that an `add`-shaped verb is a new capability owed upward with its own decision and its own §5
+row, not a lane-level improvisation (DR-015/DR-016). One shared `replaceStatements` (`:466`)
+keeps upstream's emitted lines and its header-before-every-body-line structure verbatim (so the
+joined-script pins compare against the same text a pyeapi caller sent) and makes exactly one
+improvement: the emission order becomes deterministic — removals in current order, then additions
+in argument order — while nothing is added, dropped or deduplicated differently, which is what
+makes the ORDER pinnable at all (pinned by a five-clause diff, and by the two upstream
+`_remove_extraneous` cases `test/unit/test_api_routemaps.py:87-94`, `:102-109` ported as 'an
+omitted statement is removed'). **Consequence:** a UI that shows a clause's statement list has one
+verb whose contract is 'this becomes the list', and the diff it previews is the diff the client
+sends; a caller wanting a single-statement add composes it explicitly (read, then send the union),
+which keeps that choice visible instead of hiding a second semantic in one verb name. Upstream's
+own comment sloppiness — its match body's inline comments say 'set statements' (`:247`, `:252`) —
+is recorded in the JSDoc rather than inherited as a claim about behaviour.
+**Related:** DR-080 (`interfaces.setMembers`, the same diff-shape reasoning), DR-037, DR-015/DR-016,
+DR-083 (joined-script keys are what make an order assertable); §5 rows 205-206.
+
+### DR-114 — an upstream `CliVariants` site is ported as an ordered PAIR of transactions whose first attempt keeps the marker artefact, and the spec pins what upstream's own harness cannot see (W3b #52)
+`set_multicast_group` composes both spellings and hands them to `CliVariants(cmds_new, cmds_dpr)`
+(`interfaces.py:966-967`): the decap-integrated keyword `vxlan multicast-group decap <value>` is
+attempted FIRST, the legacy `vxlan multicast-group <value>` second — and upstream's own pin at
+`test/unit/test_api_interfaces.py:458-472` shows only the legacy text. `remove_vlan` is stranger:
+the FIRST variant is the literal `f'vxlan vlan remove {vid} vni $'` (`:1089`, trailing `$` and all)
+with the clean text second (`:1090`), and its pin (`:508-512`) shows the clean version. Both are
+real on the wire: `client._configure` scans the command list for the marker (`:628-633`), splices
+each alternative into the submode list at the marker's position (`:647`) and issues one config call
+per alternative, re-raising the last `CommandError` (`:652`). What hides the ordering is upstream's
+harness: `test/lib/testlib.py:97-107` expands EVERY variant and accepts a pin matching ANY of them,
+so upstream's suite proves only that one of the pair was sent — the attempt order, the existence of
+the `$` opener, and the number of transactions are invisible to it.
+**Decision:** port the order and the marker verbatim, and pin both transactions. The resource's
+private `configureInterfaceVariants` (`interfaces.ts:2339`) wraps every alternative in its own
+`interface <name>` submode through `submodeCommands` — which is what upstream's in-list splice means
+once `configure_interface` has inserted the opener (`abstract.py:176-177` plus `client.py:646-652`)
+— and hands the list to `internal/variants.ts`'s `tryVariants`, the row 37 re-shape of
+`CliVariants` (DR-006) whose contract is already 'first success wins, last `CommandError`
+re-raised, fewer than two variants is a caller error'. The `$`-suffixed text really is what
+`removeVlan` attempts first, because pyeapi really sends it; the three group arms (value, `no`,
+`default`) each keep their decap-first pair; and the spec scripts the rejection between the two
+legs so BOTH transactions and the re-raise are asserted — with a fresh transport per
+double-failure case, since `MockTransport` keeps its first matching answer (DR-083). The one
+thing NOT ported is upstream's blindness: a lane may not let a variant pair pass by pinning only
+the second spelling. **Consequence:** `setMulticastGroup` against a real switch costs two config
+transactions when the image rejects the integrated form, and that cost is visible in a test, not a
+log; the fallback stays honest about WHY it exists — which keyword 4.28.13.1M carries is unverified
+(DR-033), so neither spelling is promoted based on a preference, and no lane can silently reorder
+the pair without breaking a pin. **Related:** DR-006, DR-033, DR-080, DR-083, DR-078; §5 rows 37, 210.
+
+### DR-115 — shipping a pyeapi-faithful VXLAN port is not a statement that this switch does VXLAN: the platform question is a row, a probe, and an open item, never a code comment alone (W3b #52)
+`VxlanInterface` is the first wave-3 module whose DOMAIN may not exist on the target SKU. The repo's
+own evidence points are open: DECISIONS' open item 2 asks whether VXLAN, VRF routing and MLAG are
+licensed on the DCS-7050TX-64 (the item that literally says it 'decides whether `VxlanInterface`
+belongs in wave 3 or never'), and open item 6 records that `docs/features.md` is the 7050X matrix
+while the hardware is 7050TX (§5 row 187/DR-105's related questions, DR-004). pyeapi offers no help:
+it never issues a support or licensing query, its `EosVersion:` docstring tags (`interfaces.py:947-948`,
+`:973-974`) are notes about the author's test image, and its two-spelling hedge at `:966-967` exists
+precisely because it does not know which keyword an image carries. The slice's unit tests answer the
+client's questions and nothing else, so the honest state is: command texts verified against pyeapi,
+device behaviour unverified.
+**Decision:** the VXLAN resources stay capability-AGNOSTIC, and the honesty is recorded where it can
+be cited, not only where it is convenient. `VxlanResource` models the FIELD GROUP and the VERBS on
+`Interface.vxlan` (kind-gated per DR-068), every command text is a pyeapi-faithful port with a line
+reference, and nothing in the module claims SKU support: no probe answer is invented, no
+`NotSupportedError` stands in for 'this switch may not do VXLAN' (that is the device's answer to
+give, as a `CommandError`, DR-005/DR-033), the guard refusals are labelled as this client's
+round-trip rules and client policy, never as platform bounds (DR-032/DR-057), and the section's
+code note says the fixture material is pyeapi's, never a capture (DR-043). Feature presence is what
+M11 (#13)'s capability probe answers (§5 rows 141-143, DR-063's cache), and the licensing question
+stays open item 2 for the #14 hardware sweep. **Consequence:** the UI can show a `Vxlan1` section
+that exists in the running-config and must still ask the probe before offering VXLAN controls —
+reading a section is evidence the TEXT is there, not that the feature is licensed; and the next
+lane that wants to add VXLAN state (or an IPv6 VTEP spelling, or the decap keyword question) is
+pointed at a capture, not at a guess, because this row says what is unverified and by whom it gets
+settled. **Related:** DR-033, DR-063, DR-004, DR-032/DR-057, DR-043, DR-068; §5 rows 208-212,
+DECISIONS open items 2 and 6.
 ## Open items (need the device)
 
 Use cEOS first for software behavior and schema exploration, recording its model/version;
