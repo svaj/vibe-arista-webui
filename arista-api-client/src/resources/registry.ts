@@ -36,6 +36,7 @@ import { InterfacesResource } from './interfaces'
 import { IpinterfacesResource } from './ipinterfaces'
 import { MlagResource } from './mlag'
 import { NtpResource } from './ntp'
+import { RoutemapsResource } from './routemaps'
 import { StaticRouteResource } from './staticroute'
 import { StpResource } from './stp'
 import { SwitchportsResource } from './switchports'
@@ -96,6 +97,9 @@ export interface ResourceKinds {
   staticroute: StaticRouteResource
   /** The MLAG configuration — `src/resources/mlag.ts`, port of pyeapi `api/mlag.py` (W2d slice, #43). */
   mlag: MlagResource
+  /** The route-maps configured on the switch, keyed by name with the (action, seqno) clauses nested —
+   *  `src/resources/routemaps.ts`, port of pyeapi `api/routemaps.py` (W3b lane B, #50). */
+  routemaps: RoutemapsResource
 }
 
 /** Any name `node.resource()` may be asked for. Grows by one row per resource module (M8-M10). */
@@ -134,6 +138,7 @@ export const RESOURCE_FACTORIES: ResourceFactories<ResourceKinds> = Object.freez
   vrfs: (node) => new VrfsResource(node),
   staticroute: (node) => new StaticRouteResource(node),
   mlag: (node) => new MlagResource(node),
+  routemaps: (node) => new RoutemapsResource(node),
 })
 
 /**

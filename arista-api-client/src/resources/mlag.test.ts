@@ -382,9 +382,12 @@ describe('MlagResource guards — mlag.py validates nothing; refusals cost zero 
     const { node, transport } = nodeFor(MLAG_FIXTURE_CONFIG)
     await expectError(() => node.mlag.setMlagId('Ethernet1', 'bad'), /expected digits/)
     expect(transport.sent()).toEqual([])
-    // A typo'd resource name is still impossible: mlag became a real row (W2d #43), and the registry
-    // lists it among the thirteen now — `ospf` remains the owed name.
+    // A typo'd resource name is still impossible: `mlag` became a real row (W2d #43) and `routemaps` a
+    // row this lane shipped (W3b #50), and the registry lists both among its fourteen now — the owed
+    // name has moved: on this branch it was `vrrp` (not lane B's to register). The old exemplar `ospf`
+    // remains absent here too on purpose — the merge order will fill those on sibling branches (W2d #43,
+    // W3b #50).
     expect(() => node.resource('notamodule' as never)).toThrow(NotSupportedError)
-    expect(() => node.resource('notamodule' as never)).toThrow(/registered: system, vlans, switchports, interfaces, users, ntp, acls, varp, stp, ipinterfaces, vrfs, staticroute, mlag/)
+    expect(() => node.resource('notamodule' as never)).toThrow(/registered: system, vlans, switchports, interfaces, users, ntp, acls, varp, stp, ipinterfaces, vrfs, staticroute, mlag, routemaps/)
   })
 })

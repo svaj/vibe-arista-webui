@@ -494,10 +494,6 @@ export class RoutemapsResource extends EntityCollection<RoutemapEntry, string, R
     action: string,
     seqno: string,
   ): Promise<readonly string[]> {
-    if (keyword === 'match') {
-      assertRoutemapName(name)
-      assertRoutemapSeqno(seqno)
-    }
     const entry = await this.get(name)
     const clauses = entry?.get(action)
     const attrs = clauses?.get(seqnoKey(seqno))

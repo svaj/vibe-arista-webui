@@ -223,6 +223,9 @@ describe('what the browser entry exports', () => {
       // W2d (#41/#42/#43): the VRF, static-route and MLAG modules ride the same entry —
       // `node.vrfs`/`node.staticroute`/`node.mlag` and their classes from `.` with no deep import.
       'VrfsResource', 'StaticRouteResource', 'MlagResource',
+      // W3b (#50) lane B: the route-maps table, its action vocabulary, and the type-pinning exports of
+      // the entry shape (`RoutemapEntry`, `RoutemapEntry`).
+      'RoutemapsResource', 'isRoutemapAction',
     ] as const
     for (const name of functions) {
       expect(typeof surface[name], name).toBe('function')
@@ -245,7 +248,7 @@ describe('what the browser entry exports', () => {
     // `vrfs`/`staticroute`/`mlag`, each appended in merge order (§5 row 79, rows 167/173).
     expect(Object.keys(surface.RESOURCE_FACTORIES)).toEqual([
       'system', 'vlans', 'switchports', 'interfaces', 'users', 'ntp', 'acls', 'varp', 'stp', 'ipinterfaces',
-      'vrfs', 'staticroute', 'mlag',
+      'vrfs', 'staticroute', 'mlag', 'routemaps',
     ])
     expect(new Node(mockTransport()).system).toBeInstanceOf(surface.SystemResource)
     expect(new Node(mockTransport()).vlans).toBeInstanceOf(surface.VlansResource)
