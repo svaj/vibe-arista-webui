@@ -79,6 +79,17 @@ no jsdom dependency in this package — the webui owns DOM testing.
 
 Everything device-facing is asserted on generated **commands**, not on side effects.
 
+Since **#61** the seam ships as real subpaths, so consumers outside this package (the webui) reach
+it by name instead of hand-doubling `Node` methods: `…/testing` exports the browser-safe half
+(`mockTransport`, `MockTransport`, `createFakeNode`, `createFakeSender`, `buildRecording`/
+`replayRecording`/`assertRecordingIdentity`), and `…/node/testing` the fs/socket half
+(`writeRecording`, `readRecording`, `listenHttp(s|Unix)`, `fakeConfFileSystem`). `createFakeNode`
+folds the `enable` framing for one-command **read** keys and returns `{node, transport}`; config
+batches and session flows are scripted on the transport with the joined-wire-list/predicate idiom
+used throughout this suite. The fake runs the production codec: an unscripted command is still
+`NotSupportedError` naming it — the "loud, never implicit `{}`" rule is the reason this seam beats
+a hand-rolled `vi.fn()` device double.
+
 ```ts
 const t = mockTransport()
   .replies('show vlan', vlanFixture('three-vlans'))
