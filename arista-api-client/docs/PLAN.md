@@ -408,7 +408,7 @@ failure. Offline commands provably never contact EOS. Hardware-only gaps remain 
 - [ ] `USAGE.md` examples verified by a `docs` test runner (`vitest` snippet test or `npm run docs:check`).
 - [ ] Webui wiring: Vite dev proxy `/command-api → https://<switch>` with `configure: { secure: false }` documented as *dev-only*, plus the alternative on-device `management api http-commands cors allowed-origin https://localhost:5173` path (see CONNECTIVITY.md) → **DR-036**.
 - [ ] `CHANGELOG.md` (Keep a Changelog), `0.x` versioning policy, and a "breaking changes vs pyeapi" section that points at MIGRATION.md.
-- [ ] Typed show contracts published for the screens the webui needs (`show version`, `show interfaces status`, `show vlan`, `show mlag`, `show lag`).
+- [ ] Typed show contracts published for the screens the webui needs (`show version`, `show interfaces status`, `show vlan`, `show mlag`, `show lag`). **4 of 5 shipped on this lane** — `arista-webui/src/eapi/show-contracts.ts` augments `ShowContracts` with `version` / `'interfaces status'` / `vlan` / `mlag`, every field read off the recorded captures and pinned verbatim in `arista-webui/src/eapi/show-contracts.test.ts`; **`lag` is deliberately held**: no capture of `show lag` exists offline (STATUS §3 hardware sweep + `ceos-lab.mjs` catalog are the capture paths), and publishing an uncaptured shape is exactly the invention DR-043 forbids, so the box stays unticked until that capture lands.
 
 ---
 

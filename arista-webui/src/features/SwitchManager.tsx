@@ -2,15 +2,24 @@ import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import type { ConfigSession, ConfigSessionSummary, InterfaceStatus, Node, Switchport, Vlan } from '@devhax-heavy-industries/arista-eapi'
 
-type Client = Pick<Node, 'vlans' | 'switchports' | 'interfaces' | 'configSession' | 'listSessions' | 'abortSession'>
+// The M13 screen contracts ride this file into the compilation (ARCHITECTURE §9.1 augmentation);
+// `node.show('version')` below types through `ShowContracts['version']`.
+import type { ShowVersionReply } from '../eapi/show-contracts'
+
+type Client = Pick<Node, 'vlans' | 'switchports' | 'interfaces' | 'configSession' | 'listSessions' | 'abortSession' | 'show'>
 type Session = Pick<ConfigSession, 'name' | 'state' | 'run' | 'diff' | 'hasDiffBeenRead' | 'commit' | 'abort'>
-type Data = { vlans: readonly Vlan[]; ports: ReadonlyMap<string, Switchport>; statuses: ReadonlyMap<string, InterfaceStatus>; sessions: readonly ConfigSessionSummary[]; statusError?: string }
+type DeviceIdentity = { hostname: string; version: string; model: string }
+type Data = { vlans: readonly Vlan[]; ports: ReadonlyMap<string, Switchport>; statuses: ReadonlyMap<string, InterfaceStatus>; sessions: readonly ConfigSessionSummary[]; statusError?: string; identity?: DeviceIdentity }
 type LoadState = { kind: 'loading' } | { kind: 'error'; message: string } | { kind: 'ready'; data: Data }
 type Draft = { session: Session; diff?: string; commitAttempted: boolean }
 
 const PHYSICAL_ETHERNET = /^Ethernet[0-9]+$/u
 const errorMessage = (error: unknown) => error instanceof Error ? error.message : String(error)
 const writableVlan = (vlan: Vlan) => Number.isInteger(vlan.id) && vlan.id >= 1 && vlan.id <= 4094
+
+/** `hostname` exists only in the switch's `show version` capture; `modelName` is in both. */
+const identityFrom = (version: ShowVersionReply): DeviceIdentity =>
+  ({ hostname: version.hostname ?? version.modelName, version: version.version, model: version.modelName })
 
 export function SwitchManager({ node, proxyConfigured = true }: { readonly node: Client | undefined; readonly proxyConfigured?: boolean }) {
   const [reloadKey, setReloadKey] = useState(0)
@@ -30,8 +39,13 @@ export function SwitchManager({ node, proxyConfigured = true }: { readonly node:
     const statusResult = node.interfaces.getStatus()
       .then((statuses) => ({ statuses }))
       .catch((error: unknown) => ({ statusError: errorMessage(error) }))
-    void Promise.all([node.vlans.getAll(), node.switchports.getAll(), node.listSessions(), statusResult])
-      .then(([vlans, ports, sessions, status]) => {
+    // The identity chip is best-effort: `show version` not being model-backed (or the read failing)
+    // must never hide the workspace the VLAN screen needs. Same soft-read shape as the status half.
+    const versionResult = node.show('version')
+      .then((version) => ({ identity: identityFrom(version) }))
+      .catch(() => ({}))
+    void Promise.all([node.vlans.getAll(), node.switchports.getAll(), node.listSessions(), statusResult, versionResult])
+      .then(([vlans, ports, sessions, status, version]) => {
         if (!active) return
         setLoad({
           kind: 'ready',
@@ -41,6 +55,7 @@ export function SwitchManager({ node, proxyConfigured = true }: { readonly node:
             statuses: 'statuses' in status ? status.statuses : new Map(),
             sessions: sessions.sessions,
             ...('statusError' in status ? { statusError: status.statusError } : {}),
+            ...('identity' in version ? { identity: version.identity } : {}),
           },
         })
       })
@@ -130,7 +145,7 @@ export function SwitchManager({ node, proxyConfigured = true }: { readonly node:
 
   return <main className="shell">
     <a className="skip-link" href="#workspace">Skip to switch workspace</a>
-    <header className="topbar"><div className="brand-lockup"><span className="brand-mark" aria-hidden="true">E</span><div><p className="eyebrow">EOS CONTROL</p><h1>Switch workspace</h1></div></div><div className="connection-state"><span className={`status-dot ${load.kind === 'error' ? 'is-error' : load.kind === 'loading' ? 'is-pending' : ''}`} />{load.kind === 'ready' ? 'Connected through local proxy' : load.kind === 'error' ? 'Connection failed' : 'Connecting through local proxy'}</div></header>
+    <header className="topbar"><div className="brand-lockup"><span className="brand-mark" aria-hidden="true">E</span><div><p className="eyebrow">EOS CONTROL</p><h1>Switch workspace</h1></div></div><div className="connection-state"><span className={`status-dot ${load.kind === 'error' ? 'is-error' : load.kind === 'loading' ? 'is-pending' : ''}`} />{load.kind === 'ready' ? 'Connected through local proxy' : load.kind === 'error' ? 'Connection failed' : 'Connecting through local proxy'}{load.kind === 'ready' && load.data.identity !== undefined && <span className="device-identity">{load.data.identity.hostname} · EOS {load.data.identity.version} · {load.data.identity.model}</span>}</div></header>
     <section className="workspace" id="workspace" aria-labelledby="workspace-title">
       <div className="workspace-heading"><div><p className="eyebrow">CONFIGURATION</p><h2 id="workspace-title">VLAN assignment</h2></div><button className="quiet-button" type="button" onClick={reload} disabled={load.kind === 'loading' || busy || !proxyConfigured || node === undefined}>Refresh state</button></div>
       {load.kind === 'loading' && <p className="notice" role="status" aria-busy="true">Reading VLANs, interfaces, and configuration sessions…</p>}

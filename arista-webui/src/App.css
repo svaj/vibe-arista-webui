@@ -8,6 +8,7 @@
 .eyebrow { color: var(--muted); font-size: 11px; font-weight: 700; line-height: 1.2; }
 h1 { margin-top: 4px; color: var(--ink); font-size: 20px; font-weight: 650; }
 .connection-state { gap: 9px; color: var(--muted); font-size: 13px; }
+.device-identity { font-variant-numeric: tabular-nums; color: var(--ink); }
 .status-dot { width: 8px; height: 8px; border-radius: 50%; background: #37816d; box-shadow: 0 0 0 3px var(--teal-soft); }
 .status-dot.is-error { background: var(--danger); box-shadow: 0 0 0 3px #f7e5e1; }
 .status-dot.is-pending { background: var(--warning); box-shadow: 0 0 0 3px var(--warning-soft); }
