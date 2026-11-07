@@ -518,7 +518,7 @@ describe('named throwaway session: probe owns the name; session-name rule lives 
     // Script with the '*' matcher — the generated name has a random hex tail we cannot predict.
     const t = mockTransport({ address: ADDRESS }).replies('*', ack(3))
     const outcome = await probeCommands(new Node(t), ['vlan 20'], { now: clock })
-    expect(outcome.session.name).toMatch(/^ui-sw1\.lan-p\d+-[0-9a-f]{8}$/u)
+    expect(outcome.session.name).toMatch(/^ui-sw1-lan-p\d+-[0-9a-f]{8}$/u)
     expect(outcome.session.opener).toBe(`configure session ${outcome.session.name}`)
     expect(outcome.session.name.startsWith('ui-')).toBe(true)
   })

@@ -302,8 +302,8 @@ function quoteDescription(text: string): string {
  * `show configuration sessions`.
  *
  * A `unix:` address has no host at all, so its socket path *is* the identity and its separators become
- * dots (`unix:/var/run/command-api.sock` → `var.run.command-api.sock`). An IPv6 literal collapses to its
- * digits for the same separator reason — again, the tail is what disambiguates.
+ * hyphens in the final token (`unix:/var/run/command-api.sock` → `var-run-command-api-sock`). An IPv6
+ * literal collapses to its digits for the same separator reason — again, the tail is what disambiguates.
  *
  * Userinfo is dropped in every case. `address` is secret-free by contract (`transports/contract.ts`), and
  * a generated name is written onto a switch, so it must stay secret-free even when handed an address that
@@ -320,9 +320,9 @@ function addressToHostToken(address: string): string {
   return safeHostToken(withoutPort)
 }
 
-/** Clamp a host token to the character set and length a session name can carry. */
+/** Clamp generated host tokens to alphanumeric segments and hyphens; the target rejects dotted names. */
 function safeHostToken(value: string): string {
-  const safe = value.replace(/[^A-Za-z0-9._-]/gu, '-').replace(/^[-.]+|[-.]+$/gu, '')
+  const safe = value.replace(/[^A-Za-z0-9-]/gu, '-').replace(/^-+|-+$/gu, '')
   return safe === '' ? 'device' : safe.slice(0, 32)
 }
 
