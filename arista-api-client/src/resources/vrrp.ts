@@ -14,14 +14,14 @@
  *
  * | pyeapi (verified refs) | here |
  * |---|---|
- * | `PROPERTIES` (`:160-161`) — a module-level list **never referenced anywhere in the file** | not ported; the write-order fact it gestures at lives in {@link VrrpResource.vrrpSet}, whose sequence `vrrp.py:1231-1416` itself fixes |
- * | `Vrrp(EntityCollection)` (`:167`) | {@link VrrpResource} extends `ResourceBase` (`base.ts`) — upstream "is" an `EntityCollection` but breaks its own contract: `get` takes an **interface** and answers a per-vrid table (`:174-229`), and `create`/`delete`/`default` take the **pair** `(interface, vrid)` (`:391`, `:418`, `:439`). The framework's single-key `create(name, attrs)`/`delete(name)` cannot express that pair, and `ResourceAttrs` (`types.ts`, values `string \| number \| boolean`) cannot carry the `secondary_ip` list or `track` dicts. Documented divergence (this lane's §5 band, filed by the follow-up round) |
- * | `get(name)` (`:174-229`): empty/None `raise ValueError` (`:188-190`); `get_block('interface %s')` (`:194-196`); vrid census `re.findall(r'^\s+(?:no \|)vrrp (\d+)', config, re.M)` (`:200`); fourteen `self._parse_*(config, vrid)` merges (`:212-226`); `result.update({int(vrid): subd})` (`:226`); `return result if result else None` (`:229`) | {@link VrrpResource.get} → `Map<number, Vrrp> \| undefined`; the guards refuse with `NotSupportedError` (DR-005/DR-010), the census keeps upstream's exact regex (a `default vrrp N …` line is invisible to it — upstream's own default write-back cannot seed its vrid set), and the identity is the **pair** (interface, vrid): the table is keyed by vrid exactly like upstream's `int(vrid)` dict keys |
- * | `getall()` (`:231-249`): `re.findall(r'^interface\s(\S+)', self.config, re.M)` (`:242`), then `self.get(interface)` per interface with the `if vrrp:` update (`:245-249`) | {@link VrrpResource.getAll} — `Map<string, ReadonlyMap<number, Vrrp>>` built from the chunker's indent-0 section keys (same rule as `vlans.ts` divergence 3, `vrfs.ts` divergence 2, `staticroute.ts` divergence 1): indented copies and banner bodies cannot vote, and a header the interface grammar cannot read is a `ConfigParseError` naming the section instead of a phantom leading-token name |
+ * | `PROPERTIES` (`:160-164`) — a module-level list **never referenced anywhere in the file** | not ported; the write-order fact it gestures at lives in {@link VrrpResource.vrrpSet}, whose sequence `vrrp.py:1231-1420` itself fixes |
+ * | `Vrrp(EntityCollection)` (`:167`) | {@link VrrpResource} extends `ResourceBase` (`base.ts`) — upstream "is" an `EntityCollection` but breaks its own contract: `get` takes an **interface** and answers a per-vrid table (`:174-229`), and `create`/`delete`/`default` take the **pair** `(interface, vrid)` (`:391`, `:418`, `:439`). The framework's single-key `create(name, attrs)`/`delete(name)` cannot express that pair, and `ResourceAttrs` (`types.ts`, values `string \| number \| boolean`) cannot carry the `secondary_ip` list or `track` dicts. Documented divergence (§5 row 218) |
+ * | `get(name)` (`:174-229`): empty/None `raise ValueError` (`:188-190`); `get_block('interface %s')` (`:194-196`); vrid census `re.findall(r'^\s+(?:no \|)vrrp (\d+)', config, re.M)` (`:200`); fourteen `self._parse_*(config, vrid)` merges (`:211-:224`); `result.update({int(vrid): subd})` (`:226`); `return result if result else None` (`:229`) | {@link VrrpResource.get} → `Map<number, Vrrp> \| undefined`; the guards refuse with `NotSupportedError` (DR-005/DR-010), the census keeps upstream's exact regex (a `default vrrp N …` line is invisible to it — upstream's own default write-back cannot seed its vrid set), and the identity is the **pair** (interface, vrid): the table is keyed by vrid exactly like upstream's `int(vrid)` dict keys (§5 row 218 files the pair identity and the table shapes) |
+ * | `getall()` (`:231-252`): `re.findall(r'^interface\s(\S+)', self.config, re.M)` (`:242`), then `self.get(interface)` per interface with the `if vrrp:` update (`:246-:249`) | {@link VrrpResource.getAll} — `Map<string, ReadonlyMap<number, Vrrp>>` built from the chunker's indent-0 section keys (same rule as `vlans.ts` divergence 3, `vrfs.ts` divergence 2, `staticroute.ts` divergence 1): indented copies and banner bodies cannot vote, and a header the interface grammar cannot read is a `ConfigParseError` naming the section instead of a phantom leading-token name |
  * | the fourteen `_parse_*` readers (`:253-391`), each gated on `self.version_number >= '4.21.3'` for the keyword family (except `preempt` `:292`, `mac_addr_adv_interval` `:319`, the two `preempt delay` readers `:325`/`:331` and `bfd_ip` `:337`, which are era-independent) | private {@link parseVrrp} + the per-field readers below; the family comes from the config text itself ({@link detectCommandFamily}, the `vrfs.ts`/DR-099 precedent — see divergence 1) |
  * | `create(interface, vrid, **kwargs)` (`:391-417`): `if 'enable' not in kwargs: kwargs['enable'] = False` (`:413-414`) then `_vrrp_set` | {@link VrrpResource.create} — never mutates the caller's attrs object (row 71's non-mutation rule, which upstream's `kwargs[...] =` write breaks in its own frame); defaults `enable` to `false` exactly like `:413-414` |
  * | `delete` (`:418-438`, `vrrp_str = "no vrrp %d"` at `:436`) / `default` (`:439-460`, `"default vrrp %d"` at `:458`) | {@link VrrpResource.delete} / {@link VrrpResource.setDefault} — identical era-independent texts; throw instead of returning `False` (DR-005) |
- * | the fifteen `set_*` methods (`:461-1230`) and `_vrrp_set` (`:1231-1420`) | {@link VrrpResource.setEnable} … {@link VrrpResource.setBfdIp} + private {@link vrrpSet} — sequence-preserving port of the kwarg dispatch table (`:1236-1413`), one `configure_interface` transaction (`:1415`) |
+ * | the fifteen `set_*` methods (`:461-1230`) and `_vrrp_set` (`:1231-1420`) | {@link VrrpResource.setEnable} … {@link VrrpResource.setBfdIp} + private {@link vrrpSet} — sequence-preserving port of the kwarg dispatch table (`:1241-:1412`), one `configure_interface` transaction (`:1415`) |
  * | `vrconf_format(vrconfig)` (`:1421-1482`) — the PLAN.md §4 named helper | {@link VrrpResource.vrconfFormat}, ported as part of the module's documented surface: maps a `create`-shape config onto the answers {@link VrrpResource.get} would give after applying it, for "validate an updated config against the device" flows |
  * | `instance(node)` (`:1483-1493`) | the `RESOURCE_FACTORIES.vrrp` row plus `Node.vrrp` (DR-006/DR-052) |
  *
@@ -50,7 +50,10 @@
  * DECISIONS.md **DR-116..121**, and the divergence-pinning tests live in `vrrp.test.ts` under
  * "divergence pins". Row numbers are cited HERE only from the numbered divergence list below, matching
  * the ledger order of that round: divergence 1 → row 213, 2 → 214, 3 → 215, 4 → 216, 5 → 217,
- * 6 → 218, with rows 219-224 covering the diffing-verb, formatter and parser facts the tests pin.
+ * 6 → 218. Rows 219-224 cover the remaining facts the pin tests file: the two LIST keys having no
+ * sentinel arm (219), the `getAll` section-key guards (220), secondary-IP diffing (221), `create`'s
+ * injected `enable` (222), the `set_tracks` tid formula and its multi-word collapse (223), and
+ * `vrconf_format` versus the parser (224).
  *
  * 1. **the command family comes from the device's own config text, not from a `version_number`
  *    string compare.** Upstream gates ten readers and the `set_*` command stems on
@@ -78,9 +81,9 @@
  *    become `options.mode === 'no' | 'default'`, and `commandBuilder` keeps upstream's order
  *    (default → disable → value). One upstream fall-through is NOT reproduced: `set_preempt(False)`
  *    reaches `command_builder` with `value=False`, which in Python takes the deprecated
- *    `elif value:` → `return 'no %s'` path (`abstract.py:155-161`) — a falsy fall-through this client
+ *    `elif value:` → `return 'no %s'` path (`abstract.py:158-161`) — a falsy fall-through this client
  *    refuses (row 73). {@link VrrpResource.setPreempt} maps `value: false` to `{ mode: 'no' }` before
- *    composing, so test_api_vrrp.py:556's pinned text `no vrrp 10 preempt` stays verbatim.
+ *    composing, so test_api_vrrp.py:555's pinned text `no vrrp 10 preempt` stays verbatim.
  *    `setEnable` never used `command_builder` upstream in the first place (`:461-503` composes four
  *    strings by hand) and keeps that shape.
  * 4. **invalid arguments refuse; upstream crashes in three places and interpolates garbage in two.**
@@ -96,12 +99,12 @@
  * 5. **numeric guards refuse non-integers where Python coerces.** Upstream's range guards run
  *    `int(value)` inside the condition (`:792`, `:843`, `:927`, `:969`, `:1011` — `int('50')` succeeds,
  *    `int('a')` raises the same ValueError the range test would), and `str(value).isdigit()` for
- *    priority (`:585`). Here the TS parameter type is already `number` and the guard requires
+ *    priority (`:584`). Here the TS parameter type is already `number` and the guard requires
  *    `Number.isInteger(value)` plus upstream's range — a numeric string from JS never silently
- *    coerces, and the refused ranges are upstream's: priority 1-254 (`:585-586`), timers_advertise
+ *    coerces, and the refused ranges are upstream's: priority 1-254 (`:584-586`), timers_advertise
  *    1-255 (`:792-794`), mac/`preempt_delay_min`/`preempt_delay_reload`/`delay_reload` 1-3600
  *    (`:843-845`, `:927-929`, `:969-971`, `:1011-1013` — the last three messages SAY "0-3600" while the
- *    code tests `>= 1`; the code wins, quirk preserved and refused), ip_version 2 or 3 (`:674`).
+ *    code tests `>= 1`; the code wins, quirk preserved and refused), ip_version 2 or 3 (`:671-672`).
  *    `bfd_ip`/`primary_ip` keep upstream's dotted-quad grammar exactly (`:541`, `:1214`
  *    `^\d+\.\d+\.\d+\.\d+$`) — octet bounds are an IPv4 fact the image cares about, not asserted here
  *    (DR-032).
@@ -115,8 +118,8 @@
  *    disabled line votes, `:253-260`; `preempt` defaults `False` unless the positive line votes,
  *    `:292-296`). The `_parse_track` `if amount:` truthiness filter (`:383`) keeps its quirk — a
  *    decrement of `0` parses back WITHOUT the amount, so `vrrp 10 track Foo decrement 0` reads as
- *    `{ name: 'Foo', action: 'decrement' }` — ported as written this round, and paired with the
- *    `vrconf_format`/`set_tracks` round-trip facts the follow-up round pins.
+ *    `{ name: 'Foo', action: 'decrement' }` — ported as written this round, paired with the
+ *    `set_tracks`/`vrconf_format` round-trip facts this round files as §5 rows 223 and 224.
  */
 
 import { ConfigParseError, NotFoundError, NotSupportedError } from '../errors'
@@ -140,7 +143,7 @@ type VrrpCommandFamily = 'modern' | 'legacy'
 /** The two tracked-object actions upstream accepts (and its write-side verbs re-validate: `:1105`, `:1126`). */
 export type VrrpTrackAction = 'decrement' | 'shutdown'
 
-/** One tracked-object entry — upstream's `track` list element (parsed `:374-382`, validated `:1099-1136`). */
+/** One tracked-object entry — upstream's `track` list element (parsed `:374-385`, validated on both write sides `:1082-1116`/`:1119-1137`). */
 export interface VrrpTrack {
   /** The tracked object name, `(\S+)` in both the parser and the command composer (`:367`, `:1148`). */
   readonly name: string
@@ -223,7 +226,7 @@ export interface VrrpFieldOptions<T> extends VrrpRunOptions {
  * (`:1248`, `:1261`, `:1273`, `:1286`, `:1305`, `:1322`, `:1353`, `:1369`, `:1385`, `:1404` — and
  * `preempt`'s disable arm additionally lists `False` at `:1341`), `'default'` selects its default arm.
  * The two LIST keys have NO sentinel arms upstream at all — `secondary_ip` reads straight into
- * `set_secondary_ips` (`:1300-:1304`), `track` straight into `set_tracks` (`:1394-:1398`) — so this bag
+ * `set_secondary_ips` (`:1297-:1301`), `track` straight into `set_tracks` (`:1396-:1400`) — so this bag
  * deliberately carries no `'no'`/`'default'` shape for them (§5 row 219).
  */
 export interface VrrpAttrs {
@@ -252,8 +255,8 @@ export interface VrrpAttrs {
  * The `vrconf_format` domain (`:1421-1482`): a record that may carry create-shape SENTINELS
  * (`'no'`/`'default'`/`null`) and get-shape values side by side, which the formatter normalizes to the
  * answers {@link VrrpResource.get} would produce after applying the config ("Intended for validating
- * updated vrrp configurations", `:1427-1428`). Upstream indexes every scalar key unguarded
- * (`fixed['primary_ip']` at `:1436` etc.) so a missing key is a `KeyError`; the two list keys are `in`-guarded (`:1445`, `:1472`).
+ * updated vrrp configurations", `:1430`). Upstream indexes every scalar key unguarded
+ * (`fixed['primary_ip']` at `:1436` etc.) so a missing key is a `KeyError`; the two list keys are `in`-guarded (`:1446`, `:1473`).
  * Here every key is optional (a missing scalar passes through untouched rather than crashing, and the
  * two list keys keep the guard's meaning). Field names are camelCase twins of upstream's.
  */
@@ -266,7 +269,7 @@ export interface VrrpConf {
   readonly priority?: number | VrrpNegation | null
   /** → null (`:1442-1443`) — note this is upstream's `None`, WHEREAS the parser's no-line answer is `''`. */
   readonly description?: string | VrrpNegation | null
-  /** sorted for comparison, list kept as required (`:1445-1447`). */
+  /** sorted for comparison, list kept as required (`:1446-:1447`). */
   readonly secondaryIp?: readonly string[]
   /** → 2 (`:1449-1450`). */
   readonly ipVersion?: number | VrrpNegation | null
@@ -282,9 +285,9 @@ export interface VrrpConf {
   readonly preemptDelayReload?: number | VrrpNegation | null
   /** → 0 (`:1469-1470`). */
   readonly delayReload?: number | VrrpNegation | null
-  /** sorted by (name, action) (`:1472-1474`). */
+  /** sorted by (name, action) (`:1473-:1475`). */
   readonly track?: readonly VrrpTrack[]
-  /** → `''` (`:1476-1477`). */
+  /** → `''` (`:1477-:1478`). */
   readonly bfdIp?: string | VrrpNegation | null
 }
 
@@ -364,15 +367,18 @@ function pickFamily(evidence: { modern: boolean; legacy: boolean }): VrrpCommand
 
 /** Upstream's `set_tracks` internal key: `"%s   %s   %s" % (name, action, amount)` with a
  *  `_none_` stand-in (`:1080`, chosen at `:1101`/`:1122`) and the two `tid =` lines (`:1115`, `:1136`), the same
- *  three-space separator; re-extracted by `re.match(r'(\S+)\s+(\S+)\s+(\S+)')` at `:1147`/`:1165`.
- *  The separator is deliberately upstream's, not a fresh encoding — porting the key formula keeps the
- *  set-diffing, and the odd name-with-space round that formula through reproduces upstream's behavior
- *  instead of inventing a different one. */
+ *  three-space separator; the command builders at `:1148`/`:1164` then re-extract the parts with
+ *  `re.match(r'(\S+)\s+(\S+)\s+(\S+)', track)`, which splits on WHITESPACE RUNS rather than on that
+ *  separator — so a track name containing a space silently shifts the action into the amount slot
+ *  (and the amount out of the command) before interpolation; {@link VrrpResource.setTracks} reproduces
+ *  the fold token-for-token. The separator is deliberately upstream's, not a fresh encoding — porting
+ *  the key formula keeps the set-diffing, and the odd name-with-space round trip reproduces upstream's
+ *  behaviour instead of inventing a different one (§5 row 223). */
 const TRACK_KEY_UNSET = '_none_'
 const trackKey = (name: string, action: string, amount: unknown): string =>
   `${name}   ${action}   ${amount === undefined ? TRACK_KEY_UNSET : String(amount)}`
 
-/** Python `str(x).isdigit()` for the values this module's types allow reaching (`:1107`-`:1109`, `:585`). */
+/** Python `str(x).isdigit()` for the values this module's types allow reaching (`:1109`/`:1130`, `:584`). */
 function pythonIsDigit(value: string): boolean {
   return /^\d+$/u.test(value)
 }
@@ -394,7 +400,7 @@ function assertVrrpId(value: unknown): asserts value is number {
 /** Require a dotted-quad where upstream `re.match`es one (`:541`, `:730-:734`, `:1214`). */
 function assertVrrpAddress(label: string, value: unknown): asserts value is string {
   if (typeof value !== 'string') refuse(label, value, `expected a dotted-quad IPv4 string — pyeapi raises ValueError on non-matching values (vrrp.py:541, :1214) and per-element on every list entry (:730-:734)`)
-  if (!IPV4_GRAMMAR.test(value)) refuse(label, value, `a vrrp ${label} must match ${IPV4_GRAMMAR.source} exactly (${pythonRepr(value)} does not — vrrp.py:543 for primary_ip, :728 for secondary_ip, :1214 for bfd_ip; octet bounds belong to the image, DR-032)`)
+  if (!IPV4_GRAMMAR.test(value)) refuse(label, value, `a vrrp ${label} must match ${IPV4_GRAMMAR.source} exactly (${pythonRepr(value)} does not — vrrp.py:541 for primary_ip, :731-:732 for secondary_ip, :1214 for bfd_ip; octet bounds belong to the image, DR-032)`)
 }
 
 /** Require an integer inside an upstream range; the message carries upstream's own wording and the value. */
@@ -409,7 +415,7 @@ function assertIntRange(label: string, value: unknown, min: number, max: number)
  *
  * Upstream's `Vrrp(EntityCollection)` (`:167`) keeps its dict shapes and this client keeps theirs too:
  * {@link VrrpResource.getAll} is `{ interface: { vrid: data } }` and {@link VrrpResource.get} is
- * `{ vrid: data }` — the two shapes its module docstring documents at `:74-99`, as `Map`s (row 78).
+ * `{ vrid: data }` — the two shapes its module Notes block documents at `:69-92`, as `Map`s (row 78).
  */
 export class VrrpResource extends ResourceBase {
   /**
@@ -450,8 +456,8 @@ export class VrrpResource extends ResourceBase {
     const sections: ConfigSections = await this.configSections()
     const block = sections.get(`interface ${name}`)
     if (block === undefined) return undefined
-    // Census FIRST — upstream returns None when the block carries no vrrp lines at all (`:200-203`),
-    // and that short-circuit is what keeps a vrrp-less interface out of getAll (`:245-246`).
+    // Census FIRST — upstream returns None when the block carries no vrrp lines at all (`:200-202`),
+    // and that short-circuit is what keeps a vrrp-less interface out of getAll (`:246-:248`).
     const vrids: string[] = []
     for (const match of block.matchAll(VRRP_VRID_CENSUS)) {
       const vrid = match[1]
@@ -483,8 +489,8 @@ export class VrrpResource extends ResourceBase {
   }
 
   /**
-   * Every interface's vrrp table — pyeapi's `getall()` (`:231-249`), as the nested `Map` its docstring
-   * documents (`:83-99`). The candidate interfaces come from the chunker's indent-0 keys, not upstream's
+   * Every interface's vrrp table — pyeapi's `getall()` (`:231-252`), as the nested `Map` its Notes
+   * block documents (`:79-92`). The candidate interfaces come from the chunker's indent-0 keys, not upstream's
    * `re.M` sweep of the whole config (`:242`) — the shared rule `vlans`/`vrfs`/`staticroute` divergences
    * 1-3 all pin — and a header whose remainder is not one token raises `ConfigParseError` naming the
    * section instead of truncating to a phantom name upstream's `(\S+)` would key.
@@ -526,7 +532,7 @@ export class VrrpResource extends ResourceBase {
       throw new NotFoundError(`vrrp: no vrid ${String(vrid)} on interface ${name}, so there is no primary_ip to default or negate — pyeapi raises KeyError here (vrrp.py:529/:536)`, { cause: `${name}/${String(vrid)}` })
     }
     if (entry.primaryIp === undefined) {
-      throw new NotFoundError(`vrrp: vrid ${String(vrid)} on interface ${name} has no primary_ip, so there is no address to name in the negated or defaulted command — pyeapi composes the literal text 'no vrrp … ip None' for the wire here (%s interpolation of the composed strings at vrrp.py:530-532/:537-539, fed by the None/missing pair read at :529/:536)`, { cause: `${name}/${String(vrid)}` })
+      throw new NotFoundError(`vrrp: vrid ${String(vrid)} on interface ${name} has no primary_ip, so there is no address to name in the negated or defaulted command — pyeapi composes the literal text 'no vrrp … ip None' for the wire here (%s interpolation of the composed strings at vrrp.py:531-533/:538-540, fed by the None/missing pair read at :529/:536)`, { cause: `${name}/${String(vrid)}` })
     }
     return entry.primaryIp
   }
@@ -534,7 +540,7 @@ export class VrrpResource extends ResourceBase {
   /**
    * Stage-and-send core for the diffing verbs: returns the sorted command list it composed, sending it
    * as ONE `interface …` transaction unless `run === false` (upstream's `if run:` +
-   * `configure_interface(name, cmds)` vs `return cmds`, `:759-768` and `:1182-1191`).
+   * `configure_interface(name, cmds)` vs `return cmds`, `:759-767` and `:1182-1190`).
    */
   private async runCommandList(name: string, cmds: readonly string[], run: boolean): Promise<readonly string[]> {
     if (!run) return cmds
@@ -601,7 +607,7 @@ export class VrrpResource extends ResourceBase {
    * grammar-checks the value (`:541-548`); the `default`/`disable` arms go through
    * {@link currentPrimaryIp} to name the CURRENT address in the composed line (`:528-545` — upstream
    * `default=True` wins even with `disable=True` too — the `if default is True:` at `:527` precedes
-   * the `elif` at `:534`, and `test_api_vrrp.py:354-359` pins exactly that pair. An omitted `value`
+   * the `elif` at `:534`, and `test_api_vrrp.py:355-358` pins exactly that pair. An omitted `value`
    * with no `mode` used to be upstream's `elif disable is True or value is None:` negation arm
    * (`:534`) — an accident of its default
    * kwarg; this client refuses it (DR-037's "say what you mean": pass `mode: 'no'`).
@@ -652,7 +658,7 @@ export class VrrpResource extends ResourceBase {
     return this.runCommand(name, cmd, options.run !== false)
   }
 
-  /** `vrrp <vrid> ip version <2|3>` / `ipv4 version` — `:648-692`; guard `value not in (2, 3)` (`:671-672`, raise `:672-673`). */
+  /** `vrrp <vrid> ip version <2|3>` / `ipv4 version` — `:648-692`; guard `value not in (2, 3)` (`:671`, raise `:672`). */
   async setIpVersion(name: string, vrid: number, options: VrrpFieldOptions<number> = {}): Promise<string> {
     assertInterfaceName(name)
     assertVrrpId(vrid)
@@ -727,7 +733,7 @@ export class VrrpResource extends ResourceBase {
   /**
    * `vrrp <vrid> preempt` — `:862-903`, era-neutral stem (`:890`). The interesting arm is
    * `value: false`: upstream passes it to `command_builder`, whose `elif value:` fall-through composes
-   * `no vrrp 10 preempt` (abstract.py:155-161 — the falsy path this client refuses, row 73); here it
+   * `no vrrp 10 preempt` (abstract.py:158-161 — the falsy path this client refuses, row 73); here it
    * composes the identical text through `mode: 'no'` instead (divergence 3), and non-booleans still
    * refuse as upstream's ValueError does (`:885-888`).
    */
@@ -782,33 +788,34 @@ export class VrrpResource extends ResourceBase {
   }
 
   /**
-   * Validate one track dict the way upstream validates BOTH sides — incoming specs and
-   * freshly parsed current entries: unknown-key refusal (`:1085-:1095`), required
-   * name+action (`:1092-:1097`), action ∈ {shutdown, decrement} (`:1105`), `shutdown` carrying an
-   * amount is invalid (`:1106`), and an amount must be digit-able (`:1107`-`:1109`, re-checked for
-   * current entries at `:1124-:1135`). Upstream compares against the `'`-quoted name list at `:1086`
-   * (`'name'`/`'action'`/`'amount'` with quotes) while the unknown-key set difference itself matches
-   * the bare keys — an unquoted-key variant exists at `:1093` for the required-key message; the
-   * refusals here name bare keys exactly like the upstream VALID-keys message. Returns the diff key.
+   * Validate one track entry the way upstream validates BOTH sides — incoming specs (`:1082-:1116`) and
+   * freshly parsed current entries (`:1119-:1137`): unknown-key refusal (the set difference against the
+   * `('name', 'action', 'amount')` tuple at `:1086`, raising at `:1089-:1091` with the bare key names in
+   * its message text), required name+action (`:1094`'s `issuperset`, raising at `:1095-:1097`), action ∈
+   * {shutdown, decrement} (`:1105`), `shutdown` carrying an amount being invalid (`:1107`), and an amount
+   * that must satisfy `str(amount).isdigit()` (`:1109`, re-checked for current entries at `:1130`). The
+   * current side runs the identical checks (`:1125-:1131`), so parsing cannot launder a bad entry. Returns
+   * the diff key.
    */
   private trackDiffKey(track: VrrpTrack, label: string): string {
     if (track === null || typeof track !== 'object' || Array.isArray(track)) {
-      refuse(label, track, 'vrrp track entries are objects with name/action/amount keys (vrrp.py:1077-1115)')
+      refuse(label, track, 'vrrp track entries are objects with name/action/amount keys (vrrp.py:1082-1116)')
     }
     const keys = Object.keys(track)
     const extra = keys.filter((key) => key !== 'name' && key !== 'action' && key !== 'amount')
     if (extra.length > 0) {
-      throw new NotSupportedError(`invalid vrrp track entry — unknown key(s) ${extra.map((key) => pythonRepr(key)).join(', ')} — valid keys are name, action and amount (pyeapi raises ValueError with the same list at vrrp.py:1084-1090)`, { cause: track })
+      throw new NotSupportedError(`invalid vrrp track entry — unknown key(s) ${extra.map((key) => pythonRepr(key)).join(', ')} — valid keys are name, action and amount (pyeapi raises ValueError with the same list at vrrp.py:1086-1091)`, { cause: track })
     }
     if (!keys.includes('name') || !keys.includes('action')) {
-      throw new NotSupportedError(`invalid vrrp track entry ${pythonRepr(track)} — a track definition must contain the name and action keys (vrrp.py:1092-1097)`, { cause: track })
+      throw new NotSupportedError(`invalid vrrp track entry ${pythonRepr(track)} — a track definition must contain the name and action keys (vrrp.py:1094-1097)`, { cause: track })
     }
     const name = String(track.name)
     const action = track.action
     const hasAmount = keys.includes('amount')
-    // Upstream's `amount = track['amount'] if 'amount' in track else unset` (:1099-1101, :1120-1122): a PRESENT key
-    // carries its value into validation, and `None` (this client's nearest twin: `null`/`undefined`)
-    // is NOT the `_none_` sentinel — it fails the digit test exactly as `'None'.isdigit()` does upstream.
+    // Upstream's `amount = track['amount'] if 'amount' in track else unset` (:1101 wanted side, :1122 current
+    // side): a PRESENT key carries its value into validation, and `None` (this client's nearest twin:
+    // `null`/`undefined`) is NOT the `_none_` sentinel — it fails the digit test exactly as
+    // `'None'.isdigit()` does upstream (:1109/:1130).
     const amount = track.amount
     let error = false
     if (action !== 'shutdown' && action !== 'decrement') error = true
@@ -816,19 +823,26 @@ export class VrrpResource extends ResourceBase {
     const amountText = hasAmount ? String(amount) : TRACK_KEY_UNSET
     if (amountText !== TRACK_KEY_UNSET && !pythonIsDigit(amountText)) error = true
     if (error) {
-      throw new NotSupportedError(`invalid vrrp track entry ${pythonRepr(track)} — see the format specification pyeapi points at (vrrp.py:1052-1062's docstring; incoming validation :1103-1114, current-side :1124-1135)`, { cause: track })
+      throw new NotSupportedError(`invalid vrrp track entry ${pythonRepr(track)} — see the format specification pyeapi documents at vrrp.py:1050-1056; incoming validation :1104-1113, current-side :1125-1134`, { cause: track })
     }
     return trackKey(name, String(action), amount)
   }
 
   /**
    * Replace the tracked objects: upstream's `set_tracks` (`:1034-1191`), the second diffing verb.
-   * Same shape as {@link VrrpResource.setSecondaryIps} (guarded current read at `:1074-1076`, entry
-   * validation on BOTH sides, intersection-diffing at `:1139-1144`, command re-extraction from the
-   * triple at `:1148-1177`, `cmds = sorted(cmds)` at `:1179`) — with the multi-word entries the handoff
-   * calls out: the diff keys are name/action/amount triples whose command text ends
-   * `track <name> <action> <amount?>` (legacy) / `tracked-object …` (modern), and a missing amount is
-   * spelled with no trailing space because upstream rstrips the composed line (`:1161`, `:1177`).
+   * Same shape as {@link VrrpResource.setSecondaryIps} (guarded current read at `:1074-:1076`, entry
+   * validation on BOTH sides, intersection-diffing at `:1139-:1144`, command re-extraction from the
+   * tid triple at `:1148`/`:1164`, `cmds = sorted(cmds)` at `:1179`) — and the multi-word-entry hazard
+   * PLAN.md §4 flags is reproduced, not repaired: the commands are built by re-splitting the tid with
+   * `re.match(r'(\S+)\s+(\S+)\s+(\S+)')`, so a track NAME containing whitespace shifts the tokens left
+   * and the command loses a keyword — `{ name: 'Foo with space', action: 'shutdown' }` composes
+   * `vrrp 10 track Foo with space` (the action is the tid's third group here), and
+   * `{ name: 'Foo bar', action: 'decrement', amount: 5 }` composes `vrrp 10 track Foo bar decrement`
+   * (the amount falls off the end). The removal twins compose the same shifted text with the `no `
+   * prefix (`:1155`-`:1160`). A missing amount is spelled with no trailing space because upstream
+   * rstrips the composed line (`:1161`, `:1177`). §5 row 223; pinned token-for-token in
+   * `vrrp.test.ts` — this client adds no name-charset rule upstream lacks (DR-032 keeps the image
+   * authoritative), so the fold survives on every path both sides can reach.
    */
   async setTracks(name: string, vrid: number, tracks: readonly VrrpTrack[], options: VrrpRunOptions = {}): Promise<readonly string[]> {
     assertInterfaceName(name)
@@ -872,7 +886,7 @@ export class VrrpResource extends ResourceBase {
 
   /**
    * `_vrrp_set` (`:1231-1420`) — the property dispatch table that `create` funnels through. The
-   * sequence is fixed by upstream and pinned by `test_api_vrrp.py:204-222`: enable, primary_ip,
+   * sequence is fixed by upstream and pinned by `test_api_vrrp.py:204-224`: enable, primary_ip,
    * priority, description, ip_version, secondary_ip, timers_advertise, mac_addr_adv_interval, preempt,
    * preempt_delay_min, preempt_delay_reload, delay_reload, track, bfd_ip. Every leg composes through
    * the public setter with `run: false`, the two list legs splice their composed lists in whole
@@ -888,7 +902,11 @@ export class VrrpResource extends ResourceBase {
     }
     const scalar = (field: keyof VrrpAttrs): boolean => attrs[field] !== undefined
 
-    if (scalar('enable')) push(await this.setEnable(name, vrid, attrs.enable as boolean, { run: false }))
+    // `create` guarantees the enable key (upstream's own `:413-:414` injection, reproduced there and
+    // filed as §5 row 222), so upstream's `if enable != '__NONE__'` guard (`:1241-:1242`) has no second
+    // path on this route: vrrpSet is private and create is its only caller. The leg therefore ships
+    // unconditionally — the same fact the pin test for the injected `vrrp N shutdown` proves.
+    push(await this.setEnable(name, vrid, attrs.enable as boolean, { run: false }))
     if (scalar('primaryIp')) {
       const value = attrs.primaryIp
       if (value === 'no' || value === null) push(await this.setPrimaryIp(name, vrid, { mode: 'no', run: false }))
@@ -966,9 +984,9 @@ export class VrrpResource extends ResourceBase {
    * this module's surface. It turns a config bag written the way `create` takes it (sentinels and all)
    * into the record shape `get`/`getAll` will answer afterwards: `primaryIp`→`'0.0.0.0'` (`:1436-1437`),
    * `priority`→`100` (`:1439-1440`), `description`→`null` (`:1442-1443`), `secondaryIp` sorted
-   * (`:1445-1447`), `ipVersion`→`2` (`:1449-1450`), `timersAdvertise`→`1` (`:1452-1453`),
+   * (`:1446-:1447`), `ipVersion`→`2` (`:1449-1450`), `timersAdvertise`→`1` (`:1452-1453`),
    * `macAddrAdvInterval`→`30` (`:1456-1458`), `preempt`→`false` (`:1460-1461`), the three delays→`0`
-   * (`:1463-1470`), `track` sorted by (name, action) (`:1472-1474`), `bfdIp`→`''` (`:1476-1477`).
+   * (`:1463-1470`), `track` sorted by (name, action) (`:1473-:1475`), `bfdIp`→`''` (`:1477-:1478`).
    * `enable` is untouched (no rule exists upstream for it) — and note the two upstream inconsistencies
    * kept verbatim: `preempt: null` is NOT normalized (`('no', 'default')` at `:1460` names no None,
    * unlike every other scalar's tuple) and
@@ -1029,7 +1047,9 @@ function parseVrrp(config: string, vrid: string, family: VrrpCommandFamily): Vrr
   // secondary_ip — findall of the era's `… secondary` line (:300/:303); [] when none (:305-306).
   const secondary: string[] = []
   for (const match of config.matchAll(new RegExp(`^\\s+vrrp ${vrid} ${(modern ? 'ipv4' : 'ip')} (\\d+\\.\\d+\\.\\d+\\.\\d+) secondary$`, 'gm'))) {
-    if (match[1] !== undefined) secondary.push(match[1])
+    // The address group is mandatory in both upstream arms (`:300-:301` modern, `:303-:304` legacy), so
+    // every findall hit binds it — no undefined guard here (cf. commit 9ca0d9b for the same removal).
+    secondary.push(match[1] as string)
   }
   // description — `session description(.*)` (:310) vs `description(.*)` (:313), lstrip at :316, ''-default :317;
   // upstream answers '' (NOT None) with no line, and its `(.*)` + lstrip pair keeps inner spacing.
@@ -1051,14 +1071,18 @@ function parseVrrp(config: string, vrid: string, family: VrrpCommandFamily): Vrr
   // truthiness-filtered amount (:375/:383) and the (name, action) stable sort (:388).
   const tracks: VrrpTrack[] = []
   for (const match of config.matchAll(new RegExp(`^\\s+vrrp ${vrid} ${(modern ? 'tracked-object' : 'track')} (\\S+) (decrement|shutdown)(?:( \\d+$|$))`, 'gm'))) {
-    const objectName = match[1]
-    const action = match[2]
+    // Upstream's two mandatory groups (`(\\S+)` then `(decrement|shutdown)`, :367-:369 modern /
+    // :371-:373 legacy) bind on EVERY findall hit — the alternation admits nothing else — so the
+    // groups are asserted here rather than re-checked (the check was a branch no input can take;
+    // cf. commit 9ca0d9b's same removal for provably-dead guard sites). Only the optional amount
+    // tail can come back empty, and that is the `raw` handling below.
+    const objectName = match[1] as string
+    const action = match[2] as VrrpTrackAction
     const raw = match[3]
-    if (objectName === undefined || action === undefined) continue
     const amount = raw === undefined || raw === '' ? null : Number.parseInt(raw, 10)
     const entry: { name: string; action: VrrpTrackAction; amount?: number } = {
       name: objectName,
-      action: action as VrrpTrackAction,
+      action,
     }
     // `if amount:` (:383) — a parsed 0 rides through as NO amount. Quirk ported verbatim (divergence 6).
     if (amount) entry.amount = amount
