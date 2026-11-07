@@ -1058,7 +1058,7 @@ function assertSourceInterfaceValue(value: unknown): asserts value is string {
 /**
  * Require a multicast group in the shape this module can read: `NNN.N.N.N` — the leading octet with
  * **exactly three digits**, because that is upstream's own read pattern verbatim
- * (`([\\d]{3}\\.[\\d]+\\.[\\d]+\\.[\\d]+)`, `interfaces.py:881-882`) and composing anything else writes a
+ * (`([\d]{3}\.[\d]+\.[\d]+\.[\d]+)`, `interfaces.py:881-882`) and composing anything else writes a
  * line that neither pyeapi nor this client would ever read back (divergence 22/24). The multicast range
  * EOS uses for VXLAN is three digits, `239.10.10.10` being the shape upstream's fixture writes
  * (`running_config.vxlan:39`); whether the device (or a future EOS) accepts another spelling — including
@@ -1072,7 +1072,7 @@ function assertMulticastGroupValue(value: unknown): asserts value is string {
 
 /**
  * Require a VTEP address in the only shape the flood-list reader can see: dotted-quad digits and dots,
- * because upstream's whole vocabulary for a flood entry is the character class `([\\d. ]+)`
+ * because upstream's whole vocabulary for a flood entry is the character class `([\d. ]+)`
  * (`interfaces.py:915`) — an entry in any other spelling vanishes from `show`-free config reads for
  * pyeapi too. Upstream validates nothing on either verb (`:1031-1034`/`:1053-1056` interpolate raw). An
  * IPv6 VTEP would be readable by EOS and unread here: that is a device question (DR-032), and the
@@ -1088,7 +1088,7 @@ function assertVtepValue(value: unknown): asserts value is string {
  * `vlan` (`if not vlan:`, `:1030`/`:1052`) as an explicit table: `undefined`, `''` and the number `0`
  * all take the **bare** `vxlan flood vtep …` arm, while the string `'0'` is truthy in Python and
  * composes `vxlan vlan 0 …` (pinned both ways, divergence 24). A kept scope must be decimal — the
- * reader's own token (`vxlan vlan (\\d+)`, `:902`) — and nothing here claims the vlan exists or licenses
+ * reader's own token (`vxlan vlan (\d+)`, `:902`) — and nothing here claims the vlan exists or licenses
  * VXLAN: the device answers that (`CommandError` pinned, DR-005).
  */
 function assertVlanScopeToken(vlan: string | number | undefined): string | undefined {
@@ -1100,7 +1100,7 @@ function assertVlanScopeToken(vlan: string | number | undefined): string | undef
 
 /**
  * Require a VNI value: positive decimal safe integer — **client policy only**. Upstream interpolates
- * whatever arrives into `vxlan vlan add %s vni %s` (`:1072`) and its reader keeps `vni (\\d+)`
+ * whatever arrives into `vxlan vlan add %s vni %s` (`:1072`) and its reader keeps `vni (\d+)`
  * (`:905`); the platform's actual VNI ceiling (if any, licence-permitting) is a device answer
  * (DR-032/DR-057) and `0` is DR-037's falsy trap.
  */
@@ -1112,7 +1112,7 @@ function assertVniValue(value: unknown): asserts value is number {
 /**
  * Require a udp-port value: **client policy only**, exactly the {@link assertPortBandValue} reasoning
  * restated for this verb — pyeapi validates nothing (`:994-1011`), and the reader is
- * `vxlan udp-port (\\d+)` + an unguarded `int()` (`:893-894`), so anything non-decimal composes an
+ * `vxlan udp-port (\d+)` + an unguarded `int()` (`:893-894`), so anything non-decimal composes an
  * unreadable line while the platform's port-range/licensing answer stays the device's (DR-032).
  */
 function assertUdpPortValue(value: unknown): asserts value is number {
@@ -1315,7 +1315,7 @@ function multicastDecapFromBlock(block: ConfigBlock): boolean | undefined {
 }
 
 /**
- * The vlan→VXLAN map from the unanchored `vxlan vlan (\\d+)` findall ported verbatim (`:902`) — so a vid
+ * The vlan→VXLAN map from the unanchored `vxlan vlan (\d+)` findall ported verbatim (`:902`) — so a vid
  * named by ANY such line, including the fixture's `no vxlan vlan 10 …`-shaped neighbours, gets a
  * profile. Key order is **first appearance in the section**, carried by Map insertion order — upstream
  * iterates a `frozenset` (`:901`, `:903`) whose order is arbitrary per run, and an arbitrary order in a
@@ -1353,7 +1353,7 @@ function vlanMappingsFromBlock(lines: readonly ConfigLine[], sectionKey: string)
 
 /**
  * The global flood list: upstream's verbatim line pattern (`:915`), first match, space-split as `:918`
- * splits it. A VTEP list outside the `([\\d. ]+)` class makes the pattern refuse the whole line —
+ * splits it. A VTEP list outside the `([\d. ]+)` class makes the pattern refuse the whole line —
  * upstream then answers its `values = list()` `[]` default (`:916-919`); here the field reports
  * **absent** instead, because "the device wrote a line this reader cannot parse" is a different
  * statement from "the flood list is empty" (divergence 21/22, DR-029).

@@ -2803,7 +2803,7 @@ describe('InterfacesResource Vxlan field reads — M10d: the six pyeapi readers 
     expect(all.get('Vxlan1')?.vxlan?.vlans?.get('10')?.vni).toBe(10)
   })
 
-  it('none of upstream\'s invented answers survives: \"\"-constants, the missing-udp-port crash, and the always-false decap all read ABSENT (:816-817, :877, :884, :894)', async () => {
+  it('none of upstream\'s invented answers survives: ""-constants, the missing-udp-port crash, and the always-false decap all read ABSENT (:816-817, :877, :884, :894)', async () => {
     const negated = await readTable(textOf(['interface Vxlan1', '   no vxlan source-interface', '   no vxlan udp-port', 'end']))
     expect(negated.get('Vxlan1')).toEqual({ name: 'Vxlan1', kind: 'Vxlan' })
     // Upstream on this shape: `source_interface: ''` and `multicast_group: ''` from the module
@@ -2820,7 +2820,7 @@ describe('InterfacesResource Vxlan field reads — M10d: the six pyeapi readers 
     expect(twoDigit.get('Vxlan1')).toEqual({ name: 'Vxlan1', kind: 'Vxlan' })
     const fourDigit = await readTable(textOf(['interface Vxlan1', '   vxlan multicast-group 1234.10.10.10', 'end']))
     expect(fourDigit.get('Vxlan1')).toEqual({ name: 'Vxlan1', kind: 'Vxlan' })
-    // Both quirked reads are faithful to `([\\d]{3}\\.[\\d]+\\.[\\d]+\\.[\\d]+)` (`:881-882`): exactly
+    // Both quirked reads are faithful to `([\d]{3}\.[\d]+\.[\d]+\.[\d]+)` (`:881-882`): exactly
     // three digits for the leading octet — EOS multicast groups (`224`-`239`) hide that upstream never
     // noticed, and even the unanchored search cannot rescue `1234.` because the class must land right
     // after the keyword space. The write guard (see the writes describe) refuses to CREATE this
@@ -2849,7 +2849,7 @@ describe('InterfacesResource Vxlan field reads — M10d: the six pyeapi readers 
     // sflowFromBlock lesson (divergence 16) applied to Vxlan.
     const both = await readTable(textOf(['interface Vxlan1', '   vxlan multicast-group decap', '   no vxlan multicast-group decap', 'end']))
     expect(both.get('Vxlan1')?.vxlan).toEqual({ multicastDecap: true })
-    // First body line in device order wins — divergence 3's already-pinned rule restated; upstream\'s
+    // First body line in device order wins — divergence 3's already-pinned rule restated; upstream's
     // order-blind XOR answers False at either order. A section writing both is not a shape EOS is
     // known to emit (same caveat as the shutdown pair).
   })
@@ -2866,8 +2866,8 @@ describe('InterfacesResource Vxlan field reads — M10d: the six pyeapi readers 
     expect([...(group?.vlans?.keys() ?? [])]).toEqual(['20', '10', '12'])
     // Insertion order of the nested Map == first appearance — an object could not pin this, its
     // canonical-integer keys would have surfaced as 10, 12, 20 regardless of write order (divergence 22).
-    // The fixture\'s `no vxlan vlan flood vtep`/`no vxlan vlan learn-restrict vtep` (:46/:48) prove the
-    // no-digit forms create nothing (fixture test above); a DIGIT behind `no` does — `vxlan vlan (\\d+)`
+    // The fixture's `no vxlan vlan flood vtep`/`no vxlan vlan learn-restrict vtep` (:46/:48) prove the
+    // no-digit forms create nothing (fixture test above); a DIGIT behind `no` does — `vxlan vlan (\d+)`
     // is unanchored at `:902` — and 12 joins as a profile with nothing under it. That is upstream's
     // entry creation verbatim; the `flood vtep`-bare line matches neither side's per-vid flood pattern
     // (both require the space the line does not have), so the list stays empty. (A running-config
@@ -2891,7 +2891,7 @@ describe('InterfacesResource Vxlan field reads — M10d: the six pyeapi readers 
     // number reading it back would silently round, which DR-059 refuses for every field in this file.
     const unreadable = await readTable(textOf(['interface Vxlan1', '   vxlan flood vtep fe80::1', 'end']))
     expect(unreadable.get('Vxlan1')).toEqual({ name: 'Vxlan1', kind: 'Vxlan' })
-    // `([\\d. ]+)` (`:915`) cannot match `fe80::1`, so the WHOLE line is unread — upstream then answers
+    // `([\d. ]+)` (`:915`) cannot match `fe80::1`, so the WHOLE line is unread — upstream then answers
     // its `values = list()` default (`:916-919`): a [] that says \"no VTEPs\" about a section that named
     // one. Absence is the honest answer (divergence 21); whether 4.28.13.1M floods to IPv6 VTEPs at
     // all is a device capture, not a claim (DR-032/DR-033), and the write guard below refuses to
@@ -2903,7 +2903,7 @@ describe('InterfacesResource Vxlan field reads — M10d: the six pyeapi readers 
     expect(thrown).toBeInstanceOf(ConfigParseError)
     expect((thrown as Error).message).toContain(`cannot read 'vxlan udp-port' in 'interface Vxlan1'`)
     expect((thrown as Error).message).toContain('not a decimal number')
-    // pyeapi's unanchored `vxlan udp-port (\\d+)` (`:893`) happily matches the leading `4` and answers
+    // pyeapi's unanchored `vxlan udp-port (\d+)` (`:893`) happily matches the leading `4` and answers
     // `udp_port: 4` — M9's ipinterfaces truncation (`ipinterfaces.py:126`) in a new place. The
     // keyword-anchored read + {@link numberFieldFromBlock} reports the line instead (rows 43/44's rule,
     // DR-059), and the whole table for that read throws naming the section (DR-059's \"report, never
@@ -2918,7 +2918,7 @@ describe('InterfacesResource Vxlan field reads — M10d: the six pyeapi readers 
     const bare = await readTable(textOf(['interface Vxlan9', '   no shutdown', 'end']))
     expect(bare.get('Vxlan9')).toEqual({ name: 'Vxlan9', kind: 'Vxlan', shutdown: false })
     // `Vx1` is not in the grammar (divergence 1/2's `kind: null` row stays), a Vlan section never
-    // carries the Vxlan group whatever its body claims — upstream\'s class map would likewise route
+    // carries the Vxlan group whatever its body claims — upstream's class map would likewise route
     // `Vlan20` to `BaseInterface` and never run a `_parse_vxlan`-anything (`:1093-1097`) — and a bare
     // Vxlan section keeps exactly the M10a answer `FLAT_CONFIG`'s `Vxlan5` rows already pin.
   })
@@ -2985,7 +2985,7 @@ describe('InterfacesResource Vxlan writes — M10d: interfaces.py:921-1090, the 
       ['enable', 'configure terminal', 'interface Vxlan1', 'default vxlan multicast-group decap'],
     ])
     expect(transport.callCount()).toBe(2)
-    // Upstream\'s pins for these two arms (`:463-467`, `:468-472`) show the legacy texts and were
+    // Upstream's pins for these two arms (`:463-467`, `:468-472`) show the legacy texts and were
     // accepted as ANY variant — same blind spot as the value arm; a success needs no fallback, so
     // exactly one transaction each is what the wire sees.
   })
@@ -3002,7 +3002,7 @@ describe('InterfacesResource Vxlan writes — M10d: interfaces.py:921-1090, the 
       ['enable', 'configure terminal', 'interface Vxlan1', 'no vxlan multicast-group decap'],
       ['enable', 'configure terminal', 'interface Vxlan1', 'default vxlan multicast-group decap'],
     ])
-    // Upstream\'s third branch spells the enable as the bare string list (`cmds = [string]`, `:990`) and
+    // Upstream's third branch spells the enable as the bare string list (`cmds = [string]`, `:990`) and
     // only routes through `command_builder` for default/disable (`:986-988`); `commandBuilder`'s
     // `{ value: true }` row produces the identical text (DR-037's table), so one keyword, three modes.
   })
@@ -3022,10 +3022,10 @@ describe('InterfacesResource Vxlan writes — M10d: interfaces.py:921-1090, the 
     await expectRefusal(() => interfaces.setUdpPort('Vxlan1', 0), 'invalid vxlan udp-port value', 'positive integer')
     await expectRefusal(() => interfaces.setUdpPort('Vxlan1', 4789.5), 'invalid vxlan udp-port value')
     await expectRefusal(() => interfaces.setUdpPort('Vxlan1', '1024' as unknown as number), 'invalid vxlan udp-port value')
-    // Upstream\'s test hands the string `'1024'` (`:488-492`) and `command_builder` interpolates it —
+    // Upstream's test hands the string `'1024'` (`:488-492`) and `command_builder` interpolates it —
     // here the number keeps the write/read pair type-honest (the reader answers a number, divergence
     // 21's conversion); the floor exists so a 0 or a fraction cannot compose a line that drops on
-    // read-back (`vni/udp-port (\\d+)`, `:893`). The platform\'s own port range is the device\'s
+    // read-back (`vni/udp-port (\d+)`, `:893`). The platform's own port range is the device's
     // (DR-032/DR-057 — no 4789/8472 magic here either; 1024 is just the number upstream pins).
   })
 
@@ -3046,13 +3046,13 @@ describe('InterfacesResource Vxlan writes — M10d: interfaces.py:921-1090, the 
     expect(transport.callCount()).toBe(4)
     // The four upstream pins verbatim: `add_vtep('Vxlan1','1.1.1.1')` (`:513-517`), `vlan='10'`
     // (`:518-522`), and the two remove spells (`:523-531`). A numeric scope (the `10` in the fourth
-    // call) interpolates to the same text Python\'s format() gives — pyeapi stringifies whatever it is
+    // call) interpolates to the same text Python's format() gives — pyeapi stringifies whatever it is
     // handed at `:1033`/`:1055`. Upstream passes the command as a bare string to
     // `configure_interface` (`:1034`/`:1056`); `configureInterface` wraps the one-element list the same
     // way (abstract.py:176-177 was already ported for the base verbs).
   })
 
-  it('the scope argument\'s truthiness is a pinned table: undefined, "" and 0 take the bare arm; the string \"0\" scopes to vlan 0 (:1030/:1052)', async () => {
+  it('the scope argument\'s truthiness is a pinned table: undefined, "" and 0 take the bare arm; the string "0" scopes to vlan 0 (:1030/:1052)', async () => {
     const transport = configTransport(FLAT_CONFIG)
     const bare = pair('Vxlan1', 'vxlan flood vtep add 2.2.2.2')
     const zero = pair('Vxlan1', 'vxlan vlan 0 flood vtep add 2.2.2.2')
@@ -3083,7 +3083,7 @@ describe('InterfacesResource Vxlan writes — M10d: interfaces.py:921-1090, the 
     expect(sentAsText(transport)).toEqual([['enable', 'configure terminal', 'interface Vxlan1', 'vxlan vlan add 10 vni 10']])
     // Upstream composes with `%s` on both ints (`:1072`) and its test passes ints 10/10 (`:503-507`) —
     // same command text from the typed numbers here. The add-vs-read asymmetry (the config line the
-    // reader parses has no `add`, cf. running_config.vxlan:43) is upstream\'s, documented on the verb.
+    // reader parses has no `add`, cf. running_config.vxlan:43) is upstream's, documented on the verb.
     const interfaces = new Node(transport).interfaces
     await expectRefusal(() => interfaces.updateVlan('Vxlan1', 0, 10), 'invalid vlan')
     await expectRefusal(() => interfaces.updateVlan('Vxlan1', 4095, 10), 'invalid vlan')
@@ -3148,10 +3148,10 @@ describe('InterfacesResource Vxlan writes — M10d: interfaces.py:921-1090, the 
     await expectRefusal(() => interfaces.addVtep('Vxlan1', 1 as unknown as string), 'invalid vxlan vtep')
     await expectRefusal(() => interfaces.updateVlan('Vxlan1', 10, '100' as unknown as number), 'invalid vni value')
     expect(transport.sent()).toEqual([])
-    // Every refusal names what its own reader cannot reproduce: the token pattern `([^\\s]+)` (:876),
+    // Every refusal names what its own reader cannot reproduce: the token pattern `([^\s]+)` (:876),
     // the group octet shape (:881-882 — `'decap'` is the SUB-FORM keyword, served by
-    // setMulticastDecap, never a group value), the flood class `([\\d. ])` (:915), the scope token
-    // `vxlan vlan (\\d+)` (:902). Pyeapi itself validates none of this (:921-1090 interpolate raw) —
+    // setMulticastDecap, never a group value), the flood class `([\d. ])` (:915), the scope token
+    // `vxlan vlan (\d+)` (:902). Pyeapi itself validates none of this (:921-1090 interpolate raw) —
     // the guards are client policy, the device remains the authority (divergence 24, DR-053).
   })
 
