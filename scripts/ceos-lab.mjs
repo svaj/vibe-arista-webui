@@ -787,6 +787,25 @@ async function cmdUp(cfg) {
     const bootstrapTranscript = bootstrapLab(names.container, creds)
     const bootstrapMs = Date.now() - bootstrapStart
 
+    // Issue #62: the captures the UI screens need only answer in the configured shape,
+    // so `up` now provisions that shape before anything is read. A refusal here lands in
+    // the catch below: teardown runs, no probe is taken, no half-configured capture set exists.
+    const provisionStart = Date.now()
+    const provision = provisionLab(names.container)
+    const provisionMs = Date.now() - provisionStart
+    if (!provision.ok) {
+      const detail =
+        provision.stage === 'verification'
+          ? `show vlan after commit is missing VLAN(s) ${provision.missingVlans.join(', ')} — the commit transcript said more than the device did`
+          : provision.fatal.map((e) => `${e.command} -> ${e.line}`).join('; ')
+      refuse(
+        `lab provisioning (issue #62, session ${PROVISION_SESSION}) failed during ${provision.stage}: ${detail}. ` +
+          'The session was aborted (staging path) or the run is being destroyed (verification path), the running ' +
+          'config was never persisted, and the harness refuses rather than capture a half-provisioned container.',
+        EXIT.internal,
+      )
+    }
+
     const versionJson = cliJson(names.container, 'show version')
     const interfacesJson = cliJson(names.container, 'show interfaces status')
     const httpCommandsJson = cliJson(names.container, 'show management api http-commands')
@@ -811,6 +830,11 @@ async function cmdUp(cfg) {
       cliNotReadyObservations: cli.observations,
       bootstrapMs,
       bootstrapTranscript: redactCopy(bootstrapTranscript),
+      provisionMs,
+      provisionSession: PROVISION_SESSION,
+      provisionTolerated: provision.ok ? provision.tolerated : [],
+      provisionTranscript: redactCopy(`${provision.staged}\n--commit--\n${provision.committed ?? ''}`.slice(0, 6000)),
+      pendingSession: PENDING_SESSION,
       dockerIps,
       versionJson,
       interfacesJson,
@@ -841,6 +865,14 @@ async function cmdUp(cfg) {
             eosCliAttempts: cli.attempt,
             cliNotReadyObservations: cli.observations,
             bootstrapSeconds: +secs(bootstrapMs),
+            provisioningSeconds: +secs(provisionMs),
+          },
+          provisioning: {
+            session: PROVISION_SESSION,
+            applied: true,
+            pendingSessionLeftOpen: PENDING_SESSION,
+            toleratedRefusals: provision.ok ? provision.tolerated.map((e) => `${e.command} -> ${e.line}`) : [],
+            note: 'representative config per issue #62; container-side only, never persisted, discarded with the container',
           },
           eosVersionFromCli: identityFromShowVersion(versionJson),
           eosInterfacesObserved: Object.keys(interfacesJson?.interfaceStatuses ?? interfacesJson?.interfaces ?? {}),
@@ -892,6 +924,184 @@ function bootstrapLab(container, creds) {
     .filter((line) => !/username\s+\S+\s+privilege/i.test(line))
     .join('\n')
     .slice(0, 3000)
+}
+
+/* ------------------------------------------- lab provisioning (issue #62) */
+
+/**
+ * Representative config applied to the disposable node after eAPI bootstrap, so the
+ * commands the UI screens read answer in the *configured* shape instead of the empty
+ * models the 2026-11-06 run (`lab-811108-5dcd01`) recorded: `interfaceStatuses` was
+ * empty, `show port-channel 1 all-ports` answered `{"portChannels":{}}`,
+ * `show interfaces switchport` carried no groups, and whole command families had no
+ * capture at all (issue #62's gap list).
+ *
+ * The apply runs in a **named config session**, staged in full and committed only if
+ * the staging transcript carries no `%` error for a required command. The session
+ * sandbox is what gives this all-or-nothing semantics: a failed apply `abort`s and
+ * the running config stays exactly at bootstrap, so the harness never captures a
+ * half-provisioned container and presents its mixed shapes as device behavior. On a
+ * fatal staging error this refuses the run (exit 1); the caller's teardown still owns
+ * the container.
+ *
+ * Deliberate non-goals, per #62's rules: the management path, `management api
+ * http-commands`, usernames, and `copy running-config startup-config` are all untouched
+ * (docs/CEOS.md: bootstrap afresh after recreating the lab), and the MLAG domain stays
+ * OFF on a single node (#64/#84's foot-gun rule). This is run *setup*, not a test write,
+ * so it sits outside DR-035's test write policy — but keeps its no-persistence half.
+ *
+ * Port budget, settled from the 2026-11-06 captures: this cEOS-lab profile exposes
+ * exactly **two** front-panel ports (`Et1`/`Et2`, type `EbraTestPhyPort`), so Eth2
+ * carries the LACP membership and the Port-Channel itself is the trunk; Eth1 carries
+ * the configured-L2 access evidence (the configured-port half DR-018/DR-029 still owed).
+ */
+const PROVISION_SESSION = 'lab-provision'
+const PENDING_SESSION = 'lab-pending-capture'
+
+/**
+ * The staging lines, in apply order. Indentation mirrors the CLI's sub-mode style
+ * used by `bootstrapLab`, so the transcript is readable to a reviewer.
+ */
+const PROVISION_STAGING = [
+  'vlan 10',
+  'vlan 100',
+  'vlan 110',
+  'interface Vlan100',
+  '   name LAB-ACCESS',
+  '   ip address 10.0.100.1/24',
+  '   no shutdown',
+  '   vrrp 1 ip 10.0.100.254',
+  '   ip access-group EXT-ACL-1 in',
+  'exit',
+  'interface Vlan110',
+  '   name LAB-SPARE',
+  '   ip address 10.0.110.1/24',
+  '   no shutdown',
+  'exit',
+  // STP enabled globally before the per-port guards (the image already ships `spanning-tree mode mstp`).
+  'spanning-tree',
+  // Configured access port: switchport-model content + per-port STP guards. The ACL attachment lives on
+  // the routed SVI instead — an `ip access-group` on an EOS switched port is not something to gamble on.
+  'interface Ethernet1',
+  '   switchport',
+  '   switchport mode access',
+  '   switchport access vlan 100',
+  '   spanning-tree portfast edge',
+  '   spanning-tree bpduguard enable',
+  '   no shutdown',
+  'exit',
+  // LACP: with two ports only, the member is Eth2 and Po1 is the trunk.
+  'interface Ethernet2',
+  '   no shutdown',
+  '   channel-group 1 mode active',
+  'exit',
+  'interface Port-Channel1',
+  '   description LAB-LACP',
+  '   switchport mode trunk',
+  '   switchport trunk native vlan 10',
+  '   switchport trunk allowed vlan 100-110',
+  '   switchport trunk group LABGRP',
+  'exit',
+  // Routing + a static next hop so `show ip route` / `show ip interface brief` answer as configured.
+  'ip routing',
+  'ip route 10.20.0.0/24 10.0.100.2',
+  // NTP: an unreachable server is intended — S12 reads the *shape* (`associations` entries, unsynced status).
+  'ntp server 10.20.0.2',
+  // Standard + extended ACLs; a counter-generating attachment already exists on Eth1.
+  'ip access-list standard STD-ACL-1',
+  '   10 permit 10.0.0.0/8',
+  'exit',
+  'ip access-list extended EXT-ACL-1',
+  '   10 permit tcp any host 10.0.100.1 eq 443',
+  '   20 permit icmp any any',
+  'exit',
+]
+
+/**
+ * Commands whose refusal is a **finding**, not a failure — they ride along to probe
+ * capability, and the batch must not die on them. `switchport trunk group` is the
+ * DR-028 existence question (DECISIONS open item 4); the real verdict for the SKU is
+ * the 7050TX sweep (#14 §3), and an answer either way on cEOS lands in the staging
+ * transcript. VRRP is a bonus shape for the `show vrrp` capture on the same basis.
+ */
+const PROVISION_TOLERATED = new Set(['switchport trunk group LABGRP', 'vrrp 1 ip 10.0.100.254'])
+
+/**
+ * Map each `%`-error line in a staging transcript back to the staging command that
+ * the transcript echoed just before it (Cli echoes the typed line; `bootstrapLab`
+ * relies on the same echo behavior for its credential filter). An error that cannot
+ * be attributed to a known staging line is kept as unattributed so it stays fatal —
+ * silently tolerating an unknown failure is the worse failure mode.
+ * @param {string} transcript
+ * @param {readonly string[]} staging
+ */
+function findStagingErrors(transcript, staging) {
+  const trimmed = staging.map((c) => c.trim())
+  /** @type {{command: string, line: string}[]} */
+  const errors = []
+  let lastCommand = null
+  for (const raw of transcript.split('\n')) {
+    const line = raw.trim()
+    if (!line) continue
+    if (line.startsWith('%')) {
+      errors.push({ command: lastCommand ?? '(unattributed)', line })
+      continue
+    }
+    for (const cmd of trimmed) {
+      if (line.includes(cmd)) {
+        lastCommand = cmd
+        break
+      }
+    }
+  }
+  return errors
+}
+
+/**
+ * Provision the representative config. Returns `{ok:true, tolerated}` after a
+ * verified commit (the check that actually proves apply: `show vlan` must list the
+ * new VLANs, independent of the transcript), or `{ok:false, ...}` with the session
+ * already aborted on the staging path.
+ * @param {string} container
+ */
+function provisionLab(container) {
+  const staged = cliScript(container, [`configure session ${PROVISION_SESSION}`, ...PROVISION_STAGING], 180_000)
+  const errors = findStagingErrors(staged, PROVISION_STAGING)
+  const fatal = errors.filter((e) => !PROVISION_TOLERATED.has(e.command))
+  if (fatal.length > 0) {
+    const aborted = cliScript(container, [`configure session ${PROVISION_SESSION}`, 'abort', 'end'])
+    return { ok: false, stage: /** @type {'staging' | 'verification'} */ ('staging'), errors, fatal, staged, aborted, missingVlans: [] }
+  }
+  const committed = cliScript(container, [`configure session ${PROVISION_SESSION}`, 'commit', 'end'], 120_000)
+  // Independent proof of apply: parse the VLAN model back over the CLI, never trust the
+  // commit transcript alone (a Cli echo can render success for a partial apply).
+  const vlanModel = cliJson(container, 'show vlan')
+  const present = Object.keys(vlanModel?.vlans ?? {}).map((v) => String(v))
+  const missingVlans = ['10', '100', '110'].filter((v) => !present.includes(v))
+  if (missingVlans.length > 0) {
+    return { ok: false, stage: 'verification', errors, fatal: [], staged: staged + '\n' + committed, aborted: '', missingVlans }
+  }
+  const pending = openPendingSession(container)
+  return {
+    ok: true,
+    tolerated: errors.filter((e) => PROVISION_TOLERATED.has(e.command)),
+    staged,
+    committed,
+    pending,
+  }
+}
+
+/**
+ * Leave a zero-write **open** config session behind on purpose: `show configuration
+ * sessions [+detail]` (a #62 capture) otherwise has nothing to list, and the field set
+ * `ConfigSessionSummary` models (§5 row 70's `maxOpenSessions`/start-time questions) is
+ * only visible when the device reports at least one session. The session stages a
+ * non-committed change (a hostname the run never applies) and is never committed or
+ * aborted — it disappears with the container. Running-config is untouched by this.
+ * @param {string} container
+ */
+function openPendingSession(container) {
+  return cliScript(container, [`configure session ${PENDING_SESSION}`, 'hostname lab-pending-not-committed'])
 }
 
 /* ------------------------------------------------------------- probe command */
@@ -1152,6 +1362,49 @@ const CAPTURE_CATALOG = [
     id: 'ceos-lab-capability',
     note: 'the exact command `src/resources/interfaces.ts` sends for `getMembers` (the shape row 125 owed to M12). The 2026-11-06 run settled it: an unconfigured group answers `{"portChannels":{}}` over eAPI, which is why `getMembers` yields `[]` while the CLI says "Port-Channel1 not configured as LAG"',
   },
+  /* ---- issue #62: configured-container re-capture batch. Every family below was
+   * either MISSING (no capture at all) or answered EMPTY because `lab-811108-5dcd01`
+   * ran against an unconfigured node. The `provisionLab` block above exists precisely
+   * so these commands answer the way they do on a configured switch; the negative
+   * results that stay negative are still the finding, recorded verbatim. ---- */
+  {
+    command: 'show lag',
+    format: 'json',
+    id: 'ceos-lab-capability',
+    note: 'populated by the provisioned Po1/Eth2 LACP pair; the reader of S5 (#75) pins its ShowContract key on this reply',
+  },
+  {
+    command: 'show port-channel summary',
+    format: 'json',
+    id: 'ceos-lab-capability',
+    note: 'named explicitly by #62; the 2026-11-06 observation that it is deprecated in favor of `show port-channel dense` predates any configured Po, so the configured answer (or refusal) is now what is on record',
+  },
+  { command: 'show spanning-tree', format: 'json', id: 'ceos-lab-capability', note: 'global STP enabled + portfast/bpduguard on Eth1 by the provisioner; feeds B3 (#88) and S15 (#85)' },
+  {
+    command: 'show spanning-tree detail',
+    format: 'json',
+    id: 'ceos-lab-capability',
+    note: '#62 asks for detail "if accepted" — acceptance is exactly what is unknown, so a 1002 here is a recorded negative, not a skipped file',
+  },
+  { command: 'show ntp status', format: 'json', id: 'ceos-lab-capability', note: 'configured-but-unreachable server is deliberate: S12 (#82) reads the unsynced shape' },
+  { command: 'show ntp associations', format: 'json', id: 'ceos-lab-capability' },
+  {
+    command: 'show ip interface brief',
+    format: 'json',
+    id: 'ceos-lab-capability',
+    note: 'the text capture exists from 2026-11-06; the json half was never recorded — #62 closes that gap against configured Vlan100/Vlan110',
+  },
+  { command: 'show access-lists', format: 'json', id: 'ceos-lab-capability', note: 'counters half of S13 (#83); STD-ACL-1/EXT-ACL-1 configured and EXT-ACL-1 attached inbound on the routed Vlan100 SVI' },
+  {
+    command: 'show configuration sessions',
+    format: 'json',
+    id: 'ceos-lab-capability',
+    note: 'captured while `lab-pending-capture` is deliberately left OPEN (zero committed effect) so the field set ConfigSessionSummary models — the §5 row 70 / B4 (#89) questions about maxOpenSessions, maxSavedSessions and start-time fields — has a listed session to model. The 7050TX half of this stays in #14 §3',
+  },
+  { command: 'show configuration sessions detail', format: 'json', id: 'ceos-lab-capability', note: 'verbatim per #62; feeds the same field-set questions' },
+  { command: 'show vrf', format: 'json', id: 'ceos-lab-capability', note: 'read-only prerequisite of B6 (#90); empty/1002 answers are recorded as negative results, never files' },
+  { command: 'show ip route', format: 'json', id: 'ceos-lab-capability', note: 'populated by `ip routing` + the Static SVI connected routes + the provisioned static route; prerequisite of S10 (#80)' },
+  { command: 'show vrrp', format: 'json', id: 'ceos-lab-capability', note: 'single-node VRRP group 1 on Vlan100 from the provisioner; read-only prerequisite named in wave-3 notes' },
 ]
 
 /**
