@@ -134,3 +134,24 @@ tbody tr:last-child td { border-bottom: 0; }
 .state-pill-caution { color: var(--warning); background: var(--warning-soft); }
 .state-pill-risk { color: var(--danger); border-color: #e2b9b1; background: #fff5f2; }
 .state-pill-mode { color: var(--accent-dark); background: var(--accent-soft); }
+
+/* Confirm dialog (#66): native <dialog> prompt replacing window.confirm. Appended last so these
+   rules win over the global `button`/`h2` declarations above without touching earlier blocks. */
+.confirm-dialog { width: min(460px, calc(100vw - 44px)); padding: 24px; color: var(--ink); border: 1px solid var(--line); border-top: 3px solid var(--accent); border-radius: 6px; background: var(--surface); box-shadow: 0 18px 44px rgba(23, 39, 40, 0.22); animation: enter 200ms ease-out both; }
+.confirm-dialog::backdrop { background: rgba(23, 39, 40, 0.58); }
+.confirm-dialog-title { margin: 0 0 10px; font-size: 21px; }
+.confirm-dialog-subject { margin: 0 0 12px; color: var(--muted); font-size: 12px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
+.confirm-dialog-subject code { padding: 3px 7px; color: var(--ink); border: 1px solid var(--line); border-radius: 3px; background: var(--surface-muted); font-family: var(--mono); font-size: 12px; font-weight: 650; letter-spacing: 0; text-transform: none; overflow-wrap: anywhere; }
+.confirm-dialog-body { margin: 0 0 20px; color: var(--ink); font-size: 14px; overflow-wrap: anywhere; }
+.confirm-dialog-actions { display: flex; justify-content: flex-end; gap: 10px; }
+.confirm-cancel-button { color: var(--ink); border-color: var(--line); background: var(--surface); }
+.confirm-cancel-button:hover:not(:disabled) { background: var(--surface-muted); border-color: #9aaba5; }
+.confirm-action-button { color: #fff; background: var(--accent); }
+.confirm-action-button:hover:not(:disabled) { background: var(--accent-dark); }
+.confirm-action-button.is-destructive { background: var(--danger); }
+.confirm-action-button.is-destructive:hover:not(:disabled) { background: #8a2f29; }
+.confirm-dialog-actions button:focus-visible { outline: 3px solid #22735f; outline-offset: 2px; }
+
+@media (max-width: 560px) {
+  .confirm-dialog-actions { align-items: stretch; flex-direction: column-reverse; }
+}

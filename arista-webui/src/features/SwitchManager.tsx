@@ -2,6 +2,10 @@ import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import type { ConfigSession, ConfigSessionSummary, InterfaceStatus, Node, Switchport, Vlan } from '@devhax-heavy-industries/arista-eapi'
 
+// Device writes are gated behind an accessible native-<dialog> prompt instead of the blocking,
+// unstyled `window.confirm` (#66): the awaiting flow only reaches eAPI after an explicit click.
+import { ConfirmProvider, useConfirm } from '../shared/use-confirm'
+
 // The M13 screen contracts ride this file into the compilation (ARCHITECTURE §9.1 augmentation);
 // `node.show('version')` below types through `ShowContracts['version']`.
 import type { ShowVersionReply } from '../eapi/show-contracts'
@@ -21,7 +25,15 @@ const writableVlan = (vlan: Vlan) => Number.isInteger(vlan.id) && vlan.id >= 1 &
 const identityFrom = (version: ShowVersionReply): DeviceIdentity =>
   ({ hostname: version.hostname ?? version.modelName, version: version.version, model: version.modelName })
 
-export function SwitchManager({ node, proxyConfigured = true }: { readonly node: Client | undefined; readonly proxyConfigured?: boolean }) {
+type SwitchManagerProps = { readonly node: Client | undefined; readonly proxyConfigured?: boolean }
+
+/** Hosts the single confirm dialog used by this screen's three device-writing actions (#66). */
+export function SwitchManager(props: SwitchManagerProps) {
+  return <ConfirmProvider><SwitchManagerWorkspace {...props} /></ConfirmProvider>
+}
+
+function SwitchManagerWorkspace({ node, proxyConfigured = true }: SwitchManagerProps) {
+  const confirm = useConfirm()
   const [reloadKey, setReloadKey] = useState(0)
   const [load, setLoad] = useState<LoadState>(() => proxyConfigured && node !== undefined
     ? { kind: 'loading' }
@@ -99,7 +111,8 @@ export function SwitchManager({ node, proxyConfigured = true }: { readonly node:
   }
 
   async function abortDraft() {
-    if (busy || draft === undefined || !draftOpen || !window.confirm(`Abort staged changes in session ${draft.session.name}?`)) return
+    if (busy || draft === undefined || !draftOpen) return
+    if (!await confirm({ title: 'Abort staged changes', body: `Abort staged changes in session ${draft.session.name}?`, confirmLabel: 'Abort staged changes', destructive: true, subject: draft.session.name })) return
     setFailure('')
     setBusy(true)
     try {
@@ -114,7 +127,7 @@ export function SwitchManager({ node, proxyConfigured = true }: { readonly node:
 
   async function commitDraft() {
     if (busy || draft?.diff === undefined || !draft.session.hasDiffBeenRead() || draft.commitAttempted) return
-    if (!window.confirm(`Commit session ${draft.session.name}? This changes running-config only.`)) return
+    if (!await confirm({ title: 'Commit to running-config', body: `Commit session ${draft.session.name}? This changes running-config only.`, confirmLabel: 'Commit to running-config', destructive: true, subject: draft.session.name })) return
     setDraft({ ...draft, commitAttempted: true })
     setFailure('')
     setNotice('Committing the reviewed change to running-config…')
@@ -130,7 +143,8 @@ export function SwitchManager({ node, proxyConfigured = true }: { readonly node:
   }
 
   async function abortPending(session: ConfigSessionSummary) {
-    if (busy || node === undefined || session.state !== 'pending' || !window.confirm(`Abort pending device session ${session.name}? Its staged changes will be discarded.`)) return
+    if (busy || node === undefined || session.state !== 'pending') return
+    if (!await confirm({ title: 'Abort pending device session', body: `Abort pending device session ${session.name}? Its staged changes will be discarded.`, confirmLabel: 'Abort pending session', destructive: true, subject: session.name })) return
     setFailure('')
     setNotice('')
     setBusy(true)

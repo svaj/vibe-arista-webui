@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ConfigSession } from '@devhax-heavy-industries/arista-eapi'
@@ -93,21 +93,31 @@ describe('SwitchManager', () => {
 
   it('requires explicit commit confirmation and does not persist startup-config', async () => {
     const user = userEvent.setup()
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
     const { node, session } = makeClient()
     render(<SwitchManager node={node} />)
 
     await user.click(await screen.findByRole('button', { name: 'Preview change' }))
-    await user.click(await screen.findByRole('button', { name: 'Commit to running-config' }))
+    const commitTrigger = screen.getByRole('button', { name: 'Commit to running-config' })
+    await user.click(commitTrigger)
 
-    expect(confirm).toHaveBeenCalledWith(expect.stringContaining('This changes running-config only'))
+    // #66: the prompt is an accessible native <dialog>, not the blocking window.confirm.
+    const prompt = await screen.findByRole('dialog', { name: 'Commit to running-config' })
+    expect(within(prompt).getByText(/This changes running-config only/u)).toBeInTheDocument()
+    // The destructive copy names the session it acts on, inside the accessible tree.
+    expect(within(prompt).getByText('ui-test-session')).toBeInTheDocument()
+    // Enter cannot reach the commit: the dialog opens with focus on Cancel.
+    expect(within(prompt).getByRole('button', { name: 'Cancel' })).toHaveFocus()
+    expect(session.commit).not.toHaveBeenCalled()
+
+    await user.click(within(prompt).getByRole('button', { name: 'Commit to running-config' }))
+
     expect(session.commit).toHaveBeenCalledOnce()
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     expect(await screen.findByRole('status')).toHaveTextContent('Startup-config was not changed.')
   })
 
   it('offers confirmed recovery only for sessions marked pending', async () => {
     const user = userEvent.setup()
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
     const { node } = makeClient({
       listSessions: vi.fn(async () => ({ sessions: [
         { name: 'stale-pending', state: 'pending', instances: [] },
@@ -119,10 +129,26 @@ describe('SwitchManager', () => {
     expect(await screen.findByText('unknown-state')).toBeInTheDocument()
     const abortButtons = screen.getAllByRole('button', { name: 'Abort pending session' })
     expect(abortButtons).toHaveLength(1)
-    await user.click(abortButtons[0]!)
 
-    expect(confirm).toHaveBeenCalledWith(expect.stringContaining('stale-pending'))
+    // Dismissing the prompt leaves the device untouched (#66).
+    await user.click(abortButtons[0]!)
+    const prompt = await screen.findByRole('dialog', { name: 'Abort pending device session' })
+    expect(within(prompt).getByText('stale-pending')).toBeInTheDocument()
+    expect(within(prompt).getByText(/staged changes will be discarded/u)).toBeInTheDocument()
+    await user.click(within(prompt).getByRole('button', { name: 'Cancel' }))
+    expect(node.abortSession).not.toHaveBeenCalled()
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    // Dismissing hands keyboard focus back to the session row the operator was on.
+    expect(abortButtons[0]).toHaveFocus()
+
+    // Aborting requires an explicit click on the danger confirm, and then runs exactly once.
+    await user.click(screen.getByRole('button', { name: 'Abort pending session' }))
+    const confirmPrompt = await screen.findByRole('dialog', { name: 'Abort pending device session' })
+    expect(within(confirmPrompt).getByRole('button', { name: 'Abort pending session' })).toHaveClass('is-destructive')
+    await user.click(within(confirmPrompt).getByRole('button', { name: 'Abort pending session' }))
+
     expect(node.abortSession).toHaveBeenCalledWith('stale-pending')
+    expect(node.abortSession).toHaveBeenCalledOnce()
     expect(await screen.findByRole('status')).toHaveTextContent('was aborted')
   })
 
