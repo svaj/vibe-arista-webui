@@ -381,8 +381,11 @@
  *     keeps `^ *vxlan flood vtep +([\d. ]+)$` (`:915`), whose character class means a VTEP written in
  *     any other shape makes the **whole line** unread, exactly as upstream, and the field then reports
  *     absent. Two upstream behaviours are replaced rather than ported: the `frozenset` round-trip at
- *     `:901-902` gives an **arbitrary** per-run iteration order, so `vlans` here is keyed by
- *     first-appearance in the section (deterministic and reviewable — pinned order); and reads run over
+ *     `:901-902` gives an **arbitrary** per-run iteration order, so `vlans` here is a nested
+ *     `ReadonlyMap` keyed by first-appearance in the section (the `acl.ts:266`/`mlag.ts:183` shape —
+ *     determinism is not the question, faithfulness to the DEVICE order is, and a plain object could not
+ *     carry it anyway: ES ordering rules sort canonical-integer-looking keys ahead of insertion order);
+ *     and reads run over
  *     parsed **body lines**, not the raw block string, so a match can never span a line boundary the way
  *     `re.search` over `get_block` output can. The `''`/`{}`/`[]`/crash answers belong to divergence 21;
  *     the **command texts** all stay upstream's verbatim.
@@ -560,11 +563,14 @@ export interface InterfaceVxlanFields {
   readonly udpPort?: number
   /**
    * The vlan→VXLAN map, keyed by the decimal run exactly as the section spells it (`vxlan vlan <vid>`,
-   * findall ported from `:902`), in **first-appearance order** — replacing the arbitrary per-run order
-   * of upstream's `frozenset` round-trip (`:901-902`, divergence 22). A vid found with no `vni` line
-   * carries no {@link InterfaceVxlanVlan.vni} (upstream answers `None` at `:906`, DR-076's rule).
+   * findall ported from `:902`), in **insertion order = first appearance in the section** — a `Map`
+   * precisely because a plain object would silently reorder numeric-looking keys (the ES spec sorts
+   * canonical integer keys first), and upstream's `frozenset` round-trip (`:901-902`) answers in an
+   * arbitrary per-run order (divergence 22). Same nested-`ReadonlyMap` shape `acl.ts:266`, `mlag.ts:183`
+   * and `routemaps.ts` use inside a record. A vid found with no `vni` line carries no
+   * {@link InterfaceVxlanVlan.vni} (upstream answers `None` at `:906`, DR-076's rule).
    */
-  readonly vlans?: Readonly<Record<string, InterfaceVxlanVlan>>
+  readonly vlans?: ReadonlyMap<string, InterfaceVxlanVlan>
   /**
    * The global `vxlan flood vtep <list>` entries, split on single spaces exactly as upstream does
    * (`match.group(1).split(' ')`, `:918`) under that line's digits-and-dots-only character class
@@ -1311,9 +1317,10 @@ function multicastDecapFromBlock(block: ConfigBlock): boolean | undefined {
 /**
  * The vlan→VXLAN map from the unanchored `vxlan vlan (\\d+)` findall ported verbatim (`:902`) — so a vid
  * named by ANY such line, including the fixture's `no vxlan vlan 10 …`-shaped neighbours, gets a
- * profile. Key order is **first appearance in the section**: upstream iterates a `frozenset`
- * (`:901`, `:903`) whose order is arbitrary per run, and an arbitrary order in a reviewable table is a
- * diff-hazard (divergence 22). Per vid, `vni` keeps upstream's unanchored first-match read
+ * profile. Key order is **first appearance in the section**, carried by Map insertion order — upstream
+ * iterates a `frozenset` (`:901`, `:903`) whose order is arbitrary per run, and an arbitrary order in a
+ * reviewable table is a diff-hazard (divergence 22; a plain object would reorder the decimal keys by
+ * the ES integer-key rule instead). Per vid, `vni` keeps upstream's unanchored first-match read
  * (`:905`) converted with {@link numberFieldFromBlock}'s rule (upstream stores the string group, `:906`
  * — divergence 21), and the per-VLAN flood list space-splits the first
  * `vxlan vlan <vid> flood vtep …` line exactly as `:909-910` does — `[]` when the vid exists but names
@@ -1321,7 +1328,7 @@ function multicastDecapFromBlock(block: ConfigBlock): boolean | undefined {
  * 21). A vid of `0` is kept as written: upstream's findall has no range check, and normalising it would
  * be an invented device rule.
  */
-function vlanMappingsFromBlock(lines: readonly ConfigLine[], sectionKey: string): Record<string, InterfaceVxlanVlan> | undefined {
+function vlanMappingsFromBlock(lines: readonly ConfigLine[], sectionKey: string): Map<string, InterfaceVxlanVlan> | undefined {
   const vids: string[] = []
   for (const line of lines) {
     for (const match of line.text.matchAll(VXLAN_VLAN_ID_READ)) {
@@ -1332,14 +1339,14 @@ function vlanMappingsFromBlock(lines: readonly ConfigLine[], sectionKey: string)
     }
   }
   if (vids.length === 0) return undefined
-  const vlans: Record<string, InterfaceVxlanVlan> = {}
+  const vlans = new Map<string, InterfaceVxlanVlan>()
   for (const vid of vids) {
     const vni = numberFieldFromBlock(firstGroupOf(lines, new RegExp(`vxlan vlan ${vid} vni ([0-9]+)`, 'u')), `vxlan vlan ${vid} vni`, sectionKey)
     const flood = firstGroupOf(lines, new RegExp(`vxlan vlan ${vid} flood vtep (.*)$`, 'u'))
-    vlans[vid] = {
+    vlans.set(vid, {
       ...(vni === undefined ? {} : { vni }),
       floodList: flood === undefined ? [] : flood.split(' '),
-    }
+    })
   }
   return vlans
 }
