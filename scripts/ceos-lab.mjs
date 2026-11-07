@@ -209,6 +209,22 @@ function cliJson(container, cmd) {
   return JSON.parse(out.slice(start))
 }
 
+/**
+ * Feed `Cli` WITHOUT throwing on a non-zero Cli exit. `Cli -p 15` exits 1 when any
+ * line of the transcript errored (observed 2026-11-07: one `% Unavailable command`
+ * in a 46-line staging script killed `docker exec` through {@link docker} at exit 8,
+ * before any verdict could be read). For transcripts whose errors ARE the finding,
+ * this returns the merged output instead of refusing.
+ * @param {string} container @param {string[]} commands @param {number} [timeoutMs]
+ */
+function cliScriptOpt(container, commands, timeoutMs = 90_000) {
+  const res = dockerOpt(['exec', '-i', container, 'Cli', '-p', '15'], {
+    input: `${commands.join('\n')}\n`,
+    timeoutMs,
+  })
+  return `${res.stdout ?? ''}${res.stderr ?? ''}`
+}
+
 /** @param {string} runId */
 function containerName(runId) {
   return `${NAME_PREFIX}${runId}`
@@ -963,25 +979,33 @@ const PENDING_SESSION = 'lab-pending-capture'
  * used by `bootstrapLab`, so the transcript is readable to a reviewer.
  */
 const PROVISION_STAGING = [
+  // VLAN names belong in vlan sub-mode (probed 2026-11-07: `name …` under
+  // `interface Vlan…` answers `% Invalid input`); the SVI stanza carries addressing only.
   'vlan 10',
+  '   name LAB-NATIVE',
+  'exit',
   'vlan 100',
-  'vlan 110',
-  'interface Vlan100',
   '   name LAB-ACCESS',
+  'exit',
+  'vlan 110',
+  '   name LAB-SPARE',
+  'exit',
+  'interface Vlan100',
   '   ip address 10.0.100.1/24',
   '   no shutdown',
   '   vrrp 1 ip 10.0.100.254',
   '   ip access-group EXT-ACL-1 in',
   'exit',
   'interface Vlan110',
-  '   name LAB-SPARE',
   '   ip address 10.0.110.1/24',
   '   no shutdown',
   'exit',
-  // STP enabled globally before the per-port guards (the image already ships `spanning-tree mode mstp`).
-  'spanning-tree',
-  // Configured access port: switchport-model content + per-port STP guards. The ACL attachment lives on
-  // the routed SVI instead — an `ip access-group` on an EOS switched port is not something to gamble on.
+  // Bare global `spanning-tree` answered `% Incomplete command` on this image (probed
+  // 2026-11-07); the mode knob already ships, so the touched default is MST priority 0.
+  'spanning-tree mst 0 priority 4096',
+  // Configured access port: switchport-model content + per-port STP guards. The ACL
+  // attachment lives on the routed SVI (and is itself a tolerated probe — cEOS-lab 4.28.14M
+  // refused it there on 2026-11-07; the hardware attachment stays #14 §3).
   'interface Ethernet1',
   '   switchport',
   '   switchport mode access',
@@ -1007,7 +1031,8 @@ const PROVISION_STAGING = [
   'ip route 10.20.0.0/24 10.0.100.2',
   // NTP: an unreachable server is intended — S12 reads the *shape* (`associations` entries, unsynced status).
   'ntp server 10.20.0.2',
-  // Standard + extended ACLs; a counter-generating attachment already exists on Eth1.
+  // Standard + extended ACLs. Attachment may be refused on cEOS-lab (see the tolerated
+  // set), but the rule entries themselves are what S13's viewer reads.
   'ip access-list standard STD-ACL-1',
   '   10 permit 10.0.0.0/8',
   'exit',
@@ -1019,24 +1044,33 @@ const PROVISION_STAGING = [
 
 /**
  * Commands whose refusal is a **finding**, not a failure — they ride along to probe
- * capability, and the batch must not die on them. `switchport trunk group` is the
- * DR-028 existence question (DECISIONS open item 4); the real verdict for the SKU is
- * the 7050TX sweep (#14 §3), and an answer either way on cEOS lands in the staging
- * transcript. VRRP is a bonus shape for the `show vrrp` capture on the same basis.
+ * capability, and the batch must not die on them. Probed 2026-11-07 on a configured
+ * cEOS-lab 4.28.14M: `switchport trunk group` was ACCEPTED (partly settling DR-028's
+ * cEOS half — DECISIONS open item 4; the 7050TX verdict stays in #14 §3), while
+ * `vrrp … ip` and `ip access-group …` on the SVI and a bare `ip routing` each answered
+ * `% Unavailable command (not supported on this hardware platform)`. None of that is a
+ * 7050TX verdict (DR-043); the lines stay on the wire so the staging transcript
+ * records today's container answer instead of the harness guessing for the device.
  */
-const PROVISION_TOLERATED = new Set(['switchport trunk group LABGRP', 'vrrp 1 ip 10.0.100.254'])
+const PROVISION_TOLERATED = new Set([
+  'switchport trunk group LABGRP',
+  'vrrp 1 ip 10.0.100.254',
+  'ip access-group EXT-ACL-1 in',
+  'ip routing',
+])
 
 /**
- * Map each `%`-error line in a staging transcript back to the staging command that
- * the transcript echoed just before it (Cli echoes the typed line; `bootstrapLab`
- * relies on the same echo behavior for its credential filter). An error that cannot
- * be attributed to a known staging line is kept as unattributed so it stays fatal —
- * silently tolerating an unknown failure is the worse failure mode.
+ * Map `%`-error lines to the command that produced them. EOS's own error text carries
+ * the position — `… at line N` — counted against the SAME input array this call was
+ * fed, so that mapping is direct when the marker exists. The echo-scan fallback (last
+ * echoed command line) covers errors without a line marker; an error attributable
+ * neither way stays `(unattributed)` and therefore fatal — silently tolerating an
+ * unknown failure is the worse failure mode.
  * @param {string} transcript
- * @param {readonly string[]} staging
+ * @param {readonly string[]} inputCommands every line fed to Cli, in order, including
+ *   the `configure session …` opener, so `at line N` indexes this array at N-1.
  */
-function findStagingErrors(transcript, staging) {
-  const trimmed = staging.map((c) => c.trim())
+function findStagingErrors(transcript, inputCommands) {
   /** @type {{command: string, line: string}[]} */
   const errors = []
   let lastCommand = null
@@ -1044,12 +1078,15 @@ function findStagingErrors(transcript, staging) {
     const line = raw.trim()
     if (!line) continue
     if (line.startsWith('%')) {
-      errors.push({ command: lastCommand ?? '(unattributed)', line })
+      const marker = /at line (\d+)/i.exec(line)
+      const numbered = marker ? inputCommands[Number(marker[1]) - 1]?.trim() : undefined
+      errors.push({ command: numbered ?? lastCommand ?? '(unattributed)', line })
       continue
     }
-    for (const cmd of trimmed) {
-      if (line.includes(cmd)) {
-        lastCommand = cmd
+    for (const cmd of inputCommands) {
+      const t = cmd.trim()
+      if (t && line.includes(t)) {
+        lastCommand = t
         break
       }
     }
@@ -1065,14 +1102,15 @@ function findStagingErrors(transcript, staging) {
  * @param {string} container
  */
 function provisionLab(container) {
-  const staged = cliScript(container, [`configure session ${PROVISION_SESSION}`, ...PROVISION_STAGING], 180_000)
-  const errors = findStagingErrors(staged, PROVISION_STAGING)
+  const stagingInput = [`configure session ${PROVISION_SESSION}`, ...PROVISION_STAGING]
+  const staged = cliScriptOpt(container, stagingInput, 180_000)
+  const errors = findStagingErrors(staged, stagingInput)
   const fatal = errors.filter((e) => !PROVISION_TOLERATED.has(e.command))
   if (fatal.length > 0) {
-    const aborted = cliScript(container, [`configure session ${PROVISION_SESSION}`, 'abort', 'end'])
+    const aborted = cliScriptOpt(container, [`configure session ${PROVISION_SESSION}`, 'abort', 'end'])
     return { ok: false, stage: /** @type {'staging' | 'verification'} */ ('staging'), errors, fatal, staged, aborted, missingVlans: [] }
   }
-  const committed = cliScript(container, [`configure session ${PROVISION_SESSION}`, 'commit', 'end'], 120_000)
+  const committed = cliScriptOpt(container, [`configure session ${PROVISION_SESSION}`, 'commit', 'end'], 120_000)
   // Independent proof of apply: parse the VLAN model back over the CLI, never trust the
   // commit transcript alone (a Cli echo can render success for a partial apply).
   const vlanModel = cliJson(container, 'show vlan')
@@ -1371,15 +1409,21 @@ const CAPTURE_CATALOG = [
     command: 'show lag',
     format: 'json',
     id: 'ceos-lab-capability',
-    note: 'populated by the provisioned Po1/Eth2 LACP pair; the reader of S5 (#75) pins its ShowContract key on this reply',
+    note: 'the reader of S5 (#75) pins its ShowContract key on this reply. Probed 2026-11-07 over the CLI: bare `show lag` answers `% Incomplete command` and `show lag summary`/`show lag detail` `% Invalid input` on cEOS-lab 4.28.14M — the configured Po1 evidence therefore lands in `show port-channel dense` and `show port-channel 1 all-ports` on this target, while `show lag resources` for the hardware stays a #14 §3 line',
   },
   {
     command: 'show port-channel summary',
     format: 'json',
     id: 'ceos-lab-capability',
-    note: 'named explicitly by #62; the 2026-11-06 observation that it is deprecated in favor of `show port-channel dense` predates any configured Po, so the configured answer (or refusal) is now what is on record',
+    note: 'named explicitly by #62; re-probed 2026-11-07 against configured Po1: refuses with "This command is deprecated by show port-channel dense" — that negative is the cEOS verdict; `show port-channel dense` below carries the populated model',
   },
-  { command: 'show spanning-tree', format: 'json', id: 'ceos-lab-capability', note: 'global STP enabled + portfast/bpduguard on Eth1 by the provisioner; feeds B3 (#88) and S15 (#85)' },
+  {
+    command: 'show port-channel dense',
+    format: 'json',
+    id: 'ceos-lab-capability',
+    note: 'the replacement spelling 4.28 points at; probed configured container answered `numberOfAggregators/numberOfChannelsInUse/portChannels` 2026-11-07',
+  },
+  { command: 'show spanning-tree', format: 'json', id: 'ceos-lab-capability', note: 'the provisioner touches MST priority 0 + portfast/bpduguard on Eth1 (bare global `spanning-tree` answers `% Incomplete command` on this image — probed 2026-11-07); feeds B3 (#88) and S15 (#85)' },
   {
     command: 'show spanning-tree detail',
     format: 'json',
@@ -1394,7 +1438,18 @@ const CAPTURE_CATALOG = [
     id: 'ceos-lab-capability',
     note: 'the text capture exists from 2026-11-06; the json half was never recorded — #62 closes that gap against configured Vlan100/Vlan110',
   },
-  { command: 'show access-lists', format: 'json', id: 'ceos-lab-capability', note: 'counters half of S13 (#83); STD-ACL-1/EXT-ACL-1 configured and EXT-ACL-1 attached inbound on the routed Vlan100 SVI' },
+  {
+    command: 'show access-lists',
+    format: 'json',
+    id: 'ceos-lab-capability',
+    note: 'the counters half named by #62; probed 2026-11-07: this image answers `% Invalid input` for `show access-lists` — the negative is recorded, and the populated rule model lands in `show ip access-lists` next. Attachment was refused on cEOS-lab (see PROVISION_TOLERATED), so per-entry packet counters are a #14 §3 hardware question on this repo\u2019s evidence',
+  },
+  {
+    command: 'show ip access-lists',
+    format: 'json',
+    id: 'ceos-lab-capability',
+    note: 'the spelling this container accepts: STD-ACL-1 + EXT-ACL-1 rule entries (plus the read-only default-control-plane-acl, which the redactor must never touch and S13 must not render as user config)',
+  },
   {
     command: 'show configuration sessions',
     format: 'json',
@@ -1402,9 +1457,9 @@ const CAPTURE_CATALOG = [
     note: 'captured while `lab-pending-capture` is deliberately left OPEN (zero committed effect) so the field set ConfigSessionSummary models — the §5 row 70 / B4 (#89) questions about maxOpenSessions, maxSavedSessions and start-time fields — has a listed session to model. The 7050TX half of this stays in #14 §3',
   },
   { command: 'show configuration sessions detail', format: 'json', id: 'ceos-lab-capability', note: 'verbatim per #62; feeds the same field-set questions' },
-  { command: 'show vrf', format: 'json', id: 'ceos-lab-capability', note: 'read-only prerequisite of B6 (#90); empty/1002 answers are recorded as negative results, never files' },
-  { command: 'show ip route', format: 'json', id: 'ceos-lab-capability', note: 'populated by `ip routing` + the Static SVI connected routes + the provisioned static route; prerequisite of S10 (#80)' },
-  { command: 'show vrrp', format: 'json', id: 'ceos-lab-capability', note: 'single-node VRRP group 1 on Vlan100 from the provisioner; read-only prerequisite named in wave-3 notes' },
+  { command: 'show vrf', format: 'json', id: 'ceos-lab-capability', note: 'read-only prerequisite of B6 (#90); answered `vrfs` on the probed container (cEOS-lab defaults to the default VRF only); empty/1002 answers are recorded as negative results, never files' },
+  { command: 'show ip route', format: 'json', id: 'ceos-lab-capability', note: 'populated by the provisioned SVI connected routes + the provisioned static route; prerequisite of S10 (#80). cEOS-lab refused `ip routing` outright (tolerated probe), so this capture documents what the routing table answers with routing globally unavailable — the `ip routing` verdict on the hardware stays #14 §3' },
+  { command: 'show vrrp', format: 'json', id: 'ceos-lab-capability', note: 'probed: VRRP config was refused on cEOS-lab 4.28.14M and the read answers nothing usable — record as a negative result (never a file), with the staging transcript as the capability evidence' },
 ]
 
 /**
