@@ -29,6 +29,8 @@ import { describe, expect, it } from 'vitest'
 
 import * as browserEntry from './index'
 import * as nodeEntry from './node'
+import * as testingEntry from './testing/index'
+import * as nodeTestingEntry from './node-testing'
 import { NotSupportedError, TransportError } from './errors'
 
 const SRC_DIR = dirname(fileURLToPath(new URL('./index.ts', import.meta.url)))
@@ -322,6 +324,90 @@ describe('the walk is not vacuous: it sees node:* when they are there', () => {
   it('reaches every Node-only transport module', () => {
     for (const module of NODE_ONLY_MODULES) {
       expect(nodeGraph.modules, `${module} should be reachable from src/node.ts`).toContain(module)
+    }
+  })
+})
+
+/**
+ * The #61 test-seam entries. These matter more than a style check: `./testing` gets imported by
+ * **webui test bundles compiled under Vite**, so a `node:` reachable from it breaks the consumer's
+ * build the same way a violation in `src/index.ts` would; and `./node/testing` exists precisely so
+ * the fs/socket scaffolding has a home the browser graph can never reach.
+ */
+const NODE_ONLY_TESTING_MODULES: readonly string[] = [
+  'testing/recorder-node.ts',
+  'testing/loopback-device.ts',
+  'testing/fake-conf-fs.ts',
+]
+
+describe('DR-002 module graph of the test-seam entries (#61)', () => {
+  const testingGraph = walk(fileURLToPath(new URL('./testing/index.ts', import.meta.url)))
+  const nodeTestingGraph = walk(fileURLToPath(new URL('./node-testing.ts', import.meta.url)))
+
+  it('resolves both seam graphs fully, so neither walk can silently shrink', () => {
+    expect(testingGraph.unresolved).toEqual([])
+    expect(nodeTestingGraph.unresolved).toEqual([])
+  })
+
+  it('the ./testing graph reaches the seam it promises', () => {
+    for (const module of ['testing/mock-transport.ts', 'testing/fake-node.ts', 'testing/fake-sender.ts', 'testing/recording.ts']) {
+      expect(testingGraph.modules, `${module} should be reachable from src/testing/index.ts`).toContain(module)
+    }
+  })
+
+  it('no Node built-in anywhere in the ./testing graph (DR-002)', () => {
+    expect(testingGraph.nodeSpecifiers).toEqual([])
+  })
+
+  it('the fs/socket test scaffolding is unreachable from ./testing, so the browser fake stays browser-safe', () => {
+    for (const module of NODE_ONLY_TESTING_MODULES) {
+      expect(testingGraph.modules, `${module} must not be reachable from src/testing/index.ts`).not.toContain(module)
+    }
+  })
+
+  it('the ./node/testing graph reaches the fs/scaffolding half and really uses node:* (guard non-vacuity)', () => {
+    for (const module of NODE_ONLY_TESTING_MODULES) {
+      expect(nodeTestingGraph.modules, `${module} should be reachable from src/node-testing.ts`).toContain(module)
+    }
+    const builtins = nodeTestingGraph.nodeSpecifiers.map((entry) => entry.split(' → ')[1] as string)
+    expect(builtins, 'the node testing entry should reach node:fs via recorder-node').toContain('node:fs')
+  })
+
+  it('neither seam entry leaks into a production entry (shipped code never imports its own test scaffolding)', () => {
+    const graphs = [
+      ['src/index.ts', walk(fileURLToPath(new URL('./index.ts', import.meta.url)))] as const,
+      ['src/node.ts', walk(fileURLToPath(new URL('./node.ts', import.meta.url)))] as const,
+    ]
+    for (const [label, graph] of graphs) {
+      for (const module of ['testing/index.ts', 'testing/fake-node.ts', 'node-testing.ts']) {
+        expect(graph.modules, `${label} must not reach ${module}`).not.toContain(module)
+      }
+    }
+  })
+})
+
+describe('what the test-seam entries export (#61 surface pins)', () => {
+  it('the browser half ships MockTransport, the fake node, the wire fake, and record/replay', () => {
+    const surface = testingEntry as unknown as Record<string, unknown>
+    for (const symbol of ['MockTransport', 'mockTransport', 'errorEnvelope', 'createFakeNode', 'createFakeSender', 'createRecorder', 'buildRecording', 'replayRecording', 'assertRecordingIdentity', 'targetSlug', 'assertTargetSlug', 'findUnredactedEnableInput', 'recordingMatchKey', 'identityFromVersionReply']) {
+      expect(typeof surface[symbol], `./testing must export ${symbol}`).toBe('function')
+    }
+  })
+
+  it('the Node testing half ships the fs recorders and loopback scaffolding', () => {
+    const surface = nodeTestingEntry as unknown as Record<string, unknown>
+    for (const symbol of ['writeRecording', 'readRecording', 'loadRecording', 'recordingPath', 'RECORDINGS_DIR']) {
+      expect(surface[symbol] !== undefined, `./node/testing must export ${symbol}`).toBe(true)
+    }
+    for (const symbol of ['listenHttp', 'listenHttps', 'listenUnix', 'closedPort', 'fakeConfFileSystem', 'confFixture']) {
+      expect(typeof surface[symbol], `./node/testing must export ${symbol}`).toBe('function')
+    }
+  })
+
+  it('the browser ./testing surface exports no fs symbol at all', () => {
+    const surface = testingEntry as unknown as Record<string, unknown>
+    for (const symbol of ['writeRecording', 'readRecording', 'RECORDINGS_DIR', 'listenHttp', 'listenHttps', 'closedPort', 'fakeConfFileSystem']) {
+      expect(surface[symbol], `./testing must not export ${symbol}`).toBeUndefined()
     }
   })
 })
