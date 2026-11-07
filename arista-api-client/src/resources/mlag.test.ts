@@ -382,10 +382,10 @@ describe('MlagResource guards — mlag.py validates nothing; refusals cost zero 
     const { node, transport } = nodeFor(MLAG_FIXTURE_CONFIG)
     await expectError(() => node.mlag.setMlagId('Ethernet1', 'bad'), /expected digits/)
     expect(transport.sent()).toEqual([])
-    // A typo'd resource name is still impossible: mlag became a real row (W2d #43), and the registry
-    // lists it among the fourteen now — W3c (#51) appended `vrrp`, and the permanent negative control
-    // for wave 3 is `pim`, a name pyeapi has no module for at all.
+    // A typo'd resource name is still impossible: mlag became a real row (W2d #43); W3a (#48 #49),
+    // W3b (#50) and this branch's W3c (#51) each appended their names in merge order — the registry
+    // lists seventeen now, and the negative control is `pim`, a name pyeapi has no module for at all.
     expect(() => node.resource('notamodule' as never)).toThrow(NotSupportedError)
-    expect(() => node.resource('notamodule' as never)).toThrow(/registered: system, vlans, switchports, interfaces, users, ntp, acls, varp, stp, ipinterfaces, vrfs, staticroute, mlag, vrrp/)
+    expect(() => node.resource('notamodule' as never)).toThrow(/registered: system, vlans, switchports, interfaces, users, ntp, acls, varp, stp, ipinterfaces, vrfs, staticroute, mlag, ospf, bgp, routemaps, vrrp/)
   })
 })

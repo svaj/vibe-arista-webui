@@ -36,6 +36,7 @@ import { InterfacesResource } from './interfaces'
 import { IpinterfacesResource } from './ipinterfaces'
 import { MlagResource } from './mlag'
 import { NtpResource } from './ntp'
+import { RoutemapsResource } from './routemaps'
 import { StaticRouteResource } from './staticroute'
 import { StpResource } from './stp'
 import { SwitchportsResource } from './switchports'
@@ -44,6 +45,11 @@ import { UsersResource } from './users'
 import { VarpResource } from './varp'
 import { VlansResource } from './vlans'
 import { VrfsResource } from './vrfs'
+// The wave-3 lanes appended their rows at the END of this block (the cross-lane take-both merge
+// rule — the lane order at merge is A then B then C; `RoutemapsResource` above is the one import a
+// stacked merge happened to resolve mid-list, semantics unchanged).
+import { OspfResource } from './ospf'
+import { BgpResource } from './bgp'
 import { VrrpResource } from './vrrp'
 import type { Node } from '../command-layer'
 
@@ -98,6 +104,13 @@ export interface ResourceKinds {
   staticroute: StaticRouteResource
   /** The MLAG configuration — `src/resources/mlag.ts`, port of pyeapi `api/mlag.py` (W2d slice, #43). */
   mlag: MlagResource
+  /** The FIRST `router ospf …` process (multi-process nodes read per-vrf) — `src/resources/ospf.ts`, port of pyeapi `api/ospf.py` (W3a slice, #48). */
+  ospf: OspfResource
+  /** The `router bgp …` process and its `neighbors` sub-collection — `src/resources/bgp.ts`, port of pyeapi `api/bgp.py` (W3a slice, #49). */
+  bgp: BgpResource
+  /** The route-maps configured on the switch, keyed by name with the (action, seqno) clauses nested —
+   *  `src/resources/routemaps.ts`, port of pyeapi `api/routemaps.py` (W3b lane B, #50). */
+  routemaps: RoutemapsResource
   /** The per-interface VRRP virtual routers — `src/resources/vrrp.ts`, port of pyeapi `api/vrrp.py` (W3c slice, #51). */
   vrrp: VrrpResource
 }
@@ -138,6 +151,9 @@ export const RESOURCE_FACTORIES: ResourceFactories<ResourceKinds> = Object.freez
   vrfs: (node) => new VrfsResource(node),
   staticroute: (node) => new StaticRouteResource(node),
   mlag: (node) => new MlagResource(node),
+  ospf: (node) => new OspfResource(node),
+  bgp: (node) => new BgpResource(node),
+  routemaps: (node) => new RoutemapsResource(node),
   vrrp: (node) => new VrrpResource(node),
 })
 

@@ -807,9 +807,12 @@ describe('SwitchportsResource cache seam and surface — DR-026 invalidation on 
 
   it('an unregistered resource name still throws, and `vlans`/`switchports` are separate instances', async () => {
     const node = new Node(configTransport(L2_CONFIG))
-    // 'interfaces' became a REGISTERED name at M10a (#12), so the unregistered exemplar moves to a
-    // wave-2 module; the assertion — a runtime string outside ResourceKinds throws naming what it got — is unchanged.
-    expect(() => node.resource('bgp' as never)).toThrow(/bgp/)
+    // 'interfaces' became a REGISTERED name at M10a (#12), 'mlag' at W2d (#43), and 'bgp' sailed
+    // through the exemplar slot unused at W3a (#49); 'vrrp' held it on the stacked wave-3 lanes and
+    // #51 collected it too — the exemplar now stands where the wave-3 protocol put it permanently:
+    // `pim`, a name pyeapi has no module for at all (the assertion — a runtime string outside
+    // ResourceKinds throws naming what it got — is unchanged).
+    expect(() => node.resource('pim' as never)).toThrow(/pim/)
     expect(node.switchports).not.toBe(node.vlans)
     expect(await node.vlans.get(20)).toEqual({ id: 20, name: 'PROD', state: 'active', trunkGroups: [] })
   })

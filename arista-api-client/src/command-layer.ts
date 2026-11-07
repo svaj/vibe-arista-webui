@@ -76,6 +76,10 @@ import type { VlansResource } from './resources/vlans'
 import type { VrfsResource } from './resources/vrfs'
 import type { StaticRouteResource } from './resources/staticroute'
 import type { MlagResource } from './resources/mlag'
+// W3a (#48 #49) then W3b (#50) then W3c (#51) appended these at the END of the block (cross-lane take-both merge rule).
+import type { OspfResource } from './resources/ospf'
+import type { BgpResource } from './resources/bgp'
+import type { RoutemapsResource } from './resources/routemaps'
 import type { VrrpResource } from './resources/vrrp'
 import type { ResourceKinds, ResourceName } from './resources/registry'
 import type { MethodCallOptions, Transport, TransportExecOptions } from './transports/contract'
@@ -972,12 +976,44 @@ export class Node {
   }
 
   /**
+   * The `ospf` resource — same per-`Node` {@link resourceMemo} as {@link mlag} (DR-052):
+   * `node.ospf === node.ospf === node.resource('ospf')`. pyeapi reaches it through `node.api('ospf')`
+   * loading `pyeapi.api.ospf` and calling its `instance(api)` (`ospf.py:359-362`, `client.py:927-950`).
+   * This name lived in the test suite as the registry's NEGATIVE control through waves 1-2 and is a
+   * real row now (W3a #48 — the control moved to `vrrp`, which lanes B and C carried forward). Added by W3a (#48).
+   */
+  get ospf(): OspfResource {
+    return this.resource('ospf')
+  }
+
+  /**
+   * The `bgp` resource — same memo, same reasoning; pyeapi's factory is `bgp.py:340-341` and its
+   * accessor never was (DR-006). The per-neighbour view hangs off the entity as `node.bgp.neighbors`
+   * (upstream's `Bgp.neighbors` property, `bgp.py:55-60`) — it is NOT its own registry row, the
+   * `varp`/`acls`/`stp` sub-object precedent (DR-068). Added by W3a (#49).
+   */
+  get bgp(): BgpResource {
+    return this.resource('bgp')
+  }
+
+  /**
+   * The `routemaps` resource — same per-`Node` {@link resourceMemo} (DR-052): `node.routemaps ===
+   * node.routemaps === node.resource('routemaps')`. pyeapi reaches it through `node.api('routemaps')`
+   * loading `pyeapi.api.routemaps` and calling its `instance(api)` (`routemaps.py:347-357`,
+   * `client.py:927-950`). Added by W3b lane B (#50).
+   */
+  get routemaps(): RoutemapsResource {
+    return this.resource('routemaps')
+  }
+
+  /**
    * The `vrrp` resource — same per-`Node` {@link resourceMemo} (DR-052): `node.vrrp === node.vrrp ===
    * node.resource('vrrp')`. pyeapi reaches it through `node.api('vrrp')` loading `pyeapi.api.vrrp` and
    * calling its `instance(api)` (`vrrp.py:1483-1493`, `client.py:927-950`). The identity here is the
    * (interface, vrid) PAIR — `get('Vlan50')` answers that interface's per-vrid table and every property
    * verb takes both halves, exactly like upstream's `get`/`create` split (`vrrp.py:174`, `:391`).
-   * Added by W3c (#51).
+   * Added by W3c (#51). The registry's NEGATIVE control moved here as `ospf`→`vrrp`→`pim`: `pim` is not
+   * a pyeapi api module at all, so this slot can never be collected (registry.test.ts, DR-102 family).
    */
   get vrrp(): VrrpResource {
     return this.resource('vrrp')

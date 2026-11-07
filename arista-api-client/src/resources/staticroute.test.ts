@@ -408,6 +408,9 @@ describe('StaticRouteResource guards — staticroute.py validates nothing; refus
     const { node } = nodeFor(ROUTES_CONFIG)
     expect(node.hasResource('staticroute')).toBe(true)
     expect(() => node.resource('notaroute' as never)).toThrow(NotSupportedError)
-    expect(() => node.resource('notaroute' as never)).toThrow(/registered: system, vlans, switchports, interfaces, users, ntp, acls, varp, stp, ipinterfaces, vrfs, staticroute, mlag, vrrp/)
+    // W3a (#48 #49), W3b lane B (#50) and W3c (#51) each appended to the registry table in merge
+    // order, so the listing this row still provides as a negative control for resource-name typos
+    // (from any module) grows too — it now names all seventeen rows.
+    expect(() => node.resource('notaroute' as never)).toThrow(/registered: system, vlans, switchports, interfaces, users, ntp, acls, varp, stp, ipinterfaces, vrfs, staticroute, mlag, ospf, bgp, routemaps, vrrp/)
   })
 })
