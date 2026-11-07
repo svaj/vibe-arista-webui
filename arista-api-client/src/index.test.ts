@@ -223,6 +223,8 @@ describe('what the browser entry exports', () => {
       // W2d (#41/#42/#43): the VRF, static-route and MLAG modules ride the same entry —
       // `node.vrfs`/`node.staticroute`/`node.mlag` and their classes from `.` with no deep import.
       'VrfsResource', 'StaticRouteResource', 'MlagResource',
+      // W3c (#51): the VRRP collection class — its record/attrs types ride the type exports below.
+      'VrrpResource',
     ] as const
     for (const name of functions) {
       expect(typeof surface[name], name).toBe('function')
@@ -240,12 +242,14 @@ describe('what the browser entry exports', () => {
     expect(surface.isUserEncryption('sha512')).toBe(true)
     expect(surface.isUserEncryption('bcrypt')).toBe(false)
     expect(surface.parseInterfaceName('Ethernet1.100')).toEqual({ kind: 'Ethernet', index: 1, name: 'Ethernet1.100', subinterface: 100 })
-    // The registry has thirteen rows now: M8's `system`, M9's `vlans`/`switchports`, M10a's
-    // `interfaces`, then W2a's `users`/`ntp`, W2b's `acls`/`varp`, W2c's `stp`/`ipinterfaces` and W2d's
-    // `vrfs`/`staticroute`/`mlag`, each appended in merge order (§5 row 79, rows 167/173).
+    // The registry has fourteen rows here now: M8's `system`, M9's `vlans`/`switchports`, M10a's
+    // `interfaces`, then W2a's `users`/`ntp`, W2b's `acls`/`varp`, W2c's `stp`/`ipinterfaces`, W2d's
+    // `vrfs`/`staticroute`/`mlag` and W3c's `vrrp` (#51), each appended in merge order (§5 row 79,
+    // rows 167/173). Lanes W3a/W3b append `ospf`/`bgp` and `routemaps`/`vxlan` ahead of this row at
+    // merge, which is why the sibling branches grow this list with their own names only.
     expect(Object.keys(surface.RESOURCE_FACTORIES)).toEqual([
       'system', 'vlans', 'switchports', 'interfaces', 'users', 'ntp', 'acls', 'varp', 'stp', 'ipinterfaces',
-      'vrfs', 'staticroute', 'mlag',
+      'vrfs', 'staticroute', 'mlag', 'vrrp',
     ])
     expect(new Node(mockTransport()).system).toBeInstanceOf(surface.SystemResource)
     expect(new Node(mockTransport()).vlans).toBeInstanceOf(surface.VlansResource)
@@ -281,6 +285,7 @@ describe('what the browser entry exports', () => {
     expect(new Node(mockTransport()).vrfs).toBeInstanceOf(surface.VrfsResource)
     expect(new Node(mockTransport()).staticroute).toBeInstanceOf(surface.StaticRouteResource)
     expect(new Node(mockTransport()).mlag).toBeInstanceOf(surface.MlagResource)
+    expect(new Node(mockTransport()).vrrp).toBeInstanceOf(surface.VrrpResource)
     // `assertVlanId` is an assertion function (returns void); the range is pyeapi's —
     // `value in range(1, 4095)`, i.e. VLANs 1..4094 (pyeapi/api/vlans.py:78). M9 (#12) re-checks that
     // bound against the switch's own `switchport access vlan` range on a device.

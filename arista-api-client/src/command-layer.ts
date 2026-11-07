@@ -76,6 +76,7 @@ import type { VlansResource } from './resources/vlans'
 import type { VrfsResource } from './resources/vrfs'
 import type { StaticRouteResource } from './resources/staticroute'
 import type { MlagResource } from './resources/mlag'
+import type { VrrpResource } from './resources/vrrp'
 import type { ResourceKinds, ResourceName } from './resources/registry'
 import type { MethodCallOptions, Transport, TransportExecOptions } from './transports/contract'
 import type { CommandResult, CommandSpec, RunCmdsFormat, ShowContracts, ShowReply } from './types/eapi'
@@ -968,6 +969,18 @@ export class Node {
    */
   get mlag(): MlagResource {
     return this.resource('mlag')
+  }
+
+  /**
+   * The `vrrp` resource — same per-`Node` {@link resourceMemo} (DR-052): `node.vrrp === node.vrrp ===
+   * node.resource('vrrp')`. pyeapi reaches it through `node.api('vrrp')` loading `pyeapi.api.vrrp` and
+   * calling its `instance(api)` (`vrrp.py:1483-1493`, `client.py:927-950`). The identity here is the
+   * (interface, vrid) PAIR — `get('Vlan50')` answers that interface's per-vrid table and every property
+   * verb takes both halves, exactly like upstream's `get`/`create` split (`vrrp.py:174`, `:391`).
+   * Added by W3c (#51).
+   */
+  get vrrp(): VrrpResource {
+    return this.resource('vrrp')
   }
 
   /**

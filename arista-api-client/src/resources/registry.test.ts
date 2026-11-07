@@ -139,17 +139,19 @@ describe('ResourceRegistry — DR-006 replaces pyeapi node.api() (client.py:927-
     expect(registry.get('probe')).toBe(before)
   })
 
-  it('the built-in factory table is frozen and holds exactly the rows shipped so far (M8 #10 `system`, M9 #11 `vlans`/`switchports`, M10a #12 `interfaces`, W2a #35 `users`/`ntp`, W2b #37/#38 `acls`/`varp`, W2c #39/#40 `stp`/`ipinterfaces`, W2d #41/#42/#43 `vrfs`/`staticroute`/`mlag`)', () => {
+  it('the built-in factory table is frozen and holds exactly the rows shipped so far (M8 #10 `system`, M9 #11 `vlans`/`switchports`, M10a #12 `interfaces`, W2a #35 `users`/`ntp`, W2b #37/#38 `acls`/`varp`, W2c #39/#40 `stp`/`ipinterfaces`, W2d #41/#42/#43 `vrfs`/`staticroute`/`mlag`, W3c #51 `vrrp`)', () => {
     // M7 (#9) shipped this table honest-but-empty; each milestone since claimed its rows at the END of
     // the table (the cross-lane merge rule), so the ordered assertion carries them in merge order rather
     // than in a lane-chosen slot. A name in `ResourceKinds` without a row here would be a package bug
     // (row 79). A mutable module-level registry is what ARCHITECTURE.md §7 forbids. The NEGATIVE CONTROL
-    // has moved twice: `mlag` held the slot through waves 1-2 (W2d #43 collected it), `stp` briefly
-    // during W2d's own development (W2c #39 shipped it mid-lane), and `ospf` now — pyeapi's
-    // `api/ospf.py`, owed to wave 3 (#17), the honest "still owed" name.
+    // has moved several times: `mlag` held the slot through waves 1-2 (W2d #43 collected it), `stp` briefly
+    // during W2d's own development (W2c #39 shipped it mid-lane), then `ospf` through wave 2 and the early
+    // wave-3 lanes — and wave 3's rule (lane C #51) moved it to `pim`: a name pyeapi has no module for at
+    // all, so it is unregistered here and stays unregistered forever (unlike every former control, which
+    // was only "owed" until its milestone shipped).
     expect(Object.isFrozen(RESOURCE_FACTORIES)).toBe(true)
     const { node } = nodeWith()
-    expect(new ResourceRegistry(RESOURCE_FACTORIES, node).names()).toEqual(['system', 'vlans', 'switchports', 'interfaces', 'users', 'ntp', 'acls', 'varp', 'stp', 'ipinterfaces', 'vrfs', 'staticroute', 'mlag'])
+    expect(new ResourceRegistry(RESOURCE_FACTORIES, node).names()).toEqual(['system', 'vlans', 'switchports', 'interfaces', 'users', 'ntp', 'acls', 'varp', 'stp', 'ipinterfaces', 'vrfs', 'staticroute', 'mlag', 'vrrp'])
     expect(new ResourceRegistry(RESOURCE_FACTORIES, node).has('vlans')).toBe(true)
     expect(new ResourceRegistry(RESOURCE_FACTORIES, node).has('interfaces')).toBe(true)
     expect(new ResourceRegistry(RESOURCE_FACTORIES, node).has('users')).toBe(true)
@@ -163,7 +165,13 @@ describe('ResourceRegistry — DR-006 replaces pyeapi node.api() (client.py:927-
     // favorite unregistered name for two waves; it is a real row now.
     expect(new ResourceRegistry(RESOURCE_FACTORIES, node).has('staticroute')).toBe(true)
     expect(new ResourceRegistry(RESOURCE_FACTORIES, node).has('mlag')).toBe(true)
-    expect(new ResourceRegistry(RESOURCE_FACTORIES, node).has('ospf')).toBe(false)
+    // W3c (#51): the fourteenth row. The permanent negative control is `pim` — no pyeapi module bears
+    // that name. Its `pyeapi/api/` directory (verified 2026-11-06, @6816d9e) holds exactly 17 resource
+    // modules — acl, bgp, interfaces, ipinterfaces, mlag, ntp, ospf, routemaps, staticroute, stp,
+    // switchports, system, users, varp, vlans, vrrp, vrfs — plus abstract.py and __init__.py; there is
+    // no pim.py (and no vxlan.py yet either), so no lane of any wave will ever register `pim`.
+    expect(new ResourceRegistry(RESOURCE_FACTORIES, node).has('vrrp')).toBe(true)
+    expect(new ResourceRegistry(RESOURCE_FACTORIES, node).has('pim')).toBe(false)
   })
 })
 
@@ -183,7 +191,8 @@ describe('Node.resource / Node.hasResource — the typed replacement for node.ap
     expect(node.hasResource('vrfs')).toBe(true)
     expect(node.hasResource('staticroute')).toBe(true)
     expect(node.hasResource('mlag')).toBe(true)
-    expect(node.hasResource('ospf')).toBe(false)
+    expect(node.hasResource('vrrp')).toBe(true)
+    expect(node.hasResource('pim')).toBe(false)
     expect(node.hasResource('probe')).toBe(false)
   })
 
@@ -240,23 +249,28 @@ describe('Node.resource / Node.hasResource — the typed replacement for node.ap
     expect(node.mlag).toBe(node.mlag)
     expect(node.mlag).toBe(node.resource('mlag'))
     expect(node.mlag.constructor.name).toBe('MlagResource')
+    // W3c (#51) is the fourteenth row: `node.vrrp`, the (interface, vrid)-keyed VRRP collection.
+    expect(node.vrrp).toBe(node.vrrp)
+    expect(node.vrrp).toBe(node.resource('vrrp'))
+    expect(node.vrrp.constructor.name).toBe('VrrpResource')
   })
 
   it('asking for an unregistered resource throws, listing the rows that DO exist', () => {
     const { node } = nodeWith()
     // `ResourceName` is the closed map key union, so this call cannot be written type-correctly from TS —
     // which is the point. The cast is the JS/table-column path the runtime check exists for (row 79).
-    // `ospf` is pyeapi's `api/ospf.py`, owed to wave 3 (#17) and unregistered here; `mlag` served as this
-    // test's unregistered name until W2d (#43) registered it.
-    const untyped = 'ospf' as never
+    // `pim` has no pyeapi module at all and is the permanent negative control from W3c (#51) on; `mlag`
+    // and then `ospf` served this slot while they were only owed. Wave-3 lanes A/B append `ospf`/`bgp`/
+    // `routemaps`/`vxlan` as real rows the way #51 appended `vrrp` here.
+    const untyped = 'pim' as never
     expect(() => node.resource(untyped)).toThrow(NotSupportedError)
-    expect(() => node.resource(untyped)).toThrow(/unknown resource ospf — no factory is registered/)
-    expect(() => node.resource(untyped)).toThrow(/registered: system, vlans, switchports, interfaces, users, ntp, acls, varp, stp, ipinterfaces, vrfs, staticroute, mlag/)
+    expect(() => node.resource(untyped)).toThrow(/unknown resource pim — no factory is registered/)
+    expect(() => node.resource(untyped)).toThrow(/registered: system, vlans, switchports, interfaces, users, ntp, acls, varp, stp, ipinterfaces, vrfs, staticroute, mlag, vrrp/)
   })
 
   it('every failed resource call sends nothing to the device (a registry miss is not a device error)', () => {
     const { node, transport } = nodeWith()
-    expect(() => node.resource('ospf' as never)).toThrow(NotSupportedError)
+    expect(() => node.resource('pim' as never)).toThrow(NotSupportedError)
     expect(transport.sent()).toEqual([])
     expect(transport.callCount()).toBe(0)
   })
@@ -270,6 +284,6 @@ describe('Node.resource / Node.hasResource — the typed replacement for node.ap
     expect(first.node.vrfs).not.toBe(second.node.vrfs)
     expect(first.node.staticroute).not.toBe(second.node.staticroute)
     expect(first.node.mlag).not.toBe(second.node.mlag)
-    expect(() => first.node.resource('ospf' as never)).toThrow(/no factory is registered/)
+    expect(() => first.node.resource('pim' as never)).toThrow(/no factory is registered/)
   })
 })

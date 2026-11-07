@@ -383,8 +383,9 @@ describe('MlagResource guards — mlag.py validates nothing; refusals cost zero 
     await expectError(() => node.mlag.setMlagId('Ethernet1', 'bad'), /expected digits/)
     expect(transport.sent()).toEqual([])
     // A typo'd resource name is still impossible: mlag became a real row (W2d #43), and the registry
-    // lists it among the thirteen now — `ospf` remains the owed name.
+    // lists it among the fourteen now — W3c (#51) appended `vrrp`, and the permanent negative control
+    // for wave 3 is `pim`, a name pyeapi has no module for at all.
     expect(() => node.resource('notamodule' as never)).toThrow(NotSupportedError)
-    expect(() => node.resource('notamodule' as never)).toThrow(/registered: system, vlans, switchports, interfaces, users, ntp, acls, varp, stp, ipinterfaces, vrfs, staticroute, mlag/)
+    expect(() => node.resource('notamodule' as never)).toThrow(/registered: system, vlans, switchports, interfaces, users, ntp, acls, varp, stp, ipinterfaces, vrfs, staticroute, mlag, vrrp/)
   })
 })
