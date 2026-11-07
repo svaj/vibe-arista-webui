@@ -3,12 +3,13 @@
  * `node.routemaps` over `MockTransport`: every read answer is a hand-authored config text and every
  * write answer is an exact joined command script (docs/TESTING.md §3, DR-083). Config is inline,
  * **hand-authored**: reduced from pyeapi's own `test/fixtures/running_config.routemaps` (clone-relative:
- * `/home/svaj/development/arista/pyeapi/test/fixtures/…`) — the TEST
- * clauses (`:1-18`), FOO (`:20-24`) and FOO-BAR (`:37-52`) bodies are copied verbatim; the doubled
- * `route-map FOOBAR permit 20` header pair (`:26`,`:32`) is kept but the two bodies were EDITED
+ * `/home/svaj/development/arista/pyeapi/test/fixtures/…`, 47 lines) — the three TEST clauses
+ * (`:1-17`), FOO (`:18-22`) and FOO-BAR (`:36-46`) bodies are copied verbatim; the doubled
+ * `route-map FOOBAR permit 20` header pair (`:24`,`:30`) is kept but the two bodies were EDITED
  * (`as 1111`/`continue 200` then `as 2222`/`continue 300`) because upstream's two copies are identical,
- * which makes `_merge_entries`' LAST-wins collapse (`routemaps.py:130-139`, the store at `:137`) is
- * unobservable in the original fixture. NEVER captured from any device.
+ * which makes `_merge_entries`' LAST-wins collapse (`routemaps.py:130-139`, the store at `:137`)
+ * unobservable in the original fixture — the single declared edit, per **DR-112** and §5 row 205.
+ * NEVER captured from any device.
  *
  * ## Upstream port ledger (the 18 methods in `test_api_routemaps.py`, 6816d9e, re-verified 2026-11-06)
  * `test_instance` (`:51-53`) is the registry/accessor identity — a **wiring pin in `registry.test.ts` /
@@ -27,16 +28,18 @@
  *  - `test_set_match_statement_remove_extraneous` (`:102-109`) →
  *    `['route-map TEST permit 10','no match interface Ethernet1','route-map TEST permit 10','match as 1000']`.
  *    These four drive {@link RoutemapsResource.setMatch}/{@link RoutemapsResource.setSet}: both are
- *    **replace** verbs (divergence 3), and the two `_remove_extraneous` pins are the "a statement omitted
- *    from the list is removed" evidence. Upstream uses CPython `set(...).difference(...)` iteration
- *    (order arbitrary for multi-element diffs); the port makes the emission order deterministic
- *    (removals in current order, then additions in argument order) while keeping the SAME multiset of
- *    commands and the same header-before-each-line structure — pinned by an ordered 5-clause diff below.
+ *    **replace** verbs (divergence 3, §5 row 206, **DR-113**), and the two `_remove_extraneous` pins are
+ *    the "a statement omitted from the list is removed" evidence. Upstream uses CPython
+ *    `set(...).difference(...)` iteration (order arbitrary for multi-element diffs); the port makes the
+ *    emission order deterministic (removals in current order, then additions in argument order) while
+ *    keeping the SAME multiset of commands and the same header-before-each-line structure — pinned by an
+ *    ordered 5-clause diff below.
  *  - `test_set_continue` (`:111-114`), `test_set_continue_to_default` (`:124-127` → `default continue`),
  *    `test_negate_continue` (`:129-132` → `no continue`); `test_set_continue_with_invalid_integer`
  *    (`:116-118`, value -1) and `test_set_continue_with_invalid_string` (`:120-122`, value 'invalid')
  *    `raise ValueError` upstream — HERE they are a `NotSupportedError` **carrying upstream's guard text
- *    verbatim**, including the "seqno" mislabel (`routemaps.py:316-318`), pinned character-for-character.
+ *    verbatim**, including the "seqno" mislabel (`routemaps.py:316-318`), pinned character-for-character
+ *    (§5 row 207, **DR-113**).
  *  - `test_set_description_with_value` (`:134-139`, the single `random_string()` slot at `:135`) →
  *    clears first: `['… permit 10','no description','description <value>']` — the only upstream test
  *    whose command text reaches the wire twice in one verb;
@@ -45,13 +48,15 @@
  *  - `test_set_description_with_invalid_value` (`:151-158`) — upstream pins the EMPTY-value fall-through
  *    composing `no description` with a pre-armed commented-out `ValueError` arm ("flip when
  *    `command_builder` fails on None"). This client implements the FUTURE arm: empty is a refusal and
- *    clearing is named ({@link RoutemapsResource.unsetDescription}/{@link defaultDescription}) per DR-037,
- *    so the upstream case is ported as a REFUSAL pin (and the negated/default arms above are the
- *    command-text pins). Declared non-port: upstream's `assertRaises(ValueError)` commented variant.
+ *    clearing is named ({@link RoutemapsResource.unsetDescription}/{@link defaultDescription}) per DR-037
+ *    (§5 row 207), so the upstream case is ported as a REFUSAL pin (and the negated/default arms above
+ *    are the command-text pins). Declared non-port: upstream's `assertRaises(ValueError)` commented
+ *    variant.
  *
  * `get(name)` and the diff verbs also exercise the name guard (`:96`/`:112-113`: upstream interpolates
  * the name into a REGEX; here the lookup is exact and a metacharacter name matches nothing — divergence
- * 1), and every write verb guards its coords BEFORE reading or writing (zero-round-trip pins, DR-053).
+ * 1, §5 row 204), and every write verb guards its coords BEFORE reading or writing (zero-round-trip
+ * pins, DR-053).
  */
 
 import { describe, expect, it } from 'vitest'

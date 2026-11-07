@@ -71,10 +71,12 @@
  * trios (`set_source_interface` `:443-457`, `set_multicast_group` `:458-472`, `set_multicast_decap`
  * `:473-487`, `set_udp_port` `:488-502`), `test_update_vlan` `:503-507`, `test_remove_vlan` `:508-512`
  * (whose pinned text passes upstream only because `testlib.py:97-107` accepts ANY `CliVariants.expand`-ed
- * spelling — the variant tests below pin the ordered transactions upstream's suite cannot see), and the
+ * spelling — the variant tests below pin the ordered transactions upstream's suite cannot see, per
+ * §5 row 210 and **DR-114**), and the
  * four VTEP pins `:513-531`. Upstream's fixture `test/fixtures/running_config.vxlan` (50 lines, body
  * indent three spaces) is quoted **byte-exactly** in `VXLAN_FIXTURE` at the foot of this file —
- * labelled a verbatim pyeapi test-material copy, not a device capture — while its sibling
+ * labelled a verbatim pyeapi test-material copy, not a device capture (**DR-112**, §5 row 212) — while its
+ * sibling
  * `test/fixtures/vxlan.json` exists upstream but is referenced by **no** upstream test (grep 2026-11-07,
  * the only hit is `.git/index`), has no reader in this module, and is not ported. Every command text
  * those classes pin is reproduced
@@ -2715,9 +2717,10 @@ describe('InterfacesResource LAG field writes — set_lacp_mode / set_minimum_li
  * `:50`) — pyeapi's own test material, NOT a device capture; nothing here is evidence about the
  * DCS-7050TX-64 (DR-043's discipline, and whether VXLAN is even supported on this SKU is a probe
  * question, DR-033). Inlined rather than shipped under `test/fixtures/config/` for the vrfs.test.ts
- * (W2d) reason: no `manifest.json`/oracle edits from a lane that is not fixing them this round, and
- * the section is small enough to read at the call site. `end` is appended only because that is how
- * every config answer in this suite's chunker is terminated.
+ * (W2d) reason: no `manifest.json`/oracle edits from a lane that is not fixing them this round — the
+ * decision, and the one declared edit in the routemaps suite's copy, are filed as **DR-112** (§5 rows
+ * 205 and 212). `end` is appended only because that is how every config answer in this suite's chunker
+ * is terminated.
  */
 const VXLAN_FIXTURE = textOf([
   'interface Vxlan1',
@@ -2785,7 +2788,7 @@ describe('InterfacesResource Vxlan field reads — M10d: the six pyeapi readers 
         multicastGroup: '239.10.10.10', // :39
         multicastDecap: false, // :49 — see the decap test below for WHY upstream's answer here is right by accident
         udpPort: 4789, // :42
-        vlans: new Map([['10', { vni: 10, floodList: ['3.3.3.3', '4.4.4.4'] }]]), // :43/:44; upstream keeps the vni a STRING (:906)
+        vlans: new Map([['10', { vni: 10, floodList: ['3.3.3.3', '4.4.4.4'] }]]), // :43/:44; upstream keeps the vni a STRING (:905)
         floodList: ['1.1.1.1', '2.2.2.2'], // :45
       },
     })
@@ -2807,9 +2810,9 @@ describe('InterfacesResource Vxlan field reads — M10d: the six pyeapi readers 
     const negated = await readTable(textOf(['interface Vxlan1', '   no vxlan source-interface', '   no vxlan udp-port', 'end']))
     expect(negated.get('Vxlan1')).toEqual({ name: 'Vxlan1', kind: 'Vxlan' })
     // Upstream on this shape: `source_interface: ''` and `multicast_group: ''` from the module
-    // constants `DEFAULT_SRC_INTF`/`DEFAULT_MCAST_GRP` (`:816-817`, applied at `:877`/`:884`) — one
+    // constants `DEFAULT_SRC_INTF`/`DEFAULT_MCAST_GRP` (`:816-817`, applied at `:876`/`:883`) — one
     // answer for \"not configured\" and \"configured empty\" — and for `udp_port` it does not answer at
-    // ALL: `_parse_udp_port` int()s an unchecked match (`value = int(match.group(1))`, `:894`) so the
+    // ALL: `_parse_udp_port` int()s an unchecked match (`value = int(match.group(1))`, `:893`) so the
     // `None.group` AttributeError takes `get`/`getall` down with it. The fixture at
     // `running_config.vxlan:42` is the only reason pyeapi's suite never sees its own crash. Here the
     // three states are one honest state: absent (DR-076's family, divergence 21).
@@ -2868,17 +2871,17 @@ describe('InterfacesResource Vxlan field reads — M10d: the six pyeapi readers 
     // canonical-integer keys would have surfaced as 10, 12, 20 regardless of write order (divergence 22).
     // The fixture's `no vxlan vlan flood vtep`/`no vxlan vlan learn-restrict vtep` (:46/:48) prove the
     // no-digit forms create nothing (fixture test above); a DIGIT behind `no` does — `vxlan vlan (\d+)`
-    // is unanchored at `:902` — and 12 joins as a profile with nothing under it. That is upstream's
+    // is unanchored at `:897` — and 12 joins as a profile with nothing under it. That is upstream's
     // entry creation verbatim; the `flood vtep`-bare line matches neither side's per-vid flood pattern
     // (both require the space the line does not have), so the list stays empty. (A running-config
     // `no vxlan vlan <n>` line is itself M12 (#14) territory; this pin is about the port rule.)
     expect(group?.vlans?.get('20')).toEqual({ floodList: ['5.5.5.5', '', '6.6.6.6'] })
     // The double space producing an empty STRING entry is upstream's own `matches.group(1).split(' ')`
-    // (`:910`) verbatim — not normalised away, because normalising it here while the writer never
+    // (`:909`) verbatim — not normalised away, because normalising it here while the writer never
     // emits it would hide a shape the reader has to stay honest about.
     expect(group?.vlans?.get('10')).toEqual({ vni: 100, floodList: [] })
     expect(group?.vlans?.get('12')).toEqual({ floodList: [] })
-    // Upstream stores `values[vid]['vni'] = match.group(1)` — a STRING — or None (`:905-906`); the
+    // Upstream stores `values[vid]['vni'] = match.group(1)` — a STRING — or None (`:905`); the
     // number here is `numberFieldFromBlock`'s existing conversion (DR-059), the ABSENT vni is DR-076.
   })
 
@@ -3151,7 +3154,7 @@ describe('InterfacesResource Vxlan writes — M10d: interfaces.py:921-1090, the 
     // Every refusal names what its own reader cannot reproduce: the token pattern `([^\s]+)` (:876),
     // the group octet shape (:881-882 — `'decap'` is the SUB-FORM keyword, served by
     // setMulticastDecap, never a group value), the flood class `([\d. ])` (:915), the scope token
-    // `vxlan vlan (\d+)` (:902). Pyeapi itself validates none of this (:921-1090 interpolate raw) —
+    // `vxlan vlan (\d+)` (:897). Pyeapi itself validates none of this (:921-1090 interpolate raw) —
     // the guards are client policy, the device remains the authority (divergence 24, DR-053).
   })
 
@@ -3191,8 +3194,8 @@ describe('InterfacesResource Vxlan writes — M10d: interfaces.py:921-1090, the 
     // The mock's message is the suite's own fixture wording; what is pinned is the SHAPE of the
     // answer — a rejection on a name and value this client accepts arrives as the device's
     // CommandError, never as a silent True (DR-005) and never as a swallowed success. Whether the
-    // 7050TX-64 supports VXLAN at all is UNVERIFIED (probe question, DR-033): every command in both
-    // M10d describes is pyeapi-faithful, that is the only claim.
+    // 7050TX-64 supports VXLAN at all is UNVERIFIED (probe question, DR-033, §5 row 212, **DR-115**):
+    // every command in both M10d describes is pyeapi-faithful, that is the only claim.
   })
 
   it('presence verbs need NO Vxlan-specific work — upstream inherits BaseInterface and M10a\'s pins already carry the kind (divergence 25)', async () => {
@@ -3210,8 +3213,9 @@ describe('InterfacesResource Vxlan writes — M10d: interfaces.py:921-1090, the 
     // `VxlanInterface` overrides no `create`/`delete`/`default` — pyeapi composes these three from
     // `BaseInterface` (`:211-254`) for it via the `Vx` class-map row (`:1096`), and its suite pins none
     // of them for Vxlan specifically. The M10a create/delete loops have carried `Vxlan5`/`Vxlan9`
-    // since PR #30 (this file, the `names` arrays at :1050/:1102 — verified 2026-11-07), so the port
-    // here is a no-op by design and this test is the pin saying so out loud (the refusal-vs-port
+    // since PR #30 (this file's `names` arrays in the create and delete tests — re-verified at
+    // `:1064`/`:1116` on 2026-11-07, which is divergence 25's nothing-to-do case, §5 row 212), so the
+    // port here is a no-op by design and this test is the pin saying so out loud (the refusal-vs-port
     // convention includes the null cases).
   })
 })

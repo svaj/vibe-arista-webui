@@ -26,16 +26,19 @@
  * coerced with `int()`) and stores only `e['attr']` at `response[action][seqno]` (`:137`) — the
  * three coordinates survive purely as the two levels of the returned dict nesting, never as fields on the
  * leaf. The TS port keeps that faithful shape: a route-map **name** is the collection key (`K = string`),
- * {@link getOne} returns a {@link RoutemapEntry} keyed `action → seqno(number) → {@link RoutemapEntryAttrs}`
- * — two nesting levels, exactly upstream's dict-of-dicts — the leaf attributes are the four `attr` keys,
- * and the triple is NOT flattened into the leaf (no invented `name`/`action`/`seqno` fields on the attr
- * record, where upstream has none). This is the `§4` "typed records, not stringly dicts" instance for a
- * triple, and DR-093 (`staticroute`) recorded the same family one level down.
+ * {@link RoutemapsResource.get} returns a {@link RoutemapEntry} keyed
+ * `action → seqno(number) → {@link RoutemapEntryAttrs}` — two nesting levels, exactly upstream's
+ * dict-of-dicts — the leaf attributes are the four `attr` keys, and the triple is NOT flattened into the
+ * leaf (no invented `name`/`action`/`seqno` fields on the attr record, where upstream has none). This is
+ * the `§4` "typed records, not stringly dicts" instance for a triple, and it is §5 row 203 of
+ * `docs/MIGRATION.md`, decided by **DR-111**: DR-093 (a name-keyed table carrying a number-keyed Map in
+ * device document order) and DR-100 (`staticroute`'s flat records for a composite identity) are the two
+ * sibling arities it joins.
  *
  * | pyeapi (verified refs) | here |
  * |---|---|
  * | `Routemaps(EntityCollection)` (`:50`) | {@link RoutemapsResource} extends `EntityCollection<RoutemapEntry \| undefined, string, RoutemapClauseAttrs>` (`base.ts`) — `K` is the name, the nested entry is `T` |
- * | `get(name)` (`:57-99`): `if not self.get_block(r'route-map\s%s\s\w+\s\d+' % name): return None` (`:96-97`) then `_parse_entries(name)` (`:99`) | {@link RoutemapsResource.get} — the whole name's entry from the shared table; existence is the table lookup, and the name is **never** interpolated into a regex (divergence 1, DR-093 pattern) |
+ * | `get(name)` (`:57-99`): `if not self.get_block(r'route-map\s%s\s\w+\s\d+' % name): return None` (`:96-97`) then `_parse_entries(name)` (`:99`) | {@link RoutemapsResource.get} — the whole name's entry from the shared table; existence is the table lookup, and the name is **never** interpolated into a regex (divergence 1, §5 row 204) |
  * | `getall()` (`:101-109`): `re.compile(r'^route-map\s([\w-]+)\s\w+\s\d+$', re.M).findall(self.config)` (`:103`), `resources[name] = self.get(name)` per hit — N re-scans | {@link RoutemapsResource.getAll} — one pass over the chunked document's `route-map …` section keys (DR-030, request-count pinned), keyed by name with clause-order preserved |
  * | `_parse_entries` (`:110-128`): `^route-map\s%s\s(\w+)\s(\d+)$` findall (`:112-113`, driving `findall` at `:115`), a get_block per clause (`:118-119`), the four `_parse_*` merges (`:121-125`) | private {@link readOneClause} + {@link readAttrs} — one pass, the same keyword-anchored body extraction `vlans.ts`/`staticroute.ts` use (match/set findAll, continue/description first-match) |
  * | `_merge_entries` (`:130-139`): `seqno = int(e['seqno'])` at `:134`, then `response[action][seqno] = e['attr']` at `:137` — the LAST clause for a repeated `(action, seqno)` REPLACES the whole attr dict, and the entry's own `name`/`action`/`seqno` fields are never stored | private table build: `clauses.set(Number(seqno), attrs)` keeps the first clause's POSITION but the last one's attrs — the identical Map-level rule `staticroute.ts`'s divergence-2 note spells out, pinned against the fixture's doubled `FOOBAR permit 20` (`:24`,`:30` of `test/fixtures/running_config.routemaps`) |
@@ -59,8 +62,10 @@
  * (`:146-149`), `test_set_description_with_invalid_value` (`:151-158`). All 18 are ported in
  * `routemaps.test.ts`; the `random_string()` slot becomes a fixed multi-word description.
  *
- * ## Divergences this file owns (the orchestrator's §5 band is 203-212; rows are written by the ledger
- * round, not this module round — under-filled = declared skips there)
+ * ## Divergences this file owns (filed in `docs/MIGRATION.md` §5: row 203 is the identity/typing decision
+ * above, row 204 is divergence 1, row 205 is divergence 2, row 206 is divergence 3, row 207 covers
+ * divergences 4 and 5; the durable decisions are **DR-111** (the triple), **DR-112** (the inline fixture
+ * and its one declared edit) and **DR-113** (the replace verb), all in `docs/DECISIONS.md`)
  *
  * 1. **a name is never interpolated into a section pattern.** Upstream's existence probe and per-clause
  *    reads build `get_block(r'route-map\s%s\s\w+\s\d+' % name)` (`:96`) and
@@ -87,12 +92,12 @@
  *    a non-empty entry (`{ match: [], set: [] }` at minimum), so upstream's skip is unreachable for any
  *    name its own `findall` returned — this is a documented no-op rather than a divergence, and the
  *    getAll order/merge pins stand in for it. `getAll()` answers names in config-line order.
- * 3. **`setMatchStatements`/`setSetStatements` are REPLACE verbs — that is what upstream does, and the
- *    naming has to say so.** Upstream diffs the clause's current statements against the passed list and
+ * 3. **`setMatch`/`setSet` (upstream's `set_match_statements`/`set_set_statements`) are REPLACE verbs —
+ *    that is what upstream does, and the naming has to say so.** (§5 row 206, **DR-113**.) Upstream diffs the clause's current statements against the passed list and
  *    emits `no match`/`no set` for everything in current-but-not-passed and `match`/`set` for everything
  *    in passed-but-not-current (`:247-255` for match, `:283-291` for set); the final config equals the passed list exactly.
  *    The framework's naming rule (`base.ts` header) reserves `add<X>`/`remove<X>` for membership, so the
- *    upstream method name `set_match_statements` maps to `setMatchStatements` (a `set<Field>` verb) and
+ *    upstream method name `set_match_statements` maps to {@link setMatch} (a `set<Field>` verb) and
  *    NOT an `add` verb — pinning that the verb replaces the set, and the two pinned `_remove_extraneous`
  *    upstream tests (`:87-94`, `:102-109`) become the "an omitted statement is removed" pins here. The
  *    order of emitted lines is upstream's: **all removals first (header per removal), then all additions
@@ -135,12 +140,12 @@
  * The issue text asks about an add/remove pair: there is none in `pyeapi/api/routemaps.py` at this
  * revision. The module's only statement-level writers are `set_match_statements`/`set_set_statements`
  * (`:222`, `:259`), and they are the diff-replace form (divergence 3). There is no `add_match_entry` /
- * `remove_match_entry` (contrast `switchports.ts`'s real upstream `add_trunk_group`/`remove_trunk_group`,
- * `switchports.py:369-375`), so the framework's `add<X>/remove<X>` naming has nothing to map onto and is
+ * `remove_match_entry` (contrast `switchports.ts`'s real upstream verb pair `add_trunk_group`/
+ * `remove_trunk_group`, `switchports.py:379` and `:392`), so the framework's `add<X>/remove<X>` naming has nothing to map onto and is
  * NOT invented here. Whether EOS itself offers a bare `match <single>` under a clause is true of the CLI
  * but pyeapi never models it as a verb, and this port models pyeapi — an additive single-statement verb
- * would be a NEW capability needing a pyeapi-shaped decision (and a §5 row), owned upward, not decided in
- * this module.
+ * would be a NEW capability needing a pyeapi-shaped decision and its own §5 row (row 206 records the
+ * replace verb that DOES exist), owned upward, not decided in this module.
  */
 
 import { NotSupportedError } from '../errors'
@@ -210,7 +215,8 @@ export type RoutemapEntry = ReadonlyMap<string, ReadonlyMap<number, RoutemapEntr
 
 /**
  * The clause coordinate the presence verbs address — `create(name, action, seqno)`
- * (`staticroute.py`'s positional identity `next_hop` rides the same way per DR-093).
+ * (`staticroute.py`'s positional identity `next_hop` rides the same way per DR-100; the number-keyed
+ * Map shape is DR-093's, decided — **DR-111**.)
  *
  * `action`/`seqno` are required for every clause verb, but `EntityCollection.create`'s signature only
  * carries `name`, and {@link RoutemapsResource.create}/delete/setDefault share one attrs bag with the
@@ -455,7 +461,7 @@ export class RoutemapsResource extends EntityCollection<RoutemapEntry, string, R
    * order-stable (current order for removals, input order for additions), which preserves the SET of
    * commands and makes the MockTransport join-key pins real. This is the one place ordering was
    * deliberately tightened without widening behaviour: the command MULTiset is identical, only its sequence
-   * is now deterministic (divergence 3's second half) — §5-recorded.
+   * is now deterministic (divergence 3's second half) — §5 row 206, **DR-113**.
    */
   private async replaceStatements(
     keyword: 'match' | 'set',
