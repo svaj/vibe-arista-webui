@@ -401,6 +401,10 @@ export { MlagResource } from './resources/mlag'
 // `node.bgp.neighbors` sub-collection class, all from `.` with no deep import (§5 rows 191-202).
 export { OspfResource } from './resources/ospf'
 export { BgpResource, BgpNeighborsResource } from './resources/bgp'
+// W3b lane B (#50): the route-maps table and the action/description vocabularies; the type-exports of
+// entry shapes follow below, and the accessor/registry identity is the test-suite's `node.routemaps`
+// pin — DR-006's single replacement for pyeapi's `node.api('routemaps')` autoload.
+export { RoutemapsResource, ROUTE_MAP_ACTIONS, isRoutemapAction } from './resources/routemaps'
 export { toArray } from './internal/collections'
 export type {
   CommandInput,
@@ -444,6 +448,12 @@ export type { StaticRoute, StaticRouteAttrs, StaticRouteFields } from './resourc
 export type { MlagGlobalConfig, MlagInterface, MlagState } from './resources/mlag'
 export type { OspfNetwork, OspfRedistribution, OspfState } from './resources/ospf'
 export type { BgpNeighbor, BgpNetwork, BgpState, PeerGroupForm } from './resources/bgp'
+export type {
+  RoutemapAction,
+  RoutemapClauseAttrs,
+  RoutemapEntry,
+  RoutemapEntryAttrs,
+} from './resources/routemaps'
 export type {
   EthernetInterfaceName,
   InterfaceKind,

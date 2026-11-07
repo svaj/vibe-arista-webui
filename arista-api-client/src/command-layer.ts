@@ -76,9 +76,10 @@ import type { VlansResource } from './resources/vlans'
 import type { VrfsResource } from './resources/vrfs'
 import type { StaticRouteResource } from './resources/staticroute'
 import type { MlagResource } from './resources/mlag'
-// W3a (#48 #49) appended these at the END of the block (cross-lane take-both merge rule).
+// W3a (#48 #49) then W3b (#50) appended these at the END of the block (cross-lane take-both merge rule).
 import type { OspfResource } from './resources/ospf'
 import type { BgpResource } from './resources/bgp'
+import type { RoutemapsResource } from './resources/routemaps'
 import type { ResourceKinds, ResourceName } from './resources/registry'
 import type { MethodCallOptions, Transport, TransportExecOptions } from './transports/contract'
 import type { CommandResult, CommandSpec, RunCmdsFormat, ShowContracts, ShowReply } from './types/eapi'
@@ -992,6 +993,16 @@ export class Node {
    */
   get bgp(): BgpResource {
     return this.resource('bgp')
+  }
+
+  /**
+   * The `routemaps` resource — same per-`Node` {@link resourceMemo} (DR-052): `node.routemaps ===
+   * node.routemaps === node.resource('routemaps')`. pyeapi reaches it through `node.api('routemaps')`
+   * loading `pyeapi.api.routemaps` and calling its `instance(api)` (`routemaps.py:347-357`,
+   * `client.py:927-950`). Added by W3b lane B (#50).
+   */
+  get routemaps(): RoutemapsResource {
+    return this.resource('routemaps')
   }
 
   /**

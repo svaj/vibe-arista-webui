@@ -226,6 +226,10 @@ describe('what the browser entry exports', () => {
       // W3a (#48/#49): the OSPF entity and the BGP entity + its sub-collection class — `node.ospf`,
       // `node.bgp` and `node.bgp.neighbors` all nameable from `.` without a deep import.
       'OspfResource', 'BgpResource', 'BgpNeighborsResource',
+      // W3b (#50) lane B: the route-maps table, its action vocabulary, and the type-pinning exports of
+      // the entry shape (`RoutemapEntry`, `RoutemapEntryAttrs`) — all from `.` with no deep import. The
+      // `isRoutemapAction` export is the guard the action union narrows through (DR-093 triple identity).
+      'RoutemapsResource', 'isRoutemapAction',
     ] as const
     for (const name of functions) {
       expect(typeof surface[name], name).toBe('function')
@@ -243,13 +247,15 @@ describe('what the browser entry exports', () => {
     expect(surface.isUserEncryption('sha512')).toBe(true)
     expect(surface.isUserEncryption('bcrypt')).toBe(false)
     expect(surface.parseInterfaceName('Ethernet1.100')).toEqual({ kind: 'Ethernet', index: 1, name: 'Ethernet1.100', subinterface: 100 })
-    // The registry has fifteen rows now: M8's `system`, M9's `vlans`/`switchports`, M10a's
+    // The registry has sixteen rows now: M8's `system`, M9's `vlans`/`switchports`, M10a's
     // `interfaces`, then W2a's `users`/`ntp`, W2b's `acls`/`varp`, W2c's `stp`/`ipinterfaces`, W2d's
-    // `vrfs`/`staticroute`/`mlag` and W3a's `ospf`/`bgp`, each appended in merge order (§5 row 79,
-    // rows 167/173, rows 191/197). `ospf` was this table's NEGATIVE control until this lane landed it.
+    // `vrfs`/`staticroute`/`mlag`, W3a's `ospf`/`bgp`, then W3b lane B's `routemaps` — each appended in
+    // merge order (§5 row 79, rows 167/173, rows 191/197, row 203). The NEGATIVE CONTROL for
+    // `has()`/`hasResource()` lives in `registry.test.ts`, not here: by the COMMON protocol that name
+    // moved from `ospf` to lane C's `vrrp`, unregistered on this tree until the W3 merge order completes.
     expect(Object.keys(surface.RESOURCE_FACTORIES)).toEqual([
       'system', 'vlans', 'switchports', 'interfaces', 'users', 'ntp', 'acls', 'varp', 'stp', 'ipinterfaces',
-      'vrfs', 'staticroute', 'mlag', 'ospf', 'bgp',
+      'vrfs', 'staticroute', 'mlag', 'ospf', 'bgp', 'routemaps',
     ])
     expect(new Node(mockTransport()).system).toBeInstanceOf(surface.SystemResource)
     expect(new Node(mockTransport()).vlans).toBeInstanceOf(surface.VlansResource)
@@ -290,6 +296,17 @@ describe('what the browser entry exports', () => {
     expect(new Node(mockTransport()).ospf).toBeInstanceOf(surface.OspfResource)
     expect(new Node(mockTransport()).bgp).toBeInstanceOf(surface.BgpResource)
     expect(new Node(mockTransport()).bgp.neighbors).toBeInstanceOf(surface.BgpNeighborsResource)
+    // W3b lane B (#50): the route-maps accessor plus its action vocabulary. `ROUTE_MAP_ACTIONS` is the
+    // frozen pair and `isRoutemapAction` its runtime guard — the same DR-079 shape as
+    // `SWITCHPORT_MODES`/`isSwitchportMode` and `USER_ENCRYPTIONS`/`isUserEncryption`, and equally NOT a
+    // hardware claim (DR-032): pyeapi interpolates any `\w+` action, and this client READS any `\w+`
+    // action back but its write verbs narrow to this pair (divergence 5 in `routemaps.ts`). `node.routemaps`
+    // is DR-006's replacement for pyeapi's `node.api('routemaps')`, one memoised instance per Node.
+    expect(surface.ROUTE_MAP_ACTIONS).toEqual(['permit', 'deny'])
+    expect(Object.isFrozen(surface.ROUTE_MAP_ACTIONS)).toBe(true)
+    expect(surface.isRoutemapAction('deny')).toBe(true)
+    expect(surface.isRoutemapAction('reject')).toBe(false)
+    expect(new Node(mockTransport()).routemaps).toBeInstanceOf(surface.RoutemapsResource)
     // `assertVlanId` is an assertion function (returns void); the range is pyeapi's —
     // `value in range(1, 4095)`, i.e. VLANs 1..4094 (pyeapi/api/vlans.py:78). M9 (#12) re-checks that
     // bound against the switch's own `switchport access vlan` range on a device.

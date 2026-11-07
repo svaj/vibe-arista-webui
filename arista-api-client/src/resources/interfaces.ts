@@ -7,9 +7,10 @@
  * Port of `pyeapi/api/interfaces.py` (1,101 lines, BSD-3-Clause, Arista Networks — DR-001). PLAN.md §M10
  * splits the module into four slices: **M10a** = `Interfaces` + `BaseInterface` + the name parser;
  * **M10b** = `EthernetInterface` (sflow / flowcontrol / vrf, `:330-577`); **M10c** =
- * `PortchannelInterface` (members / LACP / min-links, `:578-813`); M10d = `VxlanInterface` (`:814-1090`),
- * deferred to wave 3 — nothing in this file ports or hints at it beyond the `Vxlan` **name** arm of the
- * grammar and the `Vxlan5` rows of a config table.
+ * `PortchannelInterface` (members / LACP / min-links, `:578-813`); **M10d** = `VxlanInterface`
+ * (`:814-1090`), landed by W3b lane B (#52) as the {@link Interface.vxlan} field group
+ * ({@link vxlanFieldsFromBlock}) and the VXLAN verbs at the end of {@link InterfacesResource} — the
+ * DR-068 shape again: a per-kind **field group**, not a per-kind object and not a registry row.
  *
  * Every `pyeapi` range in this file was opened in the pinned clone
  * `/home/svaj/development/arista/pyeapi` (1.0.4-rc0, `develop` @ `6816d9e`) on 2026-11-04, and every
@@ -30,6 +31,8 @@
  | `EthernetInterface.set_flowcontrol*` (`:447-472` composing through `set_flowcontrol` at `:513-524`), `set_sflow` (`:526-548`), `set_vrf` (`:550-576`, which picks its keyword with `if self.version_number >= '4.23'` at `:568`) | {@link setFlowcontrol} / {@link setFlowcontrolSend} / {@link setFlowcontrolReceive} and their `unset`/`default` pairs, {@link setSflow} trio, {@link setVrf} trio behind {@link assertEthernetName} — upstream's `ValueError` guards and its two silent-`False` answers become typed refusals (**divergence 17**, DR-077), and the version floor becomes a numeric segment compare (**divergence 18**, DR-078) |
  | `PortchannelInterface.get` (`:583-616`) with `_parse_minimum_links` / `_parse_lacp_fallback` / `_parse_lacp_timeout` (`:618-638`, defaulting to `0` / `'disabled'` / `90`), `get_lacp_mode` (`:639-658`), `get_members` (`:660-675`) | the {@link Interface.portChannel} field group ({@link portChannelFieldsFromBlock} + {@link interfacesFromSections}' group facts) plus {@link getLacpMode} / {@link getMembers} — read values stay absent where upstream substitutes a module constant, and members come from the running-config relation instead of only the text scrape (**DR-076**, divergence 15) |
  | `PortchannelInterface.set_members` (`:677-716`), `set_lacp_mode` (`:718-745`), `set_minimum_links` (`:747-769`), `set_lacp_fallback` (`:771-793`), `set_lacp_timeout` (`:795-811`) | {@link setMembers} / {@link setLacpMode} / {@link setMinimumLinks} trio / {@link setLacpFallback} + {@link unsetLacpFallback} / {@link setLacpTimeout} — same diff and same remove-then-add batch, with the mode-change side call kept as **two** transactions (**divergence 20**, DR-080) |
+ | `VxlanInterface.get` (`:822-859`, its own `get_block` call at `:846`, `super()` at `:850`, the six parsers merged at `:853-858`) with `_parse_source_interface` (`:862-878`), `_parse_multicast_group` (`:879-885`), `_parse_multicast_decap` (`:886-890`), `_parse_udp_port` (`:891-895`), `_parse_vlans` (`:896-913`) and `_parse_flood_list` (`:914-919`) | the {@link Interface.vxlan} field group ({@link vxlanFieldsFromBlock}) — upstream's three distinctive reader regexes ported **verbatim with their quirks pinned** (the 3-digit leading octet, the `VLAN-ID` findall, the `[\d. ]` flood class), while its `''`-module-constant defaults, its `NoneType` crash on a missing `udp-port`, its XOR substring decap test and its `frozenset` key order are not (**divergences 21/22**) |
+ | `VxlanInterface.set_source_interface` (`:921-941`), `set_multicast_group` (`:943-967`, `CliVariants(cmds_new, cmds_dpr)` at `:966-967`), `set_multicast_decap` (`:969-991`), `set_udp_port` (`:994-1012`), `add_vtep`/`remove_vtep` (`:1014-1056`, the `if not vlan` truth test at `:1030`/`:1052`), `update_vlan` (`:1058-1073`), `remove_vlan` (`:1075-1090`, `CliVariants` with a literal `$` first at `:1088-1090`); the class **overrides no `create`/`delete`/`default`** — those are inherited `BaseInterface` (`:211-254`) | {@link setSourceInterface} trio, {@link setMulticastGroup} trio (the decap-spelling first, legacy fallback — {@link InterfacesResource.configureInterfaceVariants} over `internal/variants.tryVariants`), {@link setMulticastDecap} trio, {@link setUdpPort} trio, {@link addVtep}/{@link removeVtep} with both bare and vlan-scoped spellings, {@link updateVlan}, {@link removeVlan} (**divergences 23/24**); Vxlan presence verbs were already ported by M10a and stay where they are (**divergence 25**) |
  * | `_parse_shutdown` (`:179-191`): `'no shutdown' not in config` (`:190`) | {@link shutdownFromBlock} — a parsed body **command line**, three answers instead of two — divergence 3 |
  * | `_parse_description` (`:193-209`): `re.search(r'description (.+)$', config, re.M)` (`:206`), raw remainder, first match wins | {@link valueAfterKeyword} (`config-block.ts`) over the block body — the shared keyword extractor, so a value can no longer answer for another field (row 91's rule) — divergence 4 |
  * | `create` / `delete` / `default` (`:211-254`): `return self.configure('interface %s')` (`:226`) / `'no interface %s'` (`:243`) / `'default interface %s'` (`:254`) | {@link InterfacesResource.create} / {@link delete} / {@link setDefault} — same three command texts, no `True` to check (DR-005), plus the physical-Ethernet rule from divergence 5 — and Port-Channel create/delete are the same pair on a non-dotted name, since upstream's `PortchannelInterface` inherits `BaseInterface.create`/`delete` rather than overriding them |
@@ -58,7 +61,15 @@
  * (`:225-302`) — and `TestApiPortchannelInterface` (`:305-428`) — `test_get` (`:318-326`), the min-links /
  * timeout / fallback families (`:328-373`), `test_get_lacp_mode` (`:375-377`), `test_get_members`
  * (`:379-381`), the five `test_set_members_*` (`:383-414`), `test_set_lacp_mode` (`:416-422`) and
- * `test_set_lacp_mode_invalid_mode` (`:424-427`). `TestApiVxlanInterface` (from `:429`) stays wave 3.
+ * `test_set_lacp_mode_invalid_mode` (`:424-427`). M10d (#52, W3b lane B) ports the last class,
+ * `TestApiVxlanInterface` (`:429-531`, **19** methods): `test_get` (`:436-442`), the
+ * `set_source_interface` / `set_multicast_group` / `set_multicast_decap` / `set_udp_port` quads
+ * (`:443-502`, each trio of arms pinning one command text), `test_update_vlan` (`:503-507`),
+ * `test_remove_vlan` (`:508-512`), and the four VTEP pins (`:513-531`). Their fixture is
+ * `test/fixtures/running_config.vxlan` (50 lines; the six VXLAN families sit at `:39-49`), quoted
+ * byte-exactly in `interfaces.test.ts`; the sibling `test/fixtures/vxlan.json` exists upstream but is
+ * referenced by **no** upstream test (grep, 2026-11-07 — it appears only in `.git/index`), and this
+ * client has no reader that would use it, so it is not ported.
  * Upstream's `EapiConfigUnitTest` mock answers `{}` to anything it was not told about, records only the
  * **last** `config` call (`test/lib/testlib.py:100`), asserts `call_count == 0` for a `cmds=None` pin
  * (`:109`), and drops the command list entirely on an exception pin (`:121-123`) — so several of its
@@ -329,6 +340,99 @@
  *     which `testlib.py:109` turns into `config.call_count == 0`, at `:411-414`); and where `set_lacp_mode`
  *     with no members would still open a `configure terminal` carrying an empty list (`abstract.py:103-127`),
  *     {@link setLacpMode} performs no transaction for an empty plan. **DR-080.**
+ *
+ * ## M10d divergences (W3b lane B, #52) — filed in `docs/MIGRATION.md` §5 as rows 208-212
+ *
+ * Divergence 21 is §5 row 208, divergence 22 is row 209, divergence 23 is row 210, divergence 24 is
+ * row 211, and divergence 25 is row 212 — which is also where the platform-honesty note now lives
+ * (7050TX-64 VXLAN hardware support **unverified**; capability presence stays a probe question per
+ * DR-033 — nothing in this slice claims the SKU does or does not do VXLAN, and every command here is
+ * shipped as a **pyeapi-faithful** command text, not as a support statement). The durable decisions
+ * are **DR-112** (the byte-exact inline `running_config.vxlan` copy, and pyeapi's orphan
+ * `test/fixtures/vxlan.json` — referenced by no upstream test at the pinned SHA — recorded rather than
+ * ported), **DR-114** (the ordered variant pair) and **DR-115** (platform honesty on the ledger, not
+ * only in comments).
+ *
+ * 21. **the Vxlan reads keep this file's absence discipline.** Upstream defaults nothing honestly: an
+ *     unconfigured `source_interface`/`multicast_group` answers the module constants
+ *     `DEFAULT_SRC_INTF = ''`/`DEFAULT_MCAST_GRP = ''` (`:816-817`, applied at `:876`/`:883`) so "not
+ *     configured" and "configured as the empty string" collapse into one answer; `_parse_udp_port` does
+ *     neither — it `int()`s the match **without checking** (`value = int(match.group(1))`, `:893`), so a
+ *     Vxlan section without a `vxlan udp-port` line raises `AttributeError` on `None.group` and takes
+ *     `get`/`getall` down with it (the fixture never provokes it because its `interface Vxlan1` carries
+ *     the line at `running_config.vxlan:42`); `_parse_multicast_decap` answers `bool(val1 ^ val2)` over
+ *     whole-**block substrings** (`:887-889`); and `_parse_vlans`/`_parse_flood_list` answer `{}`/`[]`
+ *     for absence (`values = dict()` at `:898` returned at `:912`, `values = list()` at `:916` returned
+ *     at `:919`). Here all six fields follow the {@link Interface.ethernet} rule
+ *     (DR-076's family applied to this kind): absence is absence, the missing-`udp-port` crash becomes
+ *     an absent field, and a non-decimal or unrepresentable vni is a {@link ConfigParseError} via
+ *     {@link numberFieldFromBlock} rather than pyeapi's silent string (it stores `match.group(1)` — a
+ *     **str** — at `:905`). {@link multicastDecapFromBlock} reads the two whole command lines like
+ *     {@link sflowFromBlock}; upstream's XOR happens to answer the fixture's
+ *     `no vxlan multicast-group decap` line (`:49`) as `False` only **by coincidence** — that line also
+ *     contains the positive substring, so `val1` and `val2` are both true and `False ^ False`-shaped
+ *     reasoning never happens — and it answers `True` for a description that merely carries those
+ *     characters, which this reader cannot be fooled by. A block carrying both decap lines is not a
+ *     shape EOS is known to write, so the first line wins (divergence 3's rule, restated), where
+ *     upstream's order-blind XOR would answer `False` at any order.
+ * 22. **three upstream regexes ported verbatim, quirks pinned rather than smoothed.** The
+ *     multicast-group reader keeps `([\d]{3}\.[\d]+\.[\d]+\.[\d]+)` (`:881-882`) — the leading octet
+ *     must have **exactly three digits**, so a group whose first octet is `224` under any other spelling
+ *     and anything 1- or 2-digit-leading reads back as absent (pinned, quirk and all); the per-VLAN scan
+ *     keeps the unanchored `vxlan vlan (\d+)` **findall** (`:897`) — which also counts a
+ *     `no vxlan vlan 10 …`-shaped line as an entry — and the per-vlan `vni`/`flood` searches keep
+ *     upstream's unanchored first-match semantics ({@link firstGroupOf}, against `:904`/`:908`); and the global flood list
+ *     keeps `^ *vxlan flood vtep +([\d. ]+)$` (`:915`), whose character class means a VTEP written in
+ *     any other shape makes the **whole line** unread, exactly as upstream, and the field then reports
+ *     absent. Two upstream behaviours are replaced rather than ported: the `frozenset` round-trip at
+ *     `:897` (iterated at `:900`) gives an **arbitrary** per-run iteration order, so `vlans` here is a nested
+ *     `ReadonlyMap` keyed by first-appearance in the section (the `acl.ts:266`/`mlag.ts:183` shape —
+ *     determinism is not the question, faithfulness to the DEVICE order is, and a plain object could not
+ *     carry it anyway: ES ordering rules sort canonical-integer-looking keys ahead of insertion order);
+ *     and reads run over
+ *     parsed **body lines**, not the raw block string, so a match can never span a line boundary the way
+ *     `re.search` over `get_block` output can. The `''`/`{}`/`[]`/crash answers belong to divergence 21;
+ *     the **command texts** all stay upstream's verbatim.
+ * 23. **the two `CliVariants` sites become tryVariants, and the pins see BOTH transactions.**
+ *     `set_multicast_group` tries the decap spelling **first** and the legacy spelling as fallback
+ *     (`CliVariants(cmds_new, cmds_dpr)`, `:966-967`, with `string_new`/`cmds_new` at `:963-965` and
+ *     `string_dpr`/`cmds_dpr` at `:960-962`), and `remove_vlan`'s first variant carries a **literal
+ *     trailing `$`** (`f'vxlan vlan remove {vid} vni $'`, `:1089` — an artefact upstream really sends;
+ *     the clean text is the *second* variant at `:1090`). Upstream scans the command list for the marker
+ *     (`client.py:628-633`), splices each alternative in and issues one config call per variant
+ *     (`:646-651`), first success wins, and the last `CommandError` is re-raised
+ *     (`raise err`, `:652`) — which is exactly `internal/variants.ts`'s {@link tryVariants} contract
+ *     (row 37's decision), reached per verb through
+ *     {@link InterfacesResource.configureInterfaceVariants}. What is **not** ported is upstream's own
+ *     test blindness: `test/lib/testlib.py:97-107` expands every variant and accepts a pin matching
+ *     **any** of them, which is how `test_set_multicast_group_with_value` (`:458-462`) pins only the
+ *     legacy text while the decap attempt runs first on the real client, and how `test_remove_vlan`
+ *     (`:508-512`) passes for the `$`-suffixed opener without ever showing it. The spec here pins the
+ *     actual pair: first-attempt text, the fallback transaction after a rejection, and the last error
+ *     re-raised when both fail — the literal `$` quirk included.
+ * 24. **writer guards are reader-derived, the falsy VLAN arm is a pinned truth table, and the device
+ *     keeps authority.** Upstream validates nothing on any of these verbs (straight interpolation at
+ *     `:939-941`, `:961-967`, `:986-991`, `:1010-1012`, `:1031-1034`, `:1053-1056`, `:1072-1073`,
+ *     `:1088-1090`). Here {@link assertVxlanName} makes the facade's `Vx` class-map prefix
+ *     (`:1093-1097`) explicit, exactly as {@link assertEthernetName} does for Ethernet (DR-068's
+ *     surface argument), and every value guard refuses what THIS module's reader could not read back: a
+ *     source-interface that is not one token (upstream's own pattern is `([^\s]+)`, `:875`), a multicast
+ *     group outside the leading-3-digit shape its reader can match (divergence 22), a VTEP outside
+ *     digits-and-dots (the flood class `[\d. ]`, `:915`), and a vlan scope or vni that is not decimal
+ *     ({@link assertVlanScopeToken}/{@link assertVniValue} — client policy: the platform's VNI ceiling
+ *     and VXLAN licensing are device answers, DR-032/DR-057; `0`-as-value is DR-037's falsy trap).
+ *     `addVtep`/`removeVtep` keep upstream's **truth test** on the scope argument (`if not vlan`,
+ *     `:1030`/`:1052`) as an explicit table: `undefined`, `''` and the number `0` take the bare
+ *     flood-list arm while the **string `'0'`** composes `vxlan vlan 0 flood vtep …` — four pins, because
+ *     "fixing" the falsy number silently changes which command pyeapi-equivalent callers get.
+ * 25. **no Vxlan presence verbs — because upstream has none either.** `VxlanInterface` overrides `get`
+ *     and the writers only; `create`/`delete`/`default` are inherited unchanged from `BaseInterface`
+ *     (`:211-254`, reached through the `Vx` row of `INTERFACE_CLASS_MAP`, `:1096`), so pyeapi composes
+ *     `interface Vxlan1` / `no interface Vxlan1` / `default interface Vxlan1` for it exactly as for a
+ *     Vlan or Loopback — its suite pins none of them for VXLAN specifically. This client's
+ *     {@link assertPresentName} family already accepts every plain `Vxlan<n>`, and the spec already
+ *     pins `Vxlan5`/`Vxlan9` inside the create/delete loops from M10a; the refusal-vs-port convention
+ *     records that this is a **nothing-to-do** case rather than inventing a Vxlan-only presence verb.
  */
 import { ConfigParseError, NotSupportedError, ProtocolError } from '../errors'
 import { pythonRepr } from '../internal/wire'
@@ -337,6 +441,7 @@ import { valueAfterKeyword } from './config-block'
 import { EntityCollection } from './base'
 import { submodeCommands } from './command-builder'
 import { assertInterfaceName, assertVlanId, parseInterfaceName } from './validators'
+import { tryVariants } from '../internal/variants'
 import type { ConfigBlock, ConfigLine } from '../config/text'
 import type { ConfigSections } from '../config/chunk'
 import type { InterfaceKind, ParsedInterfaceName } from './validators'
@@ -416,8 +521,87 @@ export interface Interface {
    * carrying at least one such fact.
    */
   readonly portChannel?: InterfacePortChannelFields
+  /**
+   * The `VxlanInterface` field group (M10d #52): what pyeapi's own `VxlanInterface.get` adds on top of
+   * the base record (`interfaces.py:853-858`, six `_parse_*` readers at `:862-919`) — source-interface,
+   * multicast-group (the legacy spelling; the decap sub-form is its own boolean field), multicast
+   * decap, udp-port, the vlan→vni/flood map, and the global flood list. Attached only on a
+   * `Vxlan`-kind section carrying at least one of those lines (DR-068), with upstream's `''` / `{}` /
+   * `[]` / missing-udp-port-crash answers replaced by absence (**divergence 21**, §5 row 208) and its
+   * distinctive reader regexes ported quirk-for-quirk (**divergence 22**, §5 row 209). Reading a
+   * `Vxlan1` section is no claim that the 7050TX-64 supports VXLAN at all — hardware support is
+   * UNVERIFIED and capability presence is a probe question (DR-033, §5 row 212, **DR-115**).
+   */
+  readonly vxlan?: InterfaceVxlanFields
   /** The matching `show interfaces status` row, when it was read (divergence 8). */
   readonly status?: InterfaceStatus
+}
+
+/** The VXLAN fields of a Vxlan-kind section (M10d). */
+export interface InterfaceVxlanFields {
+  /**
+   * The `vxlan source-interface <name>` value — absent, never upstream's `DEFAULT_SRC_INTF = ''`
+   * (`interfaces.py:816`, applied at `:876`) which collapses "not configured" with "the empty string"
+   * (divergence 21, §5 row 208). The name is what the section writes; no {@link Interface}-kind relation is imposed
+   * on it (a `Loopback0` source is an interface of another kind, and whether the device validates the
+   * reference is a device answer).
+   */
+  readonly sourceInterface?: string
+  /**
+   * The legacy `vxlan multicast-group <group>` value, read through upstream's verbatim pattern
+   * (`:881-882`) — including its leading-octet-exactly-three-digits quirk (divergence 22, §5 row 209). The
+   * `vxlan multicast-group decap` line never answers here: upstream's regex cannot match it, and
+   * {@link multicastDecap} is the field for that command.
+   */
+  readonly multicastGroup?: string
+  /**
+   * The `vxlan multicast-group decap` / `no vxlan multicast-group decap` command pair — the first exact
+   * body line wins, and a section writing neither leaves the field **absent** rather than answering
+   * upstream's `False` from an XOR of whole-block substring tests (`:887-889`, divergence 21, §5 row 208).
+   */
+  readonly multicastDecap?: boolean
+  /**
+   * The `vxlan udp-port <n>` value as a number — absent when the line is missing, which upstream
+   * cannot answer at all: `_parse_udp_port` `int()`s a `None` match and raises (`:893`, divergence 21,
+   * A non-decimal or unrepresentable value is a {@link ConfigParseError}, not a truncation (DR-059).
+   */
+  readonly udpPort?: number
+  /**
+   * The vlan→VXLAN map, keyed by the decimal run exactly as the section spells it (`vxlan vlan <vid>`,
+   * findall ported from `:897`), in **insertion order = first appearance in the section** — a `Map`
+   * precisely because a plain object would silently reorder numeric-looking keys (the ES spec sorts
+   * canonical integer keys first), and upstream's `frozenset` round-trip (`:897`, iterated at `:900`)
+   * answers in an arbitrary per-run order (divergence 22, §5 row 209). Same nested-`ReadonlyMap` shape
+   * `acl.ts:266`, `mlag.ts:183`
+   * and `routemaps.ts` use inside a record. A vid found with no `vni` line carries no
+   * {@link InterfaceVxlanVlan.vni} (upstream answers `None` at `:905`, DR-076's rule).
+   */
+  readonly vlans?: ReadonlyMap<string, InterfaceVxlanVlan>
+  /**
+   * The global `vxlan flood vtep <list>` entries, split on single spaces exactly as upstream does
+   * (`match.group(1).split(' ')`, `:918`) under that line's digits-and-dots-only character class
+   * (`:915`) — a line the class cannot match reports the field **absent** rather than upstream's
+   * empty-list `[]` (divergence 21/22). Per-VLAN flood lists live on the {@link vlans} entries.
+   */
+  readonly floodList?: string[]
+}
+
+/** One `vxlan vlan <vid> …` entry of {@link InterfaceVxlanFields.vlans} (pyeapi's per-vid dict, `:900-910`). */
+export interface InterfaceVxlanVlan {
+  /**
+   * The `vxlan vlan <vid> vni <n>` value as a number — absent when the vid was found (divergence 22's
+   * findall sees it in ANY `vxlan vlan <vid>` line, including a `no …` one) but no `vni` line exists.
+   * Upstream stores the regex group — a **string** — at `:905`; converting here is the same call
+   * {@link numberFieldFromBlock} already makes for `mtu`/`min-links` (DR-059), not a platform claim.
+   */
+  readonly vni?: number
+  /**
+   * The per-VLAN flood list from the first `vxlan vlan <vid> flood vtep …` line (`:907-910`), space-split
+   * as upstream splits it. An empty array here is ordinary — the vid exists in the section, it just
+   * names no VTEPs — where an ABSENT global {@link InterfaceVxlanFields.floodList} means no such line
+   * at all (divergence 21).
+   */
+  readonly floodList: readonly string[]
 }
 
 /** The sFlow / flow-control / VRF fields of an Ethernet-kind section (M10b). */
@@ -597,6 +781,42 @@ const GROUP_ID = /([0-9]+)/u
 /** The release floor at which pyeapi's `set_vrf` switches from `vrf forwarding` to the bare `vrf` keyword (`interfaces.py:550-576`, the compare itself at `:568` — a **string** compare against `'4.23'`, which divergence 18 replaces with a numeric one). */
 const VRF_BARE_FORM_MIN: readonly [number, number] = [4, 23]
 
+/** The command keywords the VxlanInterface fields are read behind and the decap command pair (`interfaces.py:862-919` reads; the same texts are what `:939`/`:963-965`/`:985` compose — upstream spells the enable arm of `set_multicast_decap` as the bare string, `:990`). */
+const VXLAN_SOURCE_KEYWORD = 'vxlan source-interface'
+const VXLAN_MULTICAST_GROUP_KEYWORD = 'vxlan multicast-group'
+const VXLAN_MULTICAST_DECAP_COMMAND = 'vxlan multicast-group decap'
+const VXLAN_MULTICAST_DECAP_NO_COMMAND = 'no vxlan multicast-group decap'
+const VXLAN_UDP_PORT_KEYWORD = 'vxlan udp-port'
+
+/**
+ * The multicast-group read, **verbatim from upstream** (`:881-882`, re-assembled from the two adjacent
+ * string literals): the leading octet gets exactly three digits (`[\d]{3}`) while the other three get
+ * `[\d]+`. Every multicast range EOS uses sits in `224-239` — three digits — which is presumably why
+ * upstream never noticed; a group spelling with a 1- or 2-digit leading octet reads back absent, and
+ * that quirk is pinned rather than smoothed (`interfaces.test.ts`, divergence 22). Applied per body
+ * line and unanchored, matching `re.search`'s earliest-position first answer.
+ */
+const VXLAN_MCAST_GROUP_READ = /vxlan multicast-group ([0-9]{3}\.[0-9]+\.[0-9]+\.[0-9]+)/u
+
+/** The same shape anchored, for the write guard: refuse what this reader would drop (divergence 24). */
+const VXLAN_MCAST_GROUP_SHAPE = /^[0-9]{3}\.[0-9]+\.[0-9]+\.[0-9]+$/u
+
+/** The per-VLAN id scan — upstream's unanchored findall (`:897`), which also counts `no vxlan vlan <vid> …` lines. */
+const VXLAN_VLAN_ID_READ = /vxlan vlan ([0-9]+)/gu
+
+/**
+ * The global flood-list line, verbatim (`:915`). The `^ *` prefix is upstream allowing for the block's
+ * indent — dedented body lines simply match it empty — and the `[\d. ]` class is the whole vocabulary:
+ * any other VTEP spelling makes the line unread and the field absent (divergence 22).
+ */
+const VXLAN_FLOOD_READ = /^ *vxlan flood vtep +([\d. ]+)$/u
+
+/** A dotted-quad VTEP token: the write-side shape of {@link VXLAN_FLOOD_READ}'s class (pyeapi validates nothing, `:1031-1034`/`:1053-1056`). */
+const VXLAN_VTEP_SHAPE = /^([0-9]{1,3}\.){3}[0-9]{1,3}$/u
+
+/** A decimal VLAN/VNI token — the write side of the `vni (\d+)` read (`:905`) and the scope argument interpolated at `:1033`/`:1055`. */
+const DECIMAL_TOKEN = /^[0-9]+$/u
+
 /**
  * The key holding the per-interface status rows, in capture order (divergence 12).
  *
@@ -758,6 +978,25 @@ function assertPortChannelName(verb: string, value: unknown): asserts value is s
   )
 }
 
+/**
+ * Require a name the **VxlanInterface** verbs may compose (`interfaces.py:814-1090`): the same
+ * prefix-dispatch argument as {@link assertEthernetName} — the facade reaches this class only through
+ * the `Vx` row of `INTERFACE_CLASS_MAP` (`:120-127`, `:1093-1097`) — with no digit-dependency reason on
+ * top: unlike the Port-Channel commands, none of the VXLAN texts extract an id from the name; the index
+ * in `Vxlan<n>` only picks which Vxlan interface the `interface` header enters. Whether the
+ * 7050TX-64 carries VXLAN interfaces at all is **unverified** (probe question, DR-033, §5 row 212,
+ * **DR-115**) — this guard models the surface, not the platform.
+ */
+function assertVxlanName(verb: string, value: unknown): asserts value is string {
+  const parsed = parseInterfaceName(value)
+  if (parsed !== undefined && parsed.kind === 'Vxlan' && parsed.subinterface === undefined) return
+  refuse(
+    `${verb} interface`,
+    value,
+    'expected a plain `Vxlan<n>` name — the VXLAN fields and verbs are pyeapi VxlanInterface methods (api/interfaces.py:814-1090) reached only through the `Vx` prefix of its class map (:120-127, :1093-1097); no other kind carries a `vxlan …` sub-mode upstream, and dotted Vxlan names stay refused for want of device evidence (DECISIONS.md open item 7)',
+  )
+}
+
 /** Require one of pyeapi's two flowcontrol directions (its `ValueError`, `interfaces.py:517-518`, becomes a typed refusal — divergence 17 / DR-077). */
 function assertFlowcontrolDirection(value: unknown): asserts value is FlowcontrolDirection {
   if ((FLOWCONTROL_DIRECTIONS as readonly unknown[]).includes(value)) return
@@ -806,6 +1045,85 @@ function assertLacpFallbackMode(value: unknown): asserts value is LacpFallbackMo
 function assertPortBandValue(value: unknown, label: string): asserts value is number {
   if (typeof value === 'number' && Number.isSafeInteger(value) && value > 0) return
   refuse(label, value, `expected a positive integer — pyeapi interpolates whatever arrives (api/interfaces.py:747-769 min-links / :795-811 lacp timeout have no bound at all), and the DEVICE answers 1002/1003 for a value it genuinely refuses (DR-005). 0 would compose a \`no\` line through pyeapi's falsy fall-through at abstract.py:158-161, which is exactly the surprise DR-037 deletes`)
+}
+
+/**
+ * Require a source-interface argument the read side can reproduce: the token behind
+ * `vxlan source-interface` (upstream's own reader pattern is `([^\s]+)`, `interfaces.py:876`).
+ * Upstream validates nothing (`:921-940` interpolates it through `command_builder`); the refusal is
+ * reader-derived, and which interface names the device accepts — including whether the referenced
+ * interface must exist — is a device answer (the `CommandError` path stays pinned, DR-005).
+ */
+function assertSourceInterfaceValue(value: unknown): asserts value is string {
+  if (typeof value !== 'string') refuse('vxlan source-interface', value, 'expected a string interface name — pyeapi checks nothing (api/interfaces.py:921-940)')
+  if (value.trim() === '') refuse('vxlan source-interface', value, 'an empty source-interface is refused — clear the binding with unsetSourceInterface() (the `disable=True` arm composes `no vxlan source-interface`, api/interfaces.py:939-940 pinned at test/unit/test_api_interfaces.py:448-452) rather than an empty value (DR-037)')
+  if (/\s/u.test(value)) refuse('vxlan source-interface', value, 'a source-interface must be a single token: the value is read back as one token behind the keyword (`([^\\s]+)`, api/interfaces.py:876), and the device takes one argument here')
+  if (CONTROL_CHARACTER.test(value)) refuse('vxlan source-interface', value, 'a control character would break the config line this client reads back (the same rule as row 74 and the VRF/description guards)')
+}
+
+/**
+ * Require a multicast group in the shape this module can read: `NNN.N.N.N` — the leading octet with
+ * **exactly three digits**, because that is upstream's own read pattern verbatim
+ * (`([\d]{3}\.[\d]+\.[\d]+\.[\d]+)`, `interfaces.py:881-882`) and composing anything else writes a
+ * line that neither pyeapi nor this client would ever read back (divergence 22/24). The multicast range
+ * EOS uses for VXLAN is three digits, `239.10.10.10` being the shape upstream's fixture writes
+ * (`running_config.vxlan:39`); whether the device (or a future EOS) accepts another spelling — including
+ * IPv6 groups — is an unverified device question (DR-032/DR-057), and `decap` is the sub-form of this
+ * keyword, served by {@link setMulticastDecap}, never a group value.
+ */
+function assertMulticastGroupValue(value: unknown): asserts value is string {
+  if (typeof value === 'string' && VXLAN_MCAST_GROUP_SHAPE.test(value)) return
+  refuse('vxlan multicast-group', value, 'expected a dotted-quad with a THREE-digit leading octet, the exact shape the reader keeps from pyeapi (api/interfaces.py:881-882) — anything else composes a line neither this client nor pyeapi can read back (divergence 22). The device keeps authority over groups it truly accepts (DR-005), and IPv6 groups are unverified hardware territory (DR-032)')
+}
+
+/**
+ * Require a VTEP address in the only shape the flood-list reader can see: dotted-quad digits and dots,
+ * because upstream's whole vocabulary for a flood entry is the character class `([\d. ]+)`
+ * (`interfaces.py:915`) — an entry in any other spelling vanishes from `show`-free config reads for
+ * pyeapi too. Upstream validates nothing on either verb (`:1031-1034`/`:1053-1056` interpolate raw). An
+ * IPv6 VTEP would be readable by EOS and unread here: that is a device question (DR-032), and the
+ * refusal says so rather than claiming it cannot exist.
+ */
+function assertVtepValue(value: unknown): asserts value is string {
+  if (typeof value === 'string' && VXLAN_VTEP_SHAPE.test(value)) return
+  refuse('vxlan vtep', value, 'expected a dotted-quad VTEP address — pyeapi validates nothing and interpolates the raw string (api/interfaces.py:1031-1034 add / :1053-1056 remove), but this module can only read flood entries made of digits and dots (`[\\d. ]+`, :915), so anything else composes an entry that never reads back (divergence 22/24). Whether 4.28.13.1M also floods to IPv6 VTEPs is a capture, not a claim')
+}
+
+/**
+ * Resolve the optional VLAN scope of {@link addVtep}/{@link removeVtep} — upstream's truth test on
+ * `vlan` (`if not vlan:`, `:1030`/`:1052`) as an explicit table: `undefined`, `''` and the number `0`
+ * all take the **bare** `vxlan flood vtep …` arm, while the string `'0'` is truthy in Python and
+ * composes `vxlan vlan 0 …` (pinned both ways, divergence 24). A kept scope must be decimal — the
+ * reader's own token (`vxlan vlan (\d+)`, `:897`) — and nothing here claims the vlan exists or licenses
+ * VXLAN: the device answers that (`CommandError` pinned, DR-005).
+ */
+function assertVlanScopeToken(vlan: string | number | undefined): string | undefined {
+  if (vlan === undefined || vlan === '' || vlan === 0) return undefined
+  const token = typeof vlan === 'number' ? (Number.isSafeInteger(vlan) ? String(vlan) : '') : vlan
+  if (DECIMAL_TOKEN.test(token)) return token
+  refuse('vxlan vlan scope', vlan, `expected a decimal VLAN token (the scope is read back as vxlan vlan (\\d+), api/interfaces.py:902) or the bare-list arm via pyeapi's own falsy spellings \`None\`/\`''\`/\`0\` (:1030, :1052) — an unsafe integer, a fraction or a non-decimal string composes \`vxlan vlan …\` text this client cannot read, which pyeapi would happily send`)
+}
+
+/**
+ * Require a VNI value: positive decimal safe integer — **client policy only**. Upstream interpolates
+ * whatever arrives into `vxlan vlan add %s vni %s` (`:1072`) and its reader keeps `vni (\d+)`
+ * (`:905`); the platform's actual VNI ceiling (if any, licence-permitting) is a device answer
+ * (DR-032/DR-057) and `0` is DR-037's falsy trap.
+ */
+function assertVniValue(value: unknown): asserts value is number {
+  if (typeof value === 'number' && Number.isSafeInteger(value) && value > 0) return
+  refuse('vni value', value, 'expected a positive integer VNI — pyeapi validates nothing (api/interfaces.py:1058-1073 interpolates vid and vni raw), and this client must at least compose a line its own reader can parse (`vni (\\d+)`, :905). The platform VNI range is a device answer (DR-032/DR-057), not a constant in this file')
+}
+
+/**
+ * Require a udp-port value: **client policy only**, exactly the {@link assertPortBandValue} reasoning
+ * restated for this verb — pyeapi validates nothing (`:994-1011`), and the reader is
+ * `vxlan udp-port (\d+)` + an unguarded `int()` (`:893-894`), so anything non-decimal composes an
+ * unreadable line while the platform's port-range/licensing answer stays the device's (DR-032).
+ */
+function assertUdpPortValue(value: unknown): asserts value is number {
+  if (typeof value === 'number' && Number.isSafeInteger(value) && value > 0) return
+  refuse('vxlan udp-port value', value, `expected a positive integer port — pyeapi's set_udp_port has no bound at all (api/interfaces.py:994-1011) and a non-decimal value composes a line the reader pattern (vxlan udp-port (\\d+), :893) drops. The device answers 1002/1003 for a port it refuses (DR-005); 0 is DR-037's falsy trap`)
 }
 
 /**
@@ -965,6 +1283,120 @@ function portChannelFieldsFromBlock(block: ConfigBlock, group: GroupFacts | unde
   }
 }
 
+/** The first body line matching `pattern`, capped group 1 — the per-line twin of upstream's `re.search` over the raw block, first match in block order (divergence 22, §5 row 209: same answer per pattern, but no match can span a line boundary). `vid` interpolations are always decimal, so the built patterns cannot misfire. */
+function firstGroupOf(lines: readonly ConfigLine[], pattern: RegExp): string | undefined {
+  for (const line of lines) {
+    const match = pattern.exec(line.text)
+    if (match !== null) return match[1]
+  }
+  return undefined
+}
+
+/**
+ * The multicast-group value: upstream's verbatim read pattern (`:881-882`, including the
+ * exactly-three-digit leading octet — divergence 22, §5 row 209) applied per body line, first match wins,
+ * and `DEFAULT_MCAST_GRP = ''` for absence **not** ported (divergence 21, §5 row 208). The `vxlan
+ * multicast-group
+ * decap` lines can never answer here — the pattern needs a digit after the keyword — which is the same
+ * discrimination upstream's regex performs, just pinned here.
+ */
+function multicastGroupFromBlock(lines: readonly ConfigLine[]): string | undefined {
+  return firstGroupOf(lines, VXLAN_MCAST_GROUP_READ)
+}
+
+/**
+ * The multicast-decap state from the two whole command lines, first in device order winning — the
+ * {@link sflowFromBlock} rule, not upstream's substring XOR (`val1 ^ val2` over the raw block,
+ * `:887-889`). That XOR reads the fixture's `no vxlan multicast-group decap`
+ * (`test/fixtures/running_config.vxlan:49`) as `False` only because the negation line also *contains*
+ * the positive substring (both sides true → `False`); it would read `True` for a description that
+ * merely carries those characters, and `False` for a section that configures neither — absence dressed
+ * as a state (DR-029/DR-057, divergence 21, §5 row 208).
+ */
+function multicastDecapFromBlock(block: ConfigBlock): boolean | undefined {
+  for (const line of block.body) {
+    if (line.text === VXLAN_MULTICAST_DECAP_NO_COMMAND) return false
+    if (line.text === VXLAN_MULTICAST_DECAP_COMMAND) return true
+  }
+  return undefined
+}
+
+/**
+ * The vlan→VXLAN map from the unanchored `vxlan vlan (\d+)` findall ported verbatim (`:897`) — so a vid
+ * named by ANY such line, including the fixture's `no vxlan vlan 10 …`-shaped neighbours, gets a
+ * profile. Key order is **first appearance in the section**, carried by Map insertion order — upstream
+ * iterates a `frozenset` (`:897`, consumed by the loop at `:900`) whose order is arbitrary per run, and an arbitrary order in a
+ * reviewable table is a diff-hazard (divergence 22, §5 row 209; a plain object would reorder the decimal keys by
+ * the ES integer-key rule instead). Per vid, `vni` keeps upstream's unanchored first-match read
+ * (`:904`) converted with {@link numberFieldFromBlock}'s rule (upstream stores the string group at `:905`
+ * — divergence 21, §5 row 208), and the per-VLAN flood list space-splits the first
+ * `vxlan vlan <vid> flood vtep …` line exactly as `:908-909` does — `[]` when the vid exists but names
+ * no VTEPs, which is a true statement about that entry (contrast the ABSENT global field, divergence
+ * 21). A vid of `0` is kept as written: upstream's findall has no range check, and normalising it would
+ * be an invented device rule. {@link vlanMappingsFromBlock} is §5 row 209's ordering decision.
+ */
+function vlanMappingsFromBlock(lines: readonly ConfigLine[], sectionKey: string): Map<string, InterfaceVxlanVlan> | undefined {
+  const vids: string[] = []
+  for (const line of lines) {
+    for (const match of line.text.matchAll(VXLAN_VLAN_ID_READ)) {
+      const vid = match[1]
+      // The group is mandatory in the pattern, but `noUncheckedIndexedAccess` types it optional and a
+      // `vid: undefined` key would be a silent data loss — same binding discipline as CHANNEL_GROUP_LINE.
+      if (vid !== undefined && !vids.includes(vid)) vids.push(vid)
+    }
+  }
+  if (vids.length === 0) return undefined
+  const vlans = new Map<string, InterfaceVxlanVlan>()
+  for (const vid of vids) {
+    const vni = numberFieldFromBlock(firstGroupOf(lines, new RegExp(`vxlan vlan ${vid} vni ([0-9]+)`, 'u')), `vxlan vlan ${vid} vni`, sectionKey)
+    const flood = firstGroupOf(lines, new RegExp(`vxlan vlan ${vid} flood vtep (.*)$`, 'u'))
+    vlans.set(vid, {
+      ...(vni === undefined ? {} : { vni }),
+      floodList: flood === undefined ? [] : flood.split(' '),
+    })
+  }
+  return vlans
+}
+
+/**
+ * The global flood list: upstream's verbatim line pattern (`:915`), first match, space-split as `:918`
+ * splits it. A VTEP list outside the `([\d. ]+)` class makes the pattern refuse the whole line —
+ * upstream then answers its `values = list()` `[]` default (`:916-919`); here the field reports
+ * **absent** instead, because "the device wrote a line this reader cannot parse" is a different
+ * statement from "the flood list is empty" (divergence 21/22, DR-029, §5 rows 208-209).
+ */
+function floodListFromBlock(lines: readonly ConfigLine[]): string[] | undefined {
+  const found = firstGroupOf(lines, VXLAN_FLOOD_READ)
+  return found === undefined ? undefined : found.split(' ')
+}
+
+/**
+ * The Vxlan-kind field group, or `undefined` when the section names none of it (DR-068 — the same
+ * one-object-per-kind shape as {@link ethernetFieldsFromBlock}). Upstream reaches these six reads from
+ * its **own** `VxlanInterface.get` (`:822-858`: its own `get_block` at `:846`, then `super()` for the
+ * shared header fields at `:850`, then the six merges at `:853-858`) — here the shared fields already
+ * come from {@link interfaceFromSection} and only the six kind-specific reads are added, which is the
+ * DR-068 pattern M10b/M10c established. Its forced `type='vxlan'` label (`:851`) is divergence 2's
+ * `kind`, already on the record.
+ */
+function vxlanFieldsFromBlock(block: ConfigBlock, sectionKey: string): InterfaceVxlanFields | undefined {
+  const sourceInterface = valueAfterKeyword(block.body, VXLAN_SOURCE_KEYWORD)
+  const multicastGroup = multicastGroupFromBlock(block.body)
+  const multicastDecap = multicastDecapFromBlock(block)
+  const udpPort = numberFieldFromBlock(valueAfterKeyword(block.body, VXLAN_UDP_PORT_KEYWORD), VXLAN_UDP_PORT_KEYWORD, sectionKey)
+  const vlans = vlanMappingsFromBlock(block.body, sectionKey)
+  const floodList = floodListFromBlock(block.body)
+  if (sourceInterface === undefined && multicastGroup === undefined && multicastDecap === undefined && udpPort === undefined && vlans === undefined && floodList === undefined) return undefined
+  return {
+    ...(sourceInterface === undefined ? {} : { sourceInterface }),
+    ...(multicastGroup === undefined ? {} : { multicastGroup }),
+    ...(multicastDecap === undefined ? {} : { multicastDecap }),
+    ...(udpPort === undefined ? {} : { udpPort }),
+    ...(vlans === undefined ? {} : { vlans }),
+    ...(floodList === undefined ? {} : { floodList }),
+  }
+}
+
 /** One `interface …` section into a record. `group` carries the cross-section channel-group facts when this section names a Port-Channel (`interfacesFromSections` builds them first). */
 function interfaceFromSection(sectionKey: string, name: string, parsed: ParsedInterfaceName | undefined, block: ConfigBlock, group?: GroupFacts): Interface {
   const description = valueAfterKeyword(block.body, DESCRIPTION_KEYWORD)
@@ -973,6 +1405,7 @@ function interfaceFromSection(sectionKey: string, name: string, parsed: ParsedIn
   const shutdown = shutdownFromBlock(block)
   const ethernet = parsed?.kind === 'Ethernet' ? ethernetFieldsFromBlock(block) : undefined
   const portChannel = parsed?.kind === 'Port-Channel' ? portChannelFieldsFromBlock(block, group, sectionKey) : undefined
+  const vxlan = parsed?.kind === 'Vxlan' ? vxlanFieldsFromBlock(block, sectionKey) : undefined
   return {
     name,
     kind: parsed?.kind ?? null,
@@ -982,6 +1415,7 @@ function interfaceFromSection(sectionKey: string, name: string, parsed: ParsedIn
     ...(encapsulation === undefined ? {} : { encapsulation }),
     ...(ethernet === undefined ? {} : { ethernet }),
     ...(portChannel === undefined ? {} : { portChannel }),
+    ...(vxlan === undefined ? {} : { vxlan }),
   }
 }
 
@@ -989,7 +1423,7 @@ function interfaceFromSection(sectionKey: string, name: string, parsed: ParsedIn
  * Every interface in a chunked running-config — **one** config read (DR-030/DR-055), two in-memory
  * passes over the sections: the first parses each block once and harvests every Ethernet section's
  * `channel-group <id> mode <m>` line into the group facts, the second builds the records (per-kind
- * groups arrive with M10b/M10c — DR-068) and attaches those facts to the matching Port-Channel
+ * groups arrive with M10b/M10c/M10d — DR-068) and attaches those facts to the matching Port-Channel
  * section. Members land in running-config order, and the group id is the raw decimal run as written,
  * because that is the token every channel-group command uses (`interfaces.py:671`/`:699`/`:734` extract it
  * from the Port-Channel *name* — a header spelled `PortChannel01` therefore looks for the id `01`
@@ -1706,6 +2140,208 @@ export class InterfacesResource extends EntityCollection<Interface, string, Inte
     assertPortChannelName('setLacpTimeout', name)
     assertPortBandValue(value, 'lacp fallback timeout') // pyeapi's only timeout test uses a random 1..16 — interfaces.py:795-811, no bound anywhere
     await this.configureInterface(name, [this.commandBuilder(LACP_TIMEOUT_KEYWORD, { value })])
+  }
+
+  // --- VxlanInterface verbs, M10d (#52): interfaces.py:921-1090 --------------------------------
+  //
+  // Platform honesty, stated once for the whole section: 7050TX-64 VXLAN **hardware support is
+  // UNVERIFIED**. Every command text below is a pyeapi-faithful port — not a claim the SKU accepts
+  // it; capability presence is a probe question (DR-033) filed as §5 row 212 and decided by DR-115,
+  // the variant pairs below are §5 row 210 / DR-114, and the fixture configs quoted in
+  // `interfaces.test.ts` for this section are pyeapi's own test material (§5 row 212, DR-112), never
+  // device captures.
+
+  /**
+   * `vxlan source-interface <value>` — pyeapi's `set_source_interface`
+   * (`interfaces.py:921-941`: the keyword at `:936-938`, `command_builder` at `:939-940`,
+   * `configure_interface` at `:941`); `test/unit/test_api_interfaces.py:443-447` pins the pair
+   * `interface Vxlan1` / `vxlan source-interface Loopback0`.
+   */
+  async setSourceInterface(name: string, value: string): Promise<void> {
+    assertVxlanName('setSourceInterface', name)
+    assertSourceInterfaceValue(value)
+    await this.configureInterface(name, [this.commandBuilder(VXLAN_SOURCE_KEYWORD, { value })])
+  }
+
+  /** `no vxlan source-interface` — pyeapi's `disable=True` arm (`:939-940` through `abstract.py:154-155`; test `:448-452`). */
+  async unsetSourceInterface(name: string): Promise<void> {
+    assertVxlanName('unsetSourceInterface', name)
+    await this.configureInterface(name, [this.commandBuilder(VXLAN_SOURCE_KEYWORD, { mode: 'no' })])
+  }
+
+  /** `default vxlan source-interface` — pyeapi's `default=True` arm (`:939-940` through `abstract.py:152-153`; test `:453-457`). */
+  async defaultSourceInterface(name: string): Promise<void> {
+    assertVxlanName('defaultSourceInterface', name)
+    await this.configureInterface(name, [this.commandBuilder(VXLAN_SOURCE_KEYWORD, { mode: 'default' })])
+  }
+
+  /**
+   * Configure the multicast group — pyeapi's `set_multicast_group` (`interfaces.py:943-967`), and this
+   * module's first **variant** verb: upstream composes both spellings and hands them to
+   * `CliVariants(cmds_new, cmds_dpr)` at `:966-967`, i.e. the decap-integrated keyword
+   * `vxlan multicast-group decap <value>` is attempted FIRST and the legacy
+   * `vxlan multicast-group <value>` (which is what the upstream pin at `:458-462` shows) is the
+   * fallback. {@link configureInterfaceVariants} keeps that order and the per-variant
+   * `interface <name>` wrapper (`configure_interface` splices the marker INSIDE the submode list,
+   * `abstract.py:176-177` + `client.py:646-651`). Upstream's suite cannot see the order —
+   * `testlib.py:97-107` accepts any expanded variant — so the spec pins both transactions here
+   * (divergence 23, §5 row 210, **DR-114**). Whether 4.28.13.1M carries the decap-integrated form at all
+   * is unverified (DR-033); that is precisely why upstream keeps a fallback rather than a support claim.
+   */
+  async setMulticastGroup(name: string, value: string): Promise<void> {
+    assertVxlanName('setMulticastGroup', name)
+    assertMulticastGroupValue(value)
+    await this.configureInterfaceVariants(name, [
+      [this.commandBuilder(VXLAN_MULTICAST_DECAP_COMMAND, { value })],
+      [this.commandBuilder(VXLAN_MULTICAST_GROUP_KEYWORD, { value })],
+    ])
+  }
+
+  /** `no vxlan multicast-group decap` → fallback `no vxlan multicast-group` — pyeapi's `disable=True` arms of both spellings (`:961-967`; the pin at test `:463-467` shows the legacy arm of a variant pair its testlib accepted either way). */
+  async unsetMulticastGroup(name: string): Promise<void> {
+    assertVxlanName('unsetMulticastGroup', name)
+    await this.configureInterfaceVariants(name, [
+      [this.commandBuilder(VXLAN_MULTICAST_DECAP_COMMAND, { mode: 'no' })],
+      [this.commandBuilder(VXLAN_MULTICAST_GROUP_KEYWORD, { mode: 'no' })],
+    ])
+  }
+
+  /** `default vxlan multicast-group decap` → fallback `default vxlan multicast-group` — pyeapi's `default=True` arms (`:961-967`; pin at test `:468-472`). */
+  async defaultMulticastGroup(name: string): Promise<void> {
+    assertVxlanName('defaultMulticastGroup', name)
+    await this.configureInterfaceVariants(name, [
+      [this.commandBuilder(VXLAN_MULTICAST_DECAP_COMMAND, { mode: 'default' })],
+      [this.commandBuilder(VXLAN_MULTICAST_GROUP_KEYWORD, { mode: 'default' })],
+    ])
+  }
+
+  /**
+   * The bare `vxlan multicast-group decap` command — pyeapi's `set_multicast_decap(name)` with neither
+   * flag (`interfaces.py:969-991`, the `cmds = [string]` arm at `:990`); test `:473-477` pins it.
+   * Upstream's docstring calls the argument a feature toggle but takes no value: the enable IS the bare
+   * keyword, which is why {@link commandBuilder}'s `{ value: true }` row (DR-037's table) is the exact
+   * twin.
+   */
+  async setMulticastDecap(name: string): Promise<void> {
+    assertVxlanName('setMulticastDecap', name)
+    await this.configureInterface(name, [this.commandBuilder(VXLAN_MULTICAST_DECAP_COMMAND, { value: true })])
+  }
+
+  /** `no vxlan multicast-group decap` — pyeapi's `disable=True` arm (`:986-988` compose through `command_builder(value=None, disable)`; test `:478-482`). */
+  async unsetMulticastDecap(name: string): Promise<void> {
+    assertVxlanName('unsetMulticastDecap', name)
+    await this.configureInterface(name, [this.commandBuilder(VXLAN_MULTICAST_DECAP_COMMAND, { mode: 'no' })])
+  }
+
+  /** `default vxlan multicast-group decap` — pyeapi's `default=True` arm (`:986-988`; test `:483-487`). */
+  async defaultMulticastDecap(name: string): Promise<void> {
+    assertVxlanName('defaultMulticastDecap', name)
+    await this.configureInterface(name, [this.commandBuilder(VXLAN_MULTICAST_DECAP_COMMAND, { mode: 'default' })])
+  }
+
+  /**
+   * `vxlan udp-port <value>` — pyeapi's `set_udp_port` (`interfaces.py:994-1012`, keyword `:1009`,
+   * compose `:1010-1011`); test `:488-492` pins `vxlan udp-port 1024`. Upstream accepts the string
+   * `'1024'`; here the value is a number, with {@link assertUdpPortValue}'s client-policy floor —
+   * the platform's own port rules being the device's (DR-032).
+   */
+  async setUdpPort(name: string, value: number): Promise<void> {
+    assertVxlanName('setUdpPort', name)
+    assertUdpPortValue(value)
+    await this.configureInterface(name, [this.commandBuilder(VXLAN_UDP_PORT_KEYWORD, { value })])
+  }
+
+  /** `no vxlan udp-port` — pyeapi's `disable=True` arm (`:1010-1011`; test `:493-497`). */
+  async unsetUdpPort(name: string): Promise<void> {
+    assertVxlanName('unsetUdpPort', name)
+    await this.configureInterface(name, [this.commandBuilder(VXLAN_UDP_PORT_KEYWORD, { mode: 'no' })])
+  }
+
+  /** `default vxlan udp-port` — pyeapi's `default=True` arm (`:1010-1011`; test `:498-502`). */
+  async defaultUdpPort(name: string): Promise<void> {
+    assertVxlanName('defaultUdpPort', name)
+    await this.configureInterface(name, [this.commandBuilder(VXLAN_UDP_PORT_KEYWORD, { mode: 'default' })])
+  }
+
+  /**
+   * Add a VTEP to the flood list — pyeapi's `add_vtep` (`interfaces.py:1014-1034`), whose `if not vlan`
+   * truth test at `:1030` picks between the **bare** `vxlan flood vtep add <vtep>` (`:1031`, pinned at
+   * test `:513-517`) and the **vlan-scoped** `vxlan vlan <vlan> flood vtep add <vtep>` (`:1033`, pinned
+   * at `:518-522`). Both arms are separate command texts and both are pinned; the falsy spellings
+   * (`undefined` / `''` / the number `0` → bare; the string `'0'` → scoped `vlan 0`) are upstream's
+   * truth table, ported as {@link assertVlanScopeToken} says and pinned in all four combinations
+   * (divergence 24, §5 row 211). Upstream passes the command as a bare **string** to `configure_interface`
+   * (`:1034`) — same wire text as the one-element list used here.
+   */
+  async addVtep(name: string, vtep: string, vlan?: string | number): Promise<void> {
+    assertVxlanName('addVtep', name)
+    assertVtepValue(vtep)
+    const scoped = assertVlanScopeToken(vlan)
+    await this.configureInterface(name, [scoped === undefined ? `vxlan flood vtep add ${vtep}` : `vxlan vlan ${scoped} flood vtep add ${vtep}`])
+  }
+
+  /** Remove a VTEP — pyeapi's `remove_vtep` (`interfaces.py:1036-1056`, same truth test at `:1052`, `remove` texts at `:1053`/`:1055`); tests `:523-531` pin both spellings. */
+  async removeVtep(name: string, vtep: string, vlan?: string | number): Promise<void> {
+    assertVxlanName('removeVtep', name)
+    assertVtepValue(vtep)
+    const scoped = assertVlanScopeToken(vlan)
+    await this.configureInterface(name, [scoped === undefined ? `vxlan flood vtep remove ${vtep}` : `vxlan vlan ${scoped} flood vtep remove ${vtep}`])
+  }
+
+  /**
+   * Map a VLAN to a VNI — pyeapi's `update_vlan` (`interfaces.py:1058-1073`), a **literal command
+   * composition** with no keyword builder: the `%s`-interpolated
+   * `vxlan vlan add <vid> vni <vni>` at `:1072`, pinned at test `:503-507` with the ints `10, 10`.
+   * Note the asymmetry the field JSDoc warns about: the write carries the word `add`, the config line
+   * the {@link vlanMappingsFromBlock} reader parses does not. The name is `update_vlan` upstream
+   * although the command ADDs — the repo keeps upstream's name and says what it does
+   * ({@link removeVlan} is the counterpart). Upstream validates neither argument
+   * ({@link assertVlanId}/{@link assertVniValue} are this client's, divergence 24, §5 row 211).
+   */
+  async updateVlan(name: string, vid: number, vni: number): Promise<void> {
+    assertVxlanName('updateVlan', name)
+    assertVlanId(vid)
+    assertVniValue(vni)
+    await this.configureInterface(name, [`vxlan vlan add ${String(vid)} vni ${String(vni)}`])
+  }
+
+  /**
+   * Remove a VLAN/VNI mapping — pyeapi's `remove_vlan` (`interfaces.py:1075-1090`) and the section's
+   * second **variant** site: the first attempt is the literal text
+   * `vxlan vlan remove <vid> vni $` — trailing `$` and all, `:1089`, verbatim because pyeapi really
+   * sends it (its testlib accepted the clean pin at `:508-512` as *any* variant, divergence 23, §5 row
+   * 210, **DR-114**) — and the fallback is `vxlan vlan remove <vid> vni` (`:1090`). On a real device the
+   * first spelling fails and the second runs: the spec pins both transactions and the last-error
+   * re-raise. The vid goes through {@link assertVlanId} (upstream interpolates whatever arrives).
+   */
+  async removeVlan(name: string, vid: number): Promise<void> {
+    assertVxlanName('removeVlan', name)
+    assertVlanId(vid)
+    await this.configureInterfaceVariants(name, [
+      [`vxlan vlan remove ${String(vid)} vni $`],
+      [`vxlan vlan remove ${String(vid)} vni`],
+    ])
+  }
+
+  /**
+   * Send one of several alternative command sequences for `interface <name>`, first success winning
+   * and the last {@link CommandError} re-raised — the resource-side twin of
+   * {@link Node.configureVariants} over {@link tryVariants} (`internal/variants.ts`, the re-shaped
+   * `CliVariants` port from DR-006/row 37), and the same splice order pyeapi performs at
+   * `client.py:644-653`. The name goes through the shared guard BEFORE any variant is attempted
+   * (`configureInterface`'s own check, hoisted so a bad name never opens a transaction), and
+   * `submodeCommands` wraps every alternative in `interface <name>` exactly once — upstream's
+   * `configure_interface` marker splice puts the variants inside the submode
+   * (`abstract.py:176-177` + `client.py:646-651`), which is what a fallback re-entering the same
+   * submode means on the wire (two complete transactions, both pinned). `tryVariants` itself refuses
+   * fewer than two variants — a single-element call is a caller that meant {@link configureInterface}.
+   */
+  private async configureInterfaceVariants(name: string, variants: readonly (readonly string[])[]): Promise<void> {
+    assertInterfaceName(name)
+    await tryVariants(
+      variants.map((commands) => submodeCommands(`interface ${name}`, commands)),
+      (commands) => this.configure(commands),
+    )
   }
 
 }

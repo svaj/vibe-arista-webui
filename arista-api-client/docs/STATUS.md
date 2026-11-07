@@ -94,6 +94,8 @@ Wave-2 **lane D** is delivered on its branch (refs #16): `vrfs.ts`, `staticroute
 
 Wave-3 **lane A** is delivered on its branch (refs #17): `src/resources/ospf.ts` + `bgp.ts` with registry/Node wiring — `ospf` entity like `system`/`ntp`, `BgpNeighbors` as the entity's sub-collection, NOT a registry row (rows 191-202, DR-106-110); gate 65 files / 2,103 client tests, all five legs green; per the wave-3 negative-control protocol `ospf` flipped out of the `has()`/`hasResource()`/`registered:` exemplar slots to `vrrp` on this branch and `switchports.test.ts`'s `bgp` exemplar moved with it. PRs open with merge-order note A-B-C; #48 #49 flip to status:ready-for-review at PR time; issues NOT closed until merge.
 
+Wave-3 **lane B** delivers on its branch (refs #17): `src/resources/routemaps.ts` (first TRIPLE-identity resource — name+action+seqno, DR-111) plus M10d `VxlanInterface` as the per-kind field group of `interfaces.ts`, closing the tranche #12 deferred (rows 203-212, DR-111-115). VXLAN is shipped pyeapi-faithful with ZERO support claims — 7050TX-64 VXLAN capability stays a probe/open-item question (DR-033: the honesty lives in a row + DR, not code comments). The branch PRE-STAGES lane A by merge (f10f660) so registry/wiring is already unioned in merge order; this tree's negative control stands at `vrrp` until lane C. PRs merge after A; #50 #52 flip to status:ready-for-review at PR time; issues NOT closed until merge.
+
 **M11 (#13) is delivered on its branch** — the non-`runCmds` differentiators: `Node.verifyConfig()` /
 `getCompletions()` / `getCommandHelp()` ride a validated `WIRE_METHODS` table over the new optional
 `Transport#callMethod` seam, and faking them with `runCmds` is refused as unsafe, not inconvenient

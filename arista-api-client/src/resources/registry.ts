@@ -36,6 +36,7 @@ import { InterfacesResource } from './interfaces'
 import { IpinterfacesResource } from './ipinterfaces'
 import { MlagResource } from './mlag'
 import { NtpResource } from './ntp'
+import { RoutemapsResource } from './routemaps'
 import { StaticRouteResource } from './staticroute'
 import { StpResource } from './stp'
 import { SwitchportsResource } from './switchports'
@@ -104,6 +105,9 @@ export interface ResourceKinds {
   ospf: OspfResource
   /** The `router bgp …` process and its `neighbors` sub-collection — `src/resources/bgp.ts`, port of pyeapi `api/bgp.py` (W3a slice, #49). */
   bgp: BgpResource
+  /** The route-maps configured on the switch, keyed by name with the (action, seqno) clauses nested —
+   *  `src/resources/routemaps.ts`, port of pyeapi `api/routemaps.py` (W3b lane B, #50). */
+  routemaps: RoutemapsResource
 }
 
 /** Any name `node.resource()` may be asked for. Grows by one row per resource module (M8-M10). */
@@ -144,6 +148,7 @@ export const RESOURCE_FACTORIES: ResourceFactories<ResourceKinds> = Object.freez
   mlag: (node) => new MlagResource(node),
   ospf: (node) => new OspfResource(node),
   bgp: (node) => new BgpResource(node),
+  routemaps: (node) => new RoutemapsResource(node),
 })
 
 /**
