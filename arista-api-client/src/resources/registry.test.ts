@@ -250,6 +250,14 @@ describe('Node.resource / Node.hasResource — the typed replacement for node.ap
     expect(node.mlag).toBe(node.mlag)
     expect(node.mlag).toBe(node.resource('mlag'))
     expect(node.mlag.constructor.name).toBe('MlagResource')
+    // W3b lane B (#50) is the fourteenth row. `node.routemaps` is the accessor the policy screens use for
+    // the route-map tables; pyeapi's `test_api_routemaps.py:51-53` `test_instance` is this pin's twin —
+    // the registry row and the static accessor replace that autoload (DR-006), and the identity chain
+    // below is what `instance(node)` is FOR (one memoised object per Node, not one per call the way
+    // `client.py:946-949` builds a fresh object per `node.api()`).
+    expect(node.routemaps).toBe(node.routemaps)
+    expect(node.routemaps).toBe(node.resource('routemaps'))
+    expect(node.routemaps.constructor.name).toBe('RoutemapsResource')
   })
 
   it('asking for an unregistered resource throws, listing the rows that DO exist', () => {

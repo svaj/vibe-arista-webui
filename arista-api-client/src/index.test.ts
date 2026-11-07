@@ -224,7 +224,8 @@ describe('what the browser entry exports', () => {
       // `node.vrfs`/`node.staticroute`/`node.mlag` and their classes from `.` with no deep import.
       'VrfsResource', 'StaticRouteResource', 'MlagResource',
       // W3b (#50) lane B: the route-maps table, its action vocabulary, and the type-pinning exports of
-      // the entry shape (`RoutemapEntry`, `RoutemapEntry`).
+      // the entry shape (`RoutemapEntry`, `RoutemapEntryAttrs`) — all from `.` with no deep import. The
+      // `isRoutemapAction` export is the guard the action union narrows through (DR-093 triple identity).
       'RoutemapsResource', 'isRoutemapAction',
     ] as const
     for (const name of functions) {
@@ -243,9 +244,12 @@ describe('what the browser entry exports', () => {
     expect(surface.isUserEncryption('sha512')).toBe(true)
     expect(surface.isUserEncryption('bcrypt')).toBe(false)
     expect(surface.parseInterfaceName('Ethernet1.100')).toEqual({ kind: 'Ethernet', index: 1, name: 'Ethernet1.100', subinterface: 100 })
-    // The registry has thirteen rows now: M8's `system`, M9's `vlans`/`switchports`, M10a's
-    // `interfaces`, then W2a's `users`/`ntp`, W2b's `acls`/`varp`, W2c's `stp`/`ipinterfaces` and W2d's
-    // `vrfs`/`staticroute`/`mlag`, each appended in merge order (§5 row 79, rows 167/173).
+    // The registry has fourteen rows now: M8's `system`, M9's `vlans`/`switchports`, M10a's
+    // `interfaces`, then W2a's `users`/`ntp`, W2b's `acls`/`varp`, W2c's `stp`/`ipinterfaces`, W2d's
+    // `vrfs`/`staticroute`/`mlag`, and W3b lane B's `routemaps` — each appended in merge order (§5 row 79,
+    // rows 167/173). The NEGATIVE CONTROL for `has()`/`hasResource()` lives in `registry.test.ts`, not here:
+    // by the COMMON protocol that name moved from `ospf` to lane C's `vrrp`, unregistered on every lane's
+    // branch until the W3 merge order completes.
     expect(Object.keys(surface.RESOURCE_FACTORIES)).toEqual([
       'system', 'vlans', 'switchports', 'interfaces', 'users', 'ntp', 'acls', 'varp', 'stp', 'ipinterfaces',
       'vrfs', 'staticroute', 'mlag', 'routemaps',
@@ -284,6 +288,23 @@ describe('what the browser entry exports', () => {
     expect(new Node(mockTransport()).vrfs).toBeInstanceOf(surface.VrfsResource)
     expect(new Node(mockTransport()).staticroute).toBeInstanceOf(surface.StaticRouteResource)
     expect(new Node(mockTransport()).mlag).toBeInstanceOf(surface.MlagResource)
+    // W3b lane B (#50): the route-maps accessor plus its action vocabulary. `ROUTE_MAP_ACTIONS` is the
+    // frozen pair and `isRoutemapAction` its runtime guard — the same DR-079 shape as
+    // `SWITCHPORT_MODES`/`isSwitchportMode` and `USER_ENCRYPTIONS`/`isUserEncryption`, and equally NOT a
+    // hardware claim (DR-032): pyeapi interpolates any `\w+` action, and this client READS any `\w+`
+    // action back but its write verbs narrow to this pair (divergence 5 in `routemaps.ts`). `node.routemaps`
+    // is DR-006's replacement for pyeapi's `node.api('routemaps')`, one memoised instance per Node.
+    expect(surface.ROUTE_MAP_ACTIONS).toEqual(['permit', 'deny'])
+    expect(Object.isFrozen(surface.ROUTE_MAP_ACTIONS)).toBe(true)
+    expect(surface.isRoutemapAction('deny')).toBe(true)
+    expect(surface.isRoutemapAction('reject')).toBe(false)
+    expect(new Node(mockTransport()).routemaps).toBeInstanceOf(surface.RoutemapsResource)
+    // W3b lane B (#50): the route-maps accessor and its action vocabulary. `ROUTE_MAP_ACTIONS` is the
+    // frozen pair and `isRoutemapAction` its runtime guard — the same DR-079 shape as
+    // `SWITCHPORT_MODES`/`isSwitchportMode`, and equally NOT a hardware claim (DR-032): pyeapi lets any
+    // `\w+` action through, and this client lets a CLI-reachable but unlisted action be *read* back while
+    // its write verbs refuse it (divergence 5). `node.routemaps` is the pyeapi `node.api('routemaps')`
+    // replacement (DR-006), one memoised instance per Node like every other row.
     // `assertVlanId` is an assertion function (returns void); the range is pyeapi's —
     // `value in range(1, 4095)`, i.e. VLANs 1..4094 (pyeapi/api/vlans.py:78). M9 (#12) re-checks that
     // bound against the switch's own `switchport access vlan` range on a device.
