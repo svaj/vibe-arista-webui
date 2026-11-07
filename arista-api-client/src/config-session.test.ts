@@ -141,24 +141,24 @@ describe('configSession(): naming and laziness (DR-022, DR-047 — §5 row 61)',
 
   it('defaults the name to ui-<host>-p<pid>-<hex8> instead of pyeapi bare uuid4 (client.py:1006)', async () => {
     const session = await nodeFor(scripted()).configSession()
-    expect(session.name).toMatch(/^ui-sw1\.lan-p\d+-[0-9a-f]{8}$/u)
+    expect(session.name).toMatch(/^ui-sw1-lan-p\d+-[0-9a-f]{8}$/u)
     expect(session.name.length).toBeLessThanOrEqual(MAX_SESSION_NAME_LENGTH)
-    expect(generateSessionName('unix:/var/run/command-api.sock')).toMatch(/^ui-var\.run\.command-api\.sock-p\d+-[0-9a-f]{8}$/u)
+    expect(generateSessionName('unix:/var/run/command-api.sock')).toMatch(/^ui-var-run-command-api-sock-p\d+-[0-9a-f]{8}$/u)
     expect(generateSessionName('mock://device')).toMatch(/^ui-device-p\d+-[0-9a-f]{8}$/u)
-    expect(generateSessionName('http://127.0.0.1:8080/command-api')).toMatch(/^ui-127\.0\.0\.1-p\d+-[0-9a-f]{8}$/u)
+    expect(generateSessionName('http://127.0.0.1:5173/command-api')).toMatch(/^ui-127-0-0-1-p\d+-[0-9a-f]{8}$/u)
     // An address with no host at all still gets a name — `device` rather than `ui--p123-abcd1234`, which
     // would put two dashes where the prefix ends and silently stop matching `recoverOrphans()`'s prefix filter.
     expect(generateSessionName('')).toMatch(/^ui-device-p\d+-[0-9a-f]{8}$/u)
-    expect(generateSessionName('https://[::1]:443/command-api')).toMatch(/^ui-[a-z0-9.*_-]+-p\d+-[0-9a-f]{8}$/u)
+    expect(generateSessionName('https://[::1]:443/command-api')).toMatch(/^ui-[a-z0-9_-]+-p\d+-[0-9a-f]{8}$/u)
     for (const endpoint of ['https://sw1.lan:443/command-api', 'https://sw2.lan:443/command-api']) {
-      expect(generateSessionName(endpoint)).toMatch(/^ui-sw[12]\.lan-p/u)
+      expect(generateSessionName(endpoint)).toMatch(/^ui-sw[12]-lan-p/u)
     }
   })
 
   it('never leaks credentials or a path into a generated name', () => {
     const name = generateSessionName('https://admin:s3crete@sw1.lan:443/command-api')
     expect(name).not.toMatch(/s3crete|admin/u)
-    expect(name).toMatch(/^ui-sw1\.lan/u)
+    expect(name).toMatch(/^ui-sw1-lan/u)
   })
 
   it('refuses unsafe names with zero round trips, because the name is spliced into every batch (EOS matches it with \\S+, SessionCli.py:31)', async () => {

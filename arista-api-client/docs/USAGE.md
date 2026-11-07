@@ -242,7 +242,7 @@ What the session path guarantees, and where each guarantee comes from:
 - **Re-attach is explicit, so a reload survives.** `configure session <name>` is `cmds[0]` of **every**
   batch — the same insertion pyeapi makes (`client.py:687`) — so another process, or this page after a
   reload, reaches the same staged changes:
-  `node.configSession({ name: 'ui-switch.home.arpa-p4242-9c1f2a70' })`. Nothing sends `exit` for you;
+  `node.configSession({ name: 'ui-switch-home-arpa-p4242-9c1f2a70' })`. Nothing sends `exit` for you;
   `exit()` detaches the handle and deliberately **leaves the device-side session pending**, which is what
   `recoverOrphans()` reads back. §5 row 63.
 - **One session per `Node`.** While a handle is live, `configure()` and `configureReplace()` throw before
