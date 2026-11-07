@@ -299,12 +299,6 @@ describe('what the browser entry exports', () => {
     expect(surface.isRoutemapAction('deny')).toBe(true)
     expect(surface.isRoutemapAction('reject')).toBe(false)
     expect(new Node(mockTransport()).routemaps).toBeInstanceOf(surface.RoutemapsResource)
-    // W3b lane B (#50): the route-maps accessor and its action vocabulary. `ROUTE_MAP_ACTIONS` is the
-    // frozen pair and `isRoutemapAction` its runtime guard — the same DR-079 shape as
-    // `SWITCHPORT_MODES`/`isSwitchportMode`, and equally NOT a hardware claim (DR-032): pyeapi lets any
-    // `\w+` action through, and this client lets a CLI-reachable but unlisted action be *read* back while
-    // its write verbs refuse it (divergence 5). `node.routemaps` is the pyeapi `node.api('routemaps')`
-    // replacement (DR-006), one memoised instance per Node like every other row.
     // `assertVlanId` is an assertion function (returns void); the range is pyeapi's —
     // `value in range(1, 4095)`, i.e. VLANs 1..4094 (pyeapi/api/vlans.py:78). M9 (#12) re-checks that
     // bound against the switch's own `switchport access vlan` range on a device.
