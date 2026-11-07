@@ -1578,6 +1578,88 @@ files, and each entry's `note` states what its absence or presence proved; zero-
 evidence (no container, no network, no pinfile after `lab:down`) is part of the run report, not
 optional garnish.
 
+### DR-106 — an entity whose upstream `get()` answered `None` is typed `State | undefined`, and its no-op writes resolve with zero commands (W3a #48 #49)
+`base.ts`'s `Entity` docstring prefers "a global entity with nothing configured still has an answer",
+and every wave-1/2 entity honoured that because those upstream modules really do answer a dict
+(`mlag.py` crashes, `ntp`/`system`/`stp`/`varp` return records). ospf and bgp are the exceptions the
+upstream suite itself pins: `ospf.py:76-77` and `bgp.py:69-70` answer `None` for a missing block
+(`test_api_ospf.py:143-145`), and `delete()` short-circuits to `True` with nothing sent
+(`:147-149`, `bgp.py:123-125`/`:130-132`). This port parameterizes `Entity<OspfState | undefined>` /
+`Entity<BgpState | undefined>` rather than inventing an empty router the switch does not run — a
+fabricated record would be an empty state indistinguishable from success in the webui's panels — and
+the no-op `delete`/`setDefault` resolve `void` while the pins show the read and NO config batch.
+The `BgpNeighbors.get(name)` all-`None` phantom record is deliberately NOT ported (absence is
+absence, DR-027's family): the table answers a row or `undefined`. §5 rows 191 and 197.
+**Consequence:** wave-3's lane B/C entities check their upstream `None`-shapes the same way rather
+than flattening them; a caller's empty-state branch is a `=== undefined`, and the type system
+points at it.
+
+### DR-107 — the `peer group`/`peer-group` spelling is a device read, never a version-string compare; the two bgp openers stay split as upstream left them (W3a #49)
+`bgp.py` picks the neighbour keyword from `self.version_number >= '4.23'` at four sites (`:209`,
+`:267`/`:271`, `:292`) — the same lexicographic-compare bug class DR-078 recorded for
+`interfaces.set_vrf` and DR-099 for `vrfs` (`'4.9' >= '4.23'` is character-wise True). The port reads
+the device's OWN evidence instead: the neighbours reader matches either spelling and records
+`peerGroupForm` per row (no upstream twin — the `VrfDefinitionForm` shape), and the writers follow
+the first spelling the block actually carries, latched per instance exactly like
+`VrfsResource.resolveVrfForm`, with the modern `peer group` as the client-convention floor when the
+block speaks neither (the same "floor is convention, the device decides via its own `CommandError`"
+balance DR-099 struck; M11's capability surface stays OUT of read verbs for the same round-trip
+reason). The row-198 opener split is KEPT, not harmonised: the entity half composes from
+`_parse_bgp_as`'s whole header remainder (vrf tail included) while the neighbours half composes
+from the first DIGITS run — `router bgp 100 vrf MGMT` gets two different openers upstream, and a
+"fixed" single opener would silently re-route writes on a vrf-BGP box. §5 rows 198 and 201; the drift
+question against `interfaces.setVrf`'s DR-078 floor stays open below. **Consequence:** a cEOS 4.28
+capture of vrf-BGP and mixed-spelling blocks can retire the convention fallback; until then the
+device's own refusal is the authority.
+
+### DR-108 — silent `False` answers become out-loud refusals or modeled retries, never return values (W3a #49)
+Two sites in `bgp.py` answer `False` where a caller would read the outcome as unremarkable:
+`set_peer_group` on a non-address name (`:288-298` — the ispeergroup gate leaves the call a no-op
+returning `False`) and the swallow-error `configure` chain behind `BgpNeighbors.delete`'s
+group-keyword retry (`:265-275` reading `abstract.py:118-127`'s `except CommandError: return False`).
+Both become behavior the taxonomy already supports: the peer-group gate raises `NotSupportedError`
+at zero round trips (a deliberate WIDENING by asserted refusal — COMMON's rule — because a
+silently-skipped config write is exactly what commit-state honesty forbids), and `delete` catches
+the real `CommandError` that replaced the swallowed-`False` idiom (DR-005), retries the
+group-keyword form exactly ONCE with the detected spelling, and lets a second refusal propagate.
+Non-`CommandError` failures — auth, connect, TLS, protocol — never earn a second write: they are
+not command refusals, and the send discipline stays in one place (ARCHITECTURE §2). §5 row 202.
+**Consequence:** any later pyeapi method whose contract is "returned False on refusal" ports as
+throw-or-retry, never as a boolean.
+
+### DR-109 — the faithful-port rule outranks aesthetics: `BgpNeighbors.create` keeps its bare-shutdown wiring, flagged loudly instead of "fixed" (W3a #49)
+`bgp.py:262-264` implements `create(name)` as literally
+`self.set_shutdown(name, default=False, disable=False)` — the ONE arm that composes the bare
+`neighbor <name> shutdown`, i.e. a create verb whose only observable effect is declaring the
+neighbour AND setting it administratively down. It looks like an upstream defect (the class's real
+zero-arg defaults at `:303` NEGATE, and upstream's suite has no unit test for `create` or `default`
+on the neighbours half at all, which is how it survived), but this migration's rule is
+port-what-the-code-does, pin the quirk, and report it — silently re-pointing a ported verb at a
+DIFFERENT EOS effect would strand every downstream expectation built on pyeapi parity, and what
+`neighbor X shutdown` even does to a name the router never had IS a capture question (M12 #14).
+The TS verb therefore KEEPS the text (pinned: `router bgp 65000` + `neighbor newpeer shutdown`), the
+doc block reads as a warning label, and the operator intent "this peer is UP" is `unsetShutdown` —
+upstream's own zero-argument default. The webui's destructive-action rules (clear labeling,
+confirm-for-risky) apply on top of that, not instead of it. §5 row 199. **Consequence:**
+suspected-upstream-defect ports carry their real behavior plus a pinned test and a row; "obvious
+fix" substitutions are refused at review.
+
+### DR-110 — a hard third-party dependency becomes a conservative local check with the narrowing pinned, rather than widening the dependency graph (W3a #49)
+`ispeergroup` is one line of `netaddr` (`:257`), and netaddr parses far more than an operator would
+ever name a BGP peer with: partial dotted quads (`'1.2.3'` → 1.2.0.3), plain decimal and hex
+integers, leading-zero octets. The repo's dependency posture (no new runtime deps without a
+milestone that justifies one; the client ships browser-facing through `./index`) puts a netaddr port
+out of reach for one gate, so the check is a local, conservative IPv4-full-dotted-quad /
+IPv6-colon-literal test — deliberately NARROWER: this client treats MORE names as group-shaped than
+netaddr does, and every consequence is pinned in direction (`'1.2.3'` is a group name here, so a
+`setPeerGroup('1.2.3', …)` refuses where pyeapi would have written a member line). The refusal
+direction is the safe direction: it can never write a device line the operator did not ask for.
+§5 row 201. **Consequence:** when a ported library leans on a third-party parser, the port names the
+parser, states which accepted forms its replacement does NOT accept, and pins at least one narrowed
+case per family; if a capture ever shows those exotic spellings in real configs, widening gets its
+own row and its own review.
+
+
 ### DR-111 — a route-map clause is a THREE-coordinate identity, and the typed model keeps upstream's nesting rather than inventing coordinates (W3b #50)
 pyeapi's `Routemaps` is an `EntityCollection` keyed by ONE word (the name) — `getall` builds
 `resources[name]` (`routemaps.py:101-109`) — while every verb that changes anything addresses a

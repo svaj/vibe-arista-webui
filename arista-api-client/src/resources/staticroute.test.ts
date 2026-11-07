@@ -408,8 +408,8 @@ describe('StaticRouteResource guards — staticroute.py validates nothing; refus
     const { node } = nodeFor(ROUTES_CONFIG)
     expect(node.hasResource('staticroute')).toBe(true)
     expect(() => node.resource('notaroute' as never)).toThrow(NotSupportedError)
-    // W3b #50 lane B appended `routemaps` to the registry table on this branch (this row still lists the
-    // others as a negative control for resource-name typos from any module, so the listing grows here too).
-    expect(() => node.resource('notaroute' as never)).toThrow(/registered: system, vlans, switchports, interfaces, users, ntp, acls, varp, stp, ipinterfaces, vrfs, staticroute, mlag, routemaps/)
+    // W3a (#48 #49) first and W3b lane B (#50) second appended to the registry table, so the listing
+    // this row still provides as a negative control for resource-name typos (from any module) grows too.
+    expect(() => node.resource('notaroute' as never)).toThrow(/registered: system, vlans, switchports, interfaces, users, ntp, acls, varp, stp, ipinterfaces, vrfs, staticroute, mlag, ospf, bgp, routemaps/)
   })
 })

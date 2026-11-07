@@ -223,6 +223,9 @@ describe('what the browser entry exports', () => {
       // W2d (#41/#42/#43): the VRF, static-route and MLAG modules ride the same entry —
       // `node.vrfs`/`node.staticroute`/`node.mlag` and their classes from `.` with no deep import.
       'VrfsResource', 'StaticRouteResource', 'MlagResource',
+      // W3a (#48/#49): the OSPF entity and the BGP entity + its sub-collection class — `node.ospf`,
+      // `node.bgp` and `node.bgp.neighbors` all nameable from `.` without a deep import.
+      'OspfResource', 'BgpResource', 'BgpNeighborsResource',
       // W3b (#50) lane B: the route-maps table, its action vocabulary, and the type-pinning exports of
       // the entry shape (`RoutemapEntry`, `RoutemapEntryAttrs`) — all from `.` with no deep import. The
       // `isRoutemapAction` export is the guard the action union narrows through (DR-093 triple identity).
@@ -244,15 +247,15 @@ describe('what the browser entry exports', () => {
     expect(surface.isUserEncryption('sha512')).toBe(true)
     expect(surface.isUserEncryption('bcrypt')).toBe(false)
     expect(surface.parseInterfaceName('Ethernet1.100')).toEqual({ kind: 'Ethernet', index: 1, name: 'Ethernet1.100', subinterface: 100 })
-    // The registry has fourteen rows now: M8's `system`, M9's `vlans`/`switchports`, M10a's
+    // The registry has sixteen rows now: M8's `system`, M9's `vlans`/`switchports`, M10a's
     // `interfaces`, then W2a's `users`/`ntp`, W2b's `acls`/`varp`, W2c's `stp`/`ipinterfaces`, W2d's
-    // `vrfs`/`staticroute`/`mlag`, and W3b lane B's `routemaps` — each appended in merge order (§5 row 79,
-    // rows 167/173). The NEGATIVE CONTROL for `has()`/`hasResource()` lives in `registry.test.ts`, not here:
-    // by the COMMON protocol that name moved from `ospf` to lane C's `vrrp`, unregistered on every lane's
-    // branch until the W3 merge order completes.
+    // `vrfs`/`staticroute`/`mlag`, W3a's `ospf`/`bgp`, then W3b lane B's `routemaps` — each appended in
+    // merge order (§5 row 79, rows 167/173, rows 191/197, row 203). The NEGATIVE CONTROL for
+    // `has()`/`hasResource()` lives in `registry.test.ts`, not here: by the COMMON protocol that name
+    // moved from `ospf` to lane C's `vrrp`, unregistered on this tree until the W3 merge order completes.
     expect(Object.keys(surface.RESOURCE_FACTORIES)).toEqual([
       'system', 'vlans', 'switchports', 'interfaces', 'users', 'ntp', 'acls', 'varp', 'stp', 'ipinterfaces',
-      'vrfs', 'staticroute', 'mlag', 'routemaps',
+      'vrfs', 'staticroute', 'mlag', 'ospf', 'bgp', 'routemaps',
     ])
     expect(new Node(mockTransport()).system).toBeInstanceOf(surface.SystemResource)
     expect(new Node(mockTransport()).vlans).toBeInstanceOf(surface.VlansResource)
@@ -288,6 +291,11 @@ describe('what the browser entry exports', () => {
     expect(new Node(mockTransport()).vrfs).toBeInstanceOf(surface.VrfsResource)
     expect(new Node(mockTransport()).staticroute).toBeInstanceOf(surface.StaticRouteResource)
     expect(new Node(mockTransport()).mlag).toBeInstanceOf(surface.MlagResource)
+    // W3a (#48 #49): the two new rows, and the sub-collection a caller reaches THROUGH the facade is
+    // the exported class (the varp/stp precedent — `BgpNeighbors` is a property, not a registry row).
+    expect(new Node(mockTransport()).ospf).toBeInstanceOf(surface.OspfResource)
+    expect(new Node(mockTransport()).bgp).toBeInstanceOf(surface.BgpResource)
+    expect(new Node(mockTransport()).bgp.neighbors).toBeInstanceOf(surface.BgpNeighborsResource)
     // W3b lane B (#50): the route-maps accessor plus its action vocabulary. `ROUTE_MAP_ACTIONS` is the
     // frozen pair and `isRoutemapAction` its runtime guard — the same DR-079 shape as
     // `SWITCHPORT_MODES`/`isSwitchportMode` and `USER_ENCRYPTIONS`/`isUserEncryption`, and equally NOT a
