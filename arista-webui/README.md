@@ -25,6 +25,20 @@ not the browser bundle. See the [eAPI connectivity guide](../arista-api-client/d
 With all three variables absent, the UI renders its unconfigured state and makes no
 eAPI requests. Partial configuration is rejected; there is no default switch target.
 
+## Typed show contracts (M13)
+
+The client ships an **empty** `ShowContracts` map on purpose (ARCHITECTURE.md §9.1); this app
+widens it by declaration merging in [`src/eapi/show-contracts.ts`](src/eapi/show-contracts.ts),
+so `node.show('version')` and friends type end-to-end without an upstream release. The modelled
+commands are the M13 screens' five literals — `version`, `interfaces status`, `vlan`, `mlag` and
+`lag` — **except `lag`, which is held until a `show lag` capture exists** (it stays `unknown`;
+narrow on purpose or wait for the STATUS §3 hardware sweep). Every modelled field was read out of
+a recorded reply under `arista-api-client/test/fixtures/`, and
+`src/eapi/show-contracts.test.ts` pins each contract against verbatim copies of those captures —
+a contract that drifts from real device output fails `npm run typecheck`. The header renders a
+best-effort identity chip (`hostname · EOS version · model`) from the typed `show version` reply;
+that read failing never breaks the workspace.
+
 ## Tests
 
 Component tests use mocked client interfaces and stay offline:

@@ -24,6 +24,18 @@ function makeClient(overrides: Record<string, unknown> = {}, diffRead = true) {
     configSession: vi.fn(async () => session),
     listSessions: vi.fn(async () => ({ sessions: [] })),
     abortSession: vi.fn(async () => []),
+    // Verbatim DCS-7050TX-64 / 4.28.13.1M `show version` capture (see src/eapi/show-contracts.test.ts).
+    show: vi.fn(async () => ({
+      hostname: 'sw1',
+      version: '4.28.13.1M',
+      systemMacAddress: '00:00:00:00:00:00',
+      modelName: 'DCS-7050TX-64',
+      serialNumber: '0000000000',
+      internalVersion: '4.28.13.1M',
+      architecture: 'x86_64',
+      bootupTimestamp: 0,
+      uptime: 0,
+    })),
     ...overrides,
   } as unknown as TestNode
   return { node, session }
@@ -122,6 +134,23 @@ describe('SwitchManager', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent('device unreachable')
     expect(screen.queryByText('The device returned no VLAN entries.')).not.toBeInTheDocument()
+  })
+
+  it('shows the device identity from the typed `show version` reply', async () => {
+    render(<SwitchManager node={makeClient().node} />)
+
+    expect(await screen.findByText('sw1 · EOS 4.28.13.1M · DCS-7050TX-64')).toBeInTheDocument()
+  })
+
+  it('a failed identity read stays soft: no error alert, no chip, workspace intact', async () => {
+    const { node } = makeClient({
+      show: vi.fn(async () => { throw new Error('1003 no json model') }),
+    })
+    render(<SwitchManager node={node} />)
+
+    expect(await screen.findByRole('heading', { name: 'VLAN assignment' })).toBeInTheDocument()
+    expect(screen.queryByText(/DCS-7050TX-64/u)).not.toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 
   it('renders a successful empty inventory as empty rather than as an error', async () => {
