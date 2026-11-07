@@ -19,10 +19,10 @@
  * | `get(name)` (`:174-229`): empty/None `raise ValueError` (`:188-190`); `get_block('interface %s')` (`:194-196`); vrid census `re.findall(r'^\s+(?:no \|)vrrp (\d+)', config, re.M)` (`:200`); fourteen `self._parse_*(config, vrid)` merges (`:212-226`); `result.update({int(vrid): subd})` (`:226`); `return result if result else None` (`:229`) | {@link VrrpResource.get} → `Map<number, Vrrp> \| undefined`; the guards refuse with `NotSupportedError` (DR-005/DR-010), the census keeps upstream's exact regex (a `default vrrp N …` line is invisible to it — upstream's own default write-back cannot seed its vrid set), and the identity is the **pair** (interface, vrid): the table is keyed by vrid exactly like upstream's `int(vrid)` dict keys |
  * | `getall()` (`:231-249`): `re.findall(r'^interface\s(\S+)', self.config, re.M)` (`:242`), then `self.get(interface)` per interface with the `if vrrp:` update (`:245-249`) | {@link VrrpResource.getAll} — `Map<string, ReadonlyMap<number, Vrrp>>` built from the chunker's indent-0 section keys (same rule as `vlans.ts` divergence 3, `vrfs.ts` divergence 2, `staticroute.ts` divergence 1): indented copies and banner bodies cannot vote, and a header the interface grammar cannot read is a `ConfigParseError` naming the section instead of a phantom leading-token name |
  * | the fourteen `_parse_*` readers (`:253-391`), each gated on `self.version_number >= '4.21.3'` for the keyword family (except `preempt` `:292`, `mac_addr_adv_interval` `:319`, the two `preempt delay` readers `:325`/`:331` and `bfd_ip` `:337`, which are era-independent) | private {@link parseVrrp} + the per-field readers below; the family comes from the config text itself ({@link detectCommandFamily}, the `vrfs.ts`/DR-099 precedent — see divergence 1) |
- * | `create(interface, vrid, **kwargs)` (`:391-416`): `if 'enable' not in kwargs: kwargs['enable'] = False` (`:413-414`) then `_vrrp_set` | {@link VrrpResource.create} — never mutates the caller's attrs object (row 71's non-mutation rule, which upstream's `kwargs[...] =` write breaks in its own frame); defaults `enable` to `false` exactly like `:413-414` |
- * | `delete` (`:418-436`, `vrrp_str = "no vrrp %d"` at `:436`) / `default` (`:439-458`, `"default vrrp %d"` at `:458`) | {@link VrrpResource.delete} / {@link VrrpResource.setDefault} — identical era-independent texts; throw instead of returning `False` (DR-005) |
- * | the fifteen `set_*` methods (`:461-1229`) and `_vrrp_set` (`:1231-1416`) | {@link VrrpResource.setEnable} … {@link VrrpResource.setBfdIp} + private {@link vrrpSet} — sequence-preserving port of the kwarg dispatch table (`:1235-1413`), one `configure_interface` transaction (`:1415`) |
- * | `vrconf_format(vrconfig)` (`:1421-1481`) — the PLAN.md §4 named helper | {@link VrrpResource.vrconfFormat}, ported as part of the module's documented surface: maps a `create`-shape config onto the answers {@link VrrpResource.get} would give after applying it, for "validate an updated config against the device" flows |
+ * | `create(interface, vrid, **kwargs)` (`:391-417`): `if 'enable' not in kwargs: kwargs['enable'] = False` (`:413-414`) then `_vrrp_set` | {@link VrrpResource.create} — never mutates the caller's attrs object (row 71's non-mutation rule, which upstream's `kwargs[...] =` write breaks in its own frame); defaults `enable` to `false` exactly like `:413-414` |
+ * | `delete` (`:418-438`, `vrrp_str = "no vrrp %d"` at `:436`) / `default` (`:439-460`, `"default vrrp %d"` at `:458`) | {@link VrrpResource.delete} / {@link VrrpResource.setDefault} — identical era-independent texts; throw instead of returning `False` (DR-005) |
+ * | the fifteen `set_*` methods (`:461-1230`) and `_vrrp_set` (`:1231-1420`) | {@link VrrpResource.setEnable} … {@link VrrpResource.setBfdIp} + private {@link vrrpSet} — sequence-preserving port of the kwarg dispatch table (`:1236-1413`), one `configure_interface` transaction (`:1415`) |
+ * | `vrconf_format(vrconfig)` (`:1421-1482`) — the PLAN.md §4 named helper | {@link VrrpResource.vrconfFormat}, ported as part of the module's documented surface: maps a `create`-shape config onto the answers {@link VrrpResource.get} would give after applying it, for "validate an updated config against the device" flows |
  * | `instance(node)` (`:1483-1493`) | the `RESOURCE_FACTORIES.vrrp` row plus `Node.vrrp` (DR-006/DR-052) |
  *
  * Upstream's own suite is `pyeapi/test/unit/test_api_vrrp.py` — **23** test methods (verified in the
@@ -44,9 +44,13 @@
  * `:530`/`:537`/`:542` (primary_ip), `:588` (priority), `:629` (description), `:674` (ip_version),
  * `:746`/`:752` (secondary), `:796` (timers), `:1015` (delay_reload), and `:1156`/`:1172` (tracks)).
  *
- * ## Divergences this file owns (this lane's §5 rows are filed after the tests pass — no row numbers
- * are cited here until they exist; the follow-up round of W3c records them in MIGRATION.md §5 213-224
- * and DECISIONS.md DR-116..121)
+ * ## Divergences this file owns
+ *
+ * The follow-up round of W3c (2026-11-07) recorded them: MIGRATION.md §5 **rows 213-224** and
+ * DECISIONS.md **DR-116..121**, and the divergence-pinning tests live in `vrrp.test.ts` under
+ * "divergence pins". Row numbers are cited HERE only from the numbered divergence list below, matching
+ * the ledger order of that round: divergence 1 → row 213, 2 → 214, 3 → 215, 4 → 216, 5 → 217,
+ * 6 → 218, with rows 219-224 covering the diffing-verb, formatter and parser facts the tests pin.
  *
  * 1. **the command family comes from the device's own config text, not from a `version_number`
  *    string compare.** Upstream gates ten readers and the `set_*` command stems on
@@ -66,7 +70,7 @@
  * 2. **`run=False` is still a string, and `run=True` returns it too.** Upstream's setters return the
  *    formatted command when `run=False`, and `True`/`self.error` when they execute (`:495-503` and its
  *    `if run:` twins on every setter); `_vrrp_set` builds its transaction entirely from `run=False`
- *    calls (`:1231-1416`). Here every setter **always resolves to the command text it composed** (the
+ *    calls (`:1231-1420`). Here every setter **always resolves to the command text it composed** (the
  *    list for the two diffing verbs) and executes it unless `options.run === false`;
  *    `True`/`self.error` is replaced by throw-on-failure (DR-005), so the dry-run capability survives
  *    without the falsy-return check the UI could forget.
@@ -212,15 +216,18 @@ export interface VrrpFieldOptions<T> extends VrrpRunOptions {
 
 /**
  * A `create`-shape attribute bag — upstream's `**kwargs` into `create(interface, vrid, **kwargs)`
- * (`:391`) and thus into `_vrrp_set` (`:1231-1416`). Presence is the trigger: upstream tests
+ * (`:391`) and thus into `_vrrp_set` (`:1231-1420`). Presence is the trigger: upstream tests
  * `vrconf.get(key, '__NONE__')`; here a field is processed when it is not `undefined` (an explicit
  * `undefined` reads as absent — the nearest honest spelling of "key not in kwargs" once TS types the
  * bag). The sentinel spellings survive verbatim: `'no'` and `null` select upstream's disable arm
  * (`:1248`, `:1261`, `:1273`, `:1286`, `:1305`, `:1322`, `:1353`, `:1369`, `:1385`, `:1404` — and
  * `preempt`'s disable arm additionally lists `False` at `:1341`), `'default'` selects its default arm.
+ * The two LIST keys have NO sentinel arms upstream at all — `secondary_ip` reads straight into
+ * `set_secondary_ips` (`:1300-:1304`), `track` straight into `set_tracks` (`:1394-:1398`) — so this bag
+ * deliberately carries no `'no'`/`'default'` shape for them (§5 row 219).
  */
 export interface VrrpAttrs {
-  /** Upstream's `enable` kwarg: strict boolean (set_enable raises otherwise, `:483-494`). */
+  /** Upstream's `enable` kwarg: strict boolean (set_enable raises otherwise, `:490-:492`). */
   readonly enable?: boolean
   readonly primaryIp?: string | VrrpNegation | null
   /** `'no'`/`null`/`'default'` sentinels, or the 1-254 priority when a real number is wanted. */
@@ -242,7 +249,7 @@ export interface VrrpAttrs {
 }
 
 /**
- * The `vrconf_format` domain (`:1421-1481`): a record that may carry create-shape SENTINELS
+ * The `vrconf_format` domain (`:1421-1482`): a record that may carry create-shape SENTINELS
  * (`'no'`/`'default'`/`null`) and get-shape values side by side, which the formatter normalizes to the
  * answers {@link VrrpResource.get} would produce after applying the config ("Intended for validating
  * updated vrrp configurations", `:1427-1428`). Upstream indexes every scalar key unguarded
@@ -543,7 +550,7 @@ export class VrrpResource extends ResourceBase {
   }
 
   /**
-   * Create — or re-property — one virtual router: `create(interface, vrid, **kwargs)` (`:391-416`).
+   * Create — or re-property — one virtual router: `create(interface, vrid, **kwargs)` (`:391-417`);
    * Upstream injects `kwargs['enable'] = False` when the key is absent (`:413-414`), mutating its own
    * kwargs frame; here the default rides a copy so the caller's bag is never written through (row 71).
    * Everything then funnels through {@link VrrpResource.vrrpSet}, composing the per-property commands
@@ -556,14 +563,14 @@ export class VrrpResource extends ResourceBase {
     await this.vrrpSet(name, vrid, withEnable)
   }
 
-  /** `no vrrp <vrid>` inside the interface — pyeapi's `delete` (`:418-436`, text at `:436`). Era-free, like upstream's. */
+  /** `no vrrp <vrid>` inside the interface — pyeapi's `delete` (`:418-438`, send at `:437`, text at `:436`). Era-free, like upstream's. */
   async delete(name: string, vrid: number): Promise<void> {
     assertInterfaceName(name)
     assertVrrpId(vrid)
     await this.configureInterface(name, [`no vrrp ${String(vrid)}`])
   }
 
-  /** `default vrrp <vrid>` — pyeapi's `default` (`:439-458`, text at `:458`; `setDefault` per row 77). */
+  /** `default vrrp <vrid>` — pyeapi's `default` (`:439-460`, send at `:459`, text at `:458`; `setDefault` per row 77). */
   async setDefault(name: string, vrid: number): Promise<void> {
     assertInterfaceName(name)
     assertVrrpId(vrid)
@@ -572,7 +579,8 @@ export class VrrpResource extends ResourceBase {
 
   /**
    * Enable/disable the virtual router WITHOUT the generic builder: upstream composes four command
-   * strings by hand (`:480-489`) — `shutdown`/`no shutdown` in the legacy family, `disabled`/
+   * strings by hand (`:480-489`) — the two `if value is False:`/`elif value is True:` arms with the
+   * era pair at `:482`/`:484` and `:487`/`:489` — `shutdown`/`no shutdown` in the legacy family, `disabled`/
    * `no disabled` in the modern one — and raises `ValueError` for anything that is not exactly
    * `True`/`False` (`:490-492`; its tests hand it `'a'` and `200` at `test_api_vrrp.py:342-346`).
    * Pinned texts reproduced: `vrrp 10 shutdown` / `no vrrp 10 shutdown` (`:331-339`'s cases).
@@ -657,7 +665,7 @@ export class VrrpResource extends ResourceBase {
   }
 
   /**
-   * Replace the secondary addresses: upstream's `set_secondary_ips` (`:693-767`), the diffing verb
+   * Replace the secondary addresses: upstream's `set_secondary_ips` (`:693-768`), the diffing verb
    * PLAN.md §4 flags. Reads the CURRENT list through `self.get(name)` (`:725-727` — guarded there:
    * `if vrrps and vrid in vrrps`, unlike set_primary_ip's unguarded read), grammar-checks EVERY
    * incoming address (`:730-734`), then composes `no`-lines for `current \ new` and positive lines for
@@ -774,11 +782,14 @@ export class VrrpResource extends ResourceBase {
   }
 
   /**
-   * Validate one track dict the way upstream validates BOTH sides — incoming specs (`:1082-1116`) and
-   * freshly parsed current entries (`:1119-1135`): unknown-key refusal (`:1085-1090`), required
-   * name+action (`:1092-1097`), action ∈ {shutdown, decrement} (`:1105`), `shutdown` carrying an
+   * Validate one track dict the way upstream validates BOTH sides — incoming specs and
+   * freshly parsed current entries: unknown-key refusal (`:1085-:1095`), required
+   * name+action (`:1092-:1097`), action ∈ {shutdown, decrement} (`:1105`), `shutdown` carrying an
    * amount is invalid (`:1106`), and an amount must be digit-able (`:1107`-`:1109`, re-checked for
-   * current entries at `:1130`). Returns the diff key.
+   * current entries at `:1124-:1135`). Upstream compares against the `'`-quoted name list at `:1086`
+   * (`'name'`/`'action'`/`'amount'` with quotes) while the unknown-key set difference itself matches
+   * the bare keys — an unquoted-key variant exists at `:1093` for the required-key message; the
+   * refusals here name bare keys exactly like the upstream VALID-keys message. Returns the diff key.
    */
   private trackDiffKey(track: VrrpTrack, label: string): string {
     if (track === null || typeof track !== 'object' || Array.isArray(track)) {
@@ -811,7 +822,7 @@ export class VrrpResource extends ResourceBase {
   }
 
   /**
-   * Replace the tracked objects: upstream's `set_tracks` (`:1034-1190`), the second diffing verb.
+   * Replace the tracked objects: upstream's `set_tracks` (`:1034-1191`), the second diffing verb.
    * Same shape as {@link VrrpResource.setSecondaryIps} (guarded current read at `:1074-1076`, entry
    * validation on BOTH sides, intersection-diffing at `:1139-1144`, command re-extraction from the
    * triple at `:1148-1177`, `cmds = sorted(cmds)` at `:1179`) — with the multi-word entries the handoff
@@ -848,7 +859,7 @@ export class VrrpResource extends ResourceBase {
     return this.runCommandList(name, sorted, options.run !== false)
   }
 
-  /** `vrrp <vrid> bfd ip [<address>]` — `:1192-1229`, era-neutral stem (`:1217`); guard = the dotted quad (`:1214-1216`). */
+  /** `vrrp <vrid> bfd ip [<address>]` — `:1192-1230`, era-neutral stem (`:1217`); guard = the dotted quad (`:1213-:1216`). */
   async setBfdIp(name: string, vrid: number, options: VrrpFieldOptions<string> = {}): Promise<string> {
     assertInterfaceName(name)
     assertVrrpId(vrid)
@@ -860,7 +871,7 @@ export class VrrpResource extends ResourceBase {
   }
 
   /**
-   * `_vrrp_set` (`:1231-1416`) — the property dispatch table that `create` funnels through. The
+   * `_vrrp_set` (`:1231-1420`) — the property dispatch table that `create` funnels through. The
    * sequence is fixed by upstream and pinned by `test_api_vrrp.py:204-222`: enable, primary_ip,
    * priority, description, ip_version, secondary_ip, timers_advertise, mac_addr_adv_interval, preempt,
    * preempt_delay_min, preempt_delay_reload, delay_reload, track, bfd_ip. Every leg composes through
@@ -951,7 +962,7 @@ export class VrrpResource extends ResourceBase {
   }
 
   /**
-   * `vrconf_format` (`:1421-1481`), named exactly upstream's helper — PLAN.md §4 asks for it as part of
+   * `vrconf_format` (`:1421-1482`), named exactly upstream's helper — PLAN.md §4 asks for it as part of
    * this module's surface. It turns a config bag written the way `create` takes it (sentinels and all)
    * into the record shape `get`/`getAll` will answer afterwards: `primaryIp`→`'0.0.0.0'` (`:1436-1437`),
    * `priority`→`100` (`:1439-1440`), `description`→`null` (`:1442-1443`), `secondaryIp` sorted

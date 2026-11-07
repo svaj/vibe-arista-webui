@@ -53,6 +53,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { Node } from '../command-layer'
+import { ConfigParseError } from '../errors'
 import { mockTransport, type MockReply, type MockTransport } from '../testing/mock-transport'
 import type { Vrrp, VrrpAttrs, VrrpConf, VrrpTrack, VrrpVridTable } from './vrrp'
 
@@ -931,5 +932,557 @@ describe('vrconfFormat — port of test_vrconf_format (:758-808), the PLAN §4 n
     const vrrp = vrrpFor()
     expect(vrrp.vrconfFormat({ preempt: null })).toEqual({ preempt: null })
     expect(vrrp.vrconfFormat({ preempt: 'no' })).toEqual({ preempt: false })
+  })
+})
+
+/* ------------------------------------------------------------------ *
+ * Divergence pins (W3c round 2, 2026-11-07).
+ *
+ * One focused test per quirk recorded against the pinned clone
+ * (`/home/svaj/development/arista/pyeapi` @ 6816d9e). Every upstream line
+ * ref below was re-verified this round by grep of the exact construct or by
+ * awk over the def lines (the round-1 citation lesson: verify BEFORE citing,
+ * never hand-sweep a range). The MIGRATION.md §5 rows for these behaviours
+ * are 213-224 and the DECISIONS.md entries DR-116..121, filed by this same
+ * round after these tests went green.
+ *
+ * Modern-family configs are HAND-AUTHORED: each line is spelled straight
+ * from an upstream parser/setter arm of the pinned clone — they are not
+ * device captures and no EOS acceptance is claimed (M12 #14 owns that).
+ * ------------------------------------------------------------------ */
+
+/**
+ * Hand-authored provenance above: the modern-era lines come from upstream's
+ * `>= '4.21.3'` arms (`_parse_enable` `:255`, `_parse_primary_ip` `:264`, `_parse_priority` `:274`,
+ * `_parse_timers_advertise` `:284`, `_parse_secondary_ip` `:300`, `_parse_description` `:310`,
+ * `_parse_ip_version` `:347`, `_parse_delay_reload` `:357`, `_parse_track` `:367`), and the
+ * era-neutral ones from the ungated readers (`mac-address advertisement-interval` `:319-:324`,
+ * `preempt` `:292-:297`, the two `preempt delay` readers `:325-:330`/`:331-:336`,
+ * `bfd ip` `:337-:344`). `vrrp 20 tracked-object Ethernet1 decrement 0` deliberately carries the
+ * `if amount:` probe (`:383`).
+ */
+const MODERN_CONFIG = textOf([
+  'router community-list EX COMM1',
+  '!',
+  'interface Vlan60',
+  '   vrrp 20 priority-level 120',
+  '   vrrp 20 advertisement interval 2',
+  '   vrrp 20 timers delay reload 30',
+  '   vrrp 20 ipv4 10.10.70.10',
+  '   vrrp 20 ipv4 10.10.70.20 secondary',
+  '   vrrp 20 session description modern description',
+  '   vrrp 20 ipv4 version 2',
+  '   vrrp 20 disabled',
+  '   vrrp 20 tracked-object Ethernet1 decrement 0',
+  '   vrrp 20 tracked-object Ethernet2 shutdown',
+  '   vrrp 20 preempt',
+  '   vrrp 20 preempt delay minimum 0',
+  '   vrrp 20 preempt delay reload 0',
+  '   vrrp 20 mac-address advertisement-interval 30',
+  '   vrrp 20 bfd ip 10.10.70.33',
+  '!',
+  'vlan 1000',
+  '!',
+  'end',
+])
+
+/** Modern-wins probe: one block spelling BOTH eras (`vrrp.py:242`'s getall sees it too). */
+const MIXED_CONFIG = textOf([
+  'interface Loopback21',
+  '   vrrp 9 disabled',
+  '   vrrp 9 ip 10.10.21.1 secondary',
+  'end',
+])
+
+/** Era-neutral lines only: speaks NEITHER family, so the floor (modern) answers. */
+const NEUTRAL_CONFIG = textOf([
+  'interface Vlan90',
+  '   vrrp 10 shutdown',
+  '   vrrp 10 ip 1.2.3.4',
+  'end',
+])
+
+/** Census + parser probes: the bare `bfd ip` (null answer), the blind-spot lines, inner spacing. */
+const BFD_CENSUS_QUIRK_CONFIG = textOf([
+  'interface Vlan95',
+  '   vrrp 10 preempt',
+  '   vrrp 10 bfd ip',
+  '!',
+  'interface Vlan96',
+  '   vrrp 10 preempt',
+  '   no vrrp 10 bfd ip',
+  'end',
+])
+const CENSUS_BLIND_CONFIG = textOf([
+  'interface Loopback87',
+  '   vrrp 10 preempt',
+  '   default vrrp 9 ip 10.10.94.1',
+  'vrrp 10 ip 10.10.94.2',
+  'end',
+])
+
+/** Diffing-verb fixture: one vrid 10 entry with exactly one secondary. */
+const SEC_CONFIG = textOf([
+  'interface Vlan70',
+  '   vrrp 10 ip 10.10.8.10',
+  '   vrrp 10 ip 10.10.8.20 secondary',
+  'end',
+])
+
+const modern = () => nodeFor(MODERN_CONFIG)
+
+describe('divergence pin 1 — the command family comes from the config text (vrrp.ts divergence 1; §5 row 213, DR-116)', () => {
+  it('a modern-spelling block reads with the modern arms, per upstream arm-for-arm', async () => {
+    const { node, transport } = modern()
+    const table = await node.vrrp.get('Vlan60')
+    expect(table?.get(20)).toEqual({
+      enable: false, // `vrrp 20 disabled` votes through the modern arm (`_parse_enable` `:255`); absent would vote True (`:259-:260`)
+      primaryIp: '10.10.70.10', // `ipv4` arm `:264`; the `… secondary` line cannot match the `…$`-anchored primary pattern
+      priority: 120, // `priority-level` arm `:274`
+      timersAdvertise: 2, // `advertisement interval` arm `:284`
+      preempt: true, // era-neutral (`_parse_preempt` `:292-:297` — the family gate is absent there, ported)
+      secondaryIp: ['10.10.70.20'], // modern findall `:300`
+      description: 'modern description', // `session description` arm `:310`
+      macAddrAdvInterval: 30, // era-neutral `:319-:324`
+      preemptDelayMin: 0, // era-neutral `:325-:330` — a parsed 0 STAYS 0 (unlike track amounts, `:383`)
+      preemptDelayReload: 0, // era-neutral `:331-:336`
+      delayReload: 30, // `timers delay reload` arm `:357`
+      ipVersion: 2, // `ipv4 version` arm `:347`
+      // `_parse_track` modern arm `:367` + the `if amount:` truthiness filter `:383`: the parsed 0
+      // rides through WITHOUT the amount key. `sorted(key=(name, action))` `:388`.
+      track: [{ name: 'Ethernet1', action: 'decrement' }, { name: 'Ethernet2', action: 'shutdown' }],
+      bfdIp: '10.10.70.33', // era-neutral `:337-:344`
+    })
+    // A mixed section-key space costs nothing: non-interface keys are skipped, and the modern block
+    // picks its family with the LEGACY-evidence arm answering false (pickFamily line 353 taken, 354 not).
+    expect(transport.callCount()).toBe(1)
+  })
+
+  it('the modern family also drives the dry-run WRITE texts — run=False stays a string, both verbs (vrrp.py:495-504 set_enable, :550-560 siblings; §5 row 214)', async () => {
+    const { node, transport } = modern()
+    expect(await node.vrrp.setEnable('Vlan60', 20, false, { run: false })).toBe('vrrp 20 disabled') // :482
+    expect(await node.vrrp.setEnable('Vlan60', 20, true, { run: false })).toBe('no vrrp 20 disabled') // :487
+    expect(await node.vrrp.setPrimaryIp('Vlan60', 20, { value: '10.10.70.50', run: false })).toBe('vrrp 20 ipv4 10.10.70.50') // :543
+    expect(await node.vrrp.setPriority('Vlan60', 20, { value: 150, run: false })).toBe('vrrp 20 priority-level 150') // :588
+    expect(await node.vrrp.setDescription('Vlan60', 20, { value: 'hello world', run: false })).toBe('vrrp 20 session description hello world') // :629
+    expect(await node.vrrp.setIpVersion('Vlan60', 20, { value: 3, run: false })).toBe('vrrp 20 ipv4 version 3') // :674
+    expect(await node.vrrp.setTimersAdvertise('Vlan60', 20, { value: 4, run: false })).toBe('vrrp 20 advertisement interval 4') // :796
+    expect(await node.vrrp.setDelayReload('Vlan60', 20, { value: 45, run: false })).toBe('vrrp 20 timers delay reload 45') // :1015
+    // Era-neutral stems speak neither family, so their text must NOT drift with the family (upstream
+    // composes them ungated — mac `:847`, preempt `:890`, the delay pair `:931`/`:973`, bfd ip `:1217`):
+    expect(await node.vrrp.setMacAddrAdvInterval('Vlan60', 20, { value: 2, run: false })).toBe('vrrp 20 mac-address advertisement-interval 2')
+    expect(await node.vrrp.setPreempt('Vlan60', 20, { value: false, run: false })).toBe('no vrrp 20 preempt')
+    expect(await node.vrrp.setPreemptDelayMin('Vlan60', 20, { value: 5, run: false })).toBe('vrrp 20 preempt delay minimum 5')
+    expect(await node.vrrp.setBfdIp('Vlan60', 20, { value: '10.10.70.60', run: false })).toBe('vrrp 20 bfd ip 10.10.70.60')
+    // Every one of those composed WITHOUT touching the wire beyond reads (the first read primes the
+    // whole-config scan; the latch means none of the others re-read).
+    expect(onlyReads(transport)).toBe(true)
+    expect(transport.callCount()).toBe(1)
+  })
+
+  it('modern WINS a block that spells both eras, and the modern reader answers [] for a legacy secondary line', async () => {
+    const { node } = nodeFor(MIXED_CONFIG)
+    const table = await node.vrrp.get('Loopback21')
+    // read evidence (line 353): modern true even though `vrrp 9 ip … secondary` is legacy evidence too.
+    expect(table?.get(9)).toMatchObject({ enable: false }) // the `disabled` line votes modern
+    // Upstream would run the modern findall (`:300`) over a config spelling the LEGACY line (`:303`)
+    // and answer nothing — the same one-dialect-per-verb posture this port takes:
+    expect(table?.get(9)?.secondaryIp).toEqual([])
+  })
+
+  it('era-neutral lines vote NO family on EITHER side, so the repo floor (modern) answers — silently and loudly — and the latch skips re-reads', async () => {
+    const { node, transport } = nodeFor(NEUTRAL_CONFIG)
+    const table = await node.vrrp.get('Vlan90')
+    // The block carries only era-neutral spells (`shutdown`, legacy `ip`), which match NEITHER of
+    // this client's evidence lists, so the READ floors modern — and that is exactly what upstream
+    // answers on a >= '4.21.3' device over the same lines: `_parse_enable`'s `disabled` arm (:255)
+    // cannot see the legacy `shutdown` POSITIVE line either, so enable keeps its True default
+    // (`:259-:260`), and the `ipv4` arm (`:264`) reads nothing from `ip 1.2.3.4`… except this client
+    // answers primaryIp '1.2.3.4' because that line IS legacy evidence — the family pick scans
+    // EVERY vrrp line, and `vrrp 10 ip(?![-\w])` proves the legacy arm for the whole block.
+    // Pinned as the block votes:
+    expect(table?.get(10)).toMatchObject({
+      enable: false, // the POSITIVE legacy `shutdown` line votes through the legacy arm — legacy won the block
+      primaryIp: '1.2.3.4', // legacy arm (`:267`) — the same config text that made the choice is the text it reads
+      preempt: false,
+      description: '',
+      secondaryIp: [],
+      bfdIp: '',
+    })
+    // THE era-neutral floor, pinned where it can only show: a whole config whose vrrp lines speak
+    // NEITHER family (preempt + bare bfd ip) — BFD_CENSUS_QUIRK_CONFIG in pin 6 drives the write arm
+    // there. What this test adds is the LATCH: three dry-run verbs on the legacy-voted block,
+    // ONE whole-config scan (the DR-099 precedent; `.some()` short-circuits at the legacy `ip`
+    // pattern, and every later call rides both the config memo and the latched family).
+    expect(await node.vrrp.setEnable('Vlan90', 10, false, { run: false })).toBe('vrrp 10 shutdown') // legacy arm `:484`
+    expect(await node.vrrp.setPrimaryIp('Vlan90', 10, { value: '10.10.90.11', run: false })).toBe('vrrp 10 ip 10.10.90.11') // `:545`
+    const callsAfterWrites = transport.callCount()
+    expect(await node.vrrp.setDelayReload('Vlan90', 10, { value: 20, run: false })).toBe('vrrp 10 delay reload 20') // `:1019`
+    expect(transport.callCount(), 'the family latch must not re-read per verb').toBe(callsAfterWrites)
+    expect(onlyReads(transport)).toBe(true)
+  })
+})
+
+describe('divergence pin 2 — getAll shape guards: skip, phantom header, near-miss (upstream getall :231-:252; §5 row 220)', () => {
+  it('non-interface section keys are skipped before any header parse', async () => {
+    const { node } = modern()
+    const all = await node.vrrp.getAll()
+    expect([...all.keys()]).toEqual(['Vlan60'])
+    expect(all.get('Vlan60')?.size).toBe(1)
+  })
+
+  it('a header whose remainder is not one token is a ConfigParseError naming the section, not a phantom name', async () => {
+    // Upstream's `re.findall(r'^interface\\s(\\S+)', self.config, re.M)` (vrrp.py:242) keys
+    // `interface Ethernet 1` as the phantom `Ethernet`; probe of its own get_block
+    // ('^%s$' anchoring, abstract.py:98) then finds no such section and get() answers None — the
+    // phantom never even reaches the readers. This client reports instead.
+    const { node, transport } = nodeFor(textOf(['interface Ethernet 1', 'end']))
+    const thrown = await outcome(() => node.vrrp.getAll())
+    expect(thrown).toBeInstanceOf(ConfigParseError)
+    expect((thrown as Error).message).toMatch(/cannot read the interface name in 'interface Ethernet 1'/)
+    expect(onlyReads(transport)).toBe(true)
+  })
+
+  it('a dotted remainder is ONE token to (\\S+), so a subinterface-style header is a candidate, not a report', async () => {
+    // `interface Ethernet1.100` names the interface in EOS prose (DECISIONS open item 7) — pyeapi's
+    // getall regex (\S+) at :242 keys it whole and its get_block reads its vrrps, and upstream's own
+    // readers parse them. Here it is a chunk key candidate, and the empty census excludes it exactly
+    // as upstream's falsy-`get` filter (:245-:248) would. The framework's name guard still refuses it
+    // for the PAIR verbs (the get-side refusal is pinned in the get tests above via the same
+    // assertInterfaceName grammar).
+    const { node } = nodeFor(textOf(['interface Ethernet1.100', '   vrrp 10 shutdown', 'end']))
+    const all = await node.vrrp.getAll()
+    expect(all.has('Ethernet1.100')).toBe(true) // the vrrp 10 line votes the census, so the section IS a table
+    // (a vrrp-less dotted section would drop out — the empty-census rule above pins that side)
+  })
+})
+
+describe('divergence pin 3 — refusal surface: the pair guards and the two omitted-value arms (§5 rows 216, 217)', () => {
+  it('the VRID guard refuses each non-%d formattable id, verb by verb — upstream crashes mid-verb instead', async () => {
+    // Upstream interpolates the vrid with "%d"/"%s" and validates NOTHING ("no vrrp %d" at :436, the
+    // enable stems :482-:489); a float reaches "%d" and raises TypeError mid-call in Python. Each bad
+    // form is pinned individually (union loops drop cases silently).
+    const { node, transport } = nodeFor(VRRP_CONFIG)
+    await expectError(() => node.vrrp.setTracks('Vlan50', '10' as unknown as number, []), /vrrp id/)
+    await expectError(() => node.vrrp.setTracks('Vlan50', 10.5, []), /vrrp id/)
+    await expectError(() => node.vrrp.setTracks('Vlan50', -1, []), /vrrp id/)
+    await expectError(() => node.vrrp.setTracks('Vlan50', Infinity, []), /vrrp id/)
+    await expectError(() => node.vrrp.setTracks('Vlan50', null as never, []), /vrrp id/)
+    await expectError(() => node.vrrp.create('Vlan50', '10' as unknown as number, {}), /vrrp id/)
+    await expectError(() => node.vrrp.delete('Vlan50', 10.5), /vrrp id/)
+    await expectError(() => node.vrrp.setDefault('Ethernet1', -1), /vrrp id/)
+    expect(onlyReads(transport)).toBe(true)
+    // vrid 0 is NOT bounded away — upstream has no bound and the image's limit is a device answer (DR-032):
+    const { node: zeroNode } = nodeFor(textOf(['interface Loopback77', '   vrrp 0 preempt', 'end']))
+    expect([...(await zeroNode.vrrp.get('Loopback77') as VrrpVridTable).keys()]).toEqual([0])
+  })
+
+  it('a create/default/delete with a bad NAME stays a client-side interface refusal', async () => {
+    const { node, transport } = nodeFor(VRRP_CONFIG)
+    await expectError(() => node.vrrp.create('', 10, {}), /invalid interface/)
+    await expectError(() => node.vrrp.delete('not-an-interface', 10), /invalid interface/)
+    await expectError(() => node.vrrp.setDefault('Vlan 50', 10), /invalid interface/)
+    expect(transport.sent()).toEqual([])
+  })
+
+  it("setPrimaryIp's omitted value is refused with THIS module's wording; setDescription's is refused by the shared builder (upstream falls through to 'no %s', abstract.py:158-:161)", async () => {
+    const { node, transport } = nodeFor(VRRP_CONFIG)
+    await expectError(() => node.vrrp.setDescription('Vlan50', 10, {}), /no value and no mode/)
+    await expectError(() => node.vrrp.setDescription('Vlan50', '10' as unknown as number, { value: 'x' }), /vrrp id/)
+    expect(onlyReads(transport)).toBe(true)
+  })
+
+  it("setDescription's explicit '' is refused HERE; upstream composes the literal negation text through command_builder's falsy fall-through", async () => {
+    // Upstream has NO guard of its own (`:629`/`:633` feed `command_builder`), and `elif value:` at
+    // abstract.py:158-:161 sends the deprecated `'no %s'` for ANY falsy value — so
+    // `set_description(value='')` writes the literal `no vrrp 10 description`: an operator asking to
+    // blank a description gets a negation (row 73's family, the vrrp site of it).
+    const { node, transport } = nodeFor(VRRP_CONFIG)
+    await expectError(() => node.vrrp.setDescription('Vlan50', 10, { value: '' }), /empty value would send a trailing space/)
+    await expectError(() => node.vrrp.setDescription('Vlan50', 10, { value: '   ' }), /empty value would send a trailing space/)
+    expect(onlyReads(transport)).toBe(true)
+    // The parser side keeps its own truth table: a POSITIVE session/description line with nothing after
+    // it reads `''` either way (`(.*)` + lstrip, `:310-:318`), and inner spacing survives —
+    // `vrrp 10 description   three   spaced` answers 'three   spaced', exactly upstream's lstrip answer:
+    const spaced = textOf(['interface Loopback55', '   vrrp 10 preempt', '   vrrp 10 description   three   spaced', 'end'])
+    expect(await vrrpFor(spaced).get('Loopback55')).toEqual(new Map([[10, {
+      enable: true,
+      description: 'three   spaced',
+      secondaryIp: [],
+      preempt: true,
+      track: [],
+      bfdIp: '',
+    }]]))
+  })
+})
+
+describe('divergence pin 4 — the list verbs (setSecondaryIps :693-:768, set_tracks :1034-:1191; §5 rows 219, 221, 223)', () => {
+  it('secondary-IP diffing: duplicates collapse, a no-op composes [] yet still opens the submode, and a missing pair reads current as []', async () => {
+    const { node, transport } = nodeFor(SEC_CONFIG)
+    // (a) upstream set-diffs through Python sets (`set(curr) - set(inter)` etc., :741-:744), so a
+    // duplicated input addresses compose exactly ONE command.
+    const dup = await node.vrrp.setSecondaryIps('Vlan70', 10, ['10.10.8.31', '10.10.8.31', '10.10.8.31'], { run: false })
+    expect(dup).toEqual(['no vrrp 10 ip 10.10.8.20 secondary', 'vrrp 10 ip 10.10.8.31 secondary']) // sorted (:756): "no " sorts before the positive form
+    // (b) an identical list composes NOTHING — and when run, upstream still calls
+    // configure_interface with [] (:758-:763), i.e. the submode opener alone reaches the wire.
+    const noopScript = ['interface Vlan70']
+    scriptWrite(transport, noopScript)
+    const noop = await node.vrrp.setSecondaryIps('Vlan70', 10, ['10.10.8.20'])
+    expect(noop).toEqual([])
+    expect(sentScripts(transport).at(-1)).toEqual(['enable', 'configure terminal', 'interface Vlan70'])
+    // (c) a vrid whose entry has no secondary list (the `?? []` twin of upstream's guarded read
+    // `if vrrps and vrid in vrrps` :726-:728) and an interface with NO table at all both compose
+    // additions only. Port-Channel1 exists in the config but carries no vrrp lines (its table is
+    // undefined, exactly upstream's falsy `vrrps`), and Vlan2000 is no section at all (None block).
+    const noSecondary = await node.vrrp.setSecondaryIps('Port-Channel1', 10, ['10.10.8.99'], { run: false })
+    expect(noSecondary).toEqual(['vrrp 10 ip 10.10.8.99 secondary'])
+    const absent = await node.vrrp.setSecondaryIps('Ethernet1', 999, ['10.10.8.99'], { run: false })
+    expect(absent).toEqual(['vrrp 999 ip 10.10.8.99 secondary'])
+    const none = await node.vrrp.setSecondaryIps('Vlan2000', 10, ['10.10.8.98'], { run: false })
+    expect(none).toEqual(['vrrp 10 ip 10.10.8.98 secondary'])
+    // (the ONLY configure transaction this node sent is the opener-only no-op above)
+    expect(writeScripts(transport)).toEqual([['enable', 'configure terminal', 'interface Vlan70']])
+  })
+
+  it('the secondary stems follow the family — modern spelling is ipv4, and an absent pair forces the []-current arm', async () => {
+    const { node, transport } = nodeFor(MODERN_CONFIG)
+    const cmds = await node.vrrp.setSecondaryIps('Vlan90', 10, ['10.10.90.11'], { run: false })
+    // Vlan90 is not even a section here: upstream's guard (`if vrrps and vrid in vrrps`, :726-:728)
+    // answers no current list and this port takes the undefined-table arm of its own read.
+    expect(cmds).toEqual(['vrrp 10 ipv4 10.10.90.11 secondary']) // :752 arm
+    const removed = await node.vrrp.setSecondaryIps('Vlan60', 20, [], { run: false })
+    expect(removed).toEqual(['no vrrp 20 ipv4 10.10.70.20 secondary']) // :746 arm
+    expect(onlyReads(transport)).toBe(true)
+  })
+
+  it('the write side spells name/action/amount VERBATIM while the read side can never see those lines — the config/write asymmetry, reproduced token-for-token', async () => {
+    const { node, transport } = nodeFor(VRRP_CONFIG)
+    const parsed = await node.vrrp.get('Vlan50')
+    // Python probe of upstream's OWN findall (`:365-:370`) on this round-2 branch, run 2026-11-07:
+    //   `track Foo with space shutdown`  -> []   (the (\S+) action group never sees 'shutdown')
+    //   `track Ethernet1 noaction`       -> []   (the action must be one of the two verbs)
+    // The port reproduces the blind spot EXACTLY (answers [] for both), so a spaced name can only
+    // reach the wire from the WANTED side — where :1172-:1175 interpolates name/action/amount
+    // VERBATIM: the add below. Had a spaced entry ever sat in the CURRENT set, :1148's re-extraction
+    // ((\S+)\s+(\S+)\s+(\S+) on the tid triple) would compose the removal as
+    // `no vrrp 10 track Foo with space` with action-group = `space` — the tid collapse in its
+    // purest form — but the parser cannot produce such a current entry, so that leg is
+    // unreachable-by-construction here and documented in vrrp.ts's compose note instead of forced
+    // with fabricated state (the discipline of commit 9ca0d9b). Pinned as divergence, never asserted
+    // as SANE: this repo adds no name-charset rule upstream lacks — the image's grammar stays
+    // authoritative (DR-032), and no EOS acceptance of any of these texts is claimed.
+    expect(parsed?.get(10)?.track.some((entry) => entry.name.includes(' '))).toBe(false) // parser: spelled by the write, invisible to the read
+    const spaced: VrrpTrack = { name: 'Foo with space', action: 'shutdown' }
+    const cmds = await node.vrrp.setTracks('Vlan50', 10, [
+      spaced,
+      { name: 'Ethernet1', action: 'decrement', amount: 10 },
+      { name: 'Ethernet1', action: 'shutdown' },
+      { name: 'Ethernet2', action: 'decrement', amount: 50 },
+      { name: 'Ethernet2', action: 'shutdown' },
+      { name: 'Ethernet11', action: 'decrement', amount: 75 },
+      { name: 'Ethernet11', action: 'shutdown' },
+    ], { run: false })
+    // The six parsed entries all match wanted (no-ops); the spaced entry has no current twin, so it
+    // composes as a sole verbatim ADDITION — the only command this call produces.
+    expect(cmds).toEqual(['vrrp 10 track Foo with space shutdown'])
+    expect(onlyReads(transport)).toBe(true)
+  })
+
+  it('track decrement 0 is INVISIBLE to the parser but VISIBLE to the diff — the round-trip asymmetry of `if amount:` (:383) vs the bare-amount arm (:1169/:1177)', async () => {
+    const { node, transport } = nodeFor(MODERN_CONFIG)
+    const parsed = await node.vrrp.get('Vlan60')
+    expect(parsed?.get(20)?.track).toEqual([{ name: 'Ethernet1', action: 'decrement' }, { name: 'Ethernet2', action: 'shutdown' }])
+    // Replacing the set with what the operator MEANT (the 0 amount) no longer matches the current
+    // parse, so BOTH a removal and an addition compose — and the ADDITION keeps the 0 verbatim
+    // (Python probe of the :1115 tid formula on the same round-2 branch: amount 0 present becomes the
+    // text '0', not `_none_`, so :1169's `amount == unset` test never fires). The lossy leg is the
+    // READ: re-applying what get() ANSWERED composes the bare no-amount text (:1120's `'amount' in
+    // track` test lands 'Ethernet1   decrement   _none_'), which the config cannot answer back.
+    const cmds = await node.vrrp.setTracks('Vlan60', 20, [
+      { name: 'Ethernet1', action: 'decrement', amount: 0 },
+      { name: 'Ethernet2', action: 'shutdown' },
+    ], { run: false })
+    expect(cmds).toEqual([
+      'no vrrp 20 tracked-object Ethernet1 decrement', // current side lost the 0 (`if amount:` :383)
+      'vrrp 20 tracked-object Ethernet1 decrement 0', // wanted side keeps it (tid text '0', :1115 + :1169)
+    ].sort())
+    expect(onlyReads(transport)).toBe(true)
+    // The lossy leg pinned directly — the re-application of the PARSED entry composes the bare
+    // rstripped text (the `:1122`/`:1169`/`:1177` chain), and the explicit no-amount decrement is
+    // spelled the same way from the wanted side:
+    const explicit = await node.vrrp.setTracks('Vlan60', 20, [
+      { name: 'Ethernet1', action: 'decrement' }, // exactly what get() answered for the decrement-0 line
+      { name: 'Ethernet2', action: 'shutdown' },
+    ], { run: false })
+    // The parsed entry and the wanted bare entry share the SAME tid ('_none_'), so the diff is empty —
+    // this verb cannot tell `decrement` from `decrement 0`, in either direction.
+    expect(explicit).toEqual([])
+    const forced = await node.vrrp.setTracks('Vlan60', 20, [
+      { name: 'Ethernet2', action: 'shutdown' },
+      { name: 'Bar', action: 'decrement' },
+    ], { run: false })
+    expect(forced).toEqual([
+      'no vrrp 20 tracked-object Ethernet1 decrement',
+      'vrrp 20 tracked-object Bar decrement', // wanted-side bare amount: rstripped, no trailing space (`:1172` + rstrip)
+    ].sort())
+  })
+
+  it("with AMOUNT KEY PRESENT pyeapi validates str(None) — 'None'.isdigit() is False, so an amount of None refuses; with it ABSENT the _none_ stand-in passes (:1101/:1122, :1107-:1109)", async () => {
+    const { node, transport } = nodeFor(MODERN_CONFIG)
+    await expectError(
+      () => node.vrrp.setTracks('Vlan60', 20, [{ name: 'Ethernet3', action: 'decrement', amount: null as unknown as number }]),
+      /invalid vrrp track entry/,
+    )
+    const ok = await node.vrrp.setTracks('Vlan60', 20, [{ name: 'Ethernet3', action: 'decrement' }], { run: false })
+    expect(ok).toEqual([
+      'no vrrp 20 tracked-object Ethernet1 decrement',
+      'no vrrp 20 tracked-object Ethernet2 shutdown',
+      'vrrp 20 tracked-object Ethernet3 decrement',
+    ].sort())
+    expect(ok.every((cmd) => !/\s$/u.test(cmd)), 'the rstrips (:1161/:1177) never leave a trailing space').toBe(true)
+    expect(onlyReads(transport)).toBe(true)
+  })
+})
+
+describe('divergence pin 5 — create/`_vrrp_set` (upstream :391-:417, :1231-:1420; §5 rows 215, 223)', () => {
+  it('create WITHOUT the enable key composes the injected `vrrp N shutdown` FIRST and never writes through the caller bag', async () => {
+    // pyeapi:413-:414 injects `kwargs['enable'] = False` when the key is absent — so even a bare
+    // `create('Ethernet1', 10, {})` ships the shutdown line first (:1244-:1245 is the enable leg, and
+    // set_enable's default kwarg is `value=False`, :461). The caller dict survives its frame write
+    // upstream (kwargs is a copy), so the only divergence here is honest hygiene (row 71).
+    const { node, transport } = nodeFor(VRRP_CONFIG)
+    const scripts = ['interface Ethernet1', 'vrrp 10 shutdown']
+    scriptWrite(transport, scripts)
+    const attrs: VrrpAttrs = {}
+    await node.vrrp.create('Ethernet1', 10, attrs)
+    expect(sentScripts(transport).at(-1)).toEqual(['enable', 'configure terminal', ...scripts])
+    expect(attrs, 'the caller bag is never written through').toEqual({})
+  })
+
+  it('the full mixed sentinel bag composes _vrrp_set order exactly: null is the exact twin of no, preempt null follows the False arm, and the list legs splice whole', async () => {
+    const { node, transport } = nodeFor(VRRP_CONFIG)
+    const attrs: VrrpAttrs = {
+      enable: true,
+      primaryIp: null, // :1248 `in ('no', None)` — same arm as 'no' (create :224-:259 pins that twin)
+      priority: 'default', // :1263 arm
+      description: null, // :1273 arm
+      ipVersion: 3, // positive leg, modern/legacy stem from the config text (legacy here)
+      timersAdvertise: null, // :1305 arm
+      macAddrAdvInterval: 3, // positive leg
+      preempt: null, // :1341 lists ('no', False) — upstream's None lands in the POSITIVE leg and
+      // set_preempt's own strict guard (`value is not True and value is not False`, :885-:888) raises
+      // ValueError: None is NOT accepted upstream here, and this client routes null to the same
+      // negate arm as 'no'/False (vrrpAttrs carries the documented twin) — the deliberate widening,
+      // pinned below as text and refusal-free.
+      preemptDelayMin: null, // :1353 arm
+      preemptDelayReload: null, // :1369 arm
+      delayReload: null, // :1385 arm
+      bfdIp: null, // :1404 arm
+    }
+    const scripts = [
+      'interface Ethernet1',
+      'no vrrp 10 shutdown', // enable: true (the injected default's opposite — row 223)
+      'no vrrp 10 ip 10.10.6.10', // the CURRENT address named back, exactly like :535-:540 reading vrrps[vrid]
+      'default vrrp 10 priority',
+      'no vrrp 10 description',
+      'vrrp 10 ip version 3',
+      'no vrrp 10 timers advertise',
+      'vrrp 10 mac-address advertisement-interval 3',
+      'no vrrp 10 preempt', // null here (upstream would raise — the honest divergence, pinned in the row)
+      'no vrrp 10 preempt delay minimum',
+      'no vrrp 10 preempt delay reload',
+      'no vrrp 10 delay reload',
+      'no vrrp 10 bfd ip',
+    ]
+    scriptWrite(transport, scripts)
+    await node.vrrp.create('Ethernet1', 10, attrs)
+    expect(sentScripts(transport).at(-1)).toEqual(['enable', 'configure terminal', ...scripts])
+  })
+
+  it('the same bag on a MODERN-spelling device composes the modern stems leg-for-leg with every arm class', async () => {
+    const { node, transport } = modern()
+    const attrs: VrrpAttrs = {
+      enable: false, // positive leg on the modern text (`:482`)
+      primaryIp: 'no', // :1248 no-leg on the modern stem; current address named back (`:538`)
+      priority: 'no', // no-leg, :588 stem
+      description: 'no', // no-leg, :629 stem
+      ipVersion: 'default', // default-leg, :674 stem
+      secondaryIp: ['10.10.70.20', '10.10.70.61'], // :1299-:1301 splices the set-diff whole; the KEEP
+      // side (10.10.70.20 is already current) composes NOTHING, the add is the :752 ipv4 text
+      timersAdvertise: 'no', // no-leg, :796 stem
+      preempt: 'no', // no-leg on the era-neutral stem (`:890` — family never touches it)
+      preemptDelayMin: 5, // positive leg, era-neutral stem (`:931`)
+      preemptDelayReload: null, // :1369 null arm — upstream's (`'no', None`) tuple selects the DISABLE arm (`:973` builder with disable=True composes `no …`, NOT `default`)
+      delayReload: 45, // positive leg, modern arm `:1015`
+      track: [{ name: 'Ethernet2', action: 'shutdown' }, { name: 'Ethernet9', action: 'decrement', amount: 9 }], // :1398-:1400 splice: Ethernet2 is the keep side; the Ethernet1 remove carries the decrement-0 invisibility (no amount), the add is the :1172 text
+      bfdIp: null, // :1404 null arm -> the DISABLE text (`no …`), the same twin 'no' selects
+    }
+    const scripts = [
+      'interface Vlan60',
+      'vrrp 20 disabled',
+      'no vrrp 20 ipv4 10.10.70.10',
+      'no vrrp 20 priority-level',
+      'no vrrp 20 session description',
+      'default vrrp 20 ipv4 version',
+      'vrrp 20 ipv4 10.10.70.61 secondary',
+      'no vrrp 20 advertisement interval',
+      'no vrrp 20 preempt',
+      'vrrp 20 preempt delay minimum 5',
+      'no vrrp 20 preempt delay reload',
+      'vrrp 20 timers delay reload 45',
+      'no vrrp 20 tracked-object Ethernet1 decrement',
+      'vrrp 20 tracked-object Ethernet9 decrement 9',
+      'no vrrp 20 bfd ip',
+    ]
+    scriptWrite(transport, scripts)
+    await node.vrrp.create('Vlan60', 20, attrs)
+    expect(sentScripts(transport).at(-1)).toEqual(['enable', 'configure terminal', ...scripts])
+  })
+})
+
+describe('divergence pin 6 — the reader truth tables: bfd ip, the census, formatter vs parser (§5 rows 218, 220, 224)', () => {
+  it('the BARE positive `vrrp N bfd ip` line answers null; a negated line answers the empty string; the family vote is unaffected', async () => {
+    // `_parse_bfd_ip` (:337-:344) matches ` bfd ip(?: (quad)|)$` — the empty alternative matches the
+    // bare positive line and group(1) is None, which upstream hands back as bfd_ip=None. No line at all
+    // (the `no vrrp N bfd ip` negation never matches the positive pattern) answers ''. Three answers,
+    // pinned; the bare line ALSO votes the census (`(?:no |)vrrp` finds the positive form, :200).
+    const { node, transport } = nodeFor(BFD_CENSUS_QUIRK_CONFIG)
+    expect((await node.vrrp.get('Vlan95'))?.get(10)).toMatchObject({ bfdIp: null })
+    expect((await node.vrrp.get('Vlan96'))?.get(10)).toMatchObject({ bfdIp: '' })
+    // The family vote is unaffected by the bare line: `bfd ip` is era-neutral upstream (`:337`, and the
+    // ungated setter at `:1217`), and here the config carries no family evidence at all, so BOTH the
+    // block read and the whole-config write scan floor to modern — the dry-run write below proves the
+    // write path never mistakes the bare-era-null answer for legacy evidence.
+    expect(await node.vrrp.setPrimaryIp('Vlan95', 10, { value: '10.10.95.11', run: false })).toBe('vrrp 10 ipv4 10.10.95.11')
+    expect(onlyReads(transport)).toBe(true)
+  })
+
+  it('the census is blind to `default vrrp N` lines, and every reader is blind to zero-indent lines — upstream regexes verbatim', async () => {
+    // :200's `^\s+(?:no |)vrrp (\d+)` never matches `default vrrp 9 …` — which is exactly what the
+    // `default` verb itself writes (:1415's sibling at :459), so a defaulted v rid cannot seed the
+    // vrid set; and `^\s+` on EVERY parser pattern (:253-:391) skips a zero-indent `vrrp` line, which
+    // the census also cannot see (its `\s+` is mandatory). Both are upstream's blind spots, pinned.
+    const { node } = nodeFor(CENSUS_BLIND_CONFIG)
+    const table = await node.vrrp.get('Loopback87')
+    expect([...(table as VrrpVridTable).keys()]).toEqual([10])
+    expect(table?.get(10)?.primaryIp).toBeUndefined() // the zero-indent ip line is invisible to `^\s+`
+  })
+
+  it('upstream answers "" where this client makes fields ABSENT, and the formatter normalizes description to null where the parser answers string — kept verbatim, not reconciled', async () => {
+    const { node } = nodeFor(VRRP_CONFIG)
+    const entry = (await node.vrrp.get('Ethernet1'))?.get(10)
+    // The formatter's own rule for 'no'-shape inputs contradicts the record it is supposed to predict
+    // (get answers `description: ''` — `:317` — but `vrconf_format` writes None at `:1443`): upstream's
+    // inconsistency, ported deliberately so a round-trip validator built on it behaves like pyeapi's.
+    const vrrp = node.vrrp
+    expect(vrrp.vrconfFormat({ description: 'no' })).toEqual({ description: null })
+    expect(vrrp.vrconfFormat({ description: 'default' })).toEqual({ description: null })
+    // false is not in the ('no','default') tuple at :1460 and null never is either (the round-1 pin
+    // covers null): a REAL boolean — even false — rides through untouched.
+    expect(vrrp.vrconfFormat({ preempt: false })).toEqual({ preempt: false })
+    // and upstream indexes EVERY scalar key unguarded (`fixed['primary_ip']` at :1436 — a missing key
+    // is a KeyError); here the partial bag passes with untouched absent keys:
+    expect(entry?.description).toBe('vrrp 10 on Ethernet1')
+    expect(vrrp.vrconfFormat({ priority: 'default' })).toEqual({ priority: 100 })
   })
 })
