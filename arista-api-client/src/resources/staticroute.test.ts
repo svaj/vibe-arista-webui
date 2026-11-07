@@ -408,6 +408,6 @@ describe('StaticRouteResource guards — staticroute.py validates nothing; refus
     const { node } = nodeFor(ROUTES_CONFIG)
     expect(node.hasResource('staticroute')).toBe(true)
     expect(() => node.resource('notaroute' as never)).toThrow(NotSupportedError)
-    expect(() => node.resource('notaroute' as never)).toThrow(/registered: system, vlans, switchports, interfaces, users, ntp, acls, varp, stp, ipinterfaces, vrfs, staticroute, mlag, ospf/)
+    expect(() => node.resource('notaroute' as never)).toThrow(/registered: system, vlans, switchports, interfaces, users, ntp, acls, varp, stp, ipinterfaces, vrfs, staticroute, mlag, ospf, bgp/)
   })
 })

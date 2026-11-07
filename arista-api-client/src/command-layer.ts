@@ -76,8 +76,9 @@ import type { VlansResource } from './resources/vlans'
 import type { VrfsResource } from './resources/vrfs'
 import type { StaticRouteResource } from './resources/staticroute'
 import type { MlagResource } from './resources/mlag'
-// W3a (#48, then #49) appends at the END of the block (cross-lane take-both merge rule).
+// W3a (#48 #49) appended these at the END of the block (cross-lane take-both merge rule).
 import type { OspfResource } from './resources/ospf'
+import type { BgpResource } from './resources/bgp'
 import type { ResourceKinds, ResourceName } from './resources/registry'
 import type { MethodCallOptions, Transport, TransportExecOptions } from './transports/contract'
 import type { CommandResult, CommandSpec, RunCmdsFormat, ShowContracts, ShowReply } from './types/eapi'
@@ -981,6 +982,16 @@ export class Node {
    */
   get ospf(): OspfResource {
     return this.resource('ospf')
+  }
+
+  /**
+   * The `bgp` resource — same memo, same reasoning; pyeapi's factory is `bgp.py:340-341` and its
+   * accessor never was (DR-006). The per-neighbour view hangs off the entity as `node.bgp.neighbors`
+   * (upstream's `Bgp.neighbors` property, `bgp.py:55-60`) — it is NOT its own registry row, the
+   * `varp`/`acls`/`stp` sub-object precedent (DR-068). Added by W3a (#49).
+   */
+  get bgp(): BgpResource {
+    return this.resource('bgp')
   }
 
   /**
