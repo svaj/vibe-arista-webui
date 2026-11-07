@@ -8,8 +8,9 @@
  * these blobs at merge), and the upstream `test/fixtures/running_config.vrrp` (13 KB of queue/QoS
  * boilerplate around the vrrp lines) buys nothing whole for this suite. Provenance of the config
  * below: the `interface` headers and EVERY `vrrp`-prefixed line are **verbatim pyeapi copies** —
- * byte-for-byte from `pyeapi/test/fixtures/running_config.vrrp` @ `6816d9e`, `:7`/`:248-263`/
- * `:265`/`:399-413`/`:415`/`:474-531` — with the non-`vrrp` body lines of each block omitted (no
+ * byte-for-byte from `pyeapi/test/fixtures/running_config.vrrp` @ `6816d9e`: the four section headers
+ * (`:7`, `:126`, `:265`, `:415`) and every vrrp line (`:248-263`, `:399-413`, `:474-531`) — with the
+ * non-`vrrp` body lines of each block omitted (no
  * vrrp reader consults them; the census regex `vrrp.py:200` and all fourteen parsers see only the
  * lines kept). The `!` separators and the trailing `end` keep the chunking shape. Never captured
  * from the 7050TX-64, and no EOS-side acceptance is claimed (M12 #14 owns that).
@@ -17,16 +18,19 @@
  * ## Upstream port ledger
  *
  * `pyeapi/test/unit/test_api_vrrp.py` has **23** test methods (verified in the pinned clone on
- * 2026-11-06): `test_instance` (`:147-148`), `test_get` (`:150-157`), `test_get_non_existent_interface`
- * (`:159-163`), `test_get_invalid_parameters` (`:165-171`), `test_getall` (`:179-182`), `test_create`
- * (`:184-311`, THREE sub-cases: full config, all-`'no'`, all-`'default'`), `test_delete` (`:313-326`),
- * `test_default` (`:328-341`), `test_set_enable` (`:343-365`, incl. ValueError cases `:360-365`),
- * `test_set_primary_ip` (`:367-397`), `test_set_priority` (`:399-423`), `test_set_description`
- * (`:425-443`), `test_set_ip_version` (`:445-467`), `test_set_secondary_ips` (`:469-520`),
- * `test_set_timers_advertise` (`:522-546`), `test_set_mac_addr_adv_interval` (`:548-575`),
- * `test_set_preempt` (`:577-601`), `test_set_preempt_delay_min` (`:603-631`),
- * `test_set_preempt_delay_reload` (`:633-661`), `test_set_delay_reload` (`:663-688`),
- * `test_set_tracks` (`:690-756`), `test_set_bfd_ip` (`:758-785`), `test_vrconf_format` (`:787-809`).
+ * 2026-11-06; every range verified by awk of the def lines): `test_instance` (`:147-150`), `test_get`
+ * (`:151-159`), `test_get_non_existent_interface` (`:160-165`), `test_get_invalid_parameters`
+ * (`:166-172`), `test_getall` (`:173-177`), `test_create` (`:178-300`, THREE sub-cases: full config
+ * `:184-222`, all-`'no'` `:224-259`, all-`'default'` `:261-300`), `test_delete` (`:301-313`),
+ * `test_default` (`:314-326`), `test_set_enable` (`:327-347`, incl. ValueError cases `:342-346`),
+ * `test_set_primary_ip` (`:348-374`, cases `:354-359`, invalid `:368-373`), `test_set_priority`
+ * (`:375-399`, invalid `:393-398`), `test_set_description` (`:400-419`), `test_set_ip_version`
+ * (`:420-443`, invalid `:437-442`), `test_set_secondary_ips` (`:444-496`, invalid `:486-495`),
+ * `test_set_timers_advertise` (`:497-522`, invalid `:516-521`), `test_set_mac_addr_adv_interval`
+ * (`:523-549`, invalid `:543-548`), `test_set_preempt` (`:550-575`, invalid `:569-574`),
+ * `test_set_preempt_delay_min` (`:576-604`), `test_set_preempt_delay_reload` (`:605-633`),
+ * `test_set_delay_reload` (`:634-659`), `test_set_tracks` (`:660-730`, invalid `:718-729`),
+ * `test_set_bfd_ip` (`:731-757`), `test_vrconf_format` (`:758-808`).
  * All twenty-three are ported below with their pinned command texts reproduced **verbatim**, and note
  * WHICH family upstream pins: the fake node pins `version_number = '4.17.1.1'`
  * (`test/lib/testlib.py:75`), so every text is the legacy arm (`ip`, `shutdown`, `track`,
@@ -35,13 +39,13 @@
  * exercised by the sibling lanes' captures, not by extra suite mass this round.
  *
  * Two upstream order-dependencies are called out where the port breaks them:
- *  - `known_vrrps` is MUTATED by `test_get` (`:152-154` runs `vrconf_format` over each entry in
- *    place), which is what un-breaks its `track` list ordering for `test_getall` (`:179-182`) —
- *    Python sorts parsed tracks by `(name, action)` (`vrrp.py:388-391`, so `Ethernet11` lands
- *    BETWEEN `Ethernet1` and `Ethernet2`), while the literal lists in `:70-79`/`:100-105` are in
+ *  - `known_vrrps` is MUTATED by `test_get` (`:155-156` runs `vrconf_format` over each entry in
+ *    place), which is what un-breaks its `track` list ordering for `test_getall` (`:173-177`) —
+ *    Python sorts parsed tracks by `(name, action)` (`vrrp.py:388`, so `Ethernet11` lands
+ *    BETWEEN `Ethernet1` and `Ethernet2`), while the literal lists at `:92-99`/`:113-116` are in
  *    file order. Here the expected records are written once, in the parsed (sorted) order, and both
  *    tests compare the same values.
- *  - `test_get` re-formats with `vrconf_format` before comparing (`:153`); applied to already-parsed
+ *  - `test_get` re-formats with `vrconf_format` before comparing (`:156`); applied to already-parsed
  *    records that pass is identity (no sentinels in them), so the port compares parsed records
  *    directly and `test_vrconf_format` pins the formatter itself.
  */
@@ -102,8 +106,8 @@ const onlyReads = (transport: MockTransport): boolean =>
 /**
  * The pyeapi fixture's vrrp-bearing shape, inline, verbatim vrrp lines only (see the header's
  * provenance note). `interface Port-Channel1` keeps its slot so getAll's candidate sweep must
- * actively EXCLUDE it — upstream `:245-246` excludes it by the falsy-`get()` rule (block has no
- * vrrp census match, `vrrp.py:200-203`), and this port excludes it the identical way.
+ * actively EXCLUDE it — upstream excludes it by the falsy-`get()` rule (`:246-248`: no census match,
+ * `vrrp.py:201-202`), and this port excludes it the identical way.
  */
 const VRRP_CONFIG = textOf([
   'interface Port-Channel1',
@@ -207,7 +211,7 @@ const VRRP_CONFIG = textOf([
 ])
 
 /**
- * The upstream `known_vrrps` (`test_api_vrrp.py:48-113`) restated in the parsed (get-shape) form,
+ * The upstream `known_vrrps` literal (`test_api_vrrp.py:48-135`) restated in the parsed (get-shape) form,
  * camelCased, with the `track` lists already in parser sort order (the header's note on upstream's
  * `vrconf_format`-mutation order dependency). Field-absence is upstream-None→undefined (divergence
  * 6 of `vrrp.ts`): this fixture answers every field, so none is absent here.
@@ -259,8 +263,8 @@ const KNOWN: Record<string, Map<number, Vrrp>> = {
       preemptDelayMin: 0,
       preemptDelayReload: 0,
       delayReload: 0,
-      // `sorted(key=(name, action))`, vrrp.py:388-391 — Ethernet11 sorts between Ethernet1 and
-      // Ethernet2 (string compare), which the upstream literal list at :70-79 only reveals AFTER its
+      // `sorted(key=(name, action))`, vrrp.py:388 — Ethernet11 sorts between Ethernet1 and
+      // Ethernet2 (string compare), which the upstream literal list at :92-99 only reveals AFTER its
       // own test_get re-formats it.
       track: [
         { name: 'Ethernet1', action: 'decrement', amount: 10 },
@@ -313,7 +317,7 @@ const KNOWN: Record<string, Map<number, Vrrp>> = {
 
 const vrrpFor = (config: string = VRRP_CONFIG) => nodeFor(config).node.vrrp
 
-describe('W3c wiring — port of test_instance (test_api_vrrp.py:147-148) into the registry', () => {
+describe('W3c wiring — port of test_instance (test_api_vrrp.py:147-150) into the registry', () => {
   it('node.vrrp is the memoised registry instance of VrrpResource', () => {
     const { node } = nodeFor(VRRP_CONFIG)
     expect(node.vrrp).toBe(node.vrrp)
@@ -325,7 +329,7 @@ describe('W3c wiring — port of test_instance (test_api_vrrp.py:147-148) into t
   })
 })
 
-describe('VrrpResource reads — get (port test_get :150-157) and getAll (port test_getall :179-182)', () => {
+describe('VrrpResource reads — get (port test_get :151-159) and getAll (port test_getall :173-177)', () => {
   it('get answers the per-vrid table for every interface the upstream known_vrrps covers', async () => {
     const vrrp = vrrpFor()
     for (const iface of Object.keys(KNOWN)) {
@@ -337,15 +341,15 @@ describe('VrrpResource reads — get (port test_get :150-157) and getAll (port t
     expect([...(await vrrp.get('Vlan50'))?.keys() ?? []]).toEqual([10, 20, 30])
   })
 
-  it('an interface the switch does not have answers undefined (port test_get_non_existent_interface :159-163)', async () => {
+  it('an interface the switch does not have answers undefined (port test_get_non_existent_interface :160-165)', async () => {
     expect(await vrrpFor().get('Vlan2000')).toBeUndefined()
     // And an interface the switch HAS but that carries no vrrp lines: upstream `get` returns None
-    // via the empty-census path (`:201-203`) — Vlan2000 exercises the missing-block path (`:194-196`);
+    // via the empty-census path (`:201-202`) — Vlan2000 exercises the missing-block path (`:194-196`);
     // Port-Channel1 below exercises the census-empty path through getAll.
     expect(await vrrpFor().get('Port-Channel1')).toBeUndefined()
   })
 
-  it("get's empty/None names refuse (port test_get_invalid_parameters :165-171) and cost zero reads", async () => {
+  it("get's empty/None names refuse (port test_get_invalid_parameters :166-172) and cost zero reads", async () => {
     const { node, transport } = nodeFor(VRRP_CONFIG)
     await expectError(() => node.vrrp.get(''), /invalid interface/)
     await expectError(() => node.vrrp.get(null as never), /invalid interface/)
@@ -360,7 +364,7 @@ describe('VrrpResource reads — get (port test_get :150-157) and getAll (port t
   it('getAll nests interface→vrid exactly like upstream\'s docstring shape and costs ONE read (DR-030)', async () => {
     const { node, transport } = nodeFor(VRRP_CONFIG)
     const all = await node.vrrp.getAll()
-    // Port-Channel1 is a candidate (`:238` matches it too) but is EXCLUDED by the empty-census rule.
+    // Port-Channel1 is a candidate (`:242` matches it too) but is EXCLUDED by the empty-census rule.
     expect([...all.keys()]).toEqual(['Port-Channel10', 'Ethernet1', 'Vlan50'])
     for (const iface of Object.keys(KNOWN)) {
       expect(all.get(iface), iface).toEqual(KNOWN[iface])
@@ -372,8 +376,8 @@ describe('VrrpResource reads — get (port test_get :150-157) and getAll (port t
   })
 })
 
-describe('VrrpResource create/delete/default — test_api_vrrp.py:184-341, texts verbatim', () => {
-  it('create of a full configuration sends the whole _vrrp_set sequence in ONE transaction (port :184-239)', async () => {
+describe('VrrpResource create/delete/default — test_api_vrrp.py:178-326, texts verbatim', () => {
+  it('create of a full configuration sends the whole _vrrp_set sequence in ONE transaction (port :184-222)', async () => {
     const { node, transport } = nodeFor(VRRP_CONFIG)
     const configuration: VrrpAttrs = {
       primaryIp: '10.10.60.10',
@@ -421,7 +425,7 @@ describe('VrrpResource create/delete/default — test_api_vrrp.py:184-341, texts
     expect(sentScripts(transport).at(-1)).toEqual(['enable', 'configure terminal', ...scripts])
   })
 
-  it("create with every property set to 'no' composes the negation set (port :241-275)", async () => {
+  it("create with every property set to 'no' composes the negation set (port :224-259)", async () => {
     const { node, transport } = nodeFor(VRRP_CONFIG)
     const configuration: VrrpAttrs = {
       primaryIp: 'no',
@@ -461,7 +465,7 @@ describe('VrrpResource create/delete/default — test_api_vrrp.py:184-341, texts
     expect(sentScripts(transport).at(-1)).toEqual(['enable', 'configure terminal', ...scripts])
   })
 
-  it("create with every property set to 'default' composes the default set (port :277-311)", async () => {
+  it("create with every property set to 'default' composes the default set (port :261-300)", async () => {
     const { node, transport } = nodeFor(VRRP_CONFIG)
     const configuration: VrrpAttrs = {
       primaryIp: 'default',
@@ -498,7 +502,7 @@ describe('VrrpResource create/delete/default — test_api_vrrp.py:184-341, texts
     expect(sentScripts(transport).at(-1)).toEqual(['enable', 'configure terminal', ...scripts])
   })
 
-  it('delete/default send the bare pair lines (port test_delete :313-326, test_default :328-341)', async () => {
+  it('delete/default send the bare pair lines (port test_delete :301-313, test_default :314-326)', async () => {
     const { node, transport } = nodeFor(VRRP_CONFIG)
     const del = ['interface Ethernet1', 'no vrrp 10']
     const def = ['interface Ethernet1', 'default vrrp 10']
@@ -518,14 +522,15 @@ describe('VrrpResource scalar setters — port of the nine set_* value/mode/inva
   // than lean on an inferred loop).
   const upd = { iface: 'Vlan50', vrid: 10 } as const
 
-  it('the four primary_ip quadrants pin test_set_primary_ip :372-384 exactly', async () => {
+  it('the four primary_ip quadrants pin test_set_primary_ip :354-359 exactly', async () => {
     const { node, transport } = nodeFor(VRRP_CONFIG)
     const cases: Array<{ options: { value?: string; mode?: 'no' | 'default' }; cmd: string }> = [
       { options: { value: '10.10.4.110' }, cmd: 'vrrp 10 ip 10.10.4.110' },
       { options: { mode: 'no' }, cmd: 'no vrrp 10 ip 10.10.4.10' },
       { options: { mode: 'default' }, cmd: 'default vrrp 10 ip 10.10.4.10' },
-      // Upstream :380 hands BOTH disable=True and default=True — default wins (the `if default`
-      // precedes at `:526`), reproduced by passing only mode:'default' (the mode bag has no both-set state).
+      // Upstream :358 hands BOTH disable=True and default=True — default wins (the `if default is
+      // True:` at vrrp.py:527 precedes the `elif` at `:534`), reproduced by passing only
+      // mode:'default' (this client's mode bag has no both-set state).
       { options: { mode: 'default' }, cmd: 'default vrrp 10 ip 10.10.4.10' },
     ]
     for (const { options, cmd } of cases) {
@@ -536,19 +541,19 @@ describe('VrrpResource scalar setters — port of the nine set_* value/mode/inva
     expect(sent.map((s) => s.at(-1))).toEqual(cases.map(({ cmd }) => cmd))
   })
 
-  it("invalid primary_ip values refuse, and setPrimaryIp's dry-run still composes (ValueError arm :386-395)", async () => {
+  it("invalid primary_ip values refuse, and setPrimaryIp's dry-run still composes (ValueError arm :368-374 of the test, vrrp.py:545-548)", async () => {
     const { node, transport } = nodeFor(VRRP_CONFIG)
     for (const bad of ['abc', '500', '101.101']) {
       await expectError(() => node.vrrp.setPrimaryIp('Vlan50', 10, { value: bad }), /primary_ip/)
     }
     await expectError(() => node.vrrp.setPrimaryIp('Vlan50', 10, { value: 500 as unknown as string }), /primary_ip/)
-    // Upstream tests pass 500 POSITIONALLY — an int reaching its `str(value)` regex test (`:543`)
+    // Upstream tests pass 500 POSITIONALLY — an int reaching its `str(value)` regex test (`vrrp.py:541`)
     // and refusing; same outcome from this client, via the type-level string plus the runtime grammar.
     // The framework's own row-73 refusal stands between a JS `false` and a command (vrrp.ts
     // divergence 4's refusal of the accidental `value is None` arm):
     await expectError(() => node.vrrp.setPrimaryIp('Vlan50', 10, {}), /mode: "no"/)
     expect(onlyReads(transport)).toBe(true)
-    // Dry run (upstream's run=False, :496-503 twin) composes without sending:
+    // Dry run (upstream's run=False, :495-503 twin) composes without sending:
     const staged = await node.vrrp.setPrimaryIp('Vlan50', 10, { value: '10.10.4.111', run: false })
     expect(staged).toBe('vrrp 10 ip 10.10.4.111')
     expect(onlyReads(transport)).toBe(true)
@@ -571,7 +576,7 @@ describe('VrrpResource scalar setters — port of the nine set_* value/mode/inva
     expect(onlyReads(sparseTransport)).toBe(true)
   })
 
-  it('priority: value/default/default-both/no cases pin test_set_priority :380-391', async () => {
+  it('priority: value/default/default-both/no cases pin test_set_priority :379-389', async () => {
     const { node, transport } = nodeFor(VRRP_CONFIG)
     const cases: Array<[unknown, string]> = [
       [{ value: 150 }, 'vrrp 10 priority 150'],
@@ -585,7 +590,7 @@ describe('VrrpResource scalar setters — port of the nine set_* value/mode/inva
     }
   })
 
-  it('priority invalid values refuse (upstream ValueError set :393-401)', async () => {
+  it('priority invalid values refuse (upstream ValueError set :393-398)', async () => {
     const { node, transport } = nodeFor(VRRP_CONFIG)
     await expectError(() => node.vrrp.setPriority('Vlan50', 10, { value: 'abc' as unknown as number }), /range 1-254/)
     await expectError(() => node.vrrp.setPriority('Vlan50', 10, { value: 500 }), /range 1-254/)
@@ -593,7 +598,7 @@ describe('VrrpResource scalar setters — port of the nine set_* value/mode/inva
     expect(onlyReads(transport)).toBe(true)
   })
 
-  it('description cases pin test_set_description :405-425 — the value passes through with spaces', async () => {
+  it('description cases pin test_set_description :404-417 — the value passes through with spaces', async () => {
     const { node, transport } = nodeFor(VRRP_CONFIG)
     const cases: Array<[unknown, string]> = [
       [{ value: 'test description' }, 'vrrp 10 description test description'],
@@ -607,7 +612,7 @@ describe('VrrpResource scalar setters — port of the nine set_* value/mode/inva
     }
   })
 
-  it('ip_version cases and invalid refuse pin test_set_ip_version :443-471', async () => {
+  it('ip_version cases and invalid refuse pin test_set_ip_version :423-442', async () => {
     const { node, transport } = nodeFor(VRRP_CONFIG)
     const cases: Array<[unknown, string]> = [
       [{ value: 2 }, 'vrrp 10 ip version 2'],
@@ -625,7 +630,7 @@ describe('VrrpResource scalar setters — port of the nine set_* value/mode/inva
     expect(writeScripts(transport)).toHaveLength(writesBeforeInvalid)
   })
 
-  it('timers_advertise cases and invalid refuse pin test_set_timers_advertise :494-528', async () => {
+  it('timers_advertise cases and invalid refuse pin test_set_timers_advertise :501-521', async () => {
     const { node, transport } = nodeFor(VRRP_CONFIG)
     const cases: Array<[unknown, string]> = [
       [{ value: 50 }, 'vrrp 10 timers advertise 50'],
@@ -644,7 +649,7 @@ describe('VrrpResource scalar setters — port of the nine set_* value/mode/inva
     expect(writeScripts(transport)).toHaveLength(writesBeforeInvalid)
   })
 
-  it('mac_addr_adv_interval cases and invalid refuse pin test_set_mac_addr_adv_interval :520-552', async () => {
+  it('mac_addr_adv_interval cases and invalid refuse pin test_set_mac_addr_adv_interval :528-548', async () => {
     const { node, transport } = nodeFor(VRRP_CONFIG)
     const stem = 'vrrp 10 mac-address advertisement-interval'
     const cases: Array<[unknown, string]> = [
@@ -663,7 +668,7 @@ describe('VrrpResource scalar setters — port of the nine set_* value/mode/inva
     expect(writeScripts(transport)).toHaveLength(writesBeforeInvalid)
   })
 
-  it('preempt: false composes through mode:"no" and STILL answers the upstream text (port test_set_preempt :553-581)', async () => {
+  it('preempt: false composes through mode:"no" and STILL answers the upstream text (port test_set_preempt :554-574)', async () => {
     const { node, transport } = nodeFor(VRRP_CONFIG)
     const cases: Array<[unknown, string]> = [
       // Upstream reaches `no vrrp 10 preempt` via command_builder's falsy fall-through
@@ -685,7 +690,7 @@ describe('VrrpResource scalar setters — port of the nine set_* value/mode/inva
     expect(writeScripts(transport)).toHaveLength(writesBeforeInvalid)
   })
 
-  it('the three delay timers pin :583-688 (preempt_delay_min, preempt_delay_reload, delay_reload)', async () => {
+  it('the three delay timers pin :580-658 (preempt_delay_min :580-596, preempt_delay_reload :609-625, delay_reload :638-653)', async () => {
     const { node, transport } = nodeFor(VRRP_CONFIG)
     const trio: Array<{ run: (o: { value?: number; mode?: 'no' | 'default' }) => Promise<string>; value: number; stem: string }> = [
       { run: (o) => node.vrrp.setPreemptDelayMin('Vlan50', 10, o), value: 2500, stem: 'vrrp 10 preempt delay minimum' },
@@ -712,7 +717,7 @@ describe('VrrpResource scalar setters — port of the nine set_* value/mode/inva
     }
   })
 
-  it('bfd_ip pins test_set_bfd_ip :736-762 — the era-neutral stem and the quad grammar', async () => {
+  it('bfd_ip pins test_set_bfd_ip :737-756 — the era-neutral stem and the quad grammar', async () => {
     const { node, transport } = nodeFor(VRRP_CONFIG)
     const cases: Array<[unknown, string]> = [
       [{ value: '10.10.4.101' }, 'vrrp 10 bfd ip 10.10.4.101'],
@@ -731,7 +736,7 @@ describe('VrrpResource scalar setters — port of the nine set_* value/mode/inva
     expect(writeScripts(transport)).toHaveLength(writesBeforeInvalid)
   })
 
-  it("set_enable pins :343-365's two texts and its strict boolean rule", async () => {
+  it("set_enable pins :331-346's two texts and its strict boolean rule", async () => {
     const { node, transport } = nodeFor(VRRP_CONFIG)
     for (const [value, cmd] of [[false, 'vrrp 10 shutdown'], [true, 'no vrrp 10 shutdown']] as const) {
       scriptWrite(transport, [`interface ${upd.iface}`, cmd])
@@ -744,7 +749,7 @@ describe('VrrpResource scalar setters — port of the nine set_* value/mode/inva
   })
 })
 
-describe('VrrpResource diffing verbs — setSecondaryIps (:469-520) and setTracks (:690-756)', () => {
+describe('VrrpResource diffing verbs — setSecondaryIps (:444-496) and setTracks (:660-730)', () => {
   const upd = { iface: 'Vlan50', vrid: 10 } as const
   const curr1 = '10.10.4.21'
   const curr2 = '10.10.4.22'
@@ -760,7 +765,7 @@ describe('VrrpResource diffing verbs — setSecondaryIps (:469-520) and setTrack
       [[new1, new2, new3], [new1, new2, new3].map((ip) => `vrrp 10 ip ${ip} secondary`)
         .concat([curr1, curr2, curr3, curr4].map((ip) => `no vrrp 10 ip ${ip} secondary`))
         .sort()],
-      // new2 of this case deliberately REUSES curr4 — the keep-side that upstream :480 pins:
+      // the third address of this case deliberately REUSES curr4 — the keep-side upstream pins at :465:
       [[new1, new2, curr4], [new1, new2].map((ip) => `vrrp 10 ip ${ip} secondary`)
         .concat([curr1, curr2, curr3].map((ip) => `no vrrp 10 ip ${ip} secondary`))
         .sort()],
@@ -774,7 +779,7 @@ describe('VrrpResource diffing verbs — setSecondaryIps (:469-520) and setTrack
     expect(writeScripts(transport).slice(-3).map((s) => s.slice(3))).toEqual(cases.map(([, cmds]) => cmds))
   })
 
-  it('a non-address inside the list refuses per element (upstream :511-519)', async () => {
+  it('a non-address inside the list refuses per element (upstream invalid list :486-495)', async () => {
     const { node, transport } = nodeFor(VRRP_CONFIG)
     const badLists: readonly unknown[][] = [
       [new1, new2, 'abc'],
@@ -800,7 +805,7 @@ describe('VrrpResource diffing verbs — setSecondaryIps (:469-520) and setTrack
     expect(onlyReads(transport)).toBe(true)
   })
 
-  // The six current tracks (fixture, Vlan50 vrid 10) and six new ones, exactly as upstream :690-703.
+  // The six current tracks (fixture, Vlan50 vrid 10) and six new ones, exactly as upstream :663-678.
   const currT1: VrrpTrack = { name: 'Ethernet1', action: 'decrement', amount: 10 }
   const currT2: VrrpTrack = { name: 'Ethernet1', action: 'shutdown' }
   const currT3: VrrpTrack = { name: 'Ethernet2', action: 'decrement', amount: 50 }
@@ -817,7 +822,7 @@ describe('VrrpResource diffing verbs — setSecondaryIps (:469-520) and setTrack
     `vrrp 10 track ${t.name} ${t.action}${t.amount === undefined ? '' : ` ${String(t.amount)}`}`
   const legacyNoTrack = (t: VrrpTrack): string => `no ${legacyTrack(t)}`
 
-  it('the three track-diff cases compose the same texts upstream sorts against (:705-736)', async () => {
+  it('the three track-diff cases compose the same texts upstream sorts against (:683-708)', async () => {
     const { node, transport } = nodeFor(VRRP_CONFIG)
     const cases: Array<[readonly VrrpTrack[], VrrpTrack[], VrrpTrack[]]> = [
       // add [newT2]; remove currT2, currT3, currT4 (newT1 IS currT1 — the keep-side).
@@ -834,7 +839,7 @@ describe('VrrpResource diffing verbs — setSecondaryIps (:469-520) and setTrack
     }
   })
 
-  it('every malformed track dict refuses — the five upstream ValueErrors (:738-752) each pinned separately', async () => {
+  it('every malformed track dict refuses — the five upstream ValueErrors (:718-729) each pinned separately', async () => {
     const { node, transport } = nodeFor(VRRP_CONFIG)
     const badCases: readonly unknown[][] = [
       [{ name: 'Ethernet1', action: 'disable', amount: 10 }],
@@ -866,7 +871,7 @@ describe('VrrpResource diffing verbs — setSecondaryIps (:469-520) and setTrack
   })
 })
 
-describe('vrconfFormat — port of test_vrconf_format (:787-809), the PLAN §4 named helper', () => {
+describe('vrconfFormat — port of test_vrconf_format (:758-808), the PLAN §4 named helper', () => {
   it('the documented normalization table applies, shallow-copy, lists sorted', () => {
     const vrconf: VrrpConf = {
       priority: null,
@@ -908,13 +913,13 @@ describe('vrconfFormat — port of test_vrconf_format (:787-809), the PLAN §4 n
     }
     const vrrp = vrrpFor()
     expect(vrrp.vrconfFormat(vrconf)).toEqual(fixed)
-    // Upstream `fixed = dict(vrconfig)` (`:1426`) copies first — the caller's lists never sort in
+    // Upstream `fixed = dict(vrconfig)` (`:1433`) copies first — the caller's lists never sort in
     // place; the same non-mutation rule row 71 holds for the bag itself:
     expect(vrconf.secondaryIp).toEqual(['10.10.4.22', '10.10.4.21'])
     expect(vrconf.track?.[0]?.action).toBe('shutdown')
   })
 
-  it('the formatter is identity on parsed records — the equivalence test_get leans on (:150-157)', async () => {
+  it('the formatter is identity on parsed records — the equivalence test_get leans on (:156)', async () => {
     const vrrp = vrrpFor()
     const table = await vrrp.get('Vlan50')
     const formatted = new Map<number, VrrpConf>()
@@ -922,7 +927,7 @@ describe('vrconfFormat — port of test_vrconf_format (:787-809), the PLAN §4 n
     expect(formatted).toEqual(table as unknown as Map<number, VrrpConf>)
   })
 
-  it("the preempt-null quirk survives: ('no','default') normalize, null does NOT (vrrp.py:1452)", () => {
+  it("the preempt-null quirk survives: ('no','default') normalize, null does NOT (vrrp.py:1460)", () => {
     const vrrp = vrrpFor()
     expect(vrrp.vrconfFormat({ preempt: null })).toEqual({ preempt: null })
     expect(vrrp.vrconfFormat({ preempt: 'no' })).toEqual({ preempt: false })
