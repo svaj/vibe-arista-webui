@@ -76,6 +76,8 @@ import type { VlansResource } from './resources/vlans'
 import type { VrfsResource } from './resources/vrfs'
 import type { StaticRouteResource } from './resources/staticroute'
 import type { MlagResource } from './resources/mlag'
+// W3a (#48, then #49) appends at the END of the block (cross-lane take-both merge rule).
+import type { OspfResource } from './resources/ospf'
 import type { ResourceKinds, ResourceName } from './resources/registry'
 import type { MethodCallOptions, Transport, TransportExecOptions } from './transports/contract'
 import type { CommandResult, CommandSpec, RunCmdsFormat, ShowContracts, ShowReply } from './types/eapi'
@@ -968,6 +970,17 @@ export class Node {
    */
   get mlag(): MlagResource {
     return this.resource('mlag')
+  }
+
+  /**
+   * The `ospf` resource — same per-`Node` {@link resourceMemo} as {@link mlag} (DR-052):
+   * `node.ospf === node.ospf === node.resource('ospf')`. pyeapi reaches it through `node.api('ospf')`
+   * loading `pyeapi.api.ospf` and calling its `instance(api)` (`ospf.py:359-362`, `client.py:927-950`).
+   * This name lived in the test suite as the registry's NEGATIVE control through waves 1-2 and is a
+   * real row now (W3a #48 — the control moved to `vrrp`, which this repo still owes). Added by W3a (#48).
+   */
+  get ospf(): OspfResource {
+    return this.resource('ospf')
   }
 
   /**

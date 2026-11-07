@@ -397,6 +397,9 @@ export {
 export { VrfsResource } from './resources/vrfs'
 export { StaticRouteResource } from './resources/staticroute'
 export { MlagResource } from './resources/mlag'
+// W3a (#48): the OSPF module rides the same entry — `node.ospf` and its classes from `.` with no
+// deep import (§5 row 191; `bgp`/`node.bgp.neighbors` arrive with #49 in this lane's next commit).
+export { OspfResource } from './resources/ospf'
 export { toArray } from './internal/collections'
 export type {
   CommandInput,
@@ -438,6 +441,7 @@ export type { PortfastType, StpInstance, StpInterface, StpMode, StpSettings } fr
 export type { Vrf, VrfAttrs, VrfDefinitionForm } from './resources/vrfs'
 export type { StaticRoute, StaticRouteAttrs, StaticRouteFields } from './resources/staticroute'
 export type { MlagGlobalConfig, MlagInterface, MlagState } from './resources/mlag'
+export type { OspfNetwork, OspfRedistribution, OspfState } from './resources/ospf'
 export type {
   EthernetInterfaceName,
   InterfaceKind,
