@@ -139,14 +139,15 @@ describe('ResourceRegistry — DR-006 replaces pyeapi node.api() (client.py:927-
     expect(registry.get('probe')).toBe(before)
   })
 
-  it('the built-in factory table is frozen and holds exactly the rows shipped so far (M8 #10 `system`, M9 #11 `vlans`/`switchports`, M10a #12 `interfaces`, W2a #35 `users`/`ntp`, W2b #37/#38 `acls`/`varp`, W2c #39/#40 `stp`/`ipinterfaces`, W2d #41/#42/#43 `vrfs`/`staticroute`/`mlag`)', () => {
+  it('the built-in factory table is frozen and holds exactly the rows shipped so far (M8 #10 `system`, M9 #11 `vlans`/`switchports`, M10a #12 `interfaces`, W2a #35 `users`/`ntp`, W2b #37/#38 `acls`/`varp`, W2c #39/#40 `stp`/`ipinterfaces`, W2d #41/#42/#43 `vrfs`/`staticroute`/`mlag`, W3b #50 `routemaps`)', () => {
     // M7 (#9) shipped this table honest-but-empty; each milestone since claimed its rows at the END of
     // the table (the cross-lane merge rule), so the ordered assertion carries them in merge order rather
     // than in a lane-chosen slot. A name in `ResourceKinds` without a row here would be a package bug
     // (row 79). A mutable module-level registry is what ARCHITECTURE.md §7 forbids. The NEGATIVE CONTROL
-    // has moved twice: `mlag` held the slot through waves 1-2 (W2d #43 collected it), `stp` briefly
-    // during W2d's own development (W2c #39 shipped it mid-lane), and `ospf` now — pyeapi's
-    // `api/ospf.py`, owed to wave 3 (#17), the honest "still owed" name.
+    // has moved three times: `mlag` held the slot through waves 1-2 (W2d #43 collected it), `stp` briefly
+    // during W2d's own development (W2c #39 shipped it mid-lane), `ospf` held it through wave 3's
+    // development, and `vrrp` now stands in — lane C's module (`api/vrrp.py`), unregistered on THIS
+    // branch because W3b's merge order put `routemaps` here first. Same runtime case, one row forward.
     expect(Object.isFrozen(RESOURCE_FACTORIES)).toBe(true)
     const { node } = nodeWith()
     expect(new ResourceRegistry(RESOURCE_FACTORIES, node).names()).toEqual(['system', 'vlans', 'switchports', 'interfaces', 'users', 'ntp', 'acls', 'varp', 'stp', 'ipinterfaces', 'vrfs', 'staticroute', 'mlag', 'routemaps'])
@@ -255,14 +256,10 @@ describe('Node.resource / Node.hasResource — the typed replacement for node.ap
     const { node } = nodeWith()
     // `ResourceName` is the closed map key union, so this call cannot be written type-correctly from TS —
     // which is the point. The cast is the JS/table-column path the runtime check exists for (row 79).
-    // `ospf` was this suite's unregistered name through wave 2 (W2d #43 shipped `mlag`, W3b #50 lane B
-    // shipped `routemaps`). The new unregistered exemplar in this tree is `vrrp` — lane C's #51 module,
-    // absent here because its row will land on a sibling branch until the W3 merge order completes.
-    const untyped = 'vrrp' as never
-    expect(() => node.resource(untyped)).toThrow(NotSupportedError)
-    // The NEGATIVE CONTROL: `ospf` was this suite's name for waves 1-2, `mlag` (W2d #43) and `routemaps`
-    // (W3b #50 lane B) became rows; the next module NOT shipped in this tree is pyeapi's `api/vrrp.py`
-    // (lane C's #51 module, unregistered in this branch). Same cast, same runtime contract.
+    // The NEGATIVE CONTROL has moved again: `ospf` was this suite's unregistered exemplar through wave 2
+    // (W2d #43 registered `mlag`, W3b #50 lane B registered `routemaps`). The standing unregistered
+    // exemplar in this tree is `vrrp` — lane C's module (issue #51), absent here exactly because only
+    // lane B's row merged into this branch; it too stays unregistered, mirroring how `mlag` once did.
     const untyped = 'vrrp' as never
     expect(() => node.resource(untyped)).toThrow(NotSupportedError)
     expect(() => node.resource(untyped)).toThrow(/unknown resource vrrp — no factory is registered/)

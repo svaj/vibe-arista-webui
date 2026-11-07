@@ -219,10 +219,7 @@ export type RoutemapClauseAttrs = {
   readonly action?: RoutemapAction
   /** The sequence-number half (upstream's positional `seqno`; digits or a safe non-negative integer). */
   readonly seqno?: number | string
-  /** The match statements a replace-write should leave behind ({@link RoutemapsResource.setMatch}). */
-  readonly match?: readonly string[]
-  /** The set statements a replace-write should leave behind ({@link RoutemapsResource.setSet}). */
-  readonly set?: readonly string[]
+
 }
 
 /** How a rejected argument is described — the `refuse` pattern from `validators.ts`/`vrfs.ts` (DR-053). */
@@ -376,8 +373,13 @@ export class RoutemapsResource extends EntityCollection<RoutemapEntry, string, R
       }
       // `Map.set` keeps this Map's insertion position but stores the LAST value — the faithful stand-in
       // for pyeapi's `response[action][int(seqno)] = e['attr']` assignment (`:138`), where a later clause
-      // with the same action + seqno overwrites the earlier one's whole attr dict.
-      clauses.set(seqno, readAttrs(text))
+      // with the same action + seqno overwrites the earlier one's whole attr dict. The key is a NUMBER —
+      // `_merge_entries` coerces with `int(e['seqno'])` (`:137`) and indexes with that; keeping the table
+      //'s leaf key numeric is what makes {@link get}/{@link setMatch}/{@link setSet}'s
+      // (`action`, `seqno`-as-number) lookups agree with the section-header parse, and what pins the
+      // "seqno is an int in the returned structure" shape. `(\d+)` from {@link readOneClause} guarantees
+      // `Number(...)` here is round-trip-safe (the same digits the composed header uses).
+      clauses.set(Number(seqno), readAttrs(text))
     }
     return byName
   }
