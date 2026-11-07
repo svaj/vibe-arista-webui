@@ -517,7 +517,7 @@ export class VrrpResource extends ResourceBase {
       throw new NotFoundError(`vrrp: no vrid ${String(vrid)} on interface ${name}, so there is no primary_ip to default or negate — pyeapi raises KeyError here (vrrp.py:529/:536)`, { cause: `${name}/${String(vrid)}` })
     }
     if (entry.primaryIp === undefined) {
-      throw new NotFoundError(`vrrp: vrid ${String(vrid)} on interface ${name} has no primary_ip, so there is no address to name in the ${entry.primaryIp === null ? 'negated' : 'default/no'} command — pyeapi composes the literal text 'no vrrp … ip None' for the wire here ("%s" % None, vrrp.py:538/:541/:544)`, { cause: `${name}/${String(vrid)}` })
+      throw new NotFoundError(`vrrp: vrid ${String(vrid)} on interface ${name} has no primary_ip, so there is no address to name in the negated or defaulted command — pyeapi composes the literal text 'no vrrp … ip None' for the wire here ("%s" % None, vrrp.py:538/:541/:544)`, { cause: `${name}/${String(vrid)}` })
     }
     return entry.primaryIp
   }
@@ -826,24 +826,19 @@ export class VrrpResource extends ResourceBase {
     const have = new Set(current.map((track) => this.trackDiffKey(track, 'current track entry')))
     const triple = /(\S+)\s+(\S+)\s+(\S+)/u
     const compose = (entryKey: string, negate: boolean): string => {
-      const match = triple.exec(entryKey)
-      if (match === null) return '' // unreachable with a well-formed key — upstream simply skips a non-matching tid (`:1146`/`:1164`), and the composed rstrip keeps the texts identical
-      const [, object1, action, rawAmount] = match
-      const amount = rawAmount === TRACK_KEY_UNSET ? '' : ` ${String(rawAmount)}`
-      return `${negate ? 'no ' : ''}vrrp ${String(vrid)} ${keyword} ${String(object1)} ${String(action)}${amount}`.replace(/\s+$/u, '')
+      // trackKey() ALWAYS emits the three-separator triple this re-extraction mirrors, so the exec
+      // cannot miss — upstream guards with `if match:` and skips a non-matching tid (`:1146`/`:1164`),
+      // a branch this key formula makes unreachable by construction (the rstrip twins keep texts at :1161/:1177).
+      const [, objectName, action, rawAmount] = triple.exec(entryKey) as RegExpExecArray
+      const amount = rawAmount === TRACK_KEY_UNSET ? '' : ` ${rawAmount}`
+      return `${negate ? 'no ' : ''}vrrp ${vrid} ${keyword} ${objectName} ${action}${amount}`.replace(/\s+$/u, '')
     }
     const cmds: string[] = []
     for (const entryKey of have) {
-      if (!wanted.has(entryKey)) {
-        const cmd = compose(entryKey, true)
-        if (cmd !== '') cmds.push(cmd)
-      }
+      if (!wanted.has(entryKey)) cmds.push(compose(entryKey, true))
     }
     for (const entryKey of wanted) {
-      if (!have.has(entryKey)) {
-        const cmd = compose(entryKey, false)
-        if (cmd !== '') cmds.push(cmd)
-      }
+      if (!have.has(entryKey)) cmds.push(compose(entryKey, false))
     }
     const sorted = cmds.sort()
     return this.runCommandList(name, sorted, options.run !== false)
