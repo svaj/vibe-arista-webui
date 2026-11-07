@@ -13,10 +13,14 @@
  * exist yet"):
  *  - {@link buildRecording} / {@link recordingText} / {@link parseRecording}: the
  *    `test/fixtures/recordings/<target-slug>/<case>.json` layout of docs/TESTING.md:106-122 and
- *    docs/CEOS.md:143-145, with a version/model-separated slug ({@link targetSlugFor}) so a cEOS
- *    capture can never land in the 7050TX-64 directory (DR-043);
+ *  docs/CEOS.md:143-145, with a version/model-separated slug ({@link targetSlug}, validated on the
+ *  other side by {@link assertTargetSlug}) so a cEOS capture can never land in the 7050TX-64
+ *  directory (DR-043);
  *  - the identity envelope beside the `{cmds → reply}` map, plus {@link assertRecordingIdentity}, which
  *    is how "a replay can refuse a mismatched device" actually happens;
+ *    (the header of this module once named the slug helper `targetSlugFor` — it never existed;
+ *    corrected in #61 after the new export-surface pin demanded the real name, per the repo rule
+ *    that citations are re-opened against the code, not inherited)
  *  - {@link findUnredactedEnableInput}, the assertion TESTING.md §4 asks for — enforced on **write and
  *    on load**, so a hand-edited fixture cannot smuggle a password back in;
  *  - {@link replayRecording}, which scripts a fixture onto `MockTransport` for offline replay.

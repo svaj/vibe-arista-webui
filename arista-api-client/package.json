@@ -23,6 +23,18 @@
       "import": "./dist/node.js",
       "default": "./dist/node.js"
     },
+    "./testing": {
+      "types": "./dist/testing/index.d.ts",
+      "development": "./src/testing/index.ts",
+      "import": "./dist/testing/index.js",
+      "default": "./dist/testing/index.js"
+    },
+    "./node/testing": {
+      "types": "./dist/node-testing.d.ts",
+      "development": "./src/node-testing.ts",
+      "import": "./dist/node-testing.js",
+      "default": "./dist/node-testing.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [

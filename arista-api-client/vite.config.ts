@@ -67,6 +67,12 @@ interface EntryRule {
 const ENTRY_RULES: readonly EntryRule[] = [
   { file: 'src/index.ts', label: 'browser entry', allowNodeBuiltins: false },
   { file: 'src/node.ts', label: 'node entry', allowNodeBuiltins: true },
+  // #61: the test seam ships as subpath entries too — and the DR-002 rule binds them exactly as hard.
+  // `./testing` is imported by webui test bundles running under Vite, so a stray `node:` there is a
+  // real browser break, not a packaging nit; `./node/testing` must keep proving built-ins or the
+  // reverse half of this check goes blind for that entry the same way it would for `src/node.ts`.
+  { file: 'src/testing/index.ts', label: 'testing entry', allowNodeBuiltins: false },
+  { file: 'src/node-testing.ts', label: 'node testing entry', allowNodeBuiltins: true },
 ]
 
 function entryChunkFor(file: string, chunks: readonly EmittedEntry[]): EmittedEntry | undefined {
@@ -186,10 +192,13 @@ export default defineConfig({
     minify: false,
     target: 'es2022',
     lib: {
-      // Two entries == the two runtime faces of the package (DR-002, DR-021).
+      // Four entries == the runtime faces plus the two test-seam subpaths of DR-021 (#61):
+      // `.` (browser), `./node`, `./testing` (browser-safe fake device), `./node/testing` (fs/socket half).
       entry: {
         index: 'src/index.ts',
         node: 'src/node.ts',
+        'testing/index': 'src/testing/index.ts',
+        'node-testing': 'src/node-testing.ts',
       },
       formats: ['es'],
       fileName: (_format, entryName) => `${entryName}.js`,
