@@ -2,7 +2,8 @@
  * `RoutemapsResource` — W3b (#50), the route-map resource on the M7 framework.
  * `node.routemaps` over `MockTransport`: every read answer is a hand-authored config text and every
  * write answer is an exact joined command script (docs/TESTING.md §3, DR-083). Config is inline,
- * **hand-authored**: reduced from pyeapi's own `test/fixtures/running_config.routemaps` — the TEST
+ * **hand-authored**: reduced from pyeapi's own `test/fixtures/running_config.routemaps` (clone-relative:
+ * `/home/svaj/development/arista/pyeapi/test/fixtures/…`) — the TEST
  * clauses (`:1-18`), FOO (`:20-24`) and FOO-BAR (`:37-52`) bodies are copied verbatim; the doubled
  * `route-map FOOBAR permit 20` header pair (`:26`,`:32`) is kept but the two bodies were EDITED
  * (`as 1111`/`continue 200` then `as 2222`/`continue 300`) because upstream's two copies are identical,
@@ -41,7 +42,7 @@
  *    whose command text reaches the wire twice in one verb;
  *  - `test_negate_description` (`:141-144`) → `['…','no description']`;
  *  - `test_set_description_with_default` (`:146-149`) → `['…','default description']`;
- *  - `test_set_description_with_invalid_value` (`:151-159`) — upstream pins the EMPTY-value fall-through
+ *  - `test_set_description_with_invalid_value` (`:151-158`) — upstream pins the EMPTY-value fall-through
  *    composing `no description` with a pre-armed commented-out `ValueError` arm ("flip when
  *    `command_builder` fails on None"). This client implements the FUTURE arm: empty is a refusal and
  *    clearing is named ({@link RoutemapsResource.unsetDescription}/{@link defaultDescription}) per DR-037,
@@ -518,7 +519,7 @@ describe('routemaps setDescription / unsetDescription / defaultDescription (port
     expect(sentScripts(transport)).toEqual([['enable', 'configure terminal', 'route-map TEST permit 10', 'default description']])
   })
 
-  it('an EMPTY description REFUSES — upstream pins the deprecated empty-value fall-through composing `no description` (`:151-159`), which is exactly the DR-037 arm this port throws on instead', async () => {
+  it('an EMPTY description REFUSES — upstream pins the deprecated empty-value fall-through composing `no description` (`:151-158`), which is exactly the DR-037 arm this port throws on instead', async () => {
     // Upstream: `set_description(…, value=None)` → header + `command_builder('description', value=None)`,
     // and `command_builder`'s falsy fall-through composes the bare negation (`abstract.py:160-161`). Upstream's
     // OWN test comments (`:152-154`) say this MUST flip the moment the builder refuses None; DR-037 shipped

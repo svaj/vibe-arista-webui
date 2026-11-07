@@ -43,10 +43,11 @@
  * | `create/delete/default(name, action, seqno)` (`:161-220`): bare `'route-map %s %s %s'` (`:178`), `'no route-map …'` (`:197`), `'default route-map …'` (`:219`) | {@link RoutemapsResource.create}/{@link delete}/{@link setDefault} (row 77 rename) — same three command texts, one transaction, submode never entered, **no existence check** (upstream's own doc notes say so verbatim: "regardless if the routemap exists or not" at `:164-167`, and the delete/default "does not exist … still return True" notes at `:183-186`/`:203-208`) |
  * | `set_match_statements` (`:222-257`) / `set_set_statements` (`:259-293`): read the CURRENT clause statements in `try: current_statements = self.get(name)[action][seqno]['match'|'set']` / `except Exception: current_statements = []` (`:240-243` and `:276-279`) — emit `route-map …` + `no match X` for each REMOVED entry (`:247-250` / `:283-286`), then `route-map …` + `match X` for each ADDED entry (`:252-255` / `:288-291`); `self.configure(commands) if commands else True` (`:257` / `:293`) | {@link setMatch}/{@link setSet} — the same removed-then-added diff, opening the clause header once per emitted statement line — the **replace** verb, not an add verb (divergence 3, the delicate one) |
  * | `set_continue(name, action, seqno, value, default, disable)` (`:295-321`): header at `:310`, then `default continue` (`:311-312`) / `no continue` (`:313-314`) / `continue %s` (`:319`), guarded by `if not str(value).isdigit() or value < 1: raise ValueError('seqno must be a positive integer …')` (`:316-318`) | {@link setContinue}/{@link unsetContinue}/{@link defaultContinue} — same three texts; the positive-integer guard throws DR-005's `NotSupportedError` and its message keeps upstream's mislabel ("**seqno** must be …", a copy-paste of the `create` docstring — the guard is on the CONTINUE value, pinned verbatim) |
- * | `set_description(name, action, seqno, value, default, disable)` (`:323-345`): header at `:338`; **if `value is not None` push `'no description'` FIRST** (`:339-341`, `command_builder('description', disable=True)`), then `command_builder('description', value, default, disable)` (`:342-343`) — and `value=None` with no flag sends `'no description'` (its OWN test pins that at `test_api_routemaps.py:151-159` with the pre-armed "uncomment if command_builder fails" comment) | {@link setDescription}/{@link unsetDescription}/{@link defaultDescription} — the same clear-before-set ordering when a value is written; `unset` is the named-negation verb DR-037 splits out of the `value=None`/`disable` arms |
+ * | `set_description(name, action, seqno, value, default, disable)` (`:323-344`): header at `:338`; **if `value is not None` push `'no description'` FIRST** (`:339-341`, `command_builder('description', disable=True)`), then `command_builder('description', value, default, disable)` (`:342-343`) and `configure` at `:344` — and `value=None` with no flag sends `'no description'` (its OWN test pins that at `test/unit/test_api_routemaps.py:151-158` with the pre-armed "uncomment if command_builder fails" comment) | {@link setDescription}/{@link unsetDescription}/{@link defaultDescription} — the same clear-before-set ordering when a value is written; `unset` is the named-negation verb DR-037 splits out of the `value=None`/`disable` arms |
  * | `instance(node)` (`:347-357`; `return Routemaps(node)` at `:357`) | the `RESOURCE_FACTORIES.routemaps` row plus `Node.routemaps` (DR-006/DR-052) |
  *
- * Upstream's own suite is `pyeapi/test/unit/test_api_routemaps.py` — **18** test methods (verified in the
+ * Upstream's own suite is `test/unit/test_api_routemaps.py` (clone-relative; the `pyeapi` package dir
+ * holds the module, the top-level `test/` the suites) — **18** test methods (verified in the
  * pinned clone on 2026-11-06): `test_instance` (`:51-53`), `test_get` (`:55-58`),
  * `test_get_not_configured` (`:60-61`), `test_getall` (`:63-68`), `test_routemaps_functions`
  * (`:70-79`), `test_set_set_statement_clean` (`:81-85`), `test_set_set_statement_remove_extraneous`
@@ -55,7 +56,7 @@
  * (`:116-118`), `test_set_continue_with_invalid_string` (`:120-122`), `test_set_continue_to_default`
  * (`:124-127`), `test_negate_continue` (`:129-132`), `test_set_description_with_value` (`:134-139`, the
  * only `random_string()` site), `test_negate_description` (`:141-144`), `test_set_description_with_default`
- * (`:146-149`), `test_set_description_with_invalid_value` (`:151-159`). All 18 are ported in
+ * (`:146-149`), `test_set_description_with_invalid_value` (`:151-158`). All 18 are ported in
  * `routemaps.test.ts`; the `random_string()` slot becomes a fixed multi-word description.
  *
  * ## Divergences this file owns (the orchestrator's §5 band is 203-212; rows are written by the ledger
@@ -536,7 +537,7 @@ export class RoutemapsResource extends EntityCollection<RoutemapEntry, string, R
   }
 
   /**
-   * Write the clause `description` — pyeapi's `set_description(..., value=…)` (`:323-345`). The quirk is
+   * Write the clause `description` — pyeapi's `set_description(..., value=…)` (`:323-344`). The quirk is
    * real and upstream-pinned: when a value is provided, it first pushes a `no description` line to clear
    * any existing one (`:339-341`), THEN the new `description <value>` (`:342-343`). Both lines ride one
    * transaction, header first (`:338`). `test_api_routemaps.py:134-139` pins exactly `['route-map TEST
@@ -556,7 +557,7 @@ export class RoutemapsResource extends EntityCollection<RoutemapEntry, string, R
   /**
    * Negate the clause `description` — pyeapi reaches this two ways: `set_description(..., disable=True)`
    * (`:342-343` via `command_builder`'s `disable` arm) sends `no description`, and so does the
-   * `value=None`-with-no-flag fall-through that `test_api_routemaps.py:151-159` pins as `['route-map TEST
+   * `value=None`-with-no-flag fall-through that `test/unit/test_api_routemaps.py:151-158` pins as `['route-map TEST
    * permit 10', 'no description']` (upstream's own test comments at `:152-155` show the ValueError arm is
    * disabled because its `command_builder` would fail on `None`). DR-037 splits that fall-through into THIS
    * named verb, so a caller never reaches the deprecated `no <bare>` arm accidentally. Same header-first
@@ -672,7 +673,7 @@ function assertContinueValue(value: unknown): asserts value is number | string {
  */
 function assertRoutemapDescription(value: unknown): asserts value is string {
   if (typeof value !== 'string') refuse('route-map description', value, 'expected a string description — pyeapi interpolates whatever arrives into `description %s` (routemaps.py:343)')
-  if (value.trim() === '') refuse('route-map description', value, 'an empty description is refused — clear it with unsetDescription()/defaultDescription() rather than an empty value (DR-037). pyeapi reaches its own empty-value fall-through differently (test_api_routemaps.py:151-159)')
+  if (value.trim() === '') refuse('route-map description', value, 'an empty description is refused — clear it with unsetDescription()/defaultDescription() rather than an empty value (DR-037). pyeapi reaches its own empty-value fall-through differently (test/unit/test_api_routemaps.py:151-158)')
   if (value !== value.trim()) refuse('route-map description', value, 'leading or trailing whitespace cannot read back: the value is the rstripped, keyword-cut line remainder (valueAfterKeyword; config/text.ts describeLine rstrips)')
   if (/[\r\n]/u.test(value)) refuse('route-map description', value, 'a description must be one line (row 74, one CommandSpec per line)')
   if (hasControlCharacter(value)) refuse('route-map description', value, 'a control character would break the config line this client reads back (row 74)')
