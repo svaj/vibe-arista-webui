@@ -359,7 +359,8 @@ import type { Transport } from './transports/contract'
 // `Node.acls` / `Node.varp`) and the mask/prefixlen helpers PLAN.md §4 schedules with the ACL module —
 // MIGRATION §5 rows 158-166 — and W2c (#39 #40) registered `stp` + `ipinterfaces` (with `Node.stp` /
 // `Node.ipinterfaces`), W2d (#41-#43) registered `vrfs` + `staticroute` + `mlag` (with `Node.vrfs` /
-// `Node.staticroute` / `Node.mlag`; DR-102 pins the one-token module names).
+// `Node.staticroute` / `Node.mlag`; DR-102 pins the one-token module names), and wave 3 appends per lane:
+// `ospf`/`bgp` (W3a #48-#49), `routemaps`/`vxlan` (W3b #50/#52) and `vrrp` with `Node.vrrp` (W3c #51).
 export { Entity, EntityCollection, ResourceBase } from './resources/base'
 export { commandBuilder, submodeCommands } from './resources/command-builder'
 export { parseConfigBlock } from './resources/config-block'
@@ -405,6 +406,8 @@ export { BgpResource, BgpNeighborsResource } from './resources/bgp'
 // entry shapes follow below, and the accessor/registry identity is the test-suite's `node.routemaps`
 // pin — DR-006's single replacement for pyeapi's `node.api('routemaps')` autoload.
 export { RoutemapsResource, ROUTE_MAP_ACTIONS, isRoutemapAction } from './resources/routemaps'
+// W3c (#51): the VRRP collection — keyed by the (interface, vrid) pair, the wave's largest port.
+export { VrrpResource } from './resources/vrrp'
 export { toArray } from './internal/collections'
 export type {
   CommandInput,
@@ -454,6 +457,17 @@ export type {
   RoutemapEntry,
   RoutemapEntryAttrs,
 } from './resources/routemaps'
+export type {
+  Vrrp,
+  VrrpAttrs,
+  VrrpConf,
+  VrrpFieldOptions,
+  VrrpNegation,
+  VrrpRunOptions,
+  VrrpTrack,
+  VrrpTrackAction,
+  VrrpVridTable,
+} from './resources/vrrp'
 export type {
   EthernetInterfaceName,
   InterfaceKind,

@@ -230,6 +230,8 @@ describe('what the browser entry exports', () => {
       // the entry shape (`RoutemapEntry`, `RoutemapEntryAttrs`) — all from `.` with no deep import. The
       // `isRoutemapAction` export is the guard the action union narrows through (DR-093 triple identity).
       'RoutemapsResource', 'isRoutemapAction',
+      // W3c (#51): the VRRP collection class — its record/attrs types ride the type exports below.
+      'VrrpResource',
     ] as const
     for (const name of functions) {
       expect(typeof surface[name], name).toBe('function')
@@ -247,15 +249,17 @@ describe('what the browser entry exports', () => {
     expect(surface.isUserEncryption('sha512')).toBe(true)
     expect(surface.isUserEncryption('bcrypt')).toBe(false)
     expect(surface.parseInterfaceName('Ethernet1.100')).toEqual({ kind: 'Ethernet', index: 1, name: 'Ethernet1.100', subinterface: 100 })
-    // The registry has sixteen rows now: M8's `system`, M9's `vlans`/`switchports`, M10a's
-    // `interfaces`, then W2a's `users`/`ntp`, W2b's `acls`/`varp`, W2c's `stp`/`ipinterfaces`, W2d's
-    // `vrfs`/`staticroute`/`mlag`, W3a's `ospf`/`bgp`, then W3b lane B's `routemaps` — each appended in
-    // merge order (§5 row 79, rows 167/173, rows 191/197, row 203). The NEGATIVE CONTROL for
-    // `has()`/`hasResource()` lives in `registry.test.ts`, not here: by the COMMON protocol that name
-    // moved from `ospf` to lane C's `vrrp`, unregistered on this tree until the W3 merge order completes.
+    // The registry has seventeen rows now — every pyeapi api module this port set out to cover: M8's
+    // `system`, M9's `vlans`/`switchports`, M10a's `interfaces`, then W2a's `users`/`ntp`, W2b's
+    // `acls`/`varp`, W2c's `stp`/`ipinterfaces`, W2d's `vrfs`/`staticroute`/`mlag`, W3a's `ospf`/`bgp`,
+    // W3b lane B's `routemaps`, and W3c's `vrrp` (#51) last — each appended in merge order (§5 row 79,
+    // rows 167/173, rows 191/197, row 203, row 213). The NEGATIVE CONTROL for `has()`/`hasResource()`
+    // lives in `registry.test.ts`, not here: by the wave-3 protocol the name moved from `ospf` (lanes
+    // A/B held `vrrp` as the owed exemplar) to `pim` once lane C landed vrrp — and `pim` is a name
+    // pyeapi has NO module for, so it stays the exemplar permanently.
     expect(Object.keys(surface.RESOURCE_FACTORIES)).toEqual([
       'system', 'vlans', 'switchports', 'interfaces', 'users', 'ntp', 'acls', 'varp', 'stp', 'ipinterfaces',
-      'vrfs', 'staticroute', 'mlag', 'ospf', 'bgp', 'routemaps',
+      'vrfs', 'staticroute', 'mlag', 'ospf', 'bgp', 'routemaps', 'vrrp',
     ])
     expect(new Node(mockTransport()).system).toBeInstanceOf(surface.SystemResource)
     expect(new Node(mockTransport()).vlans).toBeInstanceOf(surface.VlansResource)
@@ -307,6 +311,8 @@ describe('what the browser entry exports', () => {
     expect(surface.isRoutemapAction('deny')).toBe(true)
     expect(surface.isRoutemapAction('reject')).toBe(false)
     expect(new Node(mockTransport()).routemaps).toBeInstanceOf(surface.RoutemapsResource)
+    // W3c (#51): the VRRP accessor, last row of the wave — every pyeapi api module now has a row.
+    expect(new Node(mockTransport()).vrrp).toBeInstanceOf(surface.VrrpResource)
     // `assertVlanId` is an assertion function (returns void); the range is pyeapi's —
     // `value in range(1, 4095)`, i.e. VLANs 1..4094 (pyeapi/api/vlans.py:78). M9 (#12) re-checks that
     // bound against the switch's own `switchport access vlan` range on a device.

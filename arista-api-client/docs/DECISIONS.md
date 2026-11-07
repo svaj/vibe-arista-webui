@@ -1812,6 +1812,90 @@ lane that wants to add VXLAN state (or an IPv6 VTEP spelling, or the decap keywo
 pointed at a capture, not at a guess, because this row says what is unverified and by whom it gets
 settled. **Related:** DR-033, DR-063, DR-004, DR-032/DR-057, DR-043, DR-068; §5 rows 208-212,
 DECISIONS open items 2 and 6.
+
+### DR-116 — vrrp's keyword family is detected from the device's own config text, never from a version string (W3c #51)
+`vrrp.py` gates ten readers and every form-dependent stem on `self.version_number >= '4.21.3'`
+(`:254`, `:263`, `:273`, `:283`, `:299`, `:309`, `:346`, `:356`, `:366`; writes `:481`, `:486`, `:530`,
+`:537`, `:542`, `:587`, `:628`, `:673`, `:745`, `:751`, `:1155`, `:1171`), which is row 131/row 155's
+lexicographic-compare bug class AND a posture that reads one dialect per verb: a 4.28-era box still
+writing `vrrp 10 track …` reads `enable: True` because only the `disabled` pattern was searched
+(`:253-:260`). This port asks the text instead: `detectCommandFamily` votes modern on any modern-era
+`vrrp` line, else legacy on any legacy-era line, else this repo's modern floor (AGENTS.md's 4.28 =
+upstream's own `>= '4.21.3'` arm), and the era-neutral lines (`mac-address advertisement-interval`
+`:319`, `bfd ip` `:337`/`:1217`, `preempt` `:292`, the two `preempt delay` stems, `authentication` and
+`ipv6`, which upstream never parses at all) vote on neither side — mirroring upstream's own ungated
+readers. **Consequence:** reads vote per interface block (the text about to be parsed) while
+form-dependent writes scan the whole config once and latch, exactly the DR-099/`resolveVrfForm`
+precedent, so a dry-run batch costs one config read; the floor is a CLIENT convention only — a device
+older than it answers its own `CommandError` (DR-032), no EOS grammar is claimed from unit tests, and
+M12 (#14) owns what cEOS-lab 4.28.14M and the 7050TX-64 actually spell. §5 row 213.
+### DR-117 — a vrrp dry run is a typed command value, and the executed verb resolves to that same value (W3c #51)
+Upstream's setters have two return shapes: the formatted string when `run=False` (`:503` and its
+`if run:` twins, `:767`/`:1190` for the diffing verbs) and `True`/`self.error` when they run — `False`
+plus a stashed `.error` on failure, row 2's family. `_vrrp_set` runs a whole transaction built from
+`run=False` legs (`:1241-:1412`), so upstream's own create path depends on the dry-run half. Here every
+setter `async`-resolves to what it composed (the string, or the sorted list for `setSecondaryIps` and
+`setTracks`) and executes unless `options.run === false`; a failure rejects (DR-005). **Consequence:**
+the UI can stage a device change, show the exact line staging, and still never mistake a stale or
+blank panel for success — there is no falsy success value to forget and no `.error` side channel to
+remember; the two multi-command verbs resolve to a LIST, so a caller cannot mistake "the opener was
+sent" for "nothing happened" (row 221 pins that wire shape). §5 row 214.
+### DR-118 — negation is a mode; `create`'s sentinel bag is kept verbatim, with exactly one widening (W3c #51)
+`disable=True`/`default=True` kwargs become `{ mode: 'no' | 'default' }` (DR-037), and `VrrpAttrs`
+keeps upstream's in-bag sentinel spellings because `_vrrp_set` dispatches on them: `('no', None)` for
+twelve properties and `('no', False)` for `preempt` (`:1248`, `:1261`, `:1273`, `:1286`, `:1305`,
+`:1322`, `:1341`, `:1353`, `:1369`, `:1385`, `:1404`), with `'default'` the next arm. The deprecated
+falsy fall-through is NOT reproduced (row 73): `command_builder`'s `else:` (`abstract.py:158-:161`)
+would negate `set_description`/`set_bfd_ip` on an empty value upstream composes happily. The one
+deliberate widening is `preempt: null` in a create bag: upstream's tuple does not list `None`
+(probe: `None in ('no', False)` is False), so `None` reaches `set_preempt`'s strict guard
+(`:886-:888`) and raises `ValueError` — this client routes null to the same negate arm as `'no'`/`False`
+and pins the resulting `no vrrp N preempt` text. **Consequence:** the widening is a CLIENT refusal-free
+path, not a device claim: the line still goes to the image for judgement (DR-032), the divergence is
+pinned instead of asserted sane, and the pair `VRID/primary-ip` refusals in DR-119 stay refusals.
+§5 row 215.
+### DR-119 — where `vrrp` upstream crashes or interpolates `None`, this client refuses naming the pair (W3c #51)
+`set_primary_ip`'s negation arms read the current address with no guard — `vrrps = self.get(name)` then
+`vrrps[vrid]['primary_ip']` (`:528-:529`, `:535-:536`): an interface with no vrrps is
+`TypeError: 'NoneType' object is not subscriptable`, an absent vrid a `KeyError`, and a pair with no
+primary ip composes the literal wire text **`no vrrp 10 ip None`** through `'%s'` interpolation
+(`:531-:533`, `:538-:540`). Two more accidents sit next to them: `set_primary_ip` with no value and no
+mode negates through its own default kwarg (`:534`), and `set_description` with no value composes
+`no vrrp 10 description` (the falsy fall-through). `currentPrimaryIp` refuses all three shapes with
+`NotFoundError` naming `interface/vrid`, and an omitted value with no mode refuses in both verbs.
+**Consequence:** a config write that would have shipped garbage is a client-side rejection with a
+readable cause and zero device traffic (pinned: the refusal tests assert the transport saw reads only),
+which is the honest state for a destructive-capable UI action; the refusal is not evidence that the
+device would have refused the same text, and no `CommandError` is invented on its behalf. §5 row 216.
+### DR-120 — the vrrp guards police grammar, not device bounds (W3c #51)
+Upstream validates nothing about a VRID (`"%d"` at `:436`/`:458`, the enable stems `:482-:489`, read back
+as `(\d+)` at `:200`) and validates numbers by coercion: `int(value)` INSIDE the condition (`:792`,
+`:843`, `:927`, `:969`, `:1011`) lets a numeric string through a guard that reads like a type check,
+priority instead uses `str(value).isdigit()` plus `1..254` (`:584`), and three guard messages say
+"0-3600" while their code tests `>= 1` (`:928-:929`, `:970-:971`, `:1012-:1013`) — the code wins, and the
+port keeps that asymmetry rather than the prose. `assertVrrpId` requires exactly the grammar the round
+trip supports (non-negative integer; `vrid 0` is accepted and read back by the census); numeric fields
+require `Number.isInteger` inside upstream's own ranges; ip-address fields keep upstream's dotted-quad
+regex (`:541`, `:731-:732`, `:1214`) WITHOUT octet bounds. **Consequence:** nothing here claims an EOS
+limit — whether the image caps VRIDs, octets or the delay ranges is a device answer (DR-032), so the
+guards exist to keep the composed command and the census readable, and every refusal is a
+`NotSupportedError` the UI can show without implying the switch agreed or disagreed. §5 row 217.
+### DR-121 — the vrrp read model and `vrconf_format` are ported as upstream's, contradictions included (W3c #51)
+Upstream's `Vrrp(EntityCollection)` (`:167`) does not honour the contract its verbs use: `get` takes an
+interface and answers a per-vrid dict (`:174-:229`), `create`/`delete`/`default` take the pair
+(`:391`, `:418`, `:439`), its readers answer four kinds of nothing (`None` for eight scalars, `''` for
+`description` `:317` and for no `bfd ip` line `:343`, the empty-group `None` for a BARE
+`vrrp N bfd ip` line `:338-:342`, `[]` for the two lists), and `vrconf_format` — the helper PLAN §4
+asked to keep as surface — contradicts its own parsers: `description` normalises to `None` (`:1442-:1443`)
+where the parser answers `''` (`:317`), `preempt` normalises only `('no', 'default')` so `None` rides
+through unnormalised (`:1460`), every scalar key is indexed unguarded (`KeyError` on a partial bag,
+`:1436`-`:1477`) while the two list keys are `in`-guarded (`:1446`, `:1473`), and both sorts key on
+`(name, action)` alone (`:388`, `:1473-:1475`) so equal keys keep input order. **Consequence:** the pair
+identity becomes the two-level `Map` (absent-optional fields where upstream answers `None`, `string |
+null` where it has three answers), and the formatter is NOT reconciled with the parser — a round-trip
+validator built on it behaves like pyeapi's, which is its documented purpose ("validating updated vrrp
+configurations", `:1430`); the only softening is type-honest (optional keys pass through instead of
+raising), never a re-normalisation. §5 rows 218/224.
 ## Open items (need the device)
 
 Use cEOS first for software behavior and schema exploration, recording its model/version;

@@ -45,10 +45,12 @@ import { UsersResource } from './users'
 import { VarpResource } from './varp'
 import { VlansResource } from './vlans'
 import { VrfsResource } from './vrfs'
-// W3a (#48 #49) appended its two imports at the END of this block — the cross-lane take-both merge
-// rule (the lane order at merge is A then B then C), so alphabetical order resumes at the merge, not here.
+// The wave-3 lanes appended their rows at the END of this block (the cross-lane take-both merge
+// rule — the lane order at merge is A then B then C; `RoutemapsResource` above is the one import a
+// stacked merge happened to resolve mid-list, semantics unchanged).
 import { OspfResource } from './ospf'
 import { BgpResource } from './bgp'
+import { VrrpResource } from './vrrp'
 import type { Node } from '../command-layer'
 
 /** A resource constructor: the `Node` it operates on in, the resource instance out (pyeapi's `instance(node)`). */
@@ -70,9 +72,10 @@ export type ResourceFactory<T> = (node: Node) => T
  *
  * The first rows are M8's (`system`, #10) and M9's (`vlans`, `switchports`, #11); M10a (#12) added
  * `interfaces`. Wave 2 appended, in merge order, `users`/`ntp` (W2a #35), `acls`/`varp` (W2b #37 #38),
- * `stp`/`ipinterfaces` (W2c #39 #40) and `vrfs`/`staticroute`/`mlag` (W2d #41-#43). A name in this interface without a
- * factory in {@link RESOURCE_FACTORIES} is a bug in this package, and {@link ResourceRegistry.get} throws
- * rather than returning `undefined` (row 79).
+ * `stp`/`ipinterfaces` (W2c #39 #40) and `vrfs`/`staticroute`/`mlag` (W2d #41-#43), and wave 3 appends per
+ * lane: `ospf`/`bgp` (W3a #48-#49), `routemaps`/`vxlan` (W3b #50/#52) and `vrrp` with `Node.vrrp` (W3c #51). A name in this
+ * interface without a factory in {@link RESOURCE_FACTORIES} is a bug in this package, and
+ * {@link ResourceRegistry.get} throws rather than returning `undefined` (row 79).
  */
 export interface ResourceKinds {
   /** The global system settings — `src/resources/system.ts`, port of pyeapi `api/system.py`. */
@@ -108,6 +111,8 @@ export interface ResourceKinds {
   /** The route-maps configured on the switch, keyed by name with the (action, seqno) clauses nested —
    *  `src/resources/routemaps.ts`, port of pyeapi `api/routemaps.py` (W3b lane B, #50). */
   routemaps: RoutemapsResource
+  /** The per-interface VRRP virtual routers — `src/resources/vrrp.ts`, port of pyeapi `api/vrrp.py` (W3c slice, #51). */
+  vrrp: VrrpResource
 }
 
 /** Any name `node.resource()` may be asked for. Grows by one row per resource module (M8-M10). */
@@ -149,6 +154,7 @@ export const RESOURCE_FACTORIES: ResourceFactories<ResourceKinds> = Object.freez
   ospf: (node) => new OspfResource(node),
   bgp: (node) => new BgpResource(node),
   routemaps: (node) => new RoutemapsResource(node),
+  vrrp: (node) => new VrrpResource(node),
 })
 
 /**

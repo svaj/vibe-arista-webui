@@ -382,11 +382,10 @@ describe('MlagResource guards — mlag.py validates nothing; refusals cost zero 
     const { node, transport } = nodeFor(MLAG_FIXTURE_CONFIG)
     await expectError(() => node.mlag.setMlagId('Ethernet1', 'bad'), /expected digits/)
     expect(transport.sent()).toEqual([])
-    // A typo'd resource name is still impossible: `mlag` became a real row (W2d #43); W3a (#48 #49)
-    // appended `ospf`/`bgp` on the first branch, and W3b lane B appended `routemaps` (#50) — the
-    // registry lists sixteen now, and the owed name stands where the COMMON protocol put it: `vrrp`
-    // (lane C's, not registerable from this branch).
+    // A typo'd resource name is still impossible: mlag became a real row (W2d #43); W3a (#48 #49),
+    // W3b (#50) and this branch's W3c (#51) each appended their names in merge order — the registry
+    // lists seventeen now, and the negative control is `pim`, a name pyeapi has no module for at all.
     expect(() => node.resource('notamodule' as never)).toThrow(NotSupportedError)
-    expect(() => node.resource('notamodule' as never)).toThrow(/registered: system, vlans, switchports, interfaces, users, ntp, acls, varp, stp, ipinterfaces, vrfs, staticroute, mlag, ospf, bgp, routemaps/)
+    expect(() => node.resource('notamodule' as never)).toThrow(/registered: system, vlans, switchports, interfaces, users, ntp, acls, varp, stp, ipinterfaces, vrfs, staticroute, mlag, ospf, bgp, routemaps, vrrp/)
   })
 })
