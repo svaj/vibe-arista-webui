@@ -1,11 +1,23 @@
 # User Guide — `@devhax-heavy-industries/arista-eapi`
 
-Status: **design target**, written before the implementation (M0–M13 in
-[PLAN.md](./PLAN.md)). The snippets below are the API the milestones are built to satisfy, and each
-`USAGE.md` example becomes a runnable doc test in M13. If code and this file disagree, the code is
-right and this file is a bug — fix it in the same PR.
+Status: current usage guide for the implemented client. The examples describe the shipped API; if code
+and this file disagree, update the guide and the relevant tests together.
 
 Connectivity (what to enable on the switch, browser vs proxy, TLS) is in [CONNECTIVITY.md](./CONNECTIVITY.md) — read that first.
+
+## 0. Web UI VLAN assignment (M13 first slice)
+
+The web UI reads VLANs, switchport configuration, interface status, and device configuration sessions. An access-VLAN change is staged in a named config session and shown as the device's text diff. Commit requires that diff to have been read and a separate operator confirmation; commit changes running-config only. Abort is explicit. Pending sessions are listed, and only sessions the device reports with the exact `pending` state can be aborted from the UI after confirmation.
+
+For local development, create the ignored `arista-webui/.env.local` file with the exact disposable or authorized lab endpoint and a lab-only API account:
+
+```ini
+EAPI_HOST=localhost:8443
+EAPI_USER=eapi-test
+EAPI_PASS=replace-with-a-lab-only-password
+```
+
+Then run `npm run dev -w arista-webui` from the workspace root. The dev server binds to `127.0.0.1`; credentials are read by Vite's Node-side proxy configuration and are not included in the browser bundle or request body. `EAPI_HOST` is required; the app never selects a switch by default. See [CONNECTIVITY.md §3](./CONNECTIVITY.md#3-path-1--dev-proxy-default-recommendation) for the development-only TLS caveat and the production trust requirement.
 
 ---
 
@@ -28,15 +40,14 @@ Node ≥ 20, ESM only ([DR-021](./DECISIONS.md#dr-021--esm-only-exports-conditio
 ## 2. Five-minute tour
 
 ```ts
-import { createNode } from '@devhax-heavy-industries/arista-eapi';            // browser-safe entry
-import { readProfiles } from '@devhax-heavy-industries/arista-eapi/node';     // Node entry (optional)
+import { createNode, readProfiles } from '@devhax-heavy-industries/arista-eapi/node';
 
 const node = createNode({
+  kind: 'https',
   host: 'switch.home.arpa',
   username: 'ui-ro',                        // a priv-15 API user, see CONNECTIVITY.md
   password: process.env.EAPI_PASS!,
-  // Node entry only: pin the device's self-signed cert
-  tls: { fingerprint: 'sha256:3f2b…c1' },
+  fingerprint: 'sha256:3f2b…c1',            // Node entry only: pin the device certificate
 });
 
 // read a typed show
@@ -49,7 +60,7 @@ const vlans = await node.vlans.getAll();                  // { 1: {name:'default
 // make a reviewable change
 const session = await node.configSession({ name: 'ui-demo' });
 try {
-  await session.run(['vlan 20', 'name PROD']);       // resource .commands() accessors are M7 (#9)
+  await session.run(['vlan 20', 'name PROD']);       // stage CLI commands in this named session
   console.log(await session.diff());                      // text diff, forced format:'text'
   await session.commit();
 } catch (e) {
@@ -59,15 +70,14 @@ try {
 ```
 
 `session.run()` (alias `session.commands()`) takes **commands**, not magic — a `CommandSpec[]` or
-plain strings, exactly like `node.configure()`. When the resource modules land in M7 (#9) they will
-hand the same `CommandSpec[]` to it, which is what lets a UI show what will change before it runs
-([ARCHITECTURE.md §9](./ARCHITECTURE.md), §5 row 70).
+plain strings, exactly like `node.configure()`. While a live session is open, use its `run()` method
+for writes; terminal-mode resource setters on the same `Node` are refused. The session's `diff()` is
+the text the operator reviews before commit ([ARCHITECTURE.md §9](./ARCHITECTURE.md), §5 row 70).
 
-> What is real on this branch, vs what the tour above previews: `createNode()`/`createConnection()` still
-> throw until M3 (#5, PR #24) lands the profile bag, and `node.vlans` / `node.configSession()` need the
-> modules that do not exist yet — M7 (#9) shipped the framework those modules will be written against
-> (§6), M5's session verbs ride their own branch. §4's "What the command layer ships today" is the
-> authoritative list of working verbs.
+`createNode()`, the resource registry, VLAN and switchport resources, and config sessions are all
+implemented. Use the resource APIs for typed reads and `ConfigSession` for deliberate, reviewable
+configuration changes. Client-side behavior does not imply hardware capability; the device remains
+authoritative for commands it accepts.
 
 ---
 
@@ -152,10 +162,10 @@ for (const r of rows) {
 `{ tolerateErrors: false }` to have a 1003 surface as a `CommandError` — do that in tests, so a
 command that silently loses structure can't slip through.
 
-### What the command layer ships today (M4, #6)
+### Lower-level command layer construction
 
-`createNode()`/`createConnection()` are still M3 (#5) placeholders, so today the working constructor is
-a `Transport` plus a `Node` — the same shape every example below assumes:
+`createNode()` and `createConnection()` are the normal factories. Construct a `Transport` and `Node`
+directly when a caller needs the lower-level transport or per-Node settings:
 
 ```ts
 import { createTransport, Node } from '@devhax-heavy-industries/arista-eapi';        // or '…/node'
@@ -179,7 +189,7 @@ await node.exec('show version', { sendEnable: false });
 | `chunkConfig({ config })` | `Promise<ConfigSections>` = `ReadonlyMap<string, string>` | **added by M7 (#9)**: the cached text split into section keys by M6's chunker, over one DR-026 memo per source. `{ config: 'startup-config' }` to read the other one |
 | `section(pattern, { config })` | `Promise<string>` | first section whose **key** matches (`pattern` is `string \| RegExp`, compiled like pyeapi's). Absence throws `NotFoundError`; a bad pattern stays a `SyntaxError` (rows 50/80) |
 | `getBlock(parent, { config })` | `Promise<string \| undefined>` | anchored `^parent$` lookup, `undefined` when the switch has no such section (rows 51/80). The parent is spliced **as written**, so a name with regex metacharacters is a pattern — pyeapi parity |
-| `resource(name)` / `hasResource(name)` | `ResourceKinds[K]` / `boolean` | **added by M7 (#9)**: the typed replacement for pyeapi's `node.api(name)` (DR-006/DR-052, row 79). `ResourceKinds` is empty until M8-M10 register modules, so every typed call is a compile error and every untyped one throws a `NotSupportedError` listing what is registered; `hasResource('vlans')` answers `false` today |
+| `resource(name)` / `hasResource(name)` | `ResourceKinds[K]` / `boolean` | Typed registry replacement for pyeapi's `node.api(name)` (DR-006/DR-052, row 79); registered names include `vlans`, `switchports`, `interfaces`, and the wave-2/3 resources |
 | `getVersion()` | `{ version, versionNumber, model, modelName }` | one memoised `show version`; `refresh()` leaves it (row 35) |
 | `configure(cmds, opts)` | `readonly CommandResult[]` | prepends `configure terminal`, strips both prepended replies, throws on failure — there is no `false` to check |
 | `configureVariants(variants, opts)` | same | first spelling that succeeds wins; last `CommandError` re-raised (row 37). Standalone: `tryVariants(variants, cmds => node.configure(cmds))` |
@@ -290,8 +300,8 @@ What the session path guarantees, and where each guarantee comes from:
   batch with `{ stopOnError: false, includeErrorDetail: true }` and returns a `ChangesetOutcome` —
   `{ ok: false, failures, staged, error }` **without** throwing — so one bad command does not kill the
   handle: `diff()` shows what did land and `abort()` undoes it. Every command it accepted *was applied*;
-  there is no preview. A real preview needs `verifyConfig`, which is **M11 (#13)** and does not exist yet —
-  which is why the handle has no `dryRun()` method (DR-050, §5 rows 67–68).
+  there is no preview. `node.verifyConfig()` is a separate M11 operation that normalizes configlets
+  against a clean configuration; it is not a dry run of a staged session (DR-050, §5 rows 67–68).
 
 ```ts
 const outcome = await session.validateChanges(['vlan 21', 'interface Ethernet1 switchport mode access']);
@@ -316,17 +326,11 @@ if (!outcome.ok) {
 
 ## 6. The resource framework (M7, #9), and how a wave-1 module reads config
 
-**Reachability, stated honestly first.** M7 shipped the framework — `ResourceBase`, `Entity`,
-`EntityCollection`, `commandBuilder`, `submodeCommands`, `toArray`, `parseConfigBlock`, the validators,
-`ResourceRegistry`/`createResourceRegistry`, and the `Node`↔`src/config/` pairing (`chunkConfig`,
-`section`, `getBlock`, `resource`, `hasResource`) — and since [PR #26](https://github.com/svaj/vibe-arista-webui/pull/26)
-it is re-exported from `src/index.ts` and carried to `./node`, pinned by `src/index.test.ts`. And the
-first wave-1 module has landed: **`node.system` is real (M8, #10)** — the first `ResourceKinds` row,
-the first `RESOURCE_FACTORIES` entry and the first static accessor (closing the half of DR-006 M7 left
-open). `node.vlans`/`node.switchports` join it with M9 (#11) and `node.interfaces` with M10 (#12);
-until then a `node.resource('vlans')` call throws a `NotSupportedError` naming what IS registered
-(DR-052). Everything below is what the shipped code does today and what a module writes against it —
-`src/resources/base.test.ts` drives exactly this shape over `MockTransport`.
+**Reachability.** The M7 framework and wave-1 resources are shipped and re-exported from both package
+entries. `node.system`, `node.vlans`, `node.switchports`, and `node.interfaces` are static accessors;
+`node.resource(name)` is the typed registry path for the registered wave-1, wave-2, and wave-3
+resources (DR-006/DR-052). Everything below describes the shipped code and its resource patterns —
+`src/resources/base.test.ts` drives the framework shape over `MockTransport`.
 
 ### The first built-in: `node.system` (M8, #10)
 
@@ -498,9 +502,9 @@ registry.has('other');            // false — and get('other') throws naming wh
 
 `node.resource(...)`/`node.hasResource(...)` use this same registry type; extend `ResourceKinds` by
 declaration merging (the form in `arista-webui/src/eapi-show-contracts.test.ts`) — but remember a merged
-type row with no factory throws by design. The framework itself is re-exported from both package entries
-since PR #26, and `system` (#10) is the one built-in row so far — the registry lookup it registers is
-the same seam `createResourceRegistry` exposes to apps.
+type row with no factory throws by design. The framework and its current built-in resource factories
+are re-exported from both package entries; the registry lookup is the same seam
+`createResourceRegistry` exposes to apps.
 
 ---
 

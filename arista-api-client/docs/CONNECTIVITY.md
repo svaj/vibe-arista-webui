@@ -89,29 +89,30 @@ sweep when you run it.
 
 Why: EOS hands out an auto-generated self-signed cert (`/persist/secure/capi.pem`), and nginx emits
 CORS headers **without `always`**, so on 4xx (e.g. a wrong password) the browser sees an opaque
-"Failed to fetch" instead of a 401. A loopback proxy gives you: real certificate verification,
-readable auth errors, credentials that never live in the browser, and no device-side CORS config.
+"Failed to fetch" instead of a 401. A same-origin proxy keeps credentials out of browser code and
+avoids device-side CORS configuration. The current Vite development proxy sets `secure: false`, so
+it does **not** verify the upstream certificate; use it only on a trusted development host/network
+with an authorized lab target. A production proxy must verify a CA or pinned certificate.
 
-```ts
-// arista-webui/vite.config.ts
-export default defineConfig({
-  server: {
-    proxy: {
-      '/command-api': {
-        target: `https://${process.env.EAPI_HOST}`,
-        changeOrigin: true,
-        secure: false,                    // dev only — swap for `ca:` once the CA/fingerprint is captured
-        headers: { authorization: `Basic ${Buffer.from(process.env.EAPI_CREDS!).toString('base64')}` },
-      },
-    },
-  },
-});
+```ini
+# arista-webui/.env.local (ignored by git; use a lab-only account)
+EAPI_HOST=localhost:8443
+EAPI_USER=eapi-test
+EAPI_PASS=replace-with-a-lab-only-password
 ```
 
-Then the client is constructed with no credentials at all:
+Run `npm run dev -w arista-webui` from the workspace root. Vite binds to `127.0.0.1`; with all
+three variables present it accepts an HTTPS host (optionally with a port) and injects Basic auth on
+the server side. With all three absent it starts without a proxy and the UI sends no eAPI request;
+partial configuration is rejected. It does not choose a fallback endpoint. The browser constructs
+the client without credentials:
 
 ```ts
-const node = createNode({ kind: 'http', baseUrl: '', allowInsecureTransport: true }); // same-origin, proxied
+const node = createNode({
+  kind: 'http',
+  baseUrl: window.location.origin,
+  path: '/command-api',
+}); // loopback same-origin; credentials are held by the Vite dev process
 ```
 
 Proxy rules the client's design assumes (and that a production proxy must keep):

@@ -1,6 +1,44 @@
-# React + TypeScript + Vite
+# Arista EOS Switch Workspace
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+An operational web UI for VLAN inventory and access-port VLAN assignment, backed by the
+workspace eAPI client. Changes are staged in a named EOS config session and require a
+reviewed device diff plus explicit confirmation before commit. Commits affect
+running-config only; startup-config is never saved implicitly.
+
+## Local Development
+
+Create the ignored `arista-webui/.env.local` file with an authorized lab target and
+lab-only account:
+
+```ini
+EAPI_HOST=localhost:8443
+EAPI_USER=eapi-test
+EAPI_PASS=replace-with-a-lab-only-password
+```
+
+From the workspace root, run `npm run dev -w arista-webui`. Vite binds to `127.0.0.1`
+and proxies `/command-api` to the configured HTTPS host. The current development proxy
+does not verify the upstream certificate (`secure: false`); use it only on a trusted
+development host with an authorized lab endpoint. Credentials stay in the Vite process,
+not the browser bundle. See the [eAPI connectivity guide](../arista-api-client/docs/CONNECTIVITY.md).
+
+With all three variables absent, the UI renders its unconfigured state and makes no
+eAPI requests. Partial configuration is rejected; there is no default switch target.
+
+## Tests
+
+Component tests use mocked client interfaces and stay offline:
+
+```bash
+npm test -w arista-webui
+npm run typecheck -w arista-webui
+npm run lint -w arista-webui
+npm run build -w arista-webui
+```
+
+Browser-to-cEOS Playwright tests remain a separate opt-in follow-up. See the
+[cEOS runbook](../docs/CEOS.md); container results do not establish
+7050TX-64 hardware support or exact 4.28.13.1M behavior.
 
 ## Testing
 
