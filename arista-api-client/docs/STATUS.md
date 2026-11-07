@@ -92,6 +92,8 @@ Wave-2 **lane C** is delivered on its branch (refs #16): `stp.ts` + `ipinterface
 
 Wave-2 **lane D** is delivered on its branch (refs #16): `vrfs.ts`, `staticroute.ts`, `mlag.ts` (+wiring). rows 175-183, DR-099-102 (three-digit DRs land here for the first time - verified). Gate 57 / 1,802, coverage green. First dispatch of this lane returned a model error and wrote nothing; the retry authored everything incl. repairing a mid-file truncation (c3c6449-equivalent on this branch); mlag set_mlag_id deviation is rowed, read it before approving.
 
+Wave-3 **lane A** is delivered on its branch (refs #17): `src/resources/ospf.ts` + `bgp.ts` with registry/Node wiring — `ospf` entity like `system`/`ntp`, `BgpNeighbors` as the entity's sub-collection, NOT a registry row (rows 191-202, DR-106-110); gate 65 files / 2,103 client tests, all five legs green; per the wave-3 negative-control protocol `ospf` flipped out of the `has()`/`hasResource()`/`registered:` exemplar slots to `vrrp` on this branch and `switchports.test.ts`'s `bgp` exemplar moved with it. PRs open with merge-order note A-B-C; #48 #49 flip to status:ready-for-review at PR time; issues NOT closed until merge.
+
 **M11 (#13) is delivered on its branch** — the non-`runCmds` differentiators: `Node.verifyConfig()` /
 `getCompletions()` / `getCommandHelp()` ride a validated `WIRE_METHODS` table over the new optional
 `Transport#callMethod` seam, and faking them with `runCmds` is refused as unsafe, not inconvenient
