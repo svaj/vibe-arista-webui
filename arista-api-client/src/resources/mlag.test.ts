@@ -382,9 +382,9 @@ describe('MlagResource guards — mlag.py validates nothing; refusals cost zero 
     const { node, transport } = nodeFor(MLAG_FIXTURE_CONFIG)
     await expectError(() => node.mlag.setMlagId('Ethernet1', 'bad'), /expected digits/)
     expect(transport.sent()).toEqual([])
-    // A typo'd resource name is still impossible: mlag became a real row (W2d #43), and the registry
-    // lists it among the thirteen now — `ospf` remains the owed name.
+    // A typo'd resource name is still impossible: mlag became a real row (W2d #43), and W3a (#48 #49)
+    // appended `ospf`/`bgp` — the registry now lists fifteen, and `vrrp` remains the owed name.
     expect(() => node.resource('notamodule' as never)).toThrow(NotSupportedError)
-    expect(() => node.resource('notamodule' as never)).toThrow(/registered: system, vlans, switchports, interfaces, users, ntp, acls, varp, stp, ipinterfaces, vrfs, staticroute, mlag/)
+    expect(() => node.resource('notamodule' as never)).toThrow(/registered: system, vlans, switchports, interfaces, users, ntp, acls, varp, stp, ipinterfaces, vrfs, staticroute, mlag, ospf, bgp/)
   })
 })

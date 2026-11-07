@@ -223,6 +223,9 @@ describe('what the browser entry exports', () => {
       // W2d (#41/#42/#43): the VRF, static-route and MLAG modules ride the same entry —
       // `node.vrfs`/`node.staticroute`/`node.mlag` and their classes from `.` with no deep import.
       'VrfsResource', 'StaticRouteResource', 'MlagResource',
+      // W3a (#48/#49): the OSPF entity and the BGP entity + its sub-collection class — `node.ospf`,
+      // `node.bgp` and `node.bgp.neighbors` all nameable from `.` without a deep import.
+      'OspfResource', 'BgpResource', 'BgpNeighborsResource',
     ] as const
     for (const name of functions) {
       expect(typeof surface[name], name).toBe('function')
@@ -240,12 +243,13 @@ describe('what the browser entry exports', () => {
     expect(surface.isUserEncryption('sha512')).toBe(true)
     expect(surface.isUserEncryption('bcrypt')).toBe(false)
     expect(surface.parseInterfaceName('Ethernet1.100')).toEqual({ kind: 'Ethernet', index: 1, name: 'Ethernet1.100', subinterface: 100 })
-    // The registry has thirteen rows now: M8's `system`, M9's `vlans`/`switchports`, M10a's
-    // `interfaces`, then W2a's `users`/`ntp`, W2b's `acls`/`varp`, W2c's `stp`/`ipinterfaces` and W2d's
-    // `vrfs`/`staticroute`/`mlag`, each appended in merge order (§5 row 79, rows 167/173).
+    // The registry has fifteen rows now: M8's `system`, M9's `vlans`/`switchports`, M10a's
+    // `interfaces`, then W2a's `users`/`ntp`, W2b's `acls`/`varp`, W2c's `stp`/`ipinterfaces`, W2d's
+    // `vrfs`/`staticroute`/`mlag` and W3a's `ospf`/`bgp`, each appended in merge order (§5 row 79,
+    // rows 167/173, rows 191/197). `ospf` was this table's NEGATIVE control until this lane landed it.
     expect(Object.keys(surface.RESOURCE_FACTORIES)).toEqual([
       'system', 'vlans', 'switchports', 'interfaces', 'users', 'ntp', 'acls', 'varp', 'stp', 'ipinterfaces',
-      'vrfs', 'staticroute', 'mlag',
+      'vrfs', 'staticroute', 'mlag', 'ospf', 'bgp',
     ])
     expect(new Node(mockTransport()).system).toBeInstanceOf(surface.SystemResource)
     expect(new Node(mockTransport()).vlans).toBeInstanceOf(surface.VlansResource)
@@ -281,6 +285,11 @@ describe('what the browser entry exports', () => {
     expect(new Node(mockTransport()).vrfs).toBeInstanceOf(surface.VrfsResource)
     expect(new Node(mockTransport()).staticroute).toBeInstanceOf(surface.StaticRouteResource)
     expect(new Node(mockTransport()).mlag).toBeInstanceOf(surface.MlagResource)
+    // W3a (#48 #49): the two new rows, and the sub-collection a caller reaches THROUGH the facade is
+    // the exported class (the varp/stp precedent — `BgpNeighbors` is a property, not a registry row).
+    expect(new Node(mockTransport()).ospf).toBeInstanceOf(surface.OspfResource)
+    expect(new Node(mockTransport()).bgp).toBeInstanceOf(surface.BgpResource)
+    expect(new Node(mockTransport()).bgp.neighbors).toBeInstanceOf(surface.BgpNeighborsResource)
     // `assertVlanId` is an assertion function (returns void); the range is pyeapi's —
     // `value in range(1, 4095)`, i.e. VLANs 1..4094 (pyeapi/api/vlans.py:78). M9 (#12) re-checks that
     // bound against the switch's own `switchport access vlan` range on a device.

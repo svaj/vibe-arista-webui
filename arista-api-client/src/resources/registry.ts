@@ -44,6 +44,10 @@ import { UsersResource } from './users'
 import { VarpResource } from './varp'
 import { VlansResource } from './vlans'
 import { VrfsResource } from './vrfs'
+// W3a (#48 #49) appended its two imports at the END of this block — the cross-lane take-both merge
+// rule (the lane order at merge is A then B then C), so alphabetical order resumes at the merge, not here.
+import { OspfResource } from './ospf'
+import { BgpResource } from './bgp'
 import type { Node } from '../command-layer'
 
 /** A resource constructor: the `Node` it operates on in, the resource instance out (pyeapi's `instance(node)`). */
@@ -96,6 +100,10 @@ export interface ResourceKinds {
   staticroute: StaticRouteResource
   /** The MLAG configuration — `src/resources/mlag.ts`, port of pyeapi `api/mlag.py` (W2d slice, #43). */
   mlag: MlagResource
+  /** The FIRST `router ospf …` process (multi-process nodes read per-vrf) — `src/resources/ospf.ts`, port of pyeapi `api/ospf.py` (W3a slice, #48). */
+  ospf: OspfResource
+  /** The `router bgp …` process and its `neighbors` sub-collection — `src/resources/bgp.ts`, port of pyeapi `api/bgp.py` (W3a slice, #49). */
+  bgp: BgpResource
 }
 
 /** Any name `node.resource()` may be asked for. Grows by one row per resource module (M8-M10). */
@@ -134,6 +142,8 @@ export const RESOURCE_FACTORIES: ResourceFactories<ResourceKinds> = Object.freez
   vrfs: (node) => new VrfsResource(node),
   staticroute: (node) => new StaticRouteResource(node),
   mlag: (node) => new MlagResource(node),
+  ospf: (node) => new OspfResource(node),
+  bgp: (node) => new BgpResource(node),
 })
 
 /**
