@@ -32,5 +32,9 @@
     "noFallthroughCasesInSwitch": true
   },
   "include": ["src"],
-  "exclude": ["src/**/*.test.ts", "src/**/*.live.test.ts", "src/testing/**"]
+  /* #61 (DR-021): src/testing/** is part of the type build now — two entries of the exports map
+     point at it, so its declarations must emit. Test files stay out of the shipped graph the same
+     way as before; the browser-safety of `./testing` is enforced by the guard + its test, and the
+     Node-only half is reachable solely from src/node-testing.ts. */
+  "exclude": ["src/**/*.test.ts", "src/**/*.live.test.ts"]
 }

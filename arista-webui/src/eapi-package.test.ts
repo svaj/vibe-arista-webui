@@ -7,6 +7,7 @@ import {
   Node,
   NotSupportedError,
 } from '@devhax-heavy-industries/arista-eapi'
+import { createFakeNode } from '@devhax-heavy-industries/arista-eapi/testing'
 
 // M0 (#2) exit-gate assertion: the webui must resolve the API client **by package name**,
 // with no `resolve.alias` and no relative path into the other package. Vite/Vitest resolve
@@ -16,6 +17,20 @@ import {
 describe('@devhax-heavy-industries/arista-eapi resolves from the workspace', () => {
   it('imports the browser-safe entry by name', () => {
     expect(typeof createNode).toBe('function')
+  })
+
+  // #61 (CAP-TESTING for epic #60): the screen wave tests device **answers**, not hand-doubled
+  // Node methods — so the subpath must resolve from THIS workspace, under Vite's conditions,
+  // in jsdom, and drive the real parsing pipeline end to end.
+  it('drives a fake device through the ./testing subpath resolved by package name (#61)', async () => {
+    const { node, transport } = createFakeNode({
+      replies: { 'show running-config all': { output: 'vlan 40\n   name SEAM\n!\n' } },
+    })
+
+    const vlans = await node.vlans.getAll()
+
+    expect([...vlans.values()][0]?.name).toBe('SEAM')
+    expect(transport.sent()).toEqual([['enable', 'show running-config all']])
   })
 
   // The M0 placeholder spec ("throws until M4 lands") is obsolete twice over: M4 (#6) shipped the
