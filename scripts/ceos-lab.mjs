@@ -352,6 +352,21 @@ function claimLock(port, runId) {
   return p
 }
 
+/**
+ * The DNS-shaped identity a live child should dial this run's certificate with.
+ * The cEOS `capi.pem` subject is `CN=self.signed` with no SAN (observed on every
+ * executed run — see the childEnv note in cmdRun), and Node's name check falls
+ * back to the subject CN only when the authority is DNS-shaped, so `EAPI_SERVER_NAME`
+ * has to carry that CN for the `checkServerIdentity` fallback to have a chance.
+ * Returns undefined when the subject carries no usable CN rather than inventing one.
+ * @param {unknown} subject @returns {string | undefined}
+ */
+function serverNameFromCertSubject(subject) {
+  const m = /(?:^|[/,])\s*CN\s*=\s*([^/,]+)/i.exec(String(subject ?? ''))
+  const cn = m ? m[1].trim() : ''
+  return /^[A-Za-z0-9][A-Za-z0-9.-]*$/.test(cn) ? cn : undefined
+}
+
 /** Remove this run's lock files, whichever port they name. @param {string} runId */
 function releaseLocksForRun(runId) {
   if (!fs.existsSync(STATE_DIR)) return []
@@ -828,7 +843,7 @@ async function cmdUp(cfg) {
         `docker ${image.daemon.serverVersion} / ${image.daemon.operatingSystem} / ${image.daemon.architecture}`,
     )
     port = await allocateEndpoint(cfg.hostIp, runId, cfg.port)
-    log(`[up] run ${runId} · endpoint ${cfg.hostIp}:${port} -> ${names.container}:${cfg.containerApiPort}`)
+    log(`[up] run ${runId} · loopback endpoint ${cfg.hostIp}:${port} reserved for the container mgmt endpoint (forwarder starts after bootstrap)`)
     // NIC topology, re-settled on 2026-11-07 for issue #62, twice. (1) cEOS binds
     // kernel NICs to front-panel Ethernet ports ONLY at boot: a single-NIC node
     // presents ZERO Ethernet ports (`interface Ethernet1` then answers `% Interface
@@ -864,11 +879,18 @@ async function cmdUp(cfg) {
       '--privileged',
       `--label=${LABEL_RUN}=${runId}`,
       `--label=${LABEL_MANAGER}=${MANAGER}`,
-      // the ONLY create-time attachment, with the pinned address, so the port forward
-      // has a single endpoint to resolve to — see the topology note above.
+      // the ONLY create-time attachment, with the pinned address, so any port
+      // forward resolves to the single endpoint mgmt endpoint — see the topology
+      // note above. No `-p=` here: on Docker 29.9.2 / WSL2 kernel 6.18+. the
+      // publish resolved to the run's *data1* bridge endpoint even in this
+      // single-attach shape (observed 2026-08: `docker-proxy … -container-ip
+      // 172.19.0.2` for a mgmt-pinned create; every handshake RST'd while EOS
+      // reported `Hits: 0, Bytes in: 0`, while a host-direct connect to the mgmt
+      // bridge IP answered perfectly). Docker's CLI has no way to qualify `-p`
+      // with the container-side endpoint, so `up` runs the loopback endpoint
+      // itself via scripts/eapi-port-forward.mjs after bootstrap.
       `--network=${names.mgmt}`,
       `--ip=${mgmtIp}`,
-      `-p=${cfg.hostIp}:${port}:${cfg.containerApiPort}`,
     ]
     for (const [k, v] of VENDOR_ENV) createArgs.push('-e', `${k}=${v}`)
     createArgs.push('-i', image.tag, '/sbin/init')
@@ -960,9 +982,28 @@ async function cmdUp(cfg) {
     const interfacesJson = cliJson(names.container, 'show interfaces status')
     const httpCommandsJson = cliJson(names.container, 'show management api http-commands')
 
+    let forwarderPid = null
+    const sp = statePath(runId)
+    ensureStateDir()
+    {
+      const fwd = startForwarder({
+        hostIp: cfg.hostIp,
+        port,
+        mgmtIp,
+        apiPort: cfg.containerApiPort,
+        stateFile: sp,
+      })
+      forwarderPid = fwd.pid
+      try {
+        await fwd.ready
+      } catch (err) {
+        refuse(`loopback forwarder ${cfg.hostIp}:${port} -> ${mgmtIp}:${cfg.containerApiPort} never came up: ${String(err instanceof Error ? err.message : err)}`, EXIT.readiness)
+      }
+    }
+
     const state = {
       runId,
-      schema: 2,
+      schema: 3,
       container: names.container,
       containerId: cid,
       networks: { mgmt: names.mgmt, data1: names.data1, data2: names.data2 },
@@ -971,6 +1012,7 @@ async function cmdUp(cfg) {
       frontPanelPorts: frontPanels,
       hostIp: cfg.hostIp,
       port,
+      forwarderPid,
       containerApiPort: cfg.containerApiPort,
       imageTag: image.tag,
       imageId: image.imageId,
@@ -993,7 +1035,7 @@ async function cmdUp(cfg) {
       interfacesJson,
       httpCommandsJson,
     }
-    const sp = writeState(state)
+    writeState(state)
     process.stdout.write(
       `${JSON.stringify(
         {
@@ -1003,7 +1045,7 @@ async function cmdUp(cfg) {
           containerId: cid,
           networks: names,
           endpoint: `${cfg.hostIp}:${port}`,
-          published: `${cfg.hostIp}:${port} -> ${names.container}:${cfg.containerApiPort}`,
+          published: `${cfg.hostIp}:${port} -> ${mgmtIp}:${cfg.containerApiPort} (forwarder pid ${forwarderPid})`,
           image: {
             tag: image.tag,
             imageId: image.imageId,
@@ -1037,7 +1079,7 @@ async function cmdUp(cfg) {
               }
             : { user: creds.user, secret: creds.secret },
           stateFile: path.relative(REPO_ROOT, sp),
-          notYetReady: 'eAPI on the published port has not been probed yet — run `npm run lab:probe`',
+          notYetReady: 'eAPI on the loopback endpoint has not been probed yet — run `npm run lab:probe`',
           next: `npm run lab:probe -- --run ${runId}`,
         },
         null,
@@ -1285,6 +1327,100 @@ function openPendingSession(container) {
   return cliScript(container, [`configure session ${PENDING_SESSION}`, 'hostname lab-pending-not-committed'])
 }
 
+/* ------------------------------------------------------- loopback forwarder */
+
+/**
+ * Hand the run's reserved loopback port to a detached instance of
+ * scripts/eapi-port-forward.mjs dialing the container's mgmt-bridge IP. This
+ * replaces Docker's `-p` publish, removed from createArgs after the 2026-11-08
+ * WSL2-restart finding (last bullet of the createArgs note above): the publish
+ * resolved to the run's data1 bridge, so the endpoint died at the Docker hop
+ * while eAPI itself was healthy — `Hits: 0, Bytes in: 0` on the EOS side,
+ * `read ECONNRESET` on ours. The forwarder is a pure byte relay: TLS passes
+ * through untouched, so the certificate anchored from the container still
+ * matches byte-for-byte (verified same-day), and the child's endpoint contract
+ * (EAPI_HOST=127.0.0.1 + ephemeral port + CA pin) is unchanged.
+ * @param {{hostIp: string, port: number, mgmtIp: string, apiPort: number, stateFile: string}} opts
+ */
+function startForwarder(opts) {
+  const script = path.join(SCRIPT_DIR, 'eapi-port-forward.mjs')
+  /** @type {() => void} */
+  let onReady
+  /** @type {(err: Error) => void} */
+  let onFail
+  const ready = new Promise((resolve, reject) => {
+    onReady = resolve
+    onFail = reject
+  })
+  // The refusal path rejects `ready` while a caller in cmdUp awaits it; attach a
+  // no-op catch here so an unref'd orphan child can never become an
+  // unhandled-rejection crash outside that await.
+  ready.catch(() => {})
+  const child = spawn(
+    process.execPath,
+    [
+      script,
+      '--port', String(opts.port),
+      '--listen', opts.hostIp,
+      '--target-ip', opts.mgmtIp,
+      '--target-port', String(opts.apiPort),
+      '--state-file', opts.stateFile,
+    ],
+    { detached: true, stdio: ['ignore', 'pipe', 'inherit'] },
+  )
+  let settled = false
+  let buf = ''
+  /** @param {Error} err */
+  const fail = (err) => {
+    if (settled) return
+    settled = true
+    onFail(err)
+  }
+  child.stdout?.setEncoding('utf8')
+  child.stdout?.on('data', (/** @type {string} */ chunk) => {
+    buf = (buf + chunk).slice(-4096)
+    if (!settled && buf.includes('listening')) {
+      settled = true
+      onReady()
+    }
+  })
+  child.on('error', (err) => fail(new Error(`forwarder failed to start: ${err.message}`)))
+  child.on('exit', (code) => {
+    const tail = buf.trim().split('\n').pop() ?? ''
+    if (settled) {
+      log(`[forwarder] pid ${String(child.pid)} exited (code ${String(code)})${tail === '' ? '' : `: ${tail}`} — the endpoint is gone; the next probe fails and teardown is idempotent`)
+      return
+    }
+    fail(new Error(`forwarder exited (code ${String(code)}) before becoming ready${tail === '' ? '' : `: ${tail}`}`))
+  })
+  setTimeout(() => fail(new Error('forwarder produced no `listening` line within 10s')), 10_000).unref()
+  child.unref()
+  return { pid: child.pid ?? 0, ready }
+}
+
+/** @param {{forwarderPid?: number | null}} state */
+function stopForwarder(state) {
+  const pid = state?.forwarderPid
+  if (!Number.isInteger(pid) || (pid ?? 0) <= 0) return
+  // Ownership check before signalling: a bare pid can be recycled by an unrelated
+  // process long after the run, so /proc/<pid>/cmdline must name the forwarder.
+  let cmd = ''
+  try {
+    cmd = fs.readFileSync(`/proc/${String(pid)}/cmdline`, 'utf8')
+  } catch {
+    return // already gone
+  }
+  if (!cmd.includes('eapi-port-forward')) {
+    log(`[forwarder] pid ${String(pid)} is no longer the forwarder (recycled) — leaving it alone`)
+    return
+  }
+  try {
+    process.kill(pid, 'SIGTERM')
+  } catch {
+    /* racing the forwarder's own self-extinguish — fine */
+  }
+}
+
 /* ------------------------------------------------------------- probe command */
 
 /** @param {ReturnType<typeof labConfig>} cfg @param {NonNullable<ReturnType<typeof readState>>} state */
@@ -1432,9 +1568,32 @@ async function cmdProbe(cfg, state) {
   const api = dockerOpt(['exec', '-i', state.container, 'Cli', '-p', '15'], {
     input: 'show management api http-commands\n',
   })
+  // Endpoint attribution: untrusted TLS peeks at BOTH ends of the relay path tell
+  // us who broke the round — `error` on the mgmt side means the container/eAPI
+  // itself, fingerprint on mgmt but error at 127.0.0.1 means our forwarder, and
+  // fingerprints on both with eAPI still refusing means application layer.
+  const relayPeek = await peekServedCert({ host: cfg.hostIp, port: state.port })
+  const directPeek = state.mgmtContainerIp
+    ? await peekServedCert({ host: String(state.mgmtContainerIp), port: cfg.containerApiPort })
+    : { fingerprint256: null, error: 'no mgmtContainerIp in state' }
+  let forwarderStatus = 'none in state'
+  if (Number.isInteger(state.forwarderPid) && state.forwarderPid > 0) {
+    try {
+      forwarderStatus = `pid ${String(state.forwarderPid)} ${fs.readFileSync(`/proc/${String(state.forwarderPid)}/cmdline`, 'utf8').includes('eapi-port-forward') ? 'alive' : 'RECYCLED pid'}`
+    } catch {
+      forwarderStatus = `pid ${String(state.forwarderPid)} gone`
+    }
+  }
   log(
     `[probe] REFUSED: authenticated eAPI never succeeded on ${cfg.hostIp}:${state.port} within ${cfg.probeTimeoutSec}s ` +
       `(${attempt} attempts, last: ${lastReason})`,
+  )
+  log(
+    `[probe] endpoint diagnostics: relay 127.0.0.1:${String(state.port)} -> ` +
+      `${relayPeek.fingerprint256 ? `cert ${String(relayPeek.fingerprint256).slice(0, 16)}…` : `error ${String(relayPeek.error ?? 'none')}`}; ` +
+      `direct ${String(state.mgmtContainerIp)}:${String(cfg.containerApiPort)} -> ` +
+      `${directPeek.fingerprint256 ? `cert ${String(directPeek.fingerprint256).slice(0, 16)}…` : `error ${String(directPeek.error ?? 'none')}`}; ` +
+      `forwarder: ${forwarderStatus}`,
   )
   log(`[probe] EOS-side API state:\n${api.stdout.trim().split('\n').slice(0, 12).join('\n')}`)
   log(`[probe] container log tail:\n${(logs.stdout + logs.stderr).trim().split('\n').slice(-8).join('\n')}`)
@@ -2190,6 +2349,11 @@ function teardownRun(runId) {
   dropNetwork(networkName(runId, 'data1'))
   dropNetwork(networkName(runId, 'data2'))
 
+  // Stop the run-owned loopback forwarder BEFORE its state file dies, so the
+  // cmdline-verified SIGTERM path wins over the forwarder's state-watch watchdog
+  // (which would self-exit within 5s anyway). Idempotent: a recycled pid is skipped.
+  if (state?.forwarderPid) stopForwarder(state)
+
   const sp = statePath(runId)
   if (fs.existsSync(sp)) {
     // The only file that holds the lab secret: deleted here, git-ignored always.
@@ -2264,16 +2428,35 @@ async function cmdRun(cfg, childArgv) {
     //    shape for a non-default published port (docs/CEOS.md: "Parallel jobs need separate
     //    containers, networks, and published ports"); it never widens the guard toward a switch.
     //  - EAPI_ALLOW_VERSION: the same pinned base the probe already verified over authenticated eAPI.
-    //  - EAPI_CA_FILE: the run's **public** certificate (0600, deleted by teardown) — the guard
-    //    refuses an https target with no CA and no fingerprint, and `EAPI_INSECURE_TLS` is refused,
-    //    so handing it the extracted anchor is the only accepted route (DR-013).
+    //  - EAPI_CA_FILE + EAPI_FINGERPRINT + EAPI_SERVER_NAME: the run's TLS triple, measured from
+    //    THIS container's own certificate. The guard refuses an https target with neither CA nor
+    //    fingerprint, and `EAPI_INSECURE_TLS` is refused (DR-013). All three are needed because the
+    //    cEOS CA-gateway certificate ships **no subjectAltName at all** (executed runs,
+    //    2026-11-08: CA alone dies in the client's name check with `Hostname/IP does not match
+    //    certificate's altnames: IP: 127.0.0.1 is not in the cert's list` for EVERY live suite),
+    //    and this client deliberately does not let a fingerprint pin waive the name check
+    //    (`src/transports/node-tls.ts`: "Pinning a key does not waive hostname verification").
+    //    With a pin installed the identity host becomes `serverName`, and OpenSSL falls back to a
+    //    subject-CN match when there is no SAN — so the pin (exact sha256) plus the CN the harness
+    //    read out of the container's own file is strictly stronger than the harness probe's own
+    //    posture (chain verify + exact fingerprint compare).
     //  - EAPI_SCRATCH_INTERFACE: exactly one Ethernet port chosen from the interfaces THIS container
     //    reported, so a write-side test never invents one (guard's EAPI_SCRATCH_INTERFACE rule);
     //    the plural list above stays as the observation for humans.
     ...(state.port === 8443 ? {} : { EAPI_ALLOW_PORTS: String(state.port) }),
     EAPI_ALLOW_VERSION: cfg.expectVersion,
     ...(probed.result.tls.anchorPublicCertFile ? { EAPI_CA_FILE: String(probed.result.tls.anchorPublicCertFile) } : {}),
+    EAPI_FINGERPRINT: String(probed.result.tls.anchorFingerprint256),
+    ...(serverNameFromCertSubject(probed.result.tls.anchorSubject)
+      ? { EAPI_SERVER_NAME: serverNameFromCertSubject(probed.result.tls.anchorSubject) }
+      : {}),
     ...(scratchInterfaces.split(',')[0] ? { EAPI_SCRATCH_INTERFACE: scratchInterfaces.split(',')[0] } : {}),
+    // Endpoint contract (scripts/eapi-port-forward.mjs): since 2026-08 the loopback
+    // port is served by the forwarder to the container's mgmt-bridge IP because the
+    // WSL2-restart cycle showed Docker's `-p` publish resolving to the wrong endpoint
+    // on a multi-attached privileged container. Nothing in EAPI_HOST/EAPI_PORT changes
+    // for the child, and TLS pinning is untouched — pure byte relay, and the mgmt
+    // address is one this process minted and pinned itself.
     // DR-126 (see cfg.fullWrite): the run-owned container is the declaration. The write-scope seam
     // (`live-session-policy.ts:withLabWriteScope` — listener/users-in-use/management/`copy run start`)
     // stays non-negotiable either way; `EAPI_LAB_FULL_WRITE=1` narrows nothing, it only lets the
