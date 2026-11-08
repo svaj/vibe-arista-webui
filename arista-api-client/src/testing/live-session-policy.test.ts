@@ -23,7 +23,7 @@ import { describe, expect, it } from 'vitest'
 import { Node } from '../command-layer'
 import { NotSupportedError } from '../errors'
 import { mockTransport, type MockTransport } from './mock-transport'
-import { runGuardedLiveWriteSession } from './live-session-policy'
+import { labWriteScopeRefusal, runGuardedLiveWriteSession, withLabWriteScope } from './live-session-policy'
 import type { CommandResult } from '../types/eapi'
 
 const ADDRESS = 'https://localhost:8443/command-api'
@@ -179,5 +179,60 @@ describe('runGuardedLiveWriteSession — always aborts a live session when the w
       ['enable', 'configure session m12a-lost', 'interface Ethernet3'],
       ['enable', 'configure session m12a-lost', 'commit'],
     ])
+  })
+})
+describe('labWriteScopeRefusal + withLabWriteScope — the self-lockout set before the wire (DR-126)', () => {
+  const ctx = { username: 'eapi-lab' }
+  const config = (tail: string[]): string[] => ['configure session lane-test', ...tail]
+
+  it('refuses listener, built-in user, in-use user, and management-path config lines', () => {
+    for (const line of [
+      'management api http-commands',
+      'no management api http-commands',
+      'username admin privilege 15 secret hashwhatever',
+      'no username netadmin',
+      'username eapi-lab privilege 15',
+      'interface Management1',
+      'no interface Management0',
+    ]) {
+      const refusal = labWriteScopeRefusal(config([line, '   x']), ctx)
+      expect(refusal?.code, line).toBe('EAPI_LAB_WRITE_FORBIDDEN')
+    }
+  })
+
+  it('does not echo the full offending line — only its first two words (secret tails stay unprinted, DR-011)', () => {
+    const refusal = labWriteScopeRefusal(config(['username admin privilege 15 secret SUPERSECRETVAL']), ctx)
+    expect(refusal?.reason).not.toContain('SUPERSECRETVAL')
+    expect(refusal?.reason).toContain('username admin')
+  })
+
+  it('refuses persistence inside a config batch too (DR-035(c) survives the widening)', () => {
+    expect(labWriteScopeRefusal(config(['copy running-config startup-config']), ctx)?.reason).toMatch(/persistence|copy run/iu)
+  })
+
+  it('leaves read batches and legitimate lab writes through', () => {
+    expect(labWriteScopeRefusal(['show running-config'], ctx)).toBeUndefined()
+    expect(labWriteScopeRefusal(['enable', 'show management api http-commands'], ctx)).toBeUndefined()
+    expect(labWriteScopeRefusal(config(['username labuser1 privilege 1 secret x', 'vlan 1000', '   name scratchy', 'interface Vlan1000', 'ip address 10.9.9.1/24', 'hostname lab-dut', 'ntp server 5.5.5.5']), ctx)).toBeUndefined()
+    // 'username' as a *word* in a non-config batch (autocomplete probes) is not a write: no marker, no scan.
+    expect(labWriteScopeRefusal(['username'], ctx)).toBeUndefined()
+  })
+
+  it('checks {cmd,input} framing as well: input lines are scanned line-wise', () => {
+    const refusal = labWriteScopeRefusal([{ cmd: 'configure session lane-test', input: 'interface Management1\n ip address dhcp' }], ctx)
+    expect(refusal?.code).toBe('EAPI_LAB_WRITE_FORBIDDEN')
+  })
+
+  it('withLabWriteScope rejects BEFORE the transport sees the batch, and passes everything else through unchanged', async () => {
+    const transport = mockTransport({ address: ADDRESS })
+    transport.replies(['configure session lane-test', 'username labuser1 privilege 1 secret x', 'commit'].join('\n'), ack(3))
+    const guarded = withLabWriteScope(transport, ctx)
+    await expect(guarded.execute(['configure session lane-test', 'username admin secret x'])).rejects.toThrow(NotSupportedError)
+    expect(transport.sent()).toHaveLength(0)
+    const ok = await guarded.execute(['configure session lane-test', 'username labuser1 privilege 1 secret x', 'commit'])
+    expect(ok).toBeTruthy()
+    expect(transport.sent()).toHaveLength(1)
+    expect(guarded.kind).toBe(transport.kind)
+    expect(guarded.address).toBe(transport.address)
   })
 })

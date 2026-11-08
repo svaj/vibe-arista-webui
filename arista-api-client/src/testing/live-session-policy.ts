@@ -35,12 +35,24 @@
  *
  * Browser-safe (DR-002): it imports no `node:*` module — only the browser-safe command layer and the guard.
  * It is not reachable from `src/index.ts` either; `src/testing/**` is a test seam.
+ *
+ * ## The full-write lab lane (#14 D-phase, DR-126)
+ * The user decision for `pyeapi/test/system/*` is a **full** port against the disposable container —
+ * users, VLANs, routes, protocols — which widens DR-035(b)'s scratch rule for the `lab` class only,
+ * behind `EAPI_LAB_FULL_WRITE=1` (`live-guard.ts:requireLabFullWrite`; the hardware class can never
+ * reach it, and hardware writes stay fenced by `hw-capture.ts`'s reviewed-spec rules). What does NOT
+ * widen: the self-lockout set. Turning off the listener, editing the API user in use, touching the
+ * management path, or persisting config kills *the run itself* even inside a throwaway box — so
+ * {@link labWriteScopeRefusal} + {@link withLabWriteScope} refuse those lines **before the wire**, at
+ * the one choke point every resource facade shares (`Transport.execute`), not suite by suite. A guard
+ * that only runs in hand-written suites is a guard the generated half will forget.
  */
 
 import { NotSupportedError } from '../errors'
 import { assertNoPersistenceCommand } from './live-guard'
 import type { Node } from '../command-layer'
 import type { CommandResult, CommandSpec } from '../types/eapi'
+import type { Transport } from '../transports/contract'
 
 /** One guarded live write. */
 export interface LiveWriteSessionOptions {
@@ -128,4 +140,104 @@ export async function runGuardedLiveWriteSession(node: Node, options: LiveWriteS
       await session.abort()
     }
   }
+}
+
+// --- the full-write lab lane (#14 D-phase, DR-126) ----------------------------------------------------
+
+/** Whose login must never be edited from inside its own live lane (self-lockout stays fatal on a throwaway box). */
+export interface LabWriteScopeContext {
+  /** The `EAPI_USER` this very run authenticates as. */
+  readonly username: string
+}
+
+interface LabWriteScopeRule {
+  readonly re: RegExp
+  readonly why: string
+}
+
+/** Category names ride the refusal reason; the codes stay one (`EAPI_LAB_WRITE_FORBIDDEN`) because the operator fix is the same: pick a different line. */
+function labWriteRules(ctx: LabWriteScopeContext): readonly LabWriteScopeRule[] {
+  const escaped = ctx.username.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')
+  return [
+    { re: /^\s*(?:no\s+)?management\s+api\s+http-commands\b/iu, why: 'reworking or shutting down the eAPI listener ends this very session mid-suite — listener state belongs to #14 §2 bootstrap, never to a suite write' },
+    { re: /^\s*(?:no\s+)?username\s+(?:admin|netadmin)\b/iu, why: 'the built-in privilege-15 users: a bug here locks every lane out of the device, container or not' },
+    { re: RegExp(`^\\s*(?:no\\s+)?username\\s+${escaped}\\b`, 'iu'), why: ' editing the API user this run logs in as is self-lockout even inside a disposable container' },
+    { re: /^\s*(?:no\s+)?interface\s+management\d/iu, why: 'the management path carries the connection under test (docs/CEOS.md:131 keeps it out of writes)' },
+  ]
+}
+
+/** Every command + input-body line of a batch, and whether the batch carries a config marker. */
+function flattenBatch(commands: CommandSpec | readonly CommandSpec[]): { isConfig: boolean; lines: string[] } {
+  const specs = Array.isArray(commands) ? commands : [commands]
+  const lines: string[] = []
+  let isConfig = false
+  for (const spec of specs) {
+    const cmd = typeof spec === 'string' ? spec : spec.cmd
+    lines.push(cmd)
+    if (/^configure (?:terminal|session)\b/iu.test(cmd)) isConfig = true
+    if (typeof spec !== 'string' && typeof spec.input === 'string') lines.push(...spec.input.split(/\r?\n/u))
+  }
+  return { isConfig, lines }
+}
+
+/**
+ * The self-lockout set for lab full-write batches: listener, built-in and in-use users, management
+ * path, persistence. Checked **before** the wire (see `withLabWriteScope`): a batch only half-refused
+ * is a half-applied config, so the decision must precede the request.
+ *
+ * Only batches carrying a config marker (`configure terminal`, `configure session <name>` — every
+ * staged session batch includes its opener, as `live-session-policy.test.ts` documents) are scanned:
+ * read commands and show arguments never apply a change. `show running-config` lines that merely
+ * *mention* `username …` sit in responses, never in the batch texts this inspects.
+ *
+ * The refusal names the category and the offending line's first word, never the whole line: a
+ * staged write can carry a `secret` tail, and reasons get printed to consoles and CI logs (DR-011).
+ */
+export function labWriteScopeRefusal(commands: CommandSpec | readonly CommandSpec[], ctx: LabWriteScopeContext): { code: 'EAPI_LAB_WRITE_FORBIDDEN'; reason: string } | undefined {
+  const batch = flattenBatch(commands)
+  if (!batch.isConfig) return undefined
+  const configLines = batch.lines.filter((line) => !/^configure (?:terminal|session)\b/iu.test(line))
+  const persistence = assertNoPersistenceCommand(configLines)
+  if (persistence !== undefined) return { code: 'EAPI_LAB_WRITE_FORBIDDEN', reason: persistence.reason }
+  for (const line of configLines) {
+    for (const rule of labWriteRules(ctx)) {
+      if (rule.re.test(line)) {
+        return { code: 'EAPI_LAB_WRITE_FORBIDDEN', reason: `lab full-write refuses a config line (${JSON.stringify(line.trim().split(/\s+/u).slice(0, 2).join(' '))}): ${rule.why}` }
+      }
+    }
+  }
+  return undefined
+}
+
+/**
+ * Wrap any `Transport` with the scope refusal **before** `execute` reaches it, so every resource
+ * facade (`node.vlans.create`, `node.switchports.set…`, M10 interfaces) is guarded through the one
+ * choke point instead of relying on each hand-written suite to re-remember the policy.
+ * `callMethod` (verifyConfig/completions/help, M11) passes through untouched: those verbs answer
+ * about commands, they never apply them — the refusal path for an applied change is `execute`.
+ */
+export function withLabWriteScope(transport: Transport, ctx: LabWriteScopeContext): Transport {
+  const guard = (commands: CommandSpec | readonly CommandSpec[]): void => {
+    const refusal = labWriteScopeRefusal(commands, ctx)
+    if (refusal !== undefined) {
+      // NotSupportedError, the package's input-error type (DR-010): a refused batch is not a wire condition.
+      throw new NotSupportedError(`lab write refused before the wire: ${refusal.reason}`, { cause: { code: refusal.code, username: ctx.username } })
+    }
+  }
+  const wrapped: Transport = {
+    kind: transport.kind,
+    address: transport.address,
+    execute: async (commands, options) => {
+      guard(commands)
+      return transport.execute(commands, options)
+    },
+    close: () => transport.close(),
+    toString: () => transport.toString(),
+  }
+  if (transport.callMethod !== undefined) {
+    // `bind` keeps the device transport's own id/codec policy; the cast restates the generic method
+    // signature that `bind` erases (the two are the same function, this-bound).
+    wrapped.callMethod = transport.callMethod.bind(transport) as typeof transport.callMethod
+  }
+  return wrapped
 }
