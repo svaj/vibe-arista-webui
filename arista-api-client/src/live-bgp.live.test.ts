@@ -234,11 +234,13 @@ describe.skipIf(!gate.runnable)('live full-write: pyeapi test/unit/test_api_bgp.
       expect(typeof state.shutdown).toBe('boolean') // :54
       expect(typeof state.neighbors.has).toBe('function') // :54 — carried in the SAME one-read record (DR-030)
       expect(state.neighbors.has(N1)).toBe(true)
-      // divergence 4, the one vocabulary difference in this row: pyeapi always emits both max-paths keys,
-      // with `None`/`None` when its pair regex misses (bgp.py:93-94). Here absence is the answer, so the
-      // keys must not appear when nothing with an `ecmp` tail was staged.
-      expect('maximumPaths' in state).toBe(false)
-      expect('maximumEcmpPaths' in state).toBe(false)
+      // divergence 4's vocabulary keeps its offline pin; the EXECUTED device answer is the opposite of
+      // the mock's silence: 4.28.14M materialises a `maximum-paths <n> ecmp <m>` pair under EVERY
+      // `router bgp` (run evidence above shows `maximum-paths 1 ecmp 128` on a freshly-staged AS), so
+      // the pair keys are PRESENT here. The exact seconds are printed, not pinned — they are
+      // platform/ASIC-dependent and belong to the 7050TX-64 sweep (#14 §3).
+      expect(typeof state.maximumPaths).toBe('number')
+      expect(typeof state.maximumEcmpPaths).toBe('number')
     } finally {
       await clearBgp(node, 'get-final')
     }
@@ -353,6 +355,7 @@ describe.skipIf(!gate.runnable)('live full-write: pyeapi test/unit/test_api_bgp.
     await clearBgp(node, 'paths')
     try {
       await node.bgp.create(AS)
+      const baseline = await node.bgp.get() // the rendered default pair every `router bgp` gets on this device
       await attempt('`maximum-paths 20` (the single-value text pinned at :127, no ecmp tail)', () => node.bgp.setMaximumPaths(20))
       const state = await node.bgp.get()
       const body = await bgpBody(node, AS_HEADER)
@@ -374,11 +377,16 @@ describe.skipIf(!gate.runnable)('live full-write: pyeapi test/unit/test_api_bgp.
       await node.bgp.unsetMaximumPaths() // :130 / the fall-through at :142-143
       const afterUnset = await node.bgp.get()
       console.log(`live-bgp: evidence after \`no maximum-paths\` — lines ${JSON.stringify((await bgpBody(node, AS_HEADER)).filter((line) => line.startsWith('maximum-paths')))}; typed maximumPaths=${String(afterUnset?.maximumPaths)} ecmp=${String(afterUnset?.maximumEcmpPaths)}`)
-      expect(afterUnset?.maximumPaths).toBeUndefined()
+      // :134's "reads back None" is a mock artifact: on 4.28.14M `no maximum-paths` RESTORES the
+      // rendered default pair (evidence above) instead of hiding the line. The equality is against this
+      // router's own baseline read before any write, so no cEOS number is baked into the pin.
+      expect(afterUnset?.maximumPaths).toBe(baseline?.maximumPaths)
+      expect(afterUnset?.maximumEcmpPaths).toBe(baseline?.maximumEcmpPaths)
       await node.bgp.defaultMaximumPaths() // :133
       const afterDefault = await node.bgp.get()
       console.log(`live-bgp: evidence after \`default maximum-paths\` — lines ${JSON.stringify((await bgpBody(node, AS_HEADER)).filter((line) => line.startsWith('maximum-paths')))}; typed maximumPaths=${String(afterDefault?.maximumPaths)} ecmp=${String(afterDefault?.maximumEcmpPaths)}`)
-      expect(afterDefault?.maximumPaths).toBeUndefined()
+      expect(afterDefault?.maximumPaths).toBe(baseline?.maximumPaths)
+      expect(afterDefault?.maximumEcmpPaths).toBe(baseline?.maximumEcmpPaths)
     } finally {
       await clearBgp(node, 'paths-final')
     }
@@ -389,16 +397,19 @@ describe.skipIf(!gate.runnable)('live full-write: pyeapi test/unit/test_api_bgp.
     await expect(node.bgp.setMaximumPaths(undefined, 20)).rejects.toBeInstanceOf(NotSupportedError) // :161-163's TypeError arm
     try {
       await node.bgp.create(AS)
-      // Executed run 2026-11-08: 4.28.14M REFUSES `maximum-paths 20 ecmp 4` with
-      // "maximum-paths should be less than or equal to max ECMP" — the arm upstream only ever ran against
-      // a mock. Wrapped so the pair-read evidence still prints; the arm re-pin belongs to the ledger pass.
-      const pairWritten = await attempt('`maximum-paths 20 ecmp 4` (:151 as upstream wrote it)', () => node.bgp.setMaximumPaths(20, 4)) // :151
-      console.log(`live-bgp: upstream pair arm (20,4) accepted by this device = ${String(pairWritten)}`)
+      // :151's (20,4) is REFUSED by 4.28.14M's CLI — "maximum-paths should be less than or equal to max
+      // ECMP" (executed run 2026-11-08; only the first read happens because the pair write errored as
+      // a batch item, and no mock ever enforced the ordering). Re-pinned with order-valid values while
+      // keeping upstream's pair-read shape (:152-154) and the client's own pair model intact.
+      const upstreamOrder = await attempt('`maximum-paths 20 ecmp 4` upstream as written (:151)', () => node.bgp.setMaximumPaths(20, 4))
+      if (upstreamOrder) console.warn('live-bgp: (20,4) unexpectedly ACCEPTED on this target — recheck the max-vs-ecmp CLI rule')
+      const pairWritten = await attempt('`maximum-paths 4 ecmp 20` (:151 pair arms re-pinned to the device rule)', () => node.bgp.setMaximumPaths(4, 20))
+      expect(pairWritten).toBe(true)
       const state = await node.bgp.get()
       const body = await bgpBody(node, AS_HEADER)
-      console.log(`live-bgp: after \`maximum-paths 20 ecmp 4\` the body is ${JSON.stringify(body.filter((line) => line.startsWith('maximum-paths')))}`)
-      expect(state?.maximumPaths).toBe(20)
-      expect(state?.maximumEcmpPaths).toBe(4)
+      console.log(`live-bgp: after \`maximum-paths 4 ecmp 20\` the body is ${JSON.stringify(body.filter((line) => line.startsWith('maximum-paths')))}`)
+      expect(state?.maximumPaths).toBe(4)
+      expect(state?.maximumEcmpPaths).toBe(20)
     } finally {
       await clearBgp(node, 'ecmp-final')
     }

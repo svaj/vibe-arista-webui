@@ -409,10 +409,18 @@ function neighborsFromBody(body: readonly { text: string }[]): Map<string, Mutab
       if (negated) draft.sendCommunity = false
       continue
     }
-    if (/^next-hop-self(\s|$)/u.test(rest)) {
-      if (negated) draft.nextHopSelf = false
+    // THE bare knob line votes; everything else this device hangs off `next-hop-self` is a SUB-FEATURE.
+    // The executed corpus (run 7, 2026-11-08) showed the default body renders
+    // `no neighbor X next-hop-self receive-only`, `… source-interface`, `… received-evpn-routes route-type
+    // ip-prefix [inter-domain]` as standing negative lines — negation-anchored on the wrong half of a
+    // compound name, they once voted nextHopSelf false even after a successful positive write. Only
+    // `next-hop-self` alone (with or without `no `) is this client's `nextHopSelf`; the sub-modes stay
+    // unmodelled, like upstream's eight parsers leave them (a §3 hardware-sweep candidate if ever typed).
+    if (rest === 'next-hop-self') {
+      draft.nextHopSelf = !negated
       continue
     }
+    if (rest.startsWith('next-hop-self ')) continue
     if (rest === 'shutdown') {
       if (!negated) draft.shutdown = true // upstream's `(?<!no )` lookbehind (`:228`) does the same bookkeeping
       continue
