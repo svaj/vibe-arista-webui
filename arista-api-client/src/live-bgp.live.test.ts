@@ -484,7 +484,7 @@ describe.skipIf(!gate.runnable)('live full-write: pyeapi test/unit/test_api_bgp.
   })
 
   it('setPeerGroup joins an address-named neighbour and refuses loudly for a group-shaped name (test_set_peer_group, :203-228)', async () => {
-    const joined = await attempt(`\`neighbor ${N1} <peer-group keyword> ${GROUP}\` (the config arm at :209-210 composes the LEGACY spelling — the fixture's own keyword line is `:207`, and the spelling here comes from the device's own text, DR-107)`, () => node.bgp.neighbors.setPeerGroup(N1, GROUP))
+    const joined = await attempt(`neighbor ${N1} <peer-group keyword> ${GROUP} — the config arm at :209-210 composes the LEGACY spelling, the fixture's own keyword line is ':207', and the spelling here comes from the device's own text, DR-107`, () => node.bgp.neighbors.setPeerGroup(N1, GROUP))
     if (joined) {
       const one = await node.bgp.neighbors.get(N1)
       console.log(`live-bgp: peer-group read-back: peerGroup=${String(one?.peerGroup)} peerGroupForm=${String(one?.peerGroupForm)}`)

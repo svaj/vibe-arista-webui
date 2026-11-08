@@ -105,7 +105,12 @@ describe('buildFullWriteNode — the fence fires through the facade, at the seam
   it('reads never trip the fence (no config marker → no scan) and callMethod/kind/address pass through', async () => {
     const target = unwrapLiveTarget(liveFullWriteReadiness(labEnv()).resolution)
     const transport = mockTransport({ address: ADDRESS })
-    transport.replies(['enable', 'show running-config all'].join('\n'), [{ runningConfig: 'username admin secret sha512 $6$whatever\n!\n' }] as CommandResult[])
+    // getConfig() asks for format:'text' (command-layer.ts:758), so the scripted reply carries
+    // `output:` — the JSON runningConfig model belongs to the params form and would parse to nothing.
+    // Two entries, one per WIRE command (the enable + the show): same rule as ack() in the sibling file.
+    const configResult = [{}, { output: 'username admin secret sha512 $6$whatever\n!\n' }] as CommandResult[]
+    transport.replies(['enable', 'show running-config all'].join('\n'), configResult)
+    transport.replies(['enable', 'show running-config'].join('\n'), configResult)
     const node = buildFullWriteNode(target, { transport })
     await node.getRunningConfig()
     expect(transport.sent()).toHaveLength(1)
