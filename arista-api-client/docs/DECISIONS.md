@@ -158,6 +158,9 @@ Directory is `arista-api-client`; working name `@devhax-heavy-industries/arista-
 official Arista package; scope must match however the webui is published. Decision needed before the
 first `npm publish`/tag. Default assumption in all docs: `@devhax-heavy-industries/arista-eapi`.
 
+> **Status 2026-11-08: RESOLVED by DR-127** — the default stands; see that entry for what was settled and
+> what stays open (publishing itself).
+
 ### DR-021 — ESM-only, `exports` conditions, no CJS
 Both packages are `"type": "module"` (webui already is). `exports`: `"."` → browser build,
 `"./node"` → Node build, `"./testing"` → mock helpers used by the webui's own tests. Types ship as
@@ -2014,6 +2017,23 @@ first two words only (a staged line can carry a `secret <hash>` tail; DR-011 cov
 `Node.callMethod` (verifyConfig/completions/help) passes through: those verbs answer *about* commands
 and never apply them. Mutation-checked: forcing the scope check to return no-refusal fails 5 named
 cases; admitting VLAN 1 fails its case; admitting full-write on hardware fails its case. §5 row 227.
+
+### DR-127 — the package name ships: `@devhax-heavy-industries/arista-eapi` closes DR-020, version 0.1.0 per DR-040, tag local, publish still off
+The 0.1.0 wrap-up needed DR-020's "decision before first tag" settled, and the user chose (2026-11-08)
+to keep the working name that every artifact already carries: root and client `package.json`, README
+banners, the USAGE fences that `docs:check` now compiles, the webui imports, and 220+ MIGRATION/
+DECISIONS references. The two DR-020 considerations survive: the scoped `devhax-heavy-industries`
+org never implies an Arista package (that constraint was actually load-bearing — an unscoped
+`arista-*`/`eos-*` name would), and any future webui publishing happens under the same scope.
+What DR-127 does NOT do: it does not open the registry. `private: true` stays, no `npm publish` was
+done, and the `v0.1.0` tag stays **local** to the working clone (the user's chosen release shape).
+When publishing becomes a decision, that decision reopens naming only if the scope turns out wrong —
+the name itself is no longer a blocker, the version policy (DR-040: `0.x.y`, semver at 1.0) is what
+governs bump semantics from here. `CHANGELOG.md` (Keep a Changelog) now exists and 0.1.0 is its
+first stamped entry; the pyeapi-divergence pointer convention from DR-040 is honored by linking the
+migration rows instead of restating each rename. Supersedes nothing; closes DR-020's OPEN marker
+without rewriting its text.
+
 
 ## Open items (need the device)
 

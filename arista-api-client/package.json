@@ -1,6 +1,6 @@
 {
   "name": "@devhax-heavy-industries/arista-eapi",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "private": true,
   "description": "TypeScript client for Arista EOS eAPI (DCS-7050TX-64 / EOS 4.28.13.1M), ported from Arista's pyeapi.",
   "license": "BSD-3-Clause",
@@ -52,6 +52,7 @@
     "test": "vitest run --project unit",
     "test:watch": "vitest --project unit",
     "test:live": "vitest run --project live",
+    "docs:check": "vitest run src/docs.usage.test.ts",
     "coverage": "vitest run --project unit --coverage",
     "fixtures:refresh": "node ../scripts/ceos-lab.mjs fixtures"
   },
