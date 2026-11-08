@@ -2274,6 +2274,15 @@ async function cmdRun(cfg, childArgv) {
     EAPI_ALLOW_VERSION: cfg.expectVersion,
     ...(probed.result.tls.anchorPublicCertFile ? { EAPI_CA_FILE: String(probed.result.tls.anchorPublicCertFile) } : {}),
     ...(scratchInterfaces.split(',')[0] ? { EAPI_SCRATCH_INTERFACE: scratchInterfaces.split(',')[0] } : {}),
+    // DR-126 (see cfg.fullWrite): the run-owned container is the declaration. The write-scope seam
+    // (`live-session-policy.ts:withLabWriteScope` — listener/users-in-use/management/`copy run start`)
+    // stays non-negotiable either way; `EAPI_LAB_FULL_WRITE=1` narrows nothing, it only lets the
+    // suites past the scratch-ONLY gate for genuinely-spare objects.
+    ...(cfg.fullWrite ? { EAPI_LAB_FULL_WRITE: '1' } : {}),
+    // The run's declared spare VLAN for the `requireScratchVlan` gate (`live-guard.ts`): outside the
+    // provisioned 10/100/110, outside EOS's reserved 1006-1199, and outside the >=2000 block the
+    // SVI-owning suites (varp/ipinterfaces/vrrp) create per-case. Guard still validates the value.
+    EAPI_SCRATCH_VLAN: '1201',
   }
   let childExit = null
   let childSignal = null
@@ -2316,7 +2325,7 @@ async function cmdRun(cfg, childArgv) {
 
 /** @param {string} name */
 function isKnownBoolFlag(name) {
-  return ['fixtures', 'no-fixtures', 'fixtures-force', 'yes', 'all', 'list', 'quiet', 'help', 'no-digest'].includes(name)
+  return ['fixtures', 'no-fixtures', 'fixtures-force', 'yes', 'all', 'list', 'quiet', 'help', 'no-digest', 'no-full-write'].includes(name)
 }
 
 /** @param {string[]} argv */
@@ -2389,6 +2398,15 @@ function labConfig(flags) {
     port: flags['port'] === undefined || flags['port'] === true ? null : Number(flags['port']),
     runId: typeof flags['run'] === 'string' ? flags['run'] : undefined,
     fixtureDir: flags['fixtures'] === false || flags['no-fixtures'] === true ? null : str('fixtures', FIXTURE_DIR),
+    /**
+     * DR-126 full-write lab lane: `lab:run` against a run-owned disposable container **is** the
+     * operator declaration the consent flag stands for (locked user decision 2026-11-07: the
+     * `test/system/*` port writes fully against cEOS — users, VLANs, routes, protocols — and the
+     * container is thrown away). `--no-full-write` opts this run back to scratch-only: the flag is
+     * simply not exported, and every full-write suite skips loudly instead. Same opt-in direction as
+     * everything else here: the strict path stays the default when asked for explicitly.
+     */
+    fullWrite: flags['no-full-write'] !== true,
     fixturesForce: flags['fixtures-force'] === true,
     // The explicit confirmation the `fixtures` command requires before it may replace reviewed
     // captures. Nothing else reads it: `up`/`probe`/`run` keep their existing semantics.
@@ -2451,6 +2469,8 @@ flags
   --run <id>                   act on an existing run id
   --fixtures <dir>             write probe captures to a fixture dir (default ${path.relative(REPO_ROOT, FIXTURE_DIR)})
   --no-fixtures                never write fixtures
+  --no-full-write              (run) do NOT pass the DR-126 EAPI_LAB_FULL_WRITE consent to the live
+                               child: full-write test/system suites skip loudly, scratch-only stays
   --fixtures-force             allow overwriting existing fixture files
   --yes                        required by the fixtures command: confirms replacing reviewed captures
   --capture-via <auto|eapi|cli>
