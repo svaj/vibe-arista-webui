@@ -69,7 +69,7 @@
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
-import { CommandError, EapiError, NotFoundError, ProtocolError } from './errors'
+import { CommandError, EapiError, ProtocolError } from './errors'
 import { buildFullWriteNode, liveFullWriteReadiness } from './testing/live-full-write'
 import { describeLiveTarget, matchesDeviceIdentity, requireScratchInterface, unwrapLiveTarget, type LiveTarget } from './testing/live-guard'
 import { runGuardedLiveWriteSession } from './testing/live-session-policy'
@@ -272,15 +272,29 @@ describe.skipIf(!gate.runnable)('live full-write: pyeapi test_api_vrrp.py (20 ca
       expect(table?.has(VRID_GET)).toBe(true)
       const row = table?.get(VRID_GET)
       if (row === undefined) return
+      console.log(`live-vrrp: bare-disabled evidence — vrid ${String(VRID_GET)} lines ${JSON.stringify(await vrrpLines(node, VRID_GET))}; record ${JSON.stringify(row)}`)
       expect(row.enable).toBe(false) // the `disabled` line votes (vrrp.py:253-260)
       expect(row.description).toBe('') // divergence 6: upstream answers '' , and so does this parser
       expect(row.secondaryIp).toEqual([])
       expect(row.track).toEqual([])
       expect(row.bfdIp).toBe('')
-      for (const field of ['primaryIp', 'priority', 'ipVersion', 'timersAdvertise', 'macAddrAdvInterval', 'preemptDelayMin', 'preemptDelayReload', 'delayReload'] as const) {
-        expect(field in row).toBe(false) // DR-027/DR-029: absence, where pyeapi answers None
-      }
-      console.log(`live-vrrp: the record 4.28.14M answers for a bare disabled VRouter is ${JSON.stringify(row)}`)
+      // The EXECUTED device answer (run evidence above, 2026-11-08): a staged "bare" VRouter is NOT a
+      // bare `disabled` line — 4.28.14M renders its whole default body: `priority-level 100`,
+      // `advertisement interval 1` (the era quirk pyeapi keys modern-versions to),
+      // `mac-address advertisement-interval 30`, positive `preempt`, the COMBINED
+      // `preempt delay minimum 0 reload 0`, `timers delay reload 0`, `ipv4 0.0.0.0`, `ipv6 ::` and
+      // `ipv4 version 2`. Absence stays only for keys the device never renders (no `bfd ip`, no
+      // `tracked-object`). pyeapi's None-everywhere fixture never meets that body; the 7050TX-64's
+      // default body differs by platform and remains a #14 §3 hardware-sweep fact.
+      expect(row.priority).toBe(100)
+      expect(row.timersAdvertise).toBe(1)
+      expect(row.macAddrAdvInterval).toBe(30)
+      expect(row.preempt).toBe(true)
+      expect(row.preemptDelayMin).toBe(0)
+      expect(row.preemptDelayReload).toBe(0)
+      expect(row.delayReload).toBe(0)
+      expect(row.primaryIp).toBe('0.0.0.0')
+      expect(row.ipVersion).toBe(2)
     } finally {
       await dropVrrp(node, VRID_GET)
     }
@@ -450,8 +464,17 @@ describe.skipIf(!gate.runnable)('live full-write: pyeapi test_api_vrrp.py (20 ca
       // first arm always supplies an address): negate once to clear the pair's address, then negate again.
       // Upstream reads the current address back with no guard at all (`vrrp.py:528-536`) and would compose
       // `no vrrp 10 ip None`; {@link VrrpResource.currentPrimaryIp} refuses with `NotFoundError` instead.
-      await attempt('the clearing negation, leaving the pair with no primary address', () => node.vrrp.setPrimaryIp(IFACE, VRID_PRIMARY_IP, { mode: 'no' }))
-      await expect(node.vrrp.setPrimaryIp(IFACE, VRID_PRIMARY_IP, { mode: 'no' })).rejects.toBeInstanceOf(NotFoundError)
+      const firstClear = await attempt('the clearing negation, leaving the pair with no primary address', () => node.vrrp.setPrimaryIp(IFACE, VRID_PRIMARY_IP, { mode: 'no' }))
+      expect(firstClear).toBe(true)
+      console.log(`live-vrrp: primary-ip clearing evidence — vrid ${String(VRID_PRIMARY_IP)} lines ${JSON.stringify(await vrrpLines(node, VRID_PRIMARY_IP))}; row ${JSON.stringify(await rowOf(node, VRID_PRIMARY_IP))}`)
+      // 4.28.14M renders the pair with its ZERO address permanently — `vrrp 210 ipv4 0.0.0.0` survives
+      // every negation (run-6 evidence), so the second negation legitimately names that rendered
+      // current address instead of facing an unreadable pair. Upstream's compose-`no vrrp 10 ip None`
+      // bug therefore has no live face on this target, and this client's `NotFoundError` refusal for an
+      // un-nameable pair stays pinned offline (divergence 4, row 216).
+      const secondClear = await attempt('the second negation, naming the rendered 0.0.0.0', () => node.vrrp.setPrimaryIp(IFACE, VRID_PRIMARY_IP, { mode: 'no' }))
+      expect(secondClear).toBe(true)
+      expect((await rowOf(node, VRID_PRIMARY_IP))?.primaryIp).toBe('0.0.0.0')
     } finally {
       await dropVrrp(node, VRID_PRIMARY_IP)
     }
@@ -612,6 +635,7 @@ describe.skipIf(!gate.runnable)('live full-write: pyeapi test_api_vrrp.py (20 ca
       ])
       expect(complete).toBe(true)
       console.log(`live-vrrp: preemptDelayMin now reads ${String((await rowOf(node, VRID_PREEMPT_MIN))?.preemptDelayMin)} (upstream drops this key from its own create comparison at :128 — this chain is the live answer)`)
+      console.log(`live-vrrp: preempt-delay-min evidence — vrid ${String(VRID_PREEMPT_MIN)} lines ${JSON.stringify(await vrrpLines(node, VRID_PREEMPT_MIN))}`)
       expect((await rowOf(node, VRID_PREEMPT_MIN))?.preemptDelayMin).toBe(150)
     } finally {
       await dropVrrp(node, VRID_PREEMPT_MIN)
@@ -629,6 +653,7 @@ describe.skipIf(!gate.runnable)('live full-write: pyeapi test_api_vrrp.py (20 ca
         [':487 value 150', () => node.vrrp.setPreemptDelayReload(IFACE, VRID_PREEMPT_RELOAD, { value: 150 })],
       ])
       expect(complete).toBe(true)
+      console.log(`live-vrrp: preempt-delay-reload evidence — vrid ${String(VRID_PREEMPT_RELOAD)} lines ${JSON.stringify(await vrrpLines(node, VRID_PREEMPT_RELOAD))}; row ${JSON.stringify(await rowOf(node, VRID_PREEMPT_RELOAD))}`)
       expect((await rowOf(node, VRID_PREEMPT_RELOAD))?.preemptDelayReload).toBe(150)
     } finally {
       await dropVrrp(node, VRID_PREEMPT_RELOAD)

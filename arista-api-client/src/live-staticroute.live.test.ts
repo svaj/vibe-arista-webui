@@ -228,9 +228,14 @@ describe.skipIf(!gate.runnable)('live full-write lane: pyeapi test_api_staticrou
         console.warn(`${SUITE}: ${JSON.stringify(leafLine(arm.dest, arm.attrs))} was accepted but is NOT readable — distance is required by ROUTES_RE (staticroute.py:72, divergence 6)`)
       } else {
         const rows = (await node.staticroute.get(arm.dest)) ?? []
+        console.log(`${SUITE}: evidence for arm ${arm.dest} — device leaf lines ${JSON.stringify((await node.getRunningConfig()).split(/\r?\n/u).filter((line) => /^\s*ip route\b/u.test(line) && line.includes(arm.dest)))}; parsed rows ${JSON.stringify(rows)}`)
         expect(rows.length).toBe(1)
         expect(rows[0]?.distance).toBe(arm.attrs.distance)
-        expect(rows[0]?.tag).toBe(arm.attrs.tag)
+        // Executed corpus (2026-11-08): this device MATERIALISES the default tag on every static leaf —
+        // an arm written without `tag` renders `… tag 0` (see the evidence line above), so the parsed
+        // tag is the number 0, never absence. pyeapi's mocks never rendered the default, which is why
+        // upstream's `tag is None` pins passed there; the offline pins keep that vocabulary story.
+        expect(rows[0]?.tag).toBe(arm.attrs.tag ?? 0)
         expect(rows[0]?.routeName).toBe(arm.attrs.routeName)
         expect(rows[0]?.nextHop).toBe(arm.attrs.nextHop)
         expect(rows[0]?.nextHopIp).toBe(arm.attrs.nextHopIp)
@@ -405,12 +410,13 @@ describe.skipIf(!gate.runnable)('live full-write lane: pyeapi test_api_staticrou
       return
     }
     const after = (await node.staticroute.get(DEST)) ?? []
+    console.log(`${SUITE}: setRouteName evidence — device leaf lines ${JSON.stringify((await node.getRunningConfig()).split(/\r?\n/u).filter((line) => /^\s*ip route\b/u.test(line) && line.includes(DEST)))}; rows ${JSON.stringify(after)}`)
     expect(after).toHaveLength(1)
     expect(after[0]?.routeName).toBe('livert3')
     // The mirror of `setTag`'s caveat (staticroute.ts:427-431): EOS replaces the whole leaf line, so a field the
-    // call did not re-pass is gone. Here the staged route had no tag, and the name it carried is replaced.
-    expect(after[0]?.tag).toBeUndefined()
-    console.log(`${SUITE}: after setRouteName the leaf reads ${JSON.stringify(after[0])}`)
+    // call did not re-pass is gone. Here the staged route had no tag — and on the device "gone" means the
+    // rendered DEFAULT, `tag 0` (leaf evidence above), not absence.
+    expect(after[0]?.tag).toBe(0)
     requireApplied('setname-clean', await batch(node, 'setname-clean', [`no ip route ${DEST} Ethernet1 192.0.2.1 1 name livert3`]))
     expect(await node.staticroute.get(DEST)).toBeUndefined()
   })

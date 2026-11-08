@@ -1057,9 +1057,14 @@ function parseVrrp(config: string, vrid: string, family: VrrpCommandFamily): Vrr
   const description = descriptionMatch !== null ? String(descriptionMatch[1]).replace(/^\s+/u, '') : ''
   // mac_addr_adv_interval — era-neutral (:320-322).
   const mac = first(line('mac-address advertisement-interval (\\d+)'))
-  // preempt_delay_min/reload — era-neutral (:326-328, :332-334).
-  const preMin = first(line('preempt delay minimum (\\d+)'))
-  const preRel = first(line('preempt delay reload (\\d+)'))
+  // preempt_delay_min/reload — era-neutral (:326-328, :332-334). Upstream's regexes end-anchor the line
+  // (`… preempt delay minimum (\d+)$`), a shape its mocks invented — the EXECUTED corpus (4.28.14M,
+  // 2026-11-08) folds BOTH seconds onto one line (`vrrp 201 preempt delay minimum 0 reload 0`, and
+  // `minimum 150 reload 0` after the min-chain) while every half is still written singly and each write
+  // preserves the other half. Each half is now read with the sibling's optional tail; a lone line
+  // (upstream's mock shape) keeps matching.
+  const preMin = first(line('preempt delay minimum (\\d+)(?: reload \\d+)?'))
+  const preRel = first(line('preempt delay(?: minimum \\d+)? reload (\\d+)'))
   // bfd_ip — the address OR the empty alternative, :338-340; three answers (:341-344): no match → '',
   // bare-line match → group undefined → null, match+address → the string.
   const bfd = first(line('bfd ip(?: (\\d+\\.\\d+\\.\\d+\\.\\d+)|)'))

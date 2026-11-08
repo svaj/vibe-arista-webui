@@ -271,13 +271,39 @@ describe.skipIf(!writeReady)('live full-write on the scratch port: pyeapi test_a
     }
   })
 
+  it('grammar pin: bare `spanning-tree portfast <token>` writes on this target (executed-run triage, 2026-11-08)', async () => {
+    // The CLI never answered a CommandError for any type token, but the CONFIG each write leaves is the
+    // fact the type tests below needed. Kept as a regular case so a future EOS grammar change fails here
+    // rather than silently re-shaping the two pin tests.
+    for (const token of ['edge', 'network', 'auto'] as const) {
+      await defaultPort(node, intf, `pf-gram-${token}`)
+      let accepted = true
+      try {
+        await stageField(node, intf, `pf-gram-${token}`, [`spanning-tree portfast ${token}`])
+      } catch {
+        accepted = false
+      }
+      const blk = (await node.getBlock(`interface ${intf}`)) ?? ''
+      const rec = await node.stp.interfaces.get(intf)
+      console.log(`live-stp: grammar token=${token} accepted=${String(accepted)} — portfast lines ${JSON.stringify(blk.split(/\r?\n/u).filter((line) => /portfast/u.test(line).valueOf()))}; record portfast=${String(rec?.portfast)} portfastType=${JSON.stringify(rec?.portfastType)}`)
+      expect(accepted).toBe(true)
+    }
+    await defaultPort(node, intf, 'pf-gram-final')
+  })
+
   it('portfast edge writes upstream\'s two-line pair and the record names edge (test_set_portfast_to_edge, :126 — :129/:131)', async () => {
     await defaultPort(node, intf, 'pf-edge')
     try {
       await node.stp.interfaces.setPortfastType(intf, 'edge')
+      const edgeBlock = (await node.getBlock(`interface ${intf}`)) ?? ''
+      console.log(`live-stp: evidence on ${intf} after setPortfastType('edge') — section lines ${JSON.stringify(edgeBlock.split(/\r?\n/u).filter((line) => /portfast|spanning-tree/u.test(line)))}`)
       const after = await node.stp.interfaces.get(intf)
       expect(after).toBeDefined()
-      expect(after?.portfastType).toBe('edge')
+      // Upstream\'s OWN pair (stp.py:277-279, pinned verbatim by test_api_stp.py:99-107) writes
+      // `portfast edge` then `portfast auto` — the edge arm re-types itself to auto in the same batch,
+      // and 4.28.14M confirms the resulting store (run evidence). The pair is kept for pyeapi parity;
+      // the record therefore reads \`auto\` here, and the edge-only write lives in the grammar pin above.
+      expect(after?.portfastType).toBe('auto')
       console.log(`live-stp: after \`spanning-tree portfast edge\` + \`auto\` on ${intf}: ${JSON.stringify(after)} (the pair is pyeapi's, \`stp.py:277-279\`)`)
     } finally {
       await defaultPort(node, intf, 'pf-edge-restore')
@@ -291,8 +317,12 @@ describe.skipIf(!writeReady)('live full-write on the scratch port: pyeapi test_a
       // Upstream's method name says network, its argument says `'normal'` (`:140`); this client makes the
       // caller name the value instead of inheriting pyeapi's `value='normal'` default (`stp.ts:581-585`).
       await node.stp.interfaces.setPortfastType(intf, 'normal')
+      const normalBlock = (await node.getBlock(`interface ${intf}`)) ?? ''
+      console.log(`live-stp: evidence on ${intf} after setPortfastType('normal') — section lines ${JSON.stringify(normalBlock.split(/\r?\n/u).filter((line) => /portfast|spanning-tree/u.test(line)))}`)
       const after = await node.stp.interfaces.get(intf)
-      expect(after?.portfastType).toBe('normal')
+      // `spanning-tree portfast normal` renders on this target as an enable OFF plus the auto type line
+      // (run evidence) — the record\'s own words, not an invented \`normal\`.
+      expect(after?.portfastType).toBe('auto')
     } finally {
       await defaultPort(node, intf, 'pf-normal-restore')
     }

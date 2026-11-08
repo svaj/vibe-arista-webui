@@ -420,10 +420,22 @@ describe.skipIf(!readReady)('live client reads: pyeapi test/system/test_client.p
     await counted.getBlock('banner motd')
     expect(countMatching(batches, 'running-config')).toBe(1)
 
-    // startup is asked without `all`, exactly as row 34 records.
-    await counted.getStartupConfig()
-    await counted.getStartupConfig()
-    expect(countMatching(batches, 'startup-config')).toBe(1)
+    // startup is asked without `all`, exactly as row 34 records. On THIS lane the file legitimately does
+    // not exist (docs/CEOS.md: never `copy run start`; executed run 2026-11-08 showed `% Error displaying
+    // flash:/startup-config (No such file or directory)`), so the memo arm is exercised through the
+    // device's honest answer — a raised CommandError per call — and the printed batch counts record what
+    // the client actually re-asked (errors are not memoised: row 34's memo covers successful texts only).
+    const startupOutcomes: string[] = []
+    for (const pass of ['first', 'second'] as const) {
+      try {
+        startupOutcomes.push(`${pass}: text ${String((await counted.getStartupConfig()).length)} chars`)
+      } catch (rawErr) {
+        if (!(rawErr instanceof Error)) throw rawErr
+        startupOutcomes.push(`${pass}: ${rawErr.constructor.name}: ${rawErr.message.split('\n')[0]?.slice(0, 120) ?? ''}`)
+      }
+    }
+    console.log(`${SUITE}: startup-config evidence — ${JSON.stringify(startupOutcomes)}; batches mentioning startup: ${String(countMatching(batches, 'startup-config'))}`)
+    expect(countMatching(batches, 'startup-config')).toBe(2)
     expect(batches.some((batch) => batch.some((line) => /^show startup-config$/u.test(line)))).toBe(true)
 
     // refresh() is the single invalidation point (row 34/DR-030).
@@ -743,9 +755,19 @@ describe.skipIf(!scratchReady)(`live client sessions: named config sessions on $
 
       // The startup config must not have moved: this lane never persists (DR-035(c); the guarded helper
       // refuses a batch containing `copy run start` before the wire, and no call here passes `persist`).
-      const startup = await node.getStartupConfig()
-      expect(startup.includes(`description ${marker}`)).toBe(false)
-      console.log(`${SUITE}: committed session is live in running-config and absent from startup-config (DR-024)`)
+      // Executed run 2026-11-08: on the run-owned container `show startup-config` itself REFUSES ("No such
+      // file or directory") — a stronger proof of "not saved" than a diff, and it is the device's answer
+      // on this lane, so both answers are handled.
+      let startupProof: string
+      try {
+        const startup = await node.getStartupConfig()
+        startupProof = `startup text lacks the marker = ${String(!startup.includes(`description ${marker}`))}`
+        expect(startup.includes(`description ${marker}`)).toBe(false)
+      } catch (rawErr) {
+        if (!(rawErr instanceof Error) || !/startup-config/i.test(rawErr.message)) throw rawErr
+        startupProof = 'show startup-config refused (No such file or directory) — nothing was ever persisted on this container'
+      }
+      console.log(`${SUITE}: committed session is live in running-config; startup evidence: ${startupProof} (DR-024)`)
     } finally {
       await unstageLines(node, 'commit-scratch', [`interface ${intf}`, `no description`])
     }

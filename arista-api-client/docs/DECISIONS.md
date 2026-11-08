@@ -2034,6 +2034,49 @@ first stamped entry; the pyeapi-divergence pointer convention from DR-040 is hon
 migration rows instead of restating each rename. Supersedes nothing; closes DR-020's OPEN marker
 without rewriting its text.
 
+### DR-128 — the lab endpoint is a harness-owned loopback relay, the live child gets the full TLS trust triple, and the hardware lane is EXCLUDED from the CI live job, never skipped
+The first EXECUTED run of the live corpus (2026-11-08, WSL2 restart, docker 29.9.2 / kernel
+6.18.33.2-microsoft-standard-WSL2) exposed two stacked host facts and one lane-convention gap,
+each now closed mechanically.
+
+**(a) No Docker publish, ever, for the lab lane.** Docker's `-p 127.0.0.1:N:443` resolved its
+`docker-proxy` target to the run's **data1** bridge endpoint (`-container-ip 172.19.0.2` observed in
+the proxy cmdline) even in the vendor-shaped single-create-attach topology DR-122's note leaned on —
+cEOS owns those data NICs as front-panel Ethernet with no eAPI listener, so every handshake
+ECONNRESET'd at the Docker hop while EOS itself served on the mgmt bridge (`Hits: 0, Bytes in: 0`
+server-side; a host-direct connect to the mgmt-bridge IP answered normally). The CLI has no way to
+qualify `-p` with the container endpoint, so `createArgs` dropped the publish entirely and `up` now
+starts `scripts/eapi-port-forward.mjs`: a detached, **literal-127.0.0.0/8-bind-only**, pure-byte relay
+to the mgmt address the harness itself pinned (`forwarderPid` in state schema 3, timeout-path and
+teardown SIGTERM behind a `/proc/<pid>/cmdline` ownership check, 3 h max-life and 60 m idle
+self-exits, and a state-file watch so an orphan can never outlive its run nor its credentials).
+A byte relay adds no TLS peer: the pinned container certificate still verifies byte-for-byte through
+it, and probe refusals now print the attribution mechanically (relay-vs-direct cert peeks +
+forwarder liveness). The first probe against a just-booted node is expected to absorb
+`upstream error … ECONNREFUSED` while CApi binds — it recovered at 30.5 s in run 9; readiness stays
+EOS-side, not Docker-side (DR-034 unchanged).
+
+**(b) The live child gets the trust TRIPLE.** cEOS's `capi.pem` ships `subject CN=self.signed` and
+**no subjectAltName whatsoever**, and this client deliberately never lets a fingerprint pin waive
+hostname verification (`node-tls.ts`), so the previous CA-only alias failed **every** live suite with
+`Hostname/IP does not match altnames: IP: 127.0.0.1 is not in the cert's list`. `childEnv` now
+aliases `EAPI_CA_FILE` + `EAPI_FINGERPRINT` (the run's own anchor fp) + `EAPI_SERVER_NAME` (the CN
+read out of the container's own file — Node's name check falls back to the subject CN only for a
+DNS-shaped authority, which is why the CN must ride as the identity). Trust is chain + exact pin +
+CN — strictly stronger than the harness probe's own posture (DR-013 tightened, not relaxed;
+`EAPI_INSECURE_TLS` stays refused). Suites self-report `tls=pinned`.
+
+**(c) CI live lane = exclude the hardware runners.** `src/hw-inventory.live.test.ts` and
+`src/hw-session-probe.live.test.ts` (DR-124/DR-125) require supervised `EAPI_TARGET_CLASS=hardware`
+consent no CI job can hold; `assert-live-run.mjs`'s zero-skip rule correctly refused them as
+*skipped* on an executed-green corpus. The workflow now passes `--exclude 'src/hw-*.live.test.ts'`:
+every test the job CAN run must EXECUTE and pass, "skipped" keeps its "something went wrong" meaning,
+and the local `npm run test:live` target keeps those two files' loud skips. DR-125's "hardware never
+runs in CI" now has a gate shape. Run 10 (CI shape, `--quiet`) is the referenced execution; §5 row
+230 records what the executed corpus found (default-body materialisation across bgp/vrrp/staticroute,
+the one-line preempt-delay fold, `next-hop-self` sub-feature renderings, committed-named-session name
+reuse, and the pyeapi `portfast edge` pair that re-types itself — upstream parity kept, expectations
+re-pinned to the device's own words).
 
 ## Open items (need the device)
 

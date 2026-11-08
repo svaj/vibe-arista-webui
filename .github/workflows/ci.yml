@@ -195,8 +195,17 @@ jobs:
         # endpoint, both between jobs and within Vitest/Playwright".
         run: |
           set -o pipefail
+          # `--exclude src/hw-*` keeps the HARDWARE capture runners (src/hw-inventory.live.test.ts,
+          # src/hw-session-probe.live.test.ts — DR-124/DR-125) out of this lane entirely: they need a
+          # supervised switch session under `EAPI_TARGET_CLASS=hardware` consent that no CI job can hold,
+          # and left in place they land as 2 SKIPPED files — which `assert-live-run` forbids by design
+          # (in the lab lane a skip means something went wrong). Excluded instead of skipped keeps the
+          # zero-skip rule mechanical: every live test this job CAN run must EXECUTE and pass.
+          # The child MUST run through the client workspace's own script: the `live` project is defined
+          # in arista-api-client/vitest.config.ts, and `npx vitest run --project live` from the repo ROOT
+          # fails config resolution outright (probed 2026-11-08 — this CI step had never been executed).
           npm run lab:run -- --quiet --no-fixtures --port "$LAB_PORT" -- \
-            npx vitest run --project live 2>&1 | tee "$LIVE_LOG"
+            npm -w arista-api-client run test:live -- --exclude 'src/hw-*.live.test.ts' 2>&1 | tee "$LIVE_LOG"
         shell: bash
 
       - name: Teardown — always, including readiness/test/timeout failure paths
