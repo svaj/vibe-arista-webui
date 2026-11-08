@@ -272,6 +272,7 @@ describe.skipIf(!gate.runnable)('live full-write: pyeapi test_api_vrrp.py (20 ca
       expect(table?.has(VRID_GET)).toBe(true)
       const row = table?.get(VRID_GET)
       if (row === undefined) return
+      console.log(`live-vrrp: bare-disabled evidence — vrid ${String(VRID_GET)} lines ${JSON.stringify(await vrrpLines(node, VRID_GET))}; record ${JSON.stringify(row)}`)
       expect(row.enable).toBe(false) // the `disabled` line votes (vrrp.py:253-260)
       expect(row.description).toBe('') // divergence 6: upstream answers '' , and so does this parser
       expect(row.secondaryIp).toEqual([])
@@ -451,6 +452,7 @@ describe.skipIf(!gate.runnable)('live full-write: pyeapi test_api_vrrp.py (20 ca
       // Upstream reads the current address back with no guard at all (`vrrp.py:528-536`) and would compose
       // `no vrrp 10 ip None`; {@link VrrpResource.currentPrimaryIp} refuses with `NotFoundError` instead.
       await attempt('the clearing negation, leaving the pair with no primary address', () => node.vrrp.setPrimaryIp(IFACE, VRID_PRIMARY_IP, { mode: 'no' }))
+      console.log(`live-vrrp: primary-ip clearing evidence — vrid ${String(VRID_PRIMARY_IP)} lines ${JSON.stringify(await vrrpLines(node, VRID_PRIMARY_IP))}; row ${JSON.stringify(await rowOf(node, VRID_PRIMARY_IP))}`)
       await expect(node.vrrp.setPrimaryIp(IFACE, VRID_PRIMARY_IP, { mode: 'no' })).rejects.toBeInstanceOf(NotFoundError)
     } finally {
       await dropVrrp(node, VRID_PRIMARY_IP)
@@ -612,6 +614,7 @@ describe.skipIf(!gate.runnable)('live full-write: pyeapi test_api_vrrp.py (20 ca
       ])
       expect(complete).toBe(true)
       console.log(`live-vrrp: preemptDelayMin now reads ${String((await rowOf(node, VRID_PREEMPT_MIN))?.preemptDelayMin)} (upstream drops this key from its own create comparison at :128 — this chain is the live answer)`)
+      console.log(`live-vrrp: preempt-delay-min evidence — vrid ${String(VRID_PREEMPT_MIN)} lines ${JSON.stringify(await vrrpLines(node, VRID_PREEMPT_MIN))}`)
       expect((await rowOf(node, VRID_PREEMPT_MIN))?.preemptDelayMin).toBe(150)
     } finally {
       await dropVrrp(node, VRID_PREEMPT_MIN)
@@ -629,6 +632,7 @@ describe.skipIf(!gate.runnable)('live full-write: pyeapi test_api_vrrp.py (20 ca
         [':487 value 150', () => node.vrrp.setPreemptDelayReload(IFACE, VRID_PREEMPT_RELOAD, { value: 150 })],
       ])
       expect(complete).toBe(true)
+      console.log(`live-vrrp: preempt-delay-reload evidence — vrid ${String(VRID_PREEMPT_RELOAD)} lines ${JSON.stringify(await vrrpLines(node, VRID_PREEMPT_RELOAD))}; row ${JSON.stringify(await rowOf(node, VRID_PREEMPT_RELOAD))}`)
       expect((await rowOf(node, VRID_PREEMPT_RELOAD))?.preemptDelayReload).toBe(150)
     } finally {
       await dropVrrp(node, VRID_PREEMPT_RELOAD)

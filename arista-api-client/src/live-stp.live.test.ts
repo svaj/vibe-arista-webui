@@ -275,6 +275,8 @@ describe.skipIf(!writeReady)('live full-write on the scratch port: pyeapi test_a
     await defaultPort(node, intf, 'pf-edge')
     try {
       await node.stp.interfaces.setPortfastType(intf, 'edge')
+      const edgeBlock = (await node.getBlock(`interface ${intf}`)) ?? ''
+      console.log(`live-stp: evidence on ${intf} after setPortfastType('edge') — section lines ${JSON.stringify(edgeBlock.split(/\r?\n/u).filter((line) => /portfast|spanning-tree/u.test(line)))}`)
       const after = await node.stp.interfaces.get(intf)
       expect(after).toBeDefined()
       expect(after?.portfastType).toBe('edge')
@@ -291,6 +293,8 @@ describe.skipIf(!writeReady)('live full-write on the scratch port: pyeapi test_a
       // Upstream's method name says network, its argument says `'normal'` (`:140`); this client makes the
       // caller name the value instead of inheriting pyeapi's `value='normal'` default (`stp.ts:581-585`).
       await node.stp.interfaces.setPortfastType(intf, 'normal')
+      const normalBlock = (await node.getBlock(`interface ${intf}`)) ?? ''
+      console.log(`live-stp: evidence on ${intf} after setPortfastType('normal') — section lines ${JSON.stringify(normalBlock.split(/\r?\n/u).filter((line) => /portfast|spanning-tree/u.test(line)))}`)
       const after = await node.stp.interfaces.get(intf)
       expect(after?.portfastType).toBe('normal')
     } finally {

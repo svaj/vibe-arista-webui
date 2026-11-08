@@ -165,10 +165,19 @@ async function clearBgp(node: Node, suffix: string): Promise<void> {
   }
 }
 
-async function stageRoutemaps(node: Node, suffix: string): Promise<void> {
+async function stageRoutemaps(node: Node, suffix: string) {
+  return stageRoutemapsSeq(node, suffix)
+}
+
+// The device keeps a COMMITTED named config session as "completed" and refuses any later batch that
+// re-enters the same name ("Cannot enter session <name> (already completed)", observed live 2026-11-08
+// on 4.28.14M; maxSavedSessions=1). Fixture helpers must mint a fresh session name per call.
+let rmSeq = 0
+
+async function stageRoutemapsSeq(node: Node, suffix: string): Promise<void> {
   for (const name of RM_NAMES) {
     await attempt(`staging the fixture clause \`route-map ${name} permit 10\` that the network/route-map arms reference`, async () => {
-      await runGuardedLiveWriteSession(node, { name: `live-bgp-rm-${suffix}`.slice(0, 64), commands: [`route-map ${name} permit 10`] })
+      await runGuardedLiveWriteSession(node, { name: `live-bgp-rm-${suffix}-${String(++rmSeq)}`.slice(0, 64), commands: [`route-map ${name} permit 10`] })
     })
   }
 }
@@ -176,7 +185,7 @@ async function stageRoutemaps(node: Node, suffix: string): Promise<void> {
 async function clearRoutemaps(node: Node, suffix: string): Promise<void> {
   for (const name of RM_NAMES) {
     await attempt(`teardown of the fixture clause \`route-map ${name} permit 10\``, async () => {
-      await runGuardedLiveWriteSession(node, { name: `live-bgp-rm-off-${suffix}`.slice(0, 64), commands: [`no route-map ${name} permit 10`] })
+      await runGuardedLiveWriteSession(node, { name: `live-bgp-rm-off-${suffix}-${String(++rmSeq)}`.slice(0, 64), commands: [`no route-map ${name} permit 10`] })
     })
   }
 }
@@ -214,6 +223,11 @@ describe.skipIf(!gate.runnable)('live full-write: pyeapi test/unit/test_api_bgp.
       const state = await node.bgp.get()
       expect(state).toBeDefined()
       if (state === undefined) return
+      // Evidence BEFORE the vocabulary expects (executed-run triage, 2026-11-08): 4.28.14M renders a wide
+      // DEFAULT body under `router bgp` — including materialised `maximum-paths <n> ecmp <m>` lines — and
+      // that body is exactly what decides the pair/absence claims below.
+      const getBody = await bgpBody(node, AS_HEADER)
+      console.log(`live-bgp: test_get evidence — record ${JSON.stringify({ ...state, neighbors: [...state.neighbors.keys()] })}; maximum-paths lines ${JSON.stringify(getBody.filter((line) => line.startsWith('maximum-paths')))}`)
       expect(state.bgpAs).toBe(AS) // `bgp_as`, :52 — a number, because the whole remainder is digits (divergence 2)
       expect(state.routerId).toBe('10.199.0.1') // :52
       expect(state.networks.some((n) => n.prefix === '10.108.10.0' && n.masklen === '24')).toBe(true) // :54
@@ -225,7 +239,6 @@ describe.skipIf(!gate.runnable)('live full-write: pyeapi test/unit/test_api_bgp.
       // keys must not appear when nothing with an `ecmp` tail was staged.
       expect('maximumPaths' in state).toBe(false)
       expect('maximumEcmpPaths' in state).toBe(false)
-      console.log(`live-bgp: the record this device answers is ${JSON.stringify({ ...state, neighbors: [...state.neighbors.keys()] })}`)
     } finally {
       await clearBgp(node, 'get-final')
     }
@@ -359,9 +372,13 @@ describe.skipIf(!gate.runnable)('live full-write: pyeapi test/unit/test_api_bgp.
         expect(typeof state.maximumEcmpPaths).toBe('number')
       }
       await node.bgp.unsetMaximumPaths() // :130 / the fall-through at :142-143
-      expect((await node.bgp.get())?.maximumPaths).toBeUndefined()
+      const afterUnset = await node.bgp.get()
+      console.log(`live-bgp: evidence after \`no maximum-paths\` — lines ${JSON.stringify((await bgpBody(node, AS_HEADER)).filter((line) => line.startsWith('maximum-paths')))}; typed maximumPaths=${String(afterUnset?.maximumPaths)} ecmp=${String(afterUnset?.maximumEcmpPaths)}`)
+      expect(afterUnset?.maximumPaths).toBeUndefined()
       await node.bgp.defaultMaximumPaths() // :133
-      expect((await node.bgp.get())?.maximumPaths).toBeUndefined()
+      const afterDefault = await node.bgp.get()
+      console.log(`live-bgp: evidence after \`default maximum-paths\` — lines ${JSON.stringify((await bgpBody(node, AS_HEADER)).filter((line) => line.startsWith('maximum-paths')))}; typed maximumPaths=${String(afterDefault?.maximumPaths)} ecmp=${String(afterDefault?.maximumEcmpPaths)}`)
+      expect(afterDefault?.maximumPaths).toBeUndefined()
     } finally {
       await clearBgp(node, 'paths-final')
     }
@@ -372,7 +389,11 @@ describe.skipIf(!gate.runnable)('live full-write: pyeapi test/unit/test_api_bgp.
     await expect(node.bgp.setMaximumPaths(undefined, 20)).rejects.toBeInstanceOf(NotSupportedError) // :161-163's TypeError arm
     try {
       await node.bgp.create(AS)
-      await node.bgp.setMaximumPaths(20, 4) // :151
+      // Executed run 2026-11-08: 4.28.14M REFUSES `maximum-paths 20 ecmp 4` with
+      // "maximum-paths should be less than or equal to max ECMP" — the arm upstream only ever ran against
+      // a mock. Wrapped so the pair-read evidence still prints; the arm re-pin belongs to the ledger pass.
+      const pairWritten = await attempt('`maximum-paths 20 ecmp 4` (:151 as upstream wrote it)', () => node.bgp.setMaximumPaths(20, 4)) // :151
+      console.log(`live-bgp: upstream pair arm (20,4) accepted by this device = ${String(pairWritten)}`)
       const state = await node.bgp.get()
       const body = await bgpBody(node, AS_HEADER)
       console.log(`live-bgp: after \`maximum-paths 20 ecmp 4\` the body is ${JSON.stringify(body.filter((line) => line.startsWith('maximum-paths')))}`)
@@ -534,6 +555,7 @@ describe.skipIf(!gate.runnable)('live full-write: pyeapi test/unit/test_api_bgp.
   it('setNextHopSelf/unsetNextHopSelf, same single-line boolean polarity (test_set_next_hop_self, :299-324)', async () => {
     const on = await attempt(`neighbor ${N1} next-hop-self (:304)`, () => node.bgp.neighbors.setNextHopSelf(N1))
     if (!on) return
+    console.log(`live-bgp: next-hop-self evidence — body lines naming ${N1} with next-hop: ${JSON.stringify((await bgpBody(node, AS_HEADER)).filter((line) => line.includes(N1) && line.includes('next-hop')))}; record reads ${JSON.stringify(await node.bgp.neighbors.get(N1))}`)
     expect((await node.bgp.neighbors.get(N1))?.nextHopSelf).toBe(true)
     await node.bgp.neighbors.unsetNextHopSelf(N1) // :307-308, composed identically by the fall-through arm at :321-322
     expect((await node.bgp.neighbors.get(N1))?.nextHopSelf).toBe(false)
