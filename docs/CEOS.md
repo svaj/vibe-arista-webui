@@ -8,6 +8,11 @@ instructions in `cEOS-lab-README-generic.txt` in the same directory. The vendor 
 uses 4.21.0F as an example; use the actual local image and version below.
 
 This is the preferred **live** target for tests that need real EOS software.
+(The physical 7050TX-64 is a different lane with stricter gates — its addressing rules, capture
+catalog, probe-spec policy and session-day runbook live in
+[`arista-api-client/docs/HARDWARE-CAPTURE.md`](../arista-api-client/docs/HARDWARE-CAPTURE.md),
+DR-124/DR-125. Container answers never settle a hardware question, DR-043 — and since this month a
+switch session can address the box only through the `hardware` guard class, never through a lab env.)
 The harness (`scripts/ceos-lab.mjs`, npm `lab:*` + `fixtures:refresh`), the live guard,
 and the recorder seam shipped under M12 (#14); the Playwright browser lane is still
 separate opt-in work (#91). The recipe below mirrors what the harness automates and

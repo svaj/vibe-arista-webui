@@ -4,11 +4,13 @@ A TypeScript eAPI client for Arista EOS, ported from (and deliberately **not** a
 Arista's Python [pyeapi](https://github.com/arista-eosplus/pyeapi). It is the library
 [`arista-webui/`](../arista-webui/) uses to talk to the DCS-7050TX-64 / EOS 4.28.13.1M switch.
 
-> **Status: M0 scaffolding only — no protocol code yet** (2026-11-01). The package is a real
-> workspace package that builds, type-checks, lints and tests, and `arista-webui` imports it by name;
-> both entry points (`src/index.ts`, `src/node.ts`) are clearly marked placeholders. pyeapi 1.0.4-rc0
-> was inventoried (≈9 k LOC of source, 436 unit + 284 system test methods) and every milestone is
-> scoped. Progress board: [docs/STATUS.md](./docs/STATUS.md).
+> **Status (2026-11-08): M1–M11 shipped, M12 in parts** — wire protocol, transports, profiles,
+> command layer, config sessions, text-config engine, resource framework (`system`/`vlans`/`switchports`,
+> M10 `interfaces` partly), capability work in flight; the live lane runs against disposable cEOS
+> (30 provisioned captures on main), and the **hardware capture lane is built but never executed**
+> ([docs/HARDWARE-CAPTURE.md](./docs/HARDWARE-CAPTURE.md) is the runbook for the supervised
+> 7050TX-64 session). Progress board: [docs/STATUS.md](./docs/STATUS.md); pyeapi 1.0.4-rc0 remains
+> the inventory baseline (≈9 k LOC source, 436 unit + 284 system test methods).
 
 ## Read these
 
@@ -20,6 +22,7 @@ Arista's Python [pyeapi](https://github.com/arista-eosplus/pyeapi). It is the li
 | [docs/MIGRATION.md](./docs/MIGRATION.md) | pyeapi → TypeScript map, file by file and symbol by symbol, incl. 18 intentional behaviour changes and everything dropped on purpose. |
 | [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) | Layers, types, error taxonomy, the browser/Node split, concurrency rules. |
 | [docs/TESTING.md](./docs/TESTING.md) | Vitest tiers (unit / fixture / live), `MockTransport`, fixture policy, coverage thresholds, live-device safety policy. |
+| [docs/HARDWARE-CAPTURE.md](./docs/HARDWARE-CAPTURE.md) | Switch-session runbook: the `hardware` guard class gates, batch-1 inventory, reviewed session probes, scrubs — how to capture real 7050TX-64 evidence safely. |
 | [docs/USAGE.md](./docs/USAGE.md) | User guide: connect, read, change-review-commit, errors, capabilities, testing your own code. Written ahead of the code as the API target. |
 | [docs/CONNECTIVITY.md](./docs/CONNECTIVITY.md) | What to enable on the switch (eAPI, `cors allowed-origin`, TLS) and whether to go through a proxy. |
 | [cEOS lab runbook](../docs/CEOS.md) | Preferred planned real-EOS integration/live and browser E2E target: local cEOS-lab 4.28.14M, setup, readiness, safety, CI, and hardware limitations. |
@@ -46,7 +49,7 @@ npm run lint    -w @devhax-heavy-industries/arista-eapi
 npm test        -w @devhax-heavy-industries/arista-eapi # never touches the switch (vitest --project unit)
 npm run test:watch -w @devhax-heavy-industries/arista-eapi
 npm run coverage -w @devhax-heavy-industries/arista-eapi # unit project only, v8 thresholds
-npm run test:live -w @devhax-heavy-industries/arista-eapi   # gated: EAPI_LIVE=1 + EAPI_HOST/USER/PASS + EAPI_TARGET_CLASS=lab
+npm run test:live -w @devhax-heavy-industries/arista-eapi   # gated: EAPI_LIVE=1 + creds + EAPI_TARGET_CLASS=lab (container) or =hardware (runbook: docs/HARDWARE-CAPTURE.md)
 npm run build   -w @devhax-heavy-industries/arista-eapi # vite lib build + tsc declarations
 node arista-api-client/scripts/create-issues.mjs   # mirror PLAN.md milestones to GitHub issues (idempotent)
 ```
