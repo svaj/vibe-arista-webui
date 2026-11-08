@@ -98,10 +98,31 @@ Docker's CLI cannot qualify `-p` with the container-side endpoint, so `up` creat
 literal-loopback bind, byte-only — the pinned certificate verifies end-to-end through it — killed by
 teardown behind a `/proc` cmdline ownership check, self-extinguishing on the run's state-file watch
 plus max-life/idle limits). Probe refusals now print relay-vs-direct certificate peeks and the
-forwarder's liveness, so the next host flap is attributed mechanically (one such flap, 2026-11-08
-run 10, showed `EHOSTUNREACH` straight at the fresh mgmt bridge — a WSL2/kernel networking race,
-retry-clean). A just-booted node's first probes may also show `ECONNREFUSED` upstream while CApi
-binds; the bounded window absorbs it (recovered at ~30 s in run 9).
+forwarder's liveness, so the next host flap is attributed mechanically. A just-booted node's first
+probes may also show `ECONNREFUSED` upstream while CApi binds; the bounded window absorbs it
+(recovered at ~30 s in run 9).
+
+**The second WSL2 lesson (same day, **DR-129**) — route *reconciliation* can void the bridge.**
+This host runs WSL >=2.6 **mirrored-mode** networking (fingerprints: `iif ethN ipproto … lookup local`
+policy rules, mirrored Windows adapters as `eth0..ethN`). In that mode Windows' HNS owns pieces of
+`172.16.0.0/12`, and its route reconciliation can silently strip the connected route dockerd just
+installed for a **freshly created** bridge: `docker network create --subnet 172.31.193.0/24` succeeds,
+the bridge device exists with a carrier once the container attaches, yet `ip route get 172.31.193.10`
+answers `via <LAN-gateway> dev ethN` — packets go to the physical network and every relay attempt
+dies `EHOSTUNREACH`. It is per-subnet luck, not a per-octet rule: `.70/.132/.189` booted fine while
+`.159/.193`-class subnets died, in two local runs **and** the first trusted `workflow_dispatch`
+(actions run 42525119847, dispatched exactly this way). Stale `br-` devices + routes surviving WSL
+restarts are the same phenomenon's leftovers (an earlier picker fix excludes CIDRs already in the
+host's route/addr tables, which covers that class). The harness now defends mechanically: `up`
+creates mgmt-bridge candidates — the documented `172.31.16-255` pool then a `10.177.16-255` fallback —
+and keeps one only when its connected route is genuinely live per `ip route show` + `ip route get`
+(`verifyMgmtBridgeRoute`), rm-ing and re-drawing otherwise (bounded, 40 tries, refusal cites the
+reason list); during probing, two handshake deaths trigger a route re-check and a fast refusal with
+reason `mgmt-route-lost-mid-run` instead of waiting out the timeout window, and probe diagnostics
+print `route: live|BROKEN`. The host-side fixes: `[wsl2] networkingMode=NAT` in
+`%UserProfile%\.wslconfig` + `wsl --shutdown` (restarts this session; VS Code reconnects), or run the
+`eos-lab` runner on a native Linux host, where the class does not exist. **Mirrored-mode WSL2 is not
+a supported lab-runner host** unless NAT is set.
 
 In EOS, inspect `show version`, `show interfaces status`, and
 `show management api http-commands`. Confirm the actual management/data interface

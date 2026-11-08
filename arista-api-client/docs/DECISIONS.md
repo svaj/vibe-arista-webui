@@ -2078,6 +2078,30 @@ the one-line preempt-delay fold, `next-hop-self` sub-feature renderings, committ
 reuse, and the pyeapi `portfast edge` pair that re-types itself — upstream parity kept, expectations
 re-pinned to the device's own words).
 
+### DR-129 — the mgmt bridge's subnet is create-verified-retried against LIVE host routes, the pool gained a 10.177 band, and a mid-run route deletion fast-fails the probe
+The first trusted `workflow_dispatch` (actions run 42525119847, this repo, label `eos-lab`) died the way
+local runs 10-11 had: `EHOSTUNREACH` at the relay's upstream socket — but the runner's own machine was
+fresh (container booted, CLI answered, cert anchor written), and `ip route get 172.31.193.10` on that
+host resolved **via the LAN default gateway**, not the just-created bridge. Root cause: WSL >=2.6
+**mirrored-mode** networking keeps Windows authoritative over `172.16.0.0/12`-class space; its route
+reconciliation (and HNS's own /24 allocations inside that band) can void the kernel route a new Docker
+bridge settles — deterministically per-subnet-lucky (.70/.132/.189 fine, .159/.193 class dead), which
+no retry of the published-port path or single-band picker can out-guess. Decision (harness-side,
+`scripts/ceos-lab.mjs`): (1) the picker yields candidates band-major — documented `172.31.16-255`, then
+`10.177.16-255` — still filtered against docker networks AND host route/addr CIDRs; (2) `cmdUp` creates
+each candidate, **verifies** the connected route twice over (`ip route show <cidr>` must hold a
+`scope link … dev br-` entry and `ip route get <mgmtIp>` must resolve `dev br-`, never `via` a
+gateway), rm-s and re-draws otherwise, bounded at 40 and refusing with the reason list; (3) during
+probing, after two failed handshakes the same verifier runs live and an unlive route refuses
+immediately with reason `mgmt-route-lost-mid-run` (the remaining window cannot restore a deleted
+kernel route), and refusal diagnostics print `route: live|BROKEN`. What this does NOT do: it does not
+make a route-eating host a usable lab runner — docs/CEOS.md §mirrored-mode names the fixes
+(`[wsl2] networkingMode=NAT` + `wsl --shutdown`, or a native Linux host for the `eos-lab` runner);
+the endpoint contract (relay, loopback, locks, TLS triple) is untouched, and the refusal reuses
+`EXIT.readiness` because no container is started and no eAPI call is attempted until the path is
+proven. Evidence: create-verify retry proven against the live host on the dispatch branch; the failed
+dispatch log is itself the poisoned-case record.
+
 ## Open items (need the device)
 
 Use cEOS first for software behavior and schema exploration, recording its model/version;

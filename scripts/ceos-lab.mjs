@@ -753,17 +753,26 @@ async function waitForEosCli(container, timeoutSec) {
 
 /* --------------------------------------------------------------- up command */
 
-/** @param {ReturnType<typeof labConfig>} cfg */
 /**
- * Pick a free private /24 under 172.31.16.0–172.31.255.0 for the run's mgmt bridge.
- * The mgmt network MUST carry a pinned static subnet because the published-port path
- * leans on a deterministically-addressed PRIMARY endpoint (see the NIC-topology note
- * in `cmdUp` and DR-034's exact-endpoint rule). Existing networks are read once and
- * the scan starts at a random octet so racing workers do not pick the same first
- * candidate. IPv6 ipam entries and link-local noise are ignored.
- * @returns {{ octetBase: string, cidr: string }}
+ * Candidate pinned static /24s for the run's mgmt bridge, in order of trying.
+ * The mgmt network MUST carry a pinned static subnet because the run-owned
+ * relay dials a deterministically-addressed endpoint (see the NIC-topology
+ * note in `cmdUp` and DR-034's exact-endpoint rule). TWO bands: the
+ * documented 172.31.16-255 pool, then 10.177.16-255 — under WSL2
+ * mirrored-mode networking (the default since WSL 2.6; the `iif ethN
+ * ipproto … lookup local` rules are the fingerprint) Windows HNS owns pieces
+ * of 172.16.0.0/12, and its route reconciliation can silently strip the
+ * connected route a fresh 172.31.x bridge just installed (observed 2026-11-08:
+ * the .159/.193 class failed while .70/.132/.189 behaved — actions run
+ * 42525119847 died exactly that way). `cmdUp` creates each candidate and
+ * VERIFIES the route before keeping it (verifyMgmtBridgeRoute), so a poisoned
+ * subnet costs one rm + retry, not a 4-minute probe timeout. Existing
+ * networks, host routes and interface addresses are filtered out up front,
+ * and each band starts at a random octet so racing workers do not pick the
+ * same first candidate. IPv6 ipam entries and link-local noise are ignored.
+ * @returns {{ octetBase: string, cidr: string }[]}
  */
-function pickMgmtSubnet() {
+function mgmtSubnetCandidates() {
   const ids = docker(['network', 'ls', '-q']).trim().split('\n').filter(Boolean)
   /** @type {{addr: number[], plen: number}[]} */
   const used = []
@@ -807,13 +816,72 @@ function pickMgmtSubnet() {
     }
     return true
   }
-  const start = crypto.randomInt(16, 256)
-  for (let k = 0; k < 240; k++) {
-    const o = 16 + ((start + k) % 240)
-    const cand = [172, 31, o, 0]
-    if (!used.some((u) => overlaps(cand, 24, u.addr, u.plen))) return { octetBase: `172.31.${o}`, cidr: `172.31.${o}.0/24` }
+  const bands = [
+    { a: 172, b: 31, min: 16, max: 255 },
+    { a: 10, b: 177, min: 16, max: 255 },
+  ]
+  /** @type {{ octetBase: string, cidr: string }[]} */
+  const out = []
+  for (const band of bands) {
+    const span = band.max - band.min + 1
+    const start = crypto.randomInt(0, span)
+    for (let k = 0; k < span; k += 1) {
+      const o = band.min + ((start + k) % span)
+      const cand = [band.a, band.b, o, 0]
+      if (!used.some((u) => overlaps(cand, 24, u.addr, u.plen))) {
+        out.push({ octetBase: `${band.a}.${band.b}.${o}`, cidr: `${band.a}.${band.b}.${o}.0/24` })
+      }
+    }
   }
-  refuse('no free 172.31.16-255.0/24 subnet for the lab mgmt bridge — clean up stale Docker networks before retrying', EXIT.internal)
+  if (out.length === 0) {
+    refuse(
+      'no free /24 candidate in 172.31.16-255 or 10.177.16-255 for the lab mgmt bridge — clean up stale '
+      + 'Docker networks and old bridge routes before retrying (docs/CEOS.md §Host-route reconciliation)',
+      EXIT.internal,
+    )
+  }
+  return out
+}
+
+/**
+ * Did a pinned mgmt bridge actually settle a usable host-side route? TWO
+ * conditions must hold together: the kernel route dockerd should have installed
+ * is live in the main table, AND a lookup of the mgmt address resolves via the
+ * bridge device instead of falling through to the default gateway. Healthy
+ * sample (`ip route show <cidr>` / `ip route get <ip>`):
+ *   `10.177.204.0/24 dev br-e8e1… proto kernel scope link src 10.177.204.1 linkdown`
+ *   `10.177.204.10 dev br-e8e1… src 10.177.204.1`
+ * Poisoned on this host (mirror of actions run 42525119847):
+ *   show = empty, and `ip route get 172.31.193.10` -> `via 192.168.1.1 dev eth3`
+ * — the LAN gateway answers for the whole /24, so every relay attempt dies
+ * `EHOSTUNREACH` while dockerd happily reports the network created.
+ * @param {string} cidr @param {string} mgmtIp
+ */
+function verifyMgmtBridgeRoute(cidr, mgmtIp) {
+  if (!cidr || !mgmtIp) return { ok: true, why: 'no pinned mgmt subnet in state — trusting dockerd' }
+  let show, lookup
+  try {
+    show = run('ip', ['route', 'show', cidr], {})
+    lookup = run('ip', ['route', 'get', mgmtIp], {})
+  } catch {
+    return { ok: true, why: 'ip tooling not available on this host — trusting dockerd' }
+  }
+  const showText = String(show.stdout ?? '').trim()
+  const showLine = showText.split('\n')[0] ?? ''
+  const lookupLine = String(lookup.stdout ?? '').trim().split('\n')[0] ?? ''
+  if (show.status !== 0 || showText === '') {
+    return { ok: false, why: `the host routing table keeps no connected route for ${cidr}` }
+  }
+  if (!/\bdev br-/.test(showLine)) {
+    return { ok: false, why: `connected route names an unexpected device: ${showLine}` }
+  }
+  if (/(^|\s)via\s+\S/.test(lookupLine)) {
+    return { ok: false, why: `lookups for the mgmt address leave via the default gateway (${lookupLine}) — WSL2/Windows route reconciliation or HNS owns this /24` }
+  }
+  if (!/\bdev br-/.test(lookupLine)) {
+    return { ok: false, why: `route lookup does not resolve through a bridge device: ${lookupLine}` }
+  }
+  return { ok: true, why: `connected route live (${showLine})` }
 }
 
 /**
@@ -884,15 +952,59 @@ async function cmdUp(cfg) {
     // the flapping half was create-time multi-attach. The mgmt-side safeguards
     // (loopback publish, per-endpoint locks, model/version pins) are unchanged; the
     // two data bridges carry no published port — they exist to boot front-panel ports.
-    const mgmtSubnet = pickMgmtSubnet()
-    const mgmtIp = `${mgmtSubnet.octetBase}.10`
-    for (const net of [names.mgmt, names.data1, names.data2]) {
-      const netArgs = ['network', 'create', `--label=${LABEL_RUN}=${runId}`, `--label=${LABEL_MANAGER}=${MANAGER}`]
-      if (net === names.mgmt) netArgs.push(`--subnet=${mgmtSubnet.cidr}`)
-      netArgs.push(net)
-      docker(netArgs)
+    // Create-and-verify loop: walk candidates until one settles a LIVE connected
+    // route (verifyMgmtBridgeRoute — the WSL2 mirrored-mode/HNS class can strip
+    // routes from fresh bridges, actions run 42525119847 evidence). The network
+    // name is run-scoped and constant, so a failed candidate is removed before the
+    // next create. Bounded at 40 tries: a fully-poisoned host fails in seconds with
+    // the reason list, not in the probe window.
+    /** @type {{ octetBase: string, cidr: string } | undefined} */
+    let mgmtSubnet = undefined
+    /** @type {string[]} */
+    const mgmtTries = []
+    for (const [i, cand] of mgmtSubnetCandidates().entries()) {
+      if (i >= 40) break
+      const res = dockerOpt([
+        'network', 'create',
+        `--label=${LABEL_RUN}=${runId}`, `--label=${LABEL_MANAGER}=${MANAGER}`,
+        `--subnet=${cand.cidr}`, names.mgmt,
+      ])
+      if (res.status !== 0) {
+        dockerOpt(['network', 'rm', names.mgmt])
+        mgmtTries.push(`${cand.cidr}: create refused (${(res.stderr || 'docker error').trim().split('\n')[0]})`)
+        continue
+      }
+      const verdict = verifyMgmtBridgeRoute(cand.cidr, `${cand.octetBase}.10`)
+      if (verdict.ok) {
+        mgmtSubnet = cand
+        mgmtTries.push(`${cand.cidr}: ${verdict.why}`)
+        break
+      }
+      dockerOpt(['network', 'rm', names.mgmt])
+      mgmtTries.push(`${cand.cidr}: ${verdict.why}`)
     }
-    log(`[up] mgmt network pinned to ${mgmtSubnet.cidr} (container ${mgmtIp}); data nets carry the front-panel NICs`)
+    if (mgmtSubnet === undefined) {
+      refuse(
+        'no lab mgmt subnet settled a live connected route. Tried: '
+        + `${mgmtTries.slice(0, 6).join(' · ')}${mgmtTries.length > 6 ? ` … (${String(mgmtTries.length)} candidates)` : ''}. `
+        + 'This host silently drops or refuses kernel routes for Docker bridges: under WSL2 '
+        + 'mirrored-mode networking (the default since WSL 2.6) Windows HNS owns pieces of '
+        + '172.16.0.0/12 and its route reconciliation can void a fresh bridge or leave stale '
+        + '`br-` devices behind. Fix the host (`[wsl2] networkingMode=NAT` in the Windows-side '
+        + '.wslconfig, then `wsl --shutdown` — docs/CEOS.md '
+        + '§Host-route reconciliation) or point the eos-lab runner at a native Linux host. No '
+        + 'container is started and no eAPI call is made while the route path is unproven.',
+        EXIT.readiness,
+      )
+    }
+    const mgmtIp = `${mgmtSubnet.octetBase}.10`
+    for (const net of [names.data1, names.data2]) {
+      docker(['network', 'create', `--label=${LABEL_RUN}=${runId}`, `--label=${LABEL_MANAGER}=${MANAGER}`, net])
+    }
+    log(
+      `[up] mgmt pinned to ${mgmtSubnet.cidr} with a verified connected route (container ${mgmtIp}); ` +
+        `data nets carry the front-panel NICs; mgmt settle: ${mgmtTries[mgmtTries.length - 1] ?? ''}`,
+    )
     const createArgs = [
       'create',
       `--name=${names.container}`,
@@ -1582,6 +1694,22 @@ async function cmdProbe(cfg, state) {
       attempts.push({ attempt, elapsedSeconds: +secs(Date.now() - t0), ok: false, reason: lastReason })
       log(`[probe] attempt ${attempt} (${secs(Date.now() - t0)}s): ${lastReason}`)
     }
+    if (attempt === 2) {
+      // Route-death fast-fail: `up` proved the connected route live at create time,
+      // so repeated early handshake deaths mean reconciliation ate it during boot
+      // (the 172.31.159/193-adjacent flake class). The remaining window cannot fix
+      // a deleted host route, so check the path now and refuse with the fix.
+      const routeCheck = verifyMgmtBridgeRoute(String(state.mgmtSubnet ?? ''), String(state.mgmtContainerIp ?? ''))
+      if (!routeCheck.ok) {
+        log(
+          `[probe] REFUSED: the host route to ${String(state.mgmtContainerIp)} died mid-run — ${routeCheck.why}. `
+          + 'Not waiting out the remaining window: a fresh run may land on a clean /24, but a host that '
+          + 'keeps eating bridge routes needs docs/CEOS.md §Host-route reconciliation (NAT-mode '
+          + '.wslconfig or a native Linux lab runner).',
+        )
+        return { exitCode: EXIT.readiness, runId: state.runId, reason: 'mgmt-route-lost-mid-run', detail: routeCheck.why }
+      }
+    }
     await sleep(cfg.retryDelayMs)
   }
   const logs = dockerOpt(['container', 'logs', '--tail', '20', state.container])
@@ -1596,6 +1724,7 @@ async function cmdProbe(cfg, state) {
   const directPeek = state.mgmtContainerIp
     ? await peekServedCert({ host: String(state.mgmtContainerIp), port: cfg.containerApiPort })
     : { fingerprint256: null, error: 'no mgmtContainerIp in state' }
+  const routeVerdict = verifyMgmtBridgeRoute(String(state.mgmtSubnet ?? ''), String(state.mgmtContainerIp ?? ''))
   let forwarderStatus = 'none in state'
   if (Number.isInteger(state.forwarderPid) && state.forwarderPid > 0) {
     try {
@@ -1613,6 +1742,7 @@ async function cmdProbe(cfg, state) {
       `${relayPeek.fingerprint256 ? `cert ${String(relayPeek.fingerprint256).slice(0, 16)}…` : `error ${String(relayPeek.error ?? 'none')}`}; ` +
       `direct ${String(state.mgmtContainerIp)}:${String(cfg.containerApiPort)} -> ` +
       `${directPeek.fingerprint256 ? `cert ${String(directPeek.fingerprint256).slice(0, 16)}…` : `error ${String(directPeek.error ?? 'none')}`}; ` +
+      `route: ${routeVerdict.ok ? 'live' : 'BROKEN'} (${routeVerdict.why}); ` +
       `forwarder: ${forwarderStatus}`,
   )
   log(`[probe] EOS-side API state:\n${api.stdout.trim().split('\n').slice(0, 12).join('\n')}`)

@@ -255,7 +255,11 @@ main: same, plus npm pack smoke test (does the tarball's exports map resolve fro
       — STILL OWED: packaging stays behind DR-020, and the dist smoke above is not that check.
 trusted dispatch only (`ceos-live`): runs-on [self-hosted, linux, eos-lab] (labels GitHub never
       hosts, so it queues until a trusted lab runner exists) + `if: github.event_name ==
-      'workflow_dispatch'`; then `lab:list` preflight → `npm run lab:run -- --quiet --no-fixtures
+      'workflow_dispatch'`. The lab-runner HOST is part of the contract: the harness verifies the
+      mgmt bridge's connected route before dialing it (DR-129), and WSL2 **mirrored-mode** hosts
+      (WSL >=2.6 default) silently void Docker bridge routes under route reconciliation — set
+      `[wsl2] networkingMode=NAT` or use a native Linux runner (docs/CEOS.md
+      §mirrored-mode). Then `lab:list` preflight → `npm run lab:run -- --quiet --no-fixtures
       --port <n> -- npm -w arista-api-client run test:live -- --exclude 'src/hw-*.live.test.ts'`, teed
       to a log → `lab:down` under `if: always()` → printed diagnostics →
       `scripts/assert-live-run.mjs <log> --min-passed 1 --check-secrets`.
