@@ -132,6 +132,14 @@ JSON-RPC `error`, the expected result shape, cEOS model, and version **4.28.14M*
 Use a bounded readiness timeout; on failure, retain redacted Docker/EOS diagnostics
 and fail the job rather than proceeding with fixtures or another switch.
 
+**Capture transport caveat (2026-11-07, DR-123):** this host's docker (29.9.2) has been proven
+unreliable port-forwarding to cEOS containers that hold more than one Docker network — and #62's
+captured models REQUIRE the extra data NICs (boot-bound front-panel ports). Rather than fake the
+lab, `fixtures` may now collect the same catalog through `docker exec <container> Cli -p 15`, stamping
+`cliCapture` + transport + the eAPI refusal reason into every fixture envelope (identity guards
+re-run first). The live test lane never takes that shortcut: readiness for LIVE suites still
+means an authenticated POST, here included.
+
 ## Planned harness contract and safety
 
 Use the API client's existing opt-in live lane
