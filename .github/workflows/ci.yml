@@ -85,6 +85,15 @@ jobs:
       - name: Coverage gate (offline unit suite)
         run: npm run coverage -w arista-api-client
 
+      # Same gate for the UI workspace (#69): thresholds live in
+      # `arista-webui/vitest.config.ts` (global floor + per-directory floors, all AT the measured
+      # baseline of the F7 branch — recorded in that PR's body), the exit code is the assertion, and
+      # the suite stays offline/jsdom. Floors may only ratchet UP as screens land (each screen issue
+      # raises its dir); a directory that erodes fails the leg — the client's "green suite, silent
+      # gap" prevention, mirrored.
+      - name: Coverage gate (webui, jsdom unit suite)
+        run: npm run coverage -w arista-webui
+
       - name: Build
         run: npm run build
 
@@ -96,6 +105,15 @@ jobs:
         with:
           name: api-client-coverage-node${{ matrix.node }}
           path: arista-api-client/coverage/
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload webui coverage report (node 22 leg only)
+        if: ${{ matrix.node == '22' && !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: webui-coverage-node${{ matrix.node }}
+          path: arista-webui/coverage/
           if-no-files-found: error
           retention-days: 14
 
