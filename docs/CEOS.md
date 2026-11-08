@@ -7,11 +7,12 @@ The local Arista distribution contains **cEOS-lab 4.28.14M** at
 instructions in `cEOS-lab-README-generic.txt` in the same directory. The vendor README
 uses 4.21.0F as an example; use the actual local image and version below.
 
-This is the preferred **planned** target for tests that need real EOS software.
-The API client, live harness, provisioning automation, and Playwright suite are not
-implemented yet. These instructions adapt the supplied vendor recipe; boot, eAPI
-bootstrap, and test execution have **not** been validated in this workspace.
-Existing `npm test` runs stay offline and must not start Docker or contact EOS.
+This is the preferred **live** target for tests that need real EOS software.
+The harness (`scripts/ceos-lab.mjs`, npm `lab:*` + `fixtures:refresh`), the live guard,
+and the recorder seam shipped under M12 (#14); the Playwright browser lane is still
+separate opt-in work (#91). The recipe below mirrors what the harness automates and
+was verified against this image on 2026-11-04 and 2026-11-07. Existing `npm test` runs
+stay offline and must not start Docker or contact EOS.
 
 | Target | What it can establish | What it cannot establish |
 |---|---|---|
@@ -43,10 +44,12 @@ change. It intentionally creates one node; stop if any names already exist.
 
 ```bash
 docker import /home/svaj/development/arista/cEOS/cEOS-lab-4.28.14M.tar ceosimage:4.28.14M
-docker network create vibe-ceos-mgmt
-docker network create vibe-ceos-data
+docker network create --subnet 172.31.77.0/24 vibe-ceos-mgmt   # any UNUSED pinned private /24
+docker network create vibe-ceos-data1
+docker network create vibe-ceos-data2
 docker create --name=vibe-ceos --privileged \
-  --network=vibe-ceos-mgmt -p 127.0.0.1:8443:443 \
+  --network=vibe-ceos-mgmt --ip=172.31.77.10 \
+  -p 127.0.0.1:8443:443 \
   -e INTFTYPE=eth -e ETBA=1 -e SKIP_ZEROTOUCH_BARRIER_IN_SYSDBINIT=1 \
   -e CEOS=1 -e EOS_PLATFORM=ceoslab -e container=docker \
   -i -t ceosimage:4.28.14M \
@@ -54,11 +57,29 @@ docker create --name=vibe-ceos --privileged \
   systemd.setenv=SKIP_ZEROTOUCH_BARRIER_IN_SYSDBINIT=1 \
   systemd.setenv=CEOS=1 systemd.setenv=EOS_PLATFORM=ceoslab \
   systemd.setenv=container=docker
-docker network connect vibe-ceos-data vibe-ceos
+docker network connect vibe-ceos-data1 vibe-ceos   # BEFORE start — after create is fine
+docker network connect vibe-ceos-data2 vibe-ceos
 docker start vibe-ceos
 docker inspect --format '{{with index .NetworkSettings.Networks "vibe-ceos-mgmt"}}{{.IPAddress}}/{{.IPPrefixLen}}{{end}}' vibe-ceos
 docker exec -it vibe-ceos Cli
 ```
+
+**NIC topology (settled 2026-11-07, docker 29.9.2, this image):** cEOS binds kernel
+NICs to front-panel Ethernet ports **at boot only**. A node that boots with one NIC
+presents ZERO Ethernet ports — `interface Ethernet…` stanzas are accepted as orphan
+config and answered as `% Interface does not exist … until the module is inserted` —
+and `docker network connect` on a RUNNING node inserts nothing. The two
+`vibe-ceos-data*` bridges above therefore exist to give the configured-capture batch
+(#62) real ports, and they must be attached **before** `docker start`. Attach exactly
+ONE network (mgmt) at `docker create` and `connect` the data bridges afterwards
+(verified 2026-11-07: three-attachment `docker create` made the published port
+forward to an endpoint EOS had taken off the kernel — 30/30 ECONNRESET with the
+EOS-side HTTPS server reported `running` — while the single-create + connect-before-
+start shape, matching the vendor README, kept 10/10 TLS fingerprint probes on the
+loopback port and survived a full representative-config commit). The second lesson
+from the 2026-11-04 flap is also on record: eAPI `protocol https` is SHUT until
+bootstrap, so probes before the user/API setup fail on ANY topology — bootstrap
+first, then probe.
 
 In EOS, inspect `show version`, `show interfaces status`, and
 `show management api http-commands`. Confirm the actual management/data interface
@@ -74,23 +95,20 @@ reuse a switch or personal password, or save the transcript):
 enable
 configure terminal
 username eapi-test privilege 15 role network-admin secret <lab-only-password>
-interface Management0
-   ip address <docker-mgmt-ip>/<prefix-length>
-   no shutdown
-exit
 management api http-commands
    protocol https
    no shutdown
 end
 ```
 
-These are proposed EOS 4.28 bootstrap commands, to verify on first boot. They are a
-provisioning exception to test-session rules and apply **only to the disposable container**.
-Use the management address/prefix printed by `docker inspect` and the management interface
-confirmed above (the example uses `Management0`); do not assume Docker's IP allocation
-has configured EOS. Verify the address in EOS before probing the published port.
-Do not run `copy running-config startup-config`; bootstrap afresh after recreating the lab.
-Do not enable plaintext HTTP or expose the unauthenticated localhost API.
+These bootstrap commands are verified on cEOS-lab 4.28.14M (2026-11-04/07 runs): the
+user + `management api http-commands` pair above is sufficient for the harness path —
+no `interface Management…` addressing is configured in EOS, because the Docker bridge
+carries the management NIC's address and the published port is the only trusted entry
+point. They are a provisioning exception to test-session rules and apply **only to the
+disposable container**. Do not run `copy running-config startup-config`; bootstrap
+afresh after recreating the lab. Do not enable plaintext HTTP or expose the
+unauthenticated localhost API.
 
 Establish HTTPS trust from the local container/CLI, not from an unverified network peer.
 Inspect the configured certificate location (4.28.13.1M uses
@@ -172,7 +190,7 @@ them:
 
 ```bash
 docker rm -f vibe-ceos
-docker network rm vibe-ceos-data vibe-ceos-mgmt
+docker network rm vibe-ceos-data1 vibe-ceos-data2 vibe-ceos-mgmt
 ```
 
 Do not use Docker-wide prune commands. Remove any run-owned secret files separately.

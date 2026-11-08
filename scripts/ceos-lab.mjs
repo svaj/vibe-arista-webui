@@ -806,23 +806,26 @@ async function cmdUp(cfg) {
     )
     port = await allocateEndpoint(cfg.hostIp, runId, cfg.port)
     log(`[up] run ${runId} · endpoint ${cfg.hostIp}:${port} -> ${names.container}:${cfg.containerApiPort}`)
-    // NIC topology, re-settled on 2026-11-07 for issue #62. cEOS binds kernel NICs to
-    // front-panel Ethernet ports ONLY at boot: a single-NIC node presents ZERO Ethernet
-    // ports (`interface Ethernet1` then answers `% Interface does not exist … until the
-    // module is inserted`), and hot-plugging a network into a running node inserts
-    // nothing (probed: attaching two more networks to a booted cEOS left the model
-    // unchanged). The 2026-11-06 captures' `Et1`/`Et2` came from an older multi-attach
-    // boot; the #62 evidence needs those ports back, so a run now creates mgmt + data1 +
-    // data2 and attaches ALL THREE AT CREATE. The 2026-11-04 note for the
-    // published-port flapping is superseded by today's controlled test on this daemon
-    // (docker 29.9.2): with the mgmt network NAMED FIRST (primary endpoint), a pinned
-    // static subnet, and explicit container-side target order, every TLS probe on the
-    // published port served the mgmt certificate; what had actually made the port look
-    // dead in the earlier investigation is that eAPI `protocol https` is SHUT until the
-    // bootstrap runs — probes before bootstrap fail on any topology. The mgmt-side
-    // safeguards (loopback publish, per-endpoint locks, model/version pins) are
-    // unchanged; the two data bridges carry no published port and no route the host
-    // would trust — they exist to boot the switch with front-panel ports.
+    // NIC topology, re-settled on 2026-11-07 for issue #62, twice. (1) cEOS binds
+    // kernel NICs to front-panel Ethernet ports ONLY at boot: a single-NIC node
+    // presents ZERO Ethernet ports (`interface Ethernet1` then answers `% Interface
+    // does not exist … until the module is inserted`), and hot-plugging a network into
+    // a RUNNING node inserts nothing (probed). So the data bridges must be attached
+    // BEFORE `docker start`. (2) Attaching mgmt+data1+data2 at CREATE — all three in
+    // one `docker create` — re-broke the published-port path: two back-to-back fixture
+    // runs probe-refused with ECONNRESET on port 443 while EOS-side `show management
+    // api http-commands` reported `HTTPS server: running`, i.e. the port forward
+    // resolved to an endpoint EOS had taken off the kernel (the 2026-11-04 no-tie-break
+    // finding, reproduced). The vendor README's own recipe, and a controlled
+    // before-start-connect test on this same daemon the same day, both keep exactly
+    // ONE attachment at create (the pinned mgmt bridge — the shape every trusted M12
+    // run used, including capture run lab-1792145-121e25) and `docker network
+    // connect` the data bridges AFTER create but BEFORE start. A full run of the #62
+    // staging inside such a node changed nothing about the published TLS path
+    // (10/10 fingerprint probes after the commit), so provisioning is proven innocent:
+    // the flapping half was create-time multi-attach. The mgmt-side safeguards
+    // (loopback publish, per-endpoint locks, model/version pins) are unchanged; the
+    // two data bridges carry no published port — they exist to boot front-panel ports.
     const mgmtSubnet = pickMgmtSubnet()
     const mgmtIp = `${mgmtSubnet.octetBase}.10`
     for (const net of [names.mgmt, names.data1, names.data2]) {
@@ -838,11 +841,10 @@ async function cmdUp(cfg) {
       '--privileged',
       `--label=${LABEL_RUN}=${runId}`,
       `--label=${LABEL_MANAGER}=${MANAGER}`,
-      // mgmt FIRST (primary endpoint) with the pinned address — see the note above.
+      // the ONLY create-time attachment, with the pinned address, so the port forward
+      // has a single endpoint to resolve to — see the topology note above.
       `--network=${names.mgmt}`,
       `--ip=${mgmtIp}`,
-      `--network=${names.data1}`,
-      `--network=${names.data2}`,
       `-p=${cfg.hostIp}:${port}:${cfg.containerApiPort}`,
     ]
     for (const [k, v] of VENDOR_ENV) createArgs.push('-e', `${k}=${v}`)
@@ -855,6 +857,12 @@ async function cmdUp(cfg) {
     const inspectLabels = labelsOut === 'null' || !labelsOut ? {} : JSON.parse(labelsOut)
     if (inspectLabels[LABEL_RUN] !== runId) {
       refuse(`container ${names.container} does not carry ${LABEL_RUN}=${runId} — refusing to manage it`, EXIT.internal)
+    }
+    // Data bridges join AFTER create and BEFORE start: NICs exist at boot so cEOS
+    // binds them as front-panel ports, while create-time attachment stays a single
+    // endpoint for the port-forward resolution (topology note above).
+    for (const net of [names.data1, names.data2]) {
+      docker(['network', 'connect', net, names.container])
     }
     const privileged = docker(['container', 'inspect', '--format', '{{.HostConfig.Privileged}}', names.container]).trim()
     const imageRef = docker(['container', 'inspect', '--format', '{{.Config.Image}}', names.container]).trim()
