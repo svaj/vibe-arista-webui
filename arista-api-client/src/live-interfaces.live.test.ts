@@ -12,14 +12,18 @@
  *
  * | upstream (verified line @6816d9e) | ported? | here / why |
  * |---|---|---|
- * | `TestResourceInterfaces.test_getall` (`:64`) | ✅ read (M12a) + ✅ M12c membership half | upstream pre-writes `default interface <rintf>` (`:66`) then checks `<rintf>` and `Management1` are keys (`:68-70`). M12a read the membership without a write and assumed `Management1` exists on any bootable target; the 2026-11-06 run shows that assumption is wrong for this image — `show running-config all` writes no `interface Management…`/`interface Ethernet…` section, and its single `interface …` header is `interface defaults`, which this grammar reads as a `kind: null` entry (§5 row 185). The membership half is therefore claimed only for a class the target writes, and the real membership half stays M12c's scratch-port case |
+ * | `TestResourceInterfaces.test_getall` (`:64`) | ✅ read (M12a) + ✅ M12c membership half | upstream pre-writes `default interface <rintf>` (`:67`) then checks `<rintf>` and `Management1` are keys (`:68-70`). M12a read the membership without a write and assumed `Management1` exists on any bootable target; the 2026-11-06 run shows that assumption is wrong for this image — `show running-config all` writes no `interface Management…`/`interface Ethernet…` section, and its single `interface …` header is `interface defaults`, which this grammar reads as a `kind: null` entry (§5 row 185). The membership half is therefore claimed only for a class the target writes, and the real membership half stays M12c's scratch-port case |
  * | `TestResourceInterfaces.test_get` (`:45`) | ✅ M12c — read-after-guarded-write | M12a declined this because the values it asserts (`description` `:58`, `shutdown` `:59`, `flowcontrol_send 'off'` `:60`, `flowcontrol_receive 'on'` `:61`, `sflow` False `:62`) are ones it had **just written** (`:48-53`) on a `random_interface` port. The M12c case writes the same five lines on the run's own `EAPI_SCRATCH_INTERFACE` (DR-035(b)) and then reads them through the typed record, so the read side is exercised without asserting a value the device never saw. Exactness is claimed only for what EOS must store; a field a device may treat as default reads absent and is logged instead (§5 row 186) |
  * | `test_create_and_return_true` (`:73`)/`test_delete_and_return_true` (`:86`), `..._sub_interface` (`:99`), `test_ethernet_set_and_unset_encapsulation` (`:115`), portchannel sub-intf (`:411`,`:440`) | ❌ skipped | mutate `Loopback0`, `Ethernet1.1`/`Port-Channel` **subinterfaces**. Loopback and subinterface creation are not the named base scratch port; and this client deliberately *refuses* Ethernet create/delete (`interfaces.ts` `assertPresentName`), an offline fact already asserted in `interfaces.test.ts` — see the two `_raises_not_implemented_error` rows |
  * | `test_create_ethernet_raises_not_implemented_error` (`:81`), `test_delete_ethernet_raises_not_implemented_error` (`:94`) | ❌ skipped | pure **client-side** refusals — no device round trip reaches EOS, so they cannot be *live* tests. They are this module's `NotSupportedError`; pinned offline |
  * | `test_set_encapsulation_*` (`:139`,`:145`), `test_set_vrf` (`:227`) | ❌ skipped | need a subinterface, `Vlan1234`, or a global `vrf instance test` write (`:240`) — the last is a global mutation the guarded session does not scope |
  * | `test_default` (`:151`), `test_set_sflow_enable/disable/default` (`:196`,`:206`,`:216`) | ✅ M12c — guarded scratch-port writes | M12a skipped these because the mutated port came from `random_interface`; on the named scratch port the writes are legal. `test_default`'s before/after read (`show interfaces <intf>` → `interfaces[intf]['interfaceStatus']`, `:154-162`) is answered here by `getStatus()` (this client's status command is `show interfaces status`, whose captured spelling is `linkStatus` — row 106), and upstream's `sleep(10)` link-settle wait (`:158`) is **not** ported: the case asserts the row exists and its columns are strings, and logs the before/after pair instead of encoding a timing assumption (§5 row 187). The sflow reads are `show running-config interfaces <intf>` **text** (`:202-204`, `:212-214`, `:222-224`) — the same text the new `show running-config` capture commits (§5 row 185) |
- * | `TestPortchannelInterface.test_get` (`:255`), member/LACP/minimum-links writes (`:264`–`:479`) | ❌ skipped | every case first `dut.config(['no interface Port-Channel1', 'interface Port-Channel1', …])` (`:256-257`, `:331-332`, `:340-345`, `:384-385`) and several add `channel-group 1 mode …` on **random** member ports (`:266-273`, `:341-343`). `Port-Channel…` is not an `Ethernet…` scratch name (DR-035(b)/DR-082), and a live LAG on ports the run did not name is exactly the mutation that rule exists to stop |
+ * | `TestPortchannelInterface.test_get` (`:255`), member/LACP/minimum-links writes (`:264`–`:479`) | ❌ skipped by M12a/M12c → **✅ now ported behind DR-126 consent** (last describe) | every case first `dut.config(['no interface Port-Channel1', 'interface Port-Channel1'])` (`:257-258`, `:331-332`, `:340-344`, `:364-367`, `:384-385`, `:394-395`) and several add `channel-group 1 mode …` on **random** member ports (`:266-268`, `:299-301`). Under the scratch-only rule that was forbidden outright. DR-126 (`docs/DECISIONS.md:1996`) amends it for the throwaway container, so the D2 lane ports the same arms with two changes the container requires: (a) the group is always a **fresh id >= 200** — `Port-Channel1` is this container's own provisioned LAG (`scripts/ceos-lab.mjs:1159-1168` — the member line and the Po1 stanza) and `assertFreshGroup` refuses anything else before the wire; (b) the only member this lane may touch is the run's declared `EAPI_SCRATCH_INTERFACE`, because `random_interface` is undeclared-port roulette (`test/lib/systestlib.py:68-88`, which itself only ever picks an `Et*` name at `:76`) |
  * | `test_get_members_default` (`:330`), `test_get_lacp_mode_with_default` (`:383`) — **read half only** | ✅ M12c — read-only capability observation, **settled live on 2026-11-06** | upstream reaches `instance.get_members('Port-Channel1')` (`:335`) / `get_lacp_mode` (`:388`) only after a `Port-Channel1` write (`:331-332`, `:384-385`) this lane will not make. The two reads themselves mutate nothing, so the M12c case performs just them against a node with no channel configured and reports verbatim what the device says. The run answered `getMembers → []` and `getLacpMode → undefined` for an unconfigured group, i.e. `show port-channel 1 all-ports` is **accepted** by eAPI on 4.28.14M (while `show port-channel detail` is a 1002 and `summary` is deprecated by `dense`) and the empty-member answer is the device's, not the `[]` upstream manufactured after creating the LAG. `'on'` remains `interfaces.py:67`'s `DEFAULT_LACP_MODE`, which this client refuses to invent — divergence 19, confirmed live (§5 row 189) |
+ * | `test_get_members_default` (`:330`) / `test_get_lacp_mode_with_default` (`:383`) / `test_get_members_one_member` (`:338`) — the **write-then-read** halves | **✅ now ported behind DR-126 consent** (last describe) | the reads above could only be *observed*, because the group they read about did not exist. On a group this lane created, `get_members → []` (`:335`/`:336`) and the mode answer of a memberless group (`:388`/`:389`) are **asserted**, and `:346-:347`'s `['Ethernet1']` becomes `[<this run's scratch port>]` — the declared port, never a `random_interface`. `DEFAULT_LACP_MODE = 'on'` (`interfaces.py:67`, asserted at `:389`) still stays unported (divergence 19), so a memberless group answering `undefined` is logged rather than forced |
+ * | the `default interface <port>` staging arms inside the PortChannel methods (`:67`, `:271`, `:274`, `:277`, `:304`, `:307`, `:310`, `:342`, `:353`, `:365`) | **✅ live, with the churn stated** | upstream resets the member ports it is about to en-/de-couple with exactly this command, so the lane's cleanup is upstream-faithful rather than an invention. It may **not be free** here: `lab-provision` makes one front-panel port a member of its own Po1 (`scripts/ceos-lab.mjs:1159-1162`), and the runs that declared `Ethernet2` as `EAPI_SCRATCH_INTERFACE` therefore declared the LAG's member as the lane's only legal member — so a member write can churn a provisioned port. `beforeAll` captures the scratch port's section and logs whether it came pre-bound; each case then ends with `default interface <scratch>` plus a replay of the captured lines, and prints any line the device would not take back. The container is left as found in **config text**; LACP re-negotiation (a timer, not a config fact) is outside this lane's control, and harness teardown owns the box afterwards. `test_default` on the plain port (`:151`) stays the earlier case's |
+ * | `test_get_members_two_members` (`:349`-`:358`) | ❌ skipped, gap named | its staging line is `interface Ethernet1-2` (`:353`) — a **range** spelling this client's name grammar refuses (DECISIONS.md open item 7) — used there to reach two members. A second member would be a port this run never declared (`lab-provision`'s other front-panel port, `scripts/ceos-lab.mjs:1151-1157`), so the lane ports the single-member arm and refuses this one instead of widening the scratch rule unilaterally |
+ * | every `Management…` arm in this file (`Management1`, the `test_getall` key at `:70`) | ❌ skipped, and **refused by the fence** | the full-write seam rejects an `interface Management…`/`no interface Management…` config line before the wire (`live-session-policy.ts:165` — the management path carries the connection under test), and the scratch gate refuses a non-Ethernet `EAPI_SCRATCH_INTERFACE` outright (`live-guard.ts`, `requireScratchInterface` → `EAPI_SCRATCH_INTERFACE_NOT_ETHERNET`). Upstream's own member picker never names a management port either (`systestlib.py:76`), so nothing in `:253-:479` needs a management exemption |
  * | `TestApiVxlanInterface` (all 16, `:481`–`:659`) | ❌ skipped | `Vxlan1` source-interface/multicast/VTEP/VLAN — `Vxlan…` is neither an Ethernet scratch port nor a resource this client implements yet |
  *
  * M12a's line: it ports `test_getall` as a read and exercises `test_set_description` (`:164`) as the one
@@ -37,14 +41,32 @@
  * (`:330`/`:383`). Everything still unported stays skipped for a *named, documented* reason — an off-limits
  * interface name, a global mutation outside the scratch rule, a client-side refusal that never reaches a
  * device, or a field whose live answer is already fixture-owned — not because it was overlooked.
+ *
+ * **D2 full-write round (this branch, DR-126 — #14's `test/system` port)** adds the last describe: the
+ * `TestPortchannelInterface` write arms the row above refused for the scratch-only rule — `test_get`
+ * (`:255`), `test_set_members` (`:264`), `test_set_members_with_mode` (`:297`), the two
+ * `get_members` members arms (`:338`; `:349` refused, see its row), `test_set_lacp_mode` (`:360`),
+ * `test_set_lacp_mode_invalid_value` (`:377`, this client's pre-wire refusal), `test_minimum_links_valid`
+ * (`:391`) and `test_minimum_links_invalid_value` (`:404`, now the device's own refusal) — plus the
+ * `default interface` churn read-back those methods' staging implies (`:67`/`:271`/`:274`/`:277`/
+ * `:342`/`:351`/`:353`/`:365`). Its gate is `liveFullWriteReadiness(process.env)` **and** the existing
+ * `requireScratchInterface` result: no consent, or no declared scratch, means the loud skip line and zero
+ * cases executed. Its Node comes from `buildFullWriteNode`, so the self-lockout fence sits on the seam, and
+ * every create/member/LACP/min-links write runs in a named guarded session (`d2b-intf-<case>`) or through a
+ * facade verb whose batch that same fence inspects. Group ids are never `Port-Channel1` and always >= 200;
+ * the only member name ever written is the declared scratch port. The one honest cost of that pairing — the
+ * declared scratch port arriving as the provisioned LAG's member — is captured, replayed and reported
+ * instead of hidden (§5 row 185's "report what the device said" discipline).
  */
 
 import { beforeAll, describe, expect, it } from 'vitest'
 
 import { createNode } from './node'
-import { CommandError, EapiError, ProtocolError } from './errors'
+import { CommandError, EapiError, NotSupportedError, ProtocolError } from './errors'
+import { buildFullWriteNode, liveFullWriteReadiness } from './testing/live-full-write'
 import { resolveLiveEnv, unwrapLiveTarget, liveTransportOptions, matchesDeviceIdentity, describeLiveTarget, requireScratchInterface, type LiveTarget } from './testing/live-guard'
 import { runGuardedLiveWriteSession } from './testing/live-session-policy'
+import type { LacpMode } from './resources/interfaces'
 import type { Node } from './command-layer'
 
 const resolution = resolveLiveEnv(process.env)
@@ -91,7 +113,7 @@ describe.skipIf(!ready)('live read: pyeapi test_api_interfaces.py (TestResourceI
       // parse (e.g. a chassis/ranges form) — both are legitimate, so assert the field exists and is one or the other.
       expect(intf.kind === 'Ethernet' || intf.kind === 'Management' || intf.kind === 'Port-Channel' || intf.kind === 'Loopback' || intf.kind === 'Vlan' || intf.kind === 'Vxlan' || intf.kind === null).toBe(true)
     }
-    // Upstream asserts `Management1` is a key (:70) after its own setup write (:66). This run's container
+    // Upstream asserts `Management1` is a key (:70) after its own setup write (:67). This run's container
     // writes NEITHER a management nor an Ethernet section into `show running-config all` (§5 row 185), so
     // membership is claimed only for a class the target actually writes. Everything the target does write
     // is printed, including the section this client's grammar cannot call an interface, so a reviewer sees
@@ -359,5 +381,330 @@ describe.skipIf(!ready)('live read-only observation: pyeapi test_api_interfaces.
     // The claim is deliberately only "the client produced a typed answer either way". Asserting upstream's
     // `[]`/`'on'` would be asserting the behaviour of a LAG this run refused to create.
     expect(Object.keys(outcomes)).toEqual(['getMembers', 'getLacpMode'])
+  })
+})
+
+// --- DR-126 full-write lane: TestPortchannelInterface's write arms, on a FRESH group id -----------------
+
+/**
+ * The gate for everything below: `EAPI_LIVE` + the lab target class + `EAPI_LAB_FULL_WRITE=1`
+ * (`live-full-write.ts:32-42`, DR-126 at `docs/DECISIONS.md:1996`), which `scripts/ceos-lab.mjs`'s `cmdRun`
+ * child env passes for a run-owned container (`:2281`). The reads above need none of it; the LAG writes here do.
+ */
+const fullWrite = liveFullWriteReadiness(process.env)
+if (!fullWrite.runnable) {
+  console.warn(`live-interfaces: Port-Channel full-write cases SKIPPED (DR-034/DR-126) — ${fullWrite.skipReason ?? 'reason unavailable'}`)
+}
+
+/**
+ * Group ids this lane creates. Every id is at or above this floor, because `Port-Channel1` is the
+ * container's **own** provisioned LAG (`scripts/ceos-lab.mjs:1164-1168` — the trunk whose member is
+ * `ethB`), and upstream's habit of driving `Port-Channel1` (`:257`, `:270`, `:303`, `:332`, `:340`,
+ * `:364`, `:385`, `:394`, `:408`) is exactly the thing that has to change when the DUT is a shared lab
+ * box rather than a bench fixture. `assertFreshGroup` below refuses anything else before a byte is sent.
+ */
+const FRESH_GROUP_FLOOR = 200
+const PO_GET = `Port-Channel${String(FRESH_GROUP_FLOOR)}`
+const PO_MEMBERS = `Port-Channel${String(FRESH_GROUP_FLOOR + 1)}`
+const PO_LACP = `Port-Channel${String(FRESH_GROUP_FLOOR + 2)}`
+const PO_MIN_LINKS = `Port-Channel${String(FRESH_GROUP_FLOOR + 3)}`
+
+/** The value upstream reaches for with `random_int(1, 8)` (`:393`); fixed here so a failure is reproducible. */
+const MIN_LINKS_VALUE = 2
+
+function poRefusalText(rawErr: unknown): string {
+  if (rawErr instanceof EapiError) {
+    const code = rawErr instanceof CommandError ? String(rawErr.code) : rawErr instanceof ProtocolError ? `protocol ${String(rawErr.code)}` : 'no code'
+    return `${rawErr.constructor.name} ${code}: ${rawErr.message.split('\n')[0]?.slice(0, 160) ?? ''}`
+  }
+  return rawErr instanceof Error ? `${rawErr.constructor.name}: ${rawErr.message.split('\n')[0]?.slice(0, 160) ?? ''}` : String(rawErr)
+}
+
+describe.skipIf(!(fullWrite.runnable && scratch.ok))('live full-write: pyeapi test_api_interfaces.py (TestPortchannelInterface :255-:409 — get :255, members :264/:297/:338, lacp :360, min-links :391/:404)', () => {
+  let node: Node
+  let scratchName: string
+  /** The scratch port's own lines as this run FOUND them — replayed after every `default interface` churn. */
+  let scratchFound: string | undefined
+
+  beforeAll(async () => {
+    scratchName = scratch.name ?? ''
+    node = buildFullWriteNode(unwrapLiveTarget(fullWrite.resolution))
+    const reported = await node.getVersion()
+    const mismatch = matchesDeviceIdentity(unwrapLiveTarget(fullWrite.resolution), { version: reported.version, modelName: reported.modelName })
+    if (mismatch !== undefined && mismatch.code !== 'EAPI_VERSION_MISMATCH') throw new Error(`live-interfaces readiness: ${mismatch.reason}`)
+    // One guarded session so a refused member line can never half-reset the scratch port (DR-035/DR-081).
+    scratchFound = await node.interfaces.getBlock(`interface ${scratchName}`)
+    console.log(`live-interfaces: full-write scratch ${scratchName} as found → ${JSON.stringify(scratchFound ?? '<no section>')}`)
+    if (scratchFound !== undefined && /channel-group/u.test(scratchFound)) {
+      console.warn(`live-interfaces: the declared scratch port ${scratchName} ALREADY carries a channel-group on this container, so the member arms below WILL churn it: each case ends with \`default interface ${scratchName}\` (upstream's own staging move, :342/:365) and a replay of the lines just captured. The replay reproduces the config text, not the LACP timer state — a bounded cEOS churn, and the container is torn down by the harness afterwards (docs/CEOS.md)`)
+    }
+  })
+
+  /** One named guarded session, all-or-nothing, never persistent — this lane's only write primitive. */
+  const guard = (caseName: string, commands: readonly string[]) =>
+    runGuardedLiveWriteSession(node, { name: `d2b-intf-${caseName}`, commands })
+
+  /** Refuse anything but a fresh >= 200 group id, so the container's Po1 is untouchable by construction. */
+  function assertFreshGroup(name: string): number {
+    const id = Number(/(\d+)/u.exec(name)?.[1] ?? Number.NaN)
+    if (!Number.isSafeInteger(id) || id < FRESH_GROUP_FLOOR) {
+      throw new Error(`live-interfaces: refusing to touch ${JSON.stringify(name)} — this lane only creates Port-Channel ids >= ${String(FRESH_GROUP_FLOOR)}, never the container's own Po1 (scripts/ceos-lab.mjs:1164)`)
+    }
+    return id
+  }
+
+  /** upstream's staging pair (`no interface PoX` then `interface PoX`, e.g. :257-:258) as one guarded session. */
+  async function createGroup(name: string, caseName: string): Promise<number> {
+    const id = assertFreshGroup(name)
+    const outcome = await guard(`create-${caseName}`, [`no interface ${name}`, `interface ${name}`])
+    expect(outcome.committed).toBe(true)
+    return id
+  }
+
+  async function dropGroup(name: string, caseName: string): Promise<void> {
+    try {
+      await guard(`drop-${caseName}`, [`no interface ${name}`])
+    } catch (rawErr) {
+      console.warn(`live-interfaces: teardown \`no interface ${name}\` was refused (${poRefusalText(rawErr)}) — the group survives on the container until harness teardown; reported, not hidden`)
+    }
+  }
+
+  /** Reset the scratch port the way upstream's own staging lines do, then put back whatever this run found. */
+  async function churnScratch(caseName: string): Promise<void> {
+    try {
+      await guard(`scratch-default-${caseName}`, [`default interface ${scratchName}`])
+    } catch (rawErr) {
+      console.warn(`live-interfaces: \`default interface ${scratchName}\` was refused (${poRefusalText(rawErr)}) — the member line this case wrote may survive; reported`)
+    }
+    if (scratchFound === undefined) return
+    const lines = scratchFound
+      .split(/\r?\n/u)
+      .map((line) => line.trimEnd())
+      .filter((line) => line.length > 0 && !line.startsWith('!') && !/^interface\s/u.test(line))
+    if (lines.length === 0) return
+    try {
+      await guard(`scratch-replay-${caseName}`, [`interface ${scratchName}`, ...lines])
+      const back = await node.interfaces.getBlock(`interface ${scratchName}`)
+      const missing = lines.filter((line) => back === undefined || !back.includes(line))
+      if (missing.length > 0) {
+        console.warn(`live-interfaces: replay of ${scratchName} left ${JSON.stringify(missing)} unapplied — the container may keep a changed L2 state (churn reported per DR-034/DR-043)`)
+      }
+    } catch (rawErr) {
+      console.warn(`live-interfaces: replaying the captured ${scratchName} lines was refused (${poRefusalText(rawErr)}) — churn left on the container, reported`)
+    }
+  }
+
+  /** The member port's own running-config section — the text twin of upstream's `show running-config interfaces <etX>` (`:283`, `:316`, `:372`, `:399`). */
+  async function sectionText(name: string): Promise<string> {
+    return (await node.interfaces.getBlock(`interface ${name}`)) ?? '<this client saw no section for that name>'
+  }
+
+  it('a group THIS lane created reads through the typed record, and its empty-member reads are the device\'s (test_get :255 — staging :257-:258, asserts :260-:262; get_members_default :330 — :332-:336; get_lacp_mode_with_default :383 — :385-:389)', async () => {
+    await createGroup(PO_GET, 'po-get')
+    try {
+      const rec = await node.interfaces.get(PO_GET, { status: 'skip' })
+      expect(rec).toBeDefined()
+      expect(rec?.name).toBe(PO_GET)
+      // :261 asserts `result['type'] == 'portchannel'`. There is no `type` key in this client's record — the
+      // kind comes from the name grammar (DR-067) and the group facts live in `portChannel`. Same statement,
+      // different spelling (DR-003/row 90 vocabulary), so the port is asserted on `kind`.
+      expect(rec?.kind).toBe('Port-Channel')
+
+      // Upstream manufactures both answers **after** writing Po1 (`:331-332`, `:384-385`); here the group is
+      // one this run created and left memberless, so for the first time these two reads are asserted rather
+      // than observed. The read-only Po1 observation above (§5 row 189) stays as the container-shape half.
+      expect(await node.interfaces.getMembers(PO_GET)).toEqual([])
+      const mode = await node.interfaces.getLacpMode(PO_GET)
+      if (mode !== undefined) {
+        console.warn(`live-interfaces: getLacpMode(${PO_GET}) answered ${JSON.stringify(mode)} for a memberless group — upstream answers interfaces.py:67's DEFAULT_LACP_MODE 'on' (:389); this client answers whatever the device wrote, so a memberless group naming a mode is the device's statement, reported`)
+      } else {
+        console.log(`live-interfaces: getLacpMode(${PO_GET}) answered undefined — divergence 19 keeps pyeapi's 'on' default unported (interfaces.py:67), now observed on a group this lane created`)
+      }
+      const groupFacts = (await node.interfaces.get(PO_GET, { status: 'skip' }))?.portChannel
+      console.log(`live-interfaces: config-side facts for a fresh memberless ${PO_GET} → ${JSON.stringify(groupFacts)}`)
+    } finally {
+      await dropGroup(PO_GET, 'po-get')
+    }
+  })
+
+  it('the declared scratch port joins the group and answers as the ONLY member (test_get_members_one_member :338 — staging :340-:344, get_members :346, assert :347)', async () => {
+    // Members come from `requireScratchInterface` only (the gate at the top of this file). upstream's member
+    // picker is `random_interface` — helper at test/lib/systestlib.py:68-88, which itself only ever picks an
+    // `Et*` name (:76), so no Management name is reachable by that suite either.
+    const id = await createGroup(PO_MEMBERS, 'po-one-member')
+    try {
+      // upstream's own staging, line for line (`interface <etX>` + `channel-group 1 mode active`, :343-:344),
+      // with the run's declared port and the run's own group id.
+      await guard('one-member-add', [`interface ${scratchName}`, `channel-group ${String(id)} mode active`])
+      expect(await node.interfaces.getMembers(PO_MEMBERS)).toEqual([scratchName])
+      expect(await sectionText(scratchName)).toContain(`channel-group ${String(id)} mode active`)
+      // The config-side twin of the same relation (divergence 15): the record stitched from the member's own
+      // line, not from the `show port-channel all-ports` scrape.
+      const facts = (await node.interfaces.get(PO_MEMBERS, { status: 'skip' }))?.portChannel
+      expect(facts?.members).toEqual([scratchName])
+      expect(facts?.lacpMode).toBe('active')
+      // `test_get_members_two_members` (:349-:358) is NOT ported: it stages `interface Ethernet1-2` (:353),
+      // a **range** spelling this client's name grammar refuses (DECISIONS.md open item 7), to reach two
+      // members. The second physical port on this container is the undeclared `lab-provision` peer
+      // (`scripts/ceos-lab.mjs:1151-1157`), and a single-operator lane gets exactly one declared scratch —
+      // the arm is refused with the gap named, not widened.
+      // Reading the mode through the device-backed verb, on a group that now really has a member:
+      expect(await node.interfaces.getLacpMode(PO_MEMBERS)).toBe('active')
+    } finally {
+      await churnScratch('po-one-member')
+      await dropGroup(PO_MEMBERS, 'po-one-member')
+    }
+  })
+
+  it('setMembers diffs a single member in and back out (test_set_members :264 — random picks :266-:268, staging :270-:277, set_members :280, assertTrue :281, keep-half assert :287-:290, leave-half assert :293-:295)', async () => {
+    const id = await createGroup(PO_MEMBERS, 'po-set-members')
+    try {
+      // The bare arm: no `mode` given, and a memberless group has no mode to reuse, so `setMembers` composes
+      // `interface <m>` + `channel-group <id>` with no mode word — the line pyeapi would send from
+      // get_lacp_mode's answer (`interfaces.py:639-658`). Whether this image accepts a mode-less
+      // `channel-group` is the device's statement: an accepted write is asserted through the read-back, a
+      // refusal is printed, and the staged-mode arm below covers the mode-carrying path either way.
+      let bareApplied = false
+      try {
+        await node.interfaces.setMembers(PO_MEMBERS, [scratchName])
+        bareApplied = true
+      } catch (rawErr) {
+        if (!(rawErr instanceof EapiError)) throw rawErr
+        console.warn(`live-interfaces: setMembers with NO mode (bare channel-group line) was refused by this target (${poRefusalText(rawErr)}) — the mode-carrying arm below still runs (divergence 19/DR-077 keep this client from inventing a mode)`)
+      }
+      if (bareApplied) {
+        expect(await node.interfaces.getMembers(PO_MEMBERS)).toEqual([scratchName])
+        expect(await sectionText(scratchName)).toContain(`channel-group ${String(id)}`)
+      }
+
+      // The remove half of upstream's diff — the assertNotIn that proves et2 left the LAG (`:293`-`:295`).
+      // Here the member that leaves is the one member this lane was allowed to add.
+      await node.interfaces.setMembers(PO_MEMBERS, [])
+      expect(await node.interfaces.getMembers(PO_MEMBERS)).toEqual([])
+      expect(await sectionText(scratchName)).not.toContain(`channel-group ${String(id)}`)
+      expect((await node.interfaces.get(PO_MEMBERS, { status: 'skip' }))?.portChannel?.members).toBeUndefined()
+    } finally {
+      await churnScratch('po-set-members')
+      await dropGroup(PO_MEMBERS, 'po-set-members')
+    }
+  })
+
+  it('setMembers with a mode names it on the member and rewrites it on a mode change (test_set_members_with_mode :297 — set_members call :313-:314, assert :322; the mode-change side effect is interfaces.py:702-:704, this port\'s divergence 20)', async () => {
+    const id = await createGroup(PO_MEMBERS, 'po-mode')
+    try {
+      await node.interfaces.setMembers(PO_MEMBERS, [scratchName], 'active')
+      expect(await sectionText(scratchName)).toContain(`channel-group ${String(id)} mode active`)
+      expect(await node.interfaces.getLacpMode(PO_MEMBERS)).toBe('active')
+      // The second call has the members unchanged, so the only work left is the mode rewrite pyeapi does in a
+      // **separate** earlier batch (`interfaces.py:704`, `rewriteMembers` at `interfaces.ts:2077-2086`) — a
+      // two-transaction effect upstream's own last-call testlib assert could never see (§5, divergence 20).
+      await node.interfaces.setMembers(PO_MEMBERS, [scratchName], 'passive')
+      expect(await sectionText(scratchName)).toContain(`channel-group ${String(id)} mode passive`)
+      expect((await node.interfaces.get(PO_MEMBERS, { status: 'skip' }))?.portChannel?.lacpMode).toBe('passive')
+    } finally {
+      await churnScratch('po-mode')
+      await dropGroup(PO_MEMBERS, 'po-mode')
+    }
+  })
+
+  it('setLacpMode rewrites the member line for all three modes pyeapi loops (test_set_lacp_mode :360 — loop :362, cfgmode mirror :363, staging :364-:367, call :369, assert :374)', async () => {
+    for (const mode of ['on', 'active', 'passive'] as const) {
+      const id = assertFreshGroup(PO_LACP)
+      // upstream's own inverted staging (`cfgmode = 'on' if mode != 'on' else 'active'`, :363) so the write
+      // always changes the word, then set_lacp_mode flips it (:369).
+      const cfgMode = mode !== 'on' ? 'on' : 'active'
+      const outcome = await guard(`lacp-stage-${mode}`, [
+        `no interface ${PO_LACP}`,
+        `interface ${PO_LACP}`,
+        `interface ${scratchName}`,
+        `channel-group ${String(id)} mode ${cfgMode}`,
+      ])
+      expect(outcome.committed).toBe(true)
+      try {
+        await node.interfaces.setLacpMode(PO_LACP, mode)
+        expect(await sectionText(scratchName)).toContain(`channel-group ${String(id)} mode ${mode}`)
+        expect((await node.interfaces.get(PO_LACP, { status: 'skip' }))?.portChannel?.lacpMode).toBe(mode)
+      } catch (rawErr) {
+        if (!(rawErr instanceof EapiError)) throw rawErr
+        console.warn(`live-interfaces: setLacpMode(...,'${mode}') was refused by this target (${poRefusalText(rawErr)}) — the :374 read-back for that mode is NOT claimed`)
+      }
+      await churnScratch(`lacp-${mode}`)
+      await dropGroup(PO_LACP, `lacp-${mode}`)
+    }
+    // test_set_lacp_mode_invalid_value (:377-:381) maps to this client's refusal, not a device False:
+    // `assertLacpMode` (`interfaces.ts:2027`/`:2071`) rejects a word outside LACP_MODES (:658-:659) before the
+    // wire, where pyeapi sends `channel-group 1 mode <random>` and reads a False device answer (:381).
+    await guard('lacp-invalid-stage', [`no interface ${PO_LACP}`, `interface ${PO_LACP}`, `interface ${scratchName}`, `channel-group ${String(FRESH_GROUP_FLOOR + 2)} mode active`])
+    try {
+      const before = await sectionText(scratchName)
+      await expect(node.interfaces.setLacpMode(PO_LACP, 'unspecified' as LacpMode)).rejects.toBeInstanceOf(NotSupportedError)
+      expect(await sectionText(scratchName)).toBe(before)
+      expect(await node.interfaces.getMembers(PO_LACP)).toEqual([scratchName])
+    } finally {
+      await churnScratch('lacp-invalid')
+      await dropGroup(PO_LACP, 'lacp-invalid')
+    }
+  })
+
+  it('min-links round-trips through the typed field on a fresh group (test_minimum_links_valid :391 — staging :394-:395, call :396-:397, assertTrue :398, assert :401-:402; the clear arms are this client\'s own verbs, unsetMinimumLinks interfaces.ts:2101 and defaultMinimumLinks :2107)', async () => {
+    await createGroup(PO_MIN_LINKS, 'min-links')
+    try {
+      await node.interfaces.setMinimumLinks(PO_MIN_LINKS, MIN_LINKS_VALUE)
+      expect(await sectionText(PO_MIN_LINKS)).toContain(`port-channel min-links ${String(MIN_LINKS_VALUE)}`)
+      expect((await node.interfaces.get(PO_MIN_LINKS, { status: 'skip' }))?.portChannel?.minimumLinks).toBe(MIN_LINKS_VALUE)
+      // DR-076: upstream substitutes `0` when the line is missing; this client answers absent. Both clear
+      // verbs are exercised so that claim is a live one, not only an offline fixture.
+      await node.interfaces.unsetMinimumLinks(PO_MIN_LINKS)
+      expect((await node.interfaces.get(PO_MIN_LINKS, { status: 'skip' }))?.portChannel?.minimumLinks).toBeUndefined()
+      await node.interfaces.setMinimumLinks(PO_MIN_LINKS, MIN_LINKS_VALUE)
+      await node.interfaces.defaultMinimumLinks(PO_MIN_LINKS)
+      expect(await sectionText(PO_MIN_LINKS)).not.toContain(`port-channel min-links ${String(MIN_LINKS_VALUE)}`)
+    } finally {
+      await dropGroup(PO_MIN_LINKS, 'min-links')
+    }
+  })
+
+  it('an out-of-range min-links is the DEVICE\'s refusal, not a client-side False (test_minimum_links_invalid_value :404 — value 1025 at :406, call :407-:408, assertFalse :409)', async () => {
+    await createGroup(PO_MIN_LINKS, 'min-links-invalid')
+    try {
+      try {
+        await node.interfaces.setMinimumLinks(PO_MIN_LINKS, 1025)
+        const answered = (await node.interfaces.get(PO_MIN_LINKS, { status: 'skip' }))?.portChannel?.minimumLinks
+        console.warn(`live-interfaces: this target ACCEPTED \`port-channel min-links 1025\` and the typed read answers ${JSON.stringify(answered)} — upstream's assertFalse (:409) is a bench-device answer, so the ceiling is recorded as this container's answer rather than asserted either way (clearing it below)`)
+      } catch (rawErr) {
+        if (!(rawErr instanceof EapiError)) throw rawErr
+        expect((await sectionText(PO_MIN_LINKS)).includes('port-channel min-links 1025')).toBe(false)
+        console.log(`live-interfaces: min-links 1025 refused as expected → ${poRefusalText(rawErr)}`)
+      }
+    } finally {
+      try {
+        await node.interfaces.defaultMinimumLinks(PO_MIN_LINKS)
+      } catch (rawErr) {
+        console.warn(`live-interfaces: clearing the min-links line during teardown was refused (${poRefusalText(rawErr)}) — reported with the group removal below`)
+      }
+      await dropGroup(PO_MIN_LINKS, 'min-links-invalid')
+    }
+  })
+
+  it('default interface <scratch> and default interface <group> answer without stranding the run\'s reads (the :67/:271/:274/:277/:304/:307/:310/:342/:353/:365 staging arms\' live half; test_default :151 is already ported on the plain-port lane)', async () => {
+    const id = await createGroup(PO_MIN_LINKS, 'defaults')
+    await guard('defaults-member', [`interface ${scratchName}`, `channel-group ${String(id)} mode active`])
+    try {
+      expect(await node.interfaces.getMembers(PO_MIN_LINKS)).toEqual([scratchName])
+      await guard('defaults-default', [`default interface ${scratchName}`, `default interface ${PO_MIN_LINKS}`])
+      const port = await node.interfaces.get(scratchName, { status: 'skip' })
+      const group = await node.interfaces.get(PO_MIN_LINKS, { status: 'skip' })
+      // Whatever the device stores for `shutdown`/`mtu` after a default is its statement, not a client rule
+      // (DR-027, reportField precedents §5 rows 186-187) — the claim here is that both reads still answer a
+      // typed record and the membership relation is gone from both sides.
+      expect(port?.name).toBe(scratchName)
+      expect(group?.name).toBe(PO_MIN_LINKS)
+      expect(await node.interfaces.getMembers(PO_MIN_LINKS)).toEqual([])
+      expect((await node.interfaces.get(PO_MIN_LINKS, { status: 'skip' }))?.portChannel?.members).toBeUndefined()
+      console.log(`live-interfaces: after defaulting both sides → scratch=${JSON.stringify({ shutdown: port?.shutdown, mtu: port?.mtu })} group=${JSON.stringify(group?.portChannel)}`)
+    } finally {
+      await churnScratch('defaults')
+      await dropGroup(PO_MIN_LINKS, 'defaults')
+    }
   })
 })

@@ -155,23 +155,23 @@ Parity = "all pyeapi verbs exist, generate the same commands, and the ported uni
 
 | Module | pyeapi LOC | upstream unit tests | planned ours | parity | fixtures recorded | live suite |
 |---|---|---|---|---|---|---|
-| `system` | 186 | 5 | 12 → **41 landed** (M8, #10) | `complete (offline)` — all 5 upstream methods ported with their command texts verbatim; the divergences are owned at §5 rows 83-90 | none yet — M12 (#14) owns any capture; unit evidence only | — |
-| `vlans` | 372 | 15 | 22 → **45 landed** (M9, #11) | `complete (offline)` — all 15 ported, command texts verbatim; malformed-value *answers* deliberately not ported (DR-059); ranged headers fan out (row 96) | none yet — M12 (#14) | — |
-| `switchports` | 417 | 21 | 26 → **43 landed** (M9, #11) | `complete (offline)` — all 21 ported verbatim incl. the `allowed vlan 1,2,3-5,6,7` pin; divergence rows 91/94-98; DR-029 closed at the key (row 96) | none yet — M12 (#14); `show interfaces switchport` json model blocked on open item 4 | — |
-| `interfaces` | 1,101 | 72 | ~75 → **113 landed** in the M10a slice (#12) | `partial (offline)` — M10a's half (`Interfaces`, `BaseInterface`, `isvalidinterface`: upstream `test_api_interfaces.py:48-171`, `:186-224`) ported with its command texts verbatim and the divergences at §5 rows 99-106; `EthernetInterface` (upstream `:174+`), `PortchannelInterface` (`:305+`) and `VxlanInterface` (`:429+`) are M10b/M10c/M10d | the `show interfaces status` JSON this client reads is the cEOS-lab recording (row 106, DR-069); PLAN's 48-port 4.28 config fixture and any hardware capture stay M12 (#14) | — |
-| `users` | 328 | 22 | ~28 | — | — | — |
-| `acl` | 303 | 32 | ~35 | — | — | — |
-| `stp` | 367 | 21 | ~24 | — | — | — |
-| `mlag` | 302 | 7 | ~15 | — | — | plan two-node cEOS where supported; physical validation still needs a peer switch |
-| `varp` | 213 | 17 | ~20 | — | — | — |
-| `ipinterfaces` | 268 | 11 | ~14 | — | — | — |
-| `vrfs` | 343 | 10 | ~16 | — | — | — |
-| `staticroute` | 384 | 8 | ~18 | — | — | — |
-| `ntp` | 208 | 11 | ~14 | — | — | — |
-| `ospf` | 362 | 15 | ~20 | — | — | — |
-| `bgp` | 341 | 22 | ~28 | — | — | — |
-| `routemaps` | 357 | 18 | ~22 | — | — | — |
-| `vrrp` | 1,493 | 23 | ~40 | — | — | — |
+| `system` | 186 | 5 | 12 → **41 landed** (M8, #10) | `complete (offline)` — all 5 upstream methods ported with their command texts verbatim; the divergences are owned at §5 rows 83-90 | none yet — M12 (#14) owns any capture; unit evidence only | ✅ `live-system.live.test.ts (reads + 7 DR-126 full-write cases incl. the set_* flip)` |
+| `vlans` | 372 | 15 | 22 → **45 landed** (M9, #11) | `complete (offline)` — all 15 ported, command texts verbatim; malformed-value *answers* deliberately not ported (DR-059); ranged headers fan out (row 96) | none yet — M12 (#14) | ✅ `live-vlans.live.test.ts (2 reads + 13 write arms on EAPI_SCRATCH_VLAN)` |
+| `switchports` | 417 | 21 | 26 → **43 landed** (M9, #11) | `complete (offline)` — all 21 ported verbatim incl. the `allowed vlan 1,2,3-5,6,7` pin; divergence rows 91/94-98; DR-029 closed at the key (row 96) | none yet — M12 (#14); `show interfaces switchport` json model blocked on open item 4 | ✅ `live-switchports.live.test.ts (reads + scratch-port write cycles)` |
+| `interfaces` | 1,101 | 72 | ~75 → **113 landed** in the M10a slice (#12) | `partial (offline)` — M10a's half (`Interfaces`, `BaseInterface`, `isvalidinterface`: upstream `test_api_interfaces.py:48-171`, `:186-224`) ported with its command texts verbatim and the divergences at §5 rows 99-106; `EthernetInterface` (upstream `:174+`), `PortchannelInterface` (`:305+`) and `VxlanInterface` (`:429+`) are M10b/M10c/M10d | the `show interfaces status` JSON this client reads is the cEOS-lab recording (row 106, DR-069); PLAN's 48-port 4.28 config fixture and any hardware capture stay M12 (#14) | ✅ `live-interfaces.live.test.ts (M10a slice + 8 PortChannel DR-126 arms; Vxlan writes NOT ported — DR-115 lab-only rule stands)` |
+| `users` | 328 | 22 | ~28 | — | — | ✅ `live-users.live.test.ts (13)` |
+| `acl` | 303 | 32 | ~35 | — | — | ✅ `live-acl.live.test.ts (20)` |
+| `stp` | 367 | 21 | ~24 | — | — | ✅ `live-stp.live.test.ts (13)` |
+| `mlag` | 302 | 7 | ~15 | — | — | ✅ `src/live-mlag.live.test.ts: single-node shape reads only; all 20 write methods ledger-refused per the #64/#84 domain rule (physical pair still owed)` |
+| `varp` | 213 | 17 | ~20 | — | — | ✅ `live-varp.live.test.ts (15; Vlan2001 SVI block it owns)` |
+| `ipinterfaces` | 268 | 11 | ~14 | — | — | ✅ `live-ipinterfaces.live.test.ts (9; +SVI arms on Vlan2001/2002)` |
+| `vrfs` | 343 | 10 | ~16 | — | — | ✅ `live-vrfs.live.test.ts (14)` |
+| `staticroute` | 384 | 8 | ~18 | — | — | ✅ `live-staticroute.live.test.ts (7; TEST-NET-1 space, ip-routing probe per DR-122)` |
+| `ntp` | 208 | 11 | ~14 | — | — | ✅ `live-ntp.live.test.ts (11)` |
+| `ospf` | 362 | 15 | ~20 | — | — | ✅ `live-ospf.live.test.ts (11)` |
+| `bgp` | 341 | 22 | ~28 | — | — | ✅ `live-bgp.live.test.ts (22 — ported from the UNIT corpus: upstream has no test/system/test_api_bgp.py, §6)` |
+| `routemaps` | 357 | 18 | ~22 | — | — | ✅ `live-routemaps.live.test.ts (19)` |
+| `vrrp` | 1,493 | 23 | ~40 | — | — | ✅ `live-vrrp.live.test.ts (20; eAPI-1002 read arms report the recorded negative, DR-122)` |
 | *(framework)* | 224+304 | 10 loose upstream checks, none of them a spec: `abstract.py` has **no** suite (no `test/unit/test_abstract.py` in the clone), and the only upstream assertions touching framework behaviour are `test_api_autoloader` (`test_client.py:210-212`, asserts only non-`None`), 4 `test_make_iterable_*` (`test_utils.py:23-41`, none asserting a copy), 3 `isvlan` + 2 `isvalidinterface` (`test_api_vlans.py:51-58`, `test_api_interfaces.py:50-58`); **nothing** upstream calls `Node.section` or `get_block` | ~66 → **139 landed** (M7, #9) | `complete (offline)` — the framework itself (verbs, builders, registry, validators, `toArray`, the `Node` config reads) is shipped, pinned, re-exported from both package entries (PR #26), and has its **first consumer**: M8's `system` (#10) landed inside the measured 19-line entity plumbing budget | n/a | n/a |
 
 Upstream totals for reference: **436 unit** test methods, **284 system** test methods, ~9.0 k LOC of
@@ -284,7 +284,7 @@ is the work state; the §1 table `in-progress`/`done` cell mirrors it, and this 
 | [#11](https://github.com/svaj/vibe-arista-webui/issues/11) | M9 `vlans` + `switchports` | closed (PR #28) |
 | [#12](https://github.com/svaj/vibe-arista-webui/issues/12) | M10 `interfaces` | open — M10a (facade + `BaseInterface` + per-kind grammar, §5 rows 99-106, DR-067-069) on its branch; M10b/M10c open (rows 123-130, DR-070+ reserved) |
 | [#13](https://github.com/svaj/vibe-arista-webui/issues/13) | M11 Capability probe + dry-run | open |
-| [#14](https://github.com/svaj/vibe-arista-webui/issues/14) | M12 Live suite + fixtures + CI | `status:in-progress` — partial: recorder + live-guard + cEOS harness as [PR #29](https://github.com/svaj/vibe-arista-webui/pull/29), live tranches 1-2 (suites, `fixtures:refresh`, job wiring); the #62 configured re-capture batch brings **30 live captures** and the provisioned-capture harness onto this branch (§5 row 225, DR-122/DR-123); the hardware capture **lane is now built** — `EAPI_TARGET_CLASS=hardware` guard gates, `hw-inventory`/`hw-session-probe` runners, reviewed probe spec, runbook [HARDWARE-CAPTURE.md](./HARDWARE-CAPTURE.md) (§5 row 226, DR-124/DR-125) — its first **executed** switch session is what this list and every §3 box still need; also remain — the `test/system/*` port now rides the D1 full-write lab gates (§5 row 227, DR-126: consent + scratch-VLAN + pre-wire self-lockout fence landed; suites land in the D2 batch) |
+| [#14](https://github.com/svaj/vibe-arista-webui/issues/14) | M12 Live suite + fixtures + CI | `status:in-progress` — partial: recorder + live-guard + cEOS harness as [PR #29](https://github.com/svaj/vibe-arista-webui/pull/29), live tranches 1-2 (suites, `fixtures:refresh`, job wiring); the #62 configured re-capture batch brings **30 live captures** and the provisioned-capture harness onto this branch (§5 row 225, DR-122/DR-123); the hardware capture **lane is now built** — `EAPI_TARGET_CLASS=hardware` guard gates, `hw-inventory`/`hw-session-probe` runners, reviewed probe spec, runbook [HARDWARE-CAPTURE.md](./HARDWARE-CAPTURE.md) (§5 row 226, DR-124/DR-125) — its first **executed** switch session is what this list and every §3 box still need; also remain, but the **port itself is done** (§5 row 228): 14 suite files new + 3 extended over the D1 gates — the live project is up to 21 files / 250 cases, all compiling/collecting/skipping-loudly; what this lane still owes is the first **executed** device run (four `lab:run` chains here all died to the DR-123 host port-RST; see row 228's execution paragraph) and the supervised switch session for the hardware sweep |
 | [#62](https://github.com/svaj/vibe-arista-webui/issues/62) | Configured-device capture batch (show-model gaps the UI screens need) | closed (PR #98; §5 row 225) — provisioning + 31-entry catalog + 30 captures + `--capture-via` fallback landed on main 2026-11-08 |
 | [#15](https://github.com/svaj/vibe-arista-webui/issues/15) | M13 Consumption, docs, release | open |
 | [#16](https://github.com/svaj/vibe-arista-webui/issues/16) | W2 wave-2 module backlog | open |
