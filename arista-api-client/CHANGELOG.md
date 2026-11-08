@@ -24,6 +24,10 @@ surprise here — this file records what shipped, the migration map records what
   `EAPI_CA_FILE`+`EAPI_FINGERPRINT`+`EAPI_SERVER_NAME` (DR-128(b) — required because cEOS serves a
   SAN-less `CN=self.signed` certificate), and the CI live job EXCLUDES the two hardware-capture runners
   rather than counting them as skips (DR-128(c)).
+- Lab-harness bring-up (DR-129, §5 row 231): the mgmt bridge subnet is create-verified-retried against the
+  live host's route table, the candidate pool leads with the uncontested `192.168.255.0/24` band, and the
+  readiness probe fast-fails `mgmt-route-lost-mid-run` / `mgmt-path-owned-by-host-nat` instead of burning
+  the whole window — with relay-vs-direct peeks and `route: live|BROKEN` in the refusal diagnostics.
 
 ## [0.1.0] — 2026-11-08
 
