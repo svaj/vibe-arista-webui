@@ -88,6 +88,7 @@ const DEFAULTS = {
   cliTimeoutSec: 360,
   probeTimeoutSec: 240,
   frontPanelTimeoutSec: 60,
+  certWaitSec: 120,
   requestTimeoutMs: 15_000,
   retryDelayMs: 5_000,
 }
@@ -519,6 +520,26 @@ function readContainerPublicCert(container) {
     }
   }
   return { pem: null, path: null, tried }
+}
+
+/**
+ * Bounded wait for the certificate anchor. Observed 2026-11-07 (lab-1850303-1de0e9):
+ * `management api http-commands` answers the config with `HTTPS server: starting` and
+ * `/persist/secure/capi.pem` does not exist until the CApi service has actually bound
+ * the port — reading the anchor ONCE after bootstrap races service start, and the
+ * single-shot read turned a slow start into exit 7 while earlier identical runs passed
+ * (the file existed by the time those probes grabbed it). The candidates are re-swept
+ * on a bounded loop; a refused run after the timeout is still a refusal, not a fallback.
+ * @param {string} container @param {number} timeoutSec
+ */
+async function readContainerPublicCertWait(container, timeoutSec) {
+  const t0 = Date.now()
+  let last = readContainerPublicCert(container)
+  while (!last.pem && Date.now() - t0 < timeoutSec * 1000) {
+    await sleep(5000)
+    last = readContainerPublicCert(container)
+  }
+  return { ...last, certWaitMs: Date.now() - t0, certWaitFullTimeout: !last.pem && timeoutSec > 0 }
 }
 
 /**
@@ -1267,10 +1288,10 @@ function openPendingSession(container) {
 /** @param {ReturnType<typeof labConfig>} cfg @param {NonNullable<ReturnType<typeof readState>>} state */
 async function cmdProbe(cfg, state) {
   const t0 = Date.now()
-  const anchor = readContainerPublicCert(state.container)
+  const anchor = await readContainerPublicCertWait(state.container, cfg.certWaitSec)
   if (!anchor.pem) {
     refuse(
-      `no public certificate anchor was readable inside the container (tried: ${anchor.tried
+      `no public certificate anchor was readable inside the container within ${String(cfg.certWaitSec)}s (tried: ${anchor.tried
         .map((t) => `${t.path} — ${t.reason}`)
         .join('; ')}). Without the container-side certificate there is no trust anchor, and this harness ` +
         'will not fall back to an unverified peer.',
@@ -2174,6 +2195,7 @@ function labConfig(flags) {
     cliTimeoutSec: int('cli-timeout', DEFAULTS.cliTimeoutSec),
     probeTimeoutSec: int('timeout', DEFAULTS.probeTimeoutSec),
     frontPanelTimeoutSec: int('front-panel-timeout', DEFAULTS.frontPanelTimeoutSec),
+    certWaitSec: int('cert-wait', DEFAULTS.certWaitSec),
     requestTimeoutMs: int('request-timeout', DEFAULTS.requestTimeoutMs),
     retryDelayMs: int('retry-delay', DEFAULTS.retryDelayMs),
     port: flags['port'] === undefined || flags['port'] === true ? null : Number(flags['port']),
@@ -2229,6 +2251,8 @@ flags
   --host-ip <ip>               publish address, default ${DEFAULTS.hostIp}
   --container-port <n>         container eAPI port, default ${DEFAULTS.containerApiPort}
   --cli-timeout <sec>          bounded EOS-CLI wait inside the container, default ${DEFAULTS.cliTimeoutSec}
+  --front-panel-timeout <sec>  bounded wait for front-panel Ethernet ports after start, default ${DEFAULTS.frontPanelTimeoutSec}
+  --cert-wait <sec>            bounded wait for the eAPI certificate anchor to appear in /persist, default ${DEFAULTS.certWaitSec}
   --timeout <sec>              bounded eAPI readiness wait, default ${DEFAULTS.probeTimeoutSec}
   --request-timeout <ms>       per-request deadline, default ${DEFAULTS.requestTimeoutMs}
   --retry-delay <ms>           delay between attempts, default ${DEFAULTS.retryDelayMs}
