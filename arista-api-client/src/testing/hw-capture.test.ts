@@ -238,3 +238,21 @@ describe('the probe-spec parser (policy made mechanical)', () => {
     expect(message).not.toContain('SUPERSECRETVALUE')
   })
 })
+
+describe('the committed draft probe spec is itself machine-checked (review-before-run)', () => {
+  it('docs/hw-session-probes.draft.json parses under the same policy the live probe enforces', async () => {
+    const { readFileSync } = await import('node:fs')
+    const spec = parseHwProbeSpec(readFileSync(new URL('../../docs/hw-session-probes.draft.json', import.meta.url), 'utf8'))
+    expect(spec.batches.length).toBeGreaterThanOrEqual(6)
+    const commitBatches = spec.batches.filter((batch) => batch.allowCommit)
+    expect(commitBatches.length).toBeGreaterThan(0)
+    for (const batch of commitBatches) {
+      expect(batch.commands[0]?.trim().toLowerCase()).toBe('interface {{scratch}}')
+      for (const cmd of batch.commands.slice(1)) {
+        expect(/^[ \t]/u.test(cmd), `commit batch ${batch.name} left the scratch context: ${JSON.stringify(cmd.split(/\s+/u)[0])}`).toBe(true)
+      }
+    }
+    // A restore batch exists so committed probes are net-zero on the running switch.
+    expect(spec.batches.some((batch) => batch.name.includes('restore') && batch.allowCommit)).toBe(true)
+  })
+})
