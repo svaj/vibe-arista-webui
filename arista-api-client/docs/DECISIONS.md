@@ -1896,6 +1896,59 @@ null` where it has three answers), and the formatter is NOT reconciled with the 
 validator built on it behaves like pyeapi's, which is its documented purpose ("validating updated vrrp
 configurations", `:1430`); the only softening is type-honest (optional keys pass through instead of
 raising), never a re-normalisation. §5 rows 218/224.
+
+### DR-122 — the capture lab is a provisioned switch, not a bare container: staging-then-commit setup with abort semantics, a deliberately-pending session, and capability negatives kept as findings (#62)
+The 2026-11-06 re-capture proved an unconfigured node records mostly-empty models (`interfaceStatuses: {}`,
+`{"portChannels": {}}`, empty `switchports`) — the exact shapes that would have baked fictional field sets
+into UI ShowContracts (DR-043's pattern, at the capture layer). The #62 batch therefore makes `lab:up`
+apply a **representative config** before anything is read: vlans 10/100/110 (+names in `vlan` sub-mode —
+SVI-stanza `name` is `% Invalid input` on 4.28.14M), one routed L3 access port (Ethernet1 + VRRP/ACL
+attachment lines), Po1 LACP trunk (native 10, allowed 100-110, `switchport trunk group LABGRP`), Eth2 as
+an inactive member, two SVIs, a static route, an `ntp server`, STD+EXT ACLs, and `spanning-tree` touched
+(MST0 present after `spanning-tree`); MLAG stays OFF on a single node (#84's foot-gun rule). It is staged
+in the named session `lab-provision` and only `commit`s if the staging transcript shows **zero fatal `%`
+errors** — EOS itself echoes `at line N`, and the transcript classifier maps each error back to its fed
+line (unattributed errors stay fatal); tolerated refusals are recorded in the up JSON and in the session
+transcript, never silently. On any fatal staging error the sandbox `abort`s (running-config returns to
+bootstrap state — the half that DR-035 cares about) and the run refuses; there is no half-provisioned
+capture. `copy running-config startup-config` is never issued (bootstrap afresh, docs/CEOS.md). A
+second zero-change session (`lab-pending-capture`, staged only) is left **deliberately open** so
+`show configuration sessions [+detail]` — a #62 capture feeding B4/S9's questions — lists a real session
+instead of an empty map. **Answers this batch settles for cEOS** (container-only, never 7050TX evidence,
+DR-043 enforced per file): `switchport trunk group` ACCEPTED on cEOS-lab 4.28.14M (item 4's cEOS half;
+open item 7's `lab-provision`/pending names rode the wire fine); sessions model reports
+`maxOpenSessions: 5` / `maxSavedSessions: 1` and no start-time-family key in the sessions entry (item 8's
+"related known-unknown" gets its cEOS answer; the 4.28.13.1M half stays in #14 §3); `ip routing`, SVI
+`vrrp … ip` and SVI `ip access-group …` answer `% Unavailable command (not supported on this hardware
+platform)` on the container (so the provisioner keeps them as **tolerated** probes and the transcript is
+the evidence); `show lag` and `show port-channel summary` stay capability negatives (cEOS-lab refuses
+them — recorded as negative results, never files). **Capability claims are transport-specific on this
+image:** `show port-channel detail` and `show vrrp` answered 1002 via eAPI in the 2026-11-06 pass but
+reply over the container CLI — so fixture envelopes now always name their collection transport, and
+capability rows must say *which* transport refused (#62 PR note; the catalog's negative semantics
+unchanged). §5 row 225; harness changes in `scripts/ceos-lab.mjs` (see DR-035/DR-103/DR-104 for the
+write-policy/redaction machinery this reuses).
+
+### DR-123 — the fixtures lane may collect through the container CLI when this daemon's published port flakes; the live-test lane never may
+On docker 29.9.2/this host, a cEOS container with **more than one Docker endpoint** port-flakes: the
+published loopback port answers TLS on some boots and RSTs `show management api`-verified-alive servers
+on others, stable across restarts and data-NIC detach, while `docker exec … Cli` and direct kernel-path
+port 443 keep answering (the live kernel path is the lone Management1 address; `curl -k` to it returns
+405). #62's capture batch REQUIRES extra NICs (front-panel Ethernet ports bind at boot only — a
+single-endpoint cEOS has none, and connected-after-boot NICs insert nothing), so `fixtures` grew
+`--capture-via=auto|eapi|cli`: after the published-eAPI probe refuses for endpoint/reachability reasons
+(model/version/cert pins still enforced from the **container's own** `show version` and the anchor file),
+the same `CAPTURE_CATALOG` is re-run via `Cli -p 15` inside the run-owned container. This is a transport
+fallback, never an identity or consent relaxation: `cliCapture: true`, the eAPI refusal reason and the
+`docker exec Cli…` transport string land in **every** fixture envelope, the identity guards re-run before
+any write, and `hardwareEvidence`/path rules are untouched. The live suites and the CI live job
+(`lab:run`, `cmdRun`, `*live.test.ts`) keep the strict published-eAPI path — they test THIS client's
+transport stack, so a Cli fallback would prove nothing (a `lab:run` that flakes under the daemon stays a
+red CI lane with the finding above as the diagnosis, not a silent fallback). `--capture-via=eapi`
+restores strict fixtures behavior for trusted runners. §5 row 225; docs/CEOS.md §Manual-now records the
+NIC recipe; open follow-up (filed on #14): whether live-lane provisioning should pin the endpoint order
+experimentally or move CI to a daemon where single-endpoint-forward determinism holds.
+
 ## Open items (need the device)
 
 Use cEOS first for software behavior and schema exploration, recording its model/version;
@@ -1911,7 +1964,10 @@ config session and are **not read-only**:
    in `HttpServiceConstants.py:44` looks stale but unconfirmed), and whether the intended config style
    uses `management api http-commands` or `management http-server` (mutually exclusive — DR-036).
 4. Does `switchport trunk group` exist on this SKU (DR-028) and what does
-   `show interfaces switchport json` actually return?
+   `show interfaces switchport json` actually return? **(cEOS half settled 2026-11-07: the command is
+   ACCEPTED on cEOS-lab 4.28.14M and the switchports model answers populated groups for configured
+   ports — `show-interfaces-switchport.json`, run `lab-1899774-8d6173`, DR-122. The 7050TX-64 half stays
+   open and is a #14 §3 line.)**
 5. `configure session <name> commit timer <hh:mm:ss>`: semantics of the confirming second `commit`
    (python layer verified, native `ConfigAgent`/`libCliSession` not inspected — DR-022).
 6. `features.md` is titled "Supported Features — Arista **7050X**" and carries FlexProfile footnotes,
@@ -1941,7 +1997,11 @@ config session and are **not read-only**:
    `show configuration sessions` reports `maxOpenSessions`/`maxSavedSessions` and any start-time field,
    since `olderThan` and the "pending sessions consume the cap" reasoning in DR-023 both currently rest
    on image notes. Capture each answer as a fixture in `test/fixtures/show/` during M12 (#14) **before**
-   M13 (#15)'s transaction UI offers the verbs.
+   M13 (#15)'s transaction UI offers the verbs. **(cEOS half of the field-set question settled
+   2026-11-07: `show configuration sessions` reports `maxOpenSessions: 5` / `maxSavedSessions: 1`, and a
+   listed pending session's entry carries `instances/state/commitUser/description` with no start-time
+   key — `show-configuration-sessions[.detail].json`, run `lab-1899774-8d6173`, DR-122. The boundary and
+   `no-commit`/rollback-verb attempts still need the authorized scratch session on both targets.)**
 
 MLAG (`mlag` module, 21 upstream system tests): investigate supported control-plane
 behavior in an isolated two-node cEOS topology. Physical 7050TX-64 MLAG/forwarding

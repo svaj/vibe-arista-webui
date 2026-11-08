@@ -87,8 +87,12 @@ const DEFAULTS = {
   containerApiPort: 443,
   cliTimeoutSec: 360,
   probeTimeoutSec: 240,
+  frontPanelTimeoutSec: 60,
+  certWaitSec: 120,
   requestTimeoutMs: 15_000,
   retryDelayMs: 5_000,
+  /** fixtures-command capture transport: see `--capture-via` in the usage text. */
+  captureVia: 'auto',
 }
 
 /**
@@ -207,6 +211,22 @@ function cliJson(container, cmd) {
   const start = out.indexOf('{')
   if (start < 0) refuse(`no JSON object returned by "Cli" for "${cmd}": ${(out || '(empty)').slice(0, 200)}`, EXIT.internal)
   return JSON.parse(out.slice(start))
+}
+
+/**
+ * Feed `Cli` WITHOUT throwing on a non-zero Cli exit. `Cli -p 15` exits 1 when any
+ * line of the transcript errored (observed 2026-11-07: one `% Unavailable command`
+ * in a 46-line staging script killed `docker exec` through {@link docker} at exit 8,
+ * before any verdict could be read). For transcripts whose errors ARE the finding,
+ * this returns the merged output instead of refusing.
+ * @param {string} container @param {string[]} commands @param {number} [timeoutMs]
+ */
+function cliScriptOpt(container, commands, timeoutMs = 90_000) {
+  const res = dockerOpt(['exec', '-i', container, 'Cli', '-p', '15'], {
+    input: `${commands.join('\n')}\n`,
+    timeoutMs,
+  })
+  return `${res.stdout ?? ''}${res.stderr ?? ''}`
 }
 
 /** @param {string} runId */
@@ -505,6 +525,26 @@ function readContainerPublicCert(container) {
 }
 
 /**
+ * Bounded wait for the certificate anchor. Observed 2026-11-07 (lab-1850303-1de0e9):
+ * `management api http-commands` answers the config with `HTTPS server: starting` and
+ * `/persist/secure/capi.pem` does not exist until the CApi service has actually bound
+ * the port — reading the anchor ONCE after bootstrap races service start, and the
+ * single-shot read turned a slow start into exit 7 while earlier identical runs passed
+ * (the file existed by the time those probes grabbed it). The candidates are re-swept
+ * on a bounded loop; a refused run after the timeout is still a refusal, not a fallback.
+ * @param {string} container @param {number} timeoutSec
+ */
+async function readContainerPublicCertWait(container, timeoutSec) {
+  const t0 = Date.now()
+  let last = readContainerPublicCert(container)
+  while (!last.pem && Date.now() - t0 < timeoutSec * 1000) {
+    await sleep(5000)
+    last = readContainerPublicCert(container)
+  }
+  return { ...last, certWaitMs: Date.now() - t0, certWaitFullTimeout: !last.pem && timeoutSec > 0 }
+}
+
+/**
  * Authenticated eAPI `runCmds`, pinned to the certificate extracted above.
  * Hostname/SAN validation is not achievable with this certificate (observed subject
  * `CN=self.signed`, no SAN), so identity comes from requiring a byte-identical pinned
@@ -699,6 +739,76 @@ async function waitForEosCli(container, timeoutSec) {
 /* --------------------------------------------------------------- up command */
 
 /** @param {ReturnType<typeof labConfig>} cfg */
+/**
+ * Pick a free private /24 under 172.31.16.0–172.31.255.0 for the run's mgmt bridge.
+ * The mgmt network MUST carry a pinned static subnet because the published-port path
+ * leans on a deterministically-addressed PRIMARY endpoint (see the NIC-topology note
+ * in `cmdUp` and DR-034's exact-endpoint rule). Existing networks are read once and
+ * the scan starts at a random octet so racing workers do not pick the same first
+ * candidate. IPv6 ipam entries and link-local noise are ignored.
+ * @returns {{ octetBase: string, cidr: string }}
+ */
+function pickMgmtSubnet() {
+  const ids = docker(['network', 'ls', '-q']).trim().split('\n').filter(Boolean)
+  /** @type {{addr: number[], plen: number}[]} */
+  const used = []
+  for (let i = 0; i < ids.length; i += 40) {
+    const res = dockerOpt(['network', 'inspect', ...ids.slice(i, i + 40), '--format', '{{range .IPAM.Config}}{{.Subnet}} {{end}}'])
+    if (res.status !== 0) continue
+    for (const cidr of res.stdout.trim().split(/\s+/).filter(Boolean)) {
+      const [addr, plen] = cidr.split('/')
+      if (!/^(\d{1,3}\.){3}\d{1,3}$/.test(addr)) continue
+      used.push({ addr: addr.split('.').map(Number), plen: Math.min(Math.max(Number(plen ?? 24), 0), 32) })
+    }
+  }
+  /** @param {number[]} a @param {number} ap @param {number[]} b @param {number} bp */
+  const overlaps = (a, ap, b, bp) => {
+    const bits = Math.min(ap, bp)
+    for (let bit = 0; bit < bits; bit += 8) {
+      const width = Math.min(8, bits - bit)
+      const mask = (0xff << (8 - width)) & 0xff
+      const ia = bit / 8
+      if ((a[ia] & mask) !== (b[ia] & mask)) return false
+    }
+    return true
+  }
+  const start = crypto.randomInt(16, 256)
+  for (let k = 0; k < 240; k++) {
+    const o = 16 + ((start + k) % 240)
+    const cand = [172, 31, o, 0]
+    if (!used.some((u) => overlaps(cand, 24, u.addr, u.plen))) return { octetBase: `172.31.${o}`, cidr: `172.31.${o}.0/24` }
+  }
+  refuse('no free 172.31.16-255.0/24 subnet for the lab mgmt bridge — clean up stale Docker networks before retrying', EXIT.internal)
+}
+
+/**
+ * Poll the interface model until front-panel Ethernet ports exist. NICs bind at cEOS
+ * boot, so this typically returns on the first pass; running out means the data
+ * bridges did not produce ports, and staging would happily create orphan stanzas
+ * (accepted as config, answered as `% Interface does not exist`) — which is exactly
+ * the empty-capture rot #62 is here to fix.
+ * @param {string} container @param {number} timeoutSec
+ * @returns {Promise<string[]>} Ethernet names sorted by index
+ */
+async function waitForFrontPanelPorts(container, timeoutSec) {
+  const t0 = Date.now()
+  /** @type {string[]} */
+  let names = []
+  while (Date.now() - t0 < timeoutSec * 1000) {
+    try {
+      const model = cliJson(container, 'show interfaces status')
+      names = Object.keys(model?.interfaceStatuses ?? {})
+        .filter((n) => /^Ethernet\d+$/.test(n))
+        .sort((a, b) => Number(a.slice(8)) - Number(b.slice(8)))
+      if (names.length > 0) return names
+    } catch {
+      // Cli can answer-but-not-ready here; the bounded loop is the diagnosis path.
+    }
+    await sleep(3000)
+  }
+  return names
+}
+
 async function cmdUp(cfg) {
   const t0 = Date.now()
   const runId = cfg.runId ?? newRunId()
@@ -706,7 +816,8 @@ async function cmdUp(cfg) {
     runId,
     container: containerName(runId),
     mgmt: networkName(runId, 'mgmt'),
-    data: networkName(runId, 'data'),
+    data1: networkName(runId, 'data1'),
+    data2: networkName(runId, 'data2'),
   }
   /** @type {number} */
   let port
@@ -718,26 +829,45 @@ async function cmdUp(cfg) {
     )
     port = await allocateEndpoint(cfg.hostIp, runId, cfg.port)
     log(`[up] run ${runId} · endpoint ${cfg.hostIp}:${port} -> ${names.container}:${cfg.containerApiPort}`)
-    // ONE network attached — evidence 2026-11-04 (post-reboot verification of the 2026-11-03 runs).
-    // Attaching `-mgmt` AND `-data` made the published port flap: `docker run -p` resolves the
-    // container endpoint among the attachments with no documented tie-break, and bare cEOS (this
-    // harness's ZTP-free boot) only plumbs a kernel route/address on the FIRST attachment — the
-    // second NIC answers nothing on its docker-side IP, so whenever the picker chose that endpoint
-    // every TCP+TLS connect to the published port died ECONNRESET (30/30 probe attempts) while
-    // `docker exec` curl of the container's own eth0 returned 405. Detaching the second network at
-    // runtime made the published path work instantly (405 = method, not transport). The data NIC has
-    // no consumer yet — two-node MLAG topologies (DR-043) belong to a later lane, and when they come,
-    // attach-then-publish must name the endpoint explicitly instead of relying on the picker.
-    for (const net of [names.mgmt]) {
-      docker(['network', 'create', `--label=${LABEL_RUN}=${runId}`, `--label=${LABEL_MANAGER}=${MANAGER}`, net])
+    // NIC topology, re-settled on 2026-11-07 for issue #62, twice. (1) cEOS binds
+    // kernel NICs to front-panel Ethernet ports ONLY at boot: a single-NIC node
+    // presents ZERO Ethernet ports (`interface Ethernet1` then answers `% Interface
+    // does not exist … until the module is inserted`), and hot-plugging a network into
+    // a RUNNING node inserts nothing (probed). So the data bridges must be attached
+    // BEFORE `docker start`. (2) Attaching mgmt+data1+data2 at CREATE — all three in
+    // one `docker create` — re-broke the published-port path: two back-to-back fixture
+    // runs probe-refused with ECONNRESET on port 443 while EOS-side `show management
+    // api http-commands` reported `HTTPS server: running`, i.e. the port forward
+    // resolved to an endpoint EOS had taken off the kernel (the 2026-11-04 no-tie-break
+    // finding, reproduced). The vendor README's own recipe, and a controlled
+    // before-start-connect test on this same daemon the same day, both keep exactly
+    // ONE attachment at create (the pinned mgmt bridge — the shape every trusted M12
+    // run used, including capture run lab-1792145-121e25) and `docker network
+    // connect` the data bridges AFTER create but BEFORE start. A full run of the #62
+    // staging inside such a node changed nothing about the published TLS path
+    // (10/10 fingerprint probes after the commit), so provisioning is proven innocent:
+    // the flapping half was create-time multi-attach. The mgmt-side safeguards
+    // (loopback publish, per-endpoint locks, model/version pins) are unchanged; the
+    // two data bridges carry no published port — they exist to boot front-panel ports.
+    const mgmtSubnet = pickMgmtSubnet()
+    const mgmtIp = `${mgmtSubnet.octetBase}.10`
+    for (const net of [names.mgmt, names.data1, names.data2]) {
+      const netArgs = ['network', 'create', `--label=${LABEL_RUN}=${runId}`, `--label=${LABEL_MANAGER}=${MANAGER}`]
+      if (net === names.mgmt) netArgs.push(`--subnet=${mgmtSubnet.cidr}`)
+      netArgs.push(net)
+      docker(netArgs)
     }
+    log(`[up] mgmt network pinned to ${mgmtSubnet.cidr} (container ${mgmtIp}); data nets carry the front-panel NICs`)
     const createArgs = [
       'create',
       `--name=${names.container}`,
       '--privileged',
       `--label=${LABEL_RUN}=${runId}`,
       `--label=${LABEL_MANAGER}=${MANAGER}`,
+      // the ONLY create-time attachment, with the pinned address, so the port forward
+      // has a single endpoint to resolve to — see the topology note above.
       `--network=${names.mgmt}`,
+      `--ip=${mgmtIp}`,
       `-p=${cfg.hostIp}:${port}:${cfg.containerApiPort}`,
     ]
     for (const [k, v] of VENDOR_ENV) createArgs.push('-e', `${k}=${v}`)
@@ -750,6 +880,12 @@ async function cmdUp(cfg) {
     const inspectLabels = labelsOut === 'null' || !labelsOut ? {} : JSON.parse(labelsOut)
     if (inspectLabels[LABEL_RUN] !== runId) {
       refuse(`container ${names.container} does not carry ${LABEL_RUN}=${runId} — refusing to manage it`, EXIT.internal)
+    }
+    // Data bridges join AFTER create and BEFORE start: NICs exist at boot so cEOS
+    // binds them as front-panel ports, while create-time attachment stays a single
+    // endpoint for the port-forward resolution (topology note above).
+    for (const net of [names.data1, names.data2]) {
+      docker(['network', 'connect', net, names.container])
     }
     const privileged = docker(['container', 'inspect', '--format', '{{.HostConfig.Privileged}}', names.container]).trim()
     const imageRef = docker(['container', 'inspect', '--format', '{{.Config.Image}}', names.container]).trim()
@@ -787,16 +923,52 @@ async function cmdUp(cfg) {
     const bootstrapTranscript = bootstrapLab(names.container, creds)
     const bootstrapMs = Date.now() - bootstrapStart
 
+    // The front-panel model must be populated BEFORE provisioning references the ports
+    // (a staging line aimed at a noninserted module is accepted as orphan config and
+    // poisons every interface capture). NICs bind at boot, so by the time Cli answers
+    // this is usually already true; the bounded poll is for slow hosts, not optimism.
+    const frontPanels = await waitForFrontPanelPorts(names.container, cfg.frontPanelTimeoutSec)
+    if (frontPanels.length < 2) {
+      refuse(
+        `cEOS presented only ${String(frontPanels.length)} front-panel Ethernet port(s) ` +
+          `(${frontPanels.join(',') || 'none'}) within ${String(cfg.frontPanelTimeoutSec)}s — the run's two data ` +
+          'networks did not bind at boot; provisioning would stage orphan stanzas and the #62 captures would be empty.',
+        EXIT.readiness,
+      )
+    }
+
+    // Issue #62: the captures the UI screens need only answer in the configured shape,
+    // so `up` now provisions that shape before anything is read. A refusal here lands in
+    // the catch below: teardown runs, no probe is taken, no half-configured capture set exists.
+    const provisionStart = Date.now()
+    const provision = provisionLab(names.container, frontPanels[0], frontPanels[1])
+    const provisionMs = Date.now() - provisionStart
+    if (!provision.ok) {
+      const detail =
+        provision.stage === 'verification'
+          ? `show vlan after commit is missing VLAN(s) ${provision.missingVlans.join(', ')} — the commit transcript said more than the device did`
+          : provision.fatal.map((e) => `${e.command} -> ${e.line}`).join('; ')
+      refuse(
+        `lab provisioning (issue #62, session ${PROVISION_SESSION}) failed during ${provision.stage}: ${detail}. ` +
+          'The session was aborted (staging path) or the run is being destroyed (verification path), the running ' +
+          'config was never persisted, and the harness refuses rather than capture a half-provisioned container.',
+        EXIT.internal,
+      )
+    }
+
     const versionJson = cliJson(names.container, 'show version')
     const interfacesJson = cliJson(names.container, 'show interfaces status')
     const httpCommandsJson = cliJson(names.container, 'show management api http-commands')
 
     const state = {
       runId,
-      schema: 1,
+      schema: 2,
       container: names.container,
       containerId: cid,
-      networks: { mgmt: names.mgmt },
+      networks: { mgmt: names.mgmt, data1: names.data1, data2: names.data2 },
+      mgmtSubnet: mgmtSubnet.cidr,
+      mgmtContainerIp: mgmtIp,
+      frontPanelPorts: frontPanels,
       hostIp: cfg.hostIp,
       port,
       containerApiPort: cfg.containerApiPort,
@@ -811,6 +983,11 @@ async function cmdUp(cfg) {
       cliNotReadyObservations: cli.observations,
       bootstrapMs,
       bootstrapTranscript: redactCopy(bootstrapTranscript),
+      provisionMs,
+      provisionSession: PROVISION_SESSION,
+      provisionTolerated: provision.ok ? provision.tolerated : [],
+      provisionTranscript: redactCopy(`${provision.staged}\n--commit--\n${provision.committed ?? ''}`.slice(0, 6000)),
+      pendingSession: PENDING_SESSION,
       dockerIps,
       versionJson,
       interfacesJson,
@@ -841,6 +1018,14 @@ async function cmdUp(cfg) {
             eosCliAttempts: cli.attempt,
             cliNotReadyObservations: cli.observations,
             bootstrapSeconds: +secs(bootstrapMs),
+            provisioningSeconds: +secs(provisionMs),
+          },
+          provisioning: {
+            session: PROVISION_SESSION,
+            applied: true,
+            pendingSessionLeftOpen: PENDING_SESSION,
+            toleratedRefusals: provision.ok ? provision.tolerated.map((e) => `${e.command} -> ${e.line}`) : [],
+            note: 'representative config per issue #62; container-side only, never persisted, discarded with the container',
           },
           eosVersionFromCli: identityFromShowVersion(versionJson),
           eosInterfacesObserved: Object.keys(interfacesJson?.interfaceStatuses ?? interfacesJson?.interfaces ?? {}),
@@ -894,15 +1079,221 @@ function bootstrapLab(container, creds) {
     .slice(0, 3000)
 }
 
+/* ------------------------------------------- lab provisioning (issue #62) */
+
+/**
+ * Representative config applied to the disposable node after eAPI bootstrap, so the
+ * commands the UI screens read answer in the *configured* shape instead of the empty
+ * models the 2026-11-06 run (`lab-811108-5dcd01`) recorded: `interfaceStatuses` was
+ * empty, `show port-channel 1 all-ports` answered `{"portChannels":{}}`,
+ * `show interfaces switchport` carried no groups, and whole command families had no
+ * capture at all (issue #62's gap list).
+ *
+ * The apply runs in a **named config session**, staged in full and committed only if
+ * the staging transcript carries no `%` error for a required command. The session
+ * sandbox is what gives this all-or-nothing semantics: a failed apply `abort`s and
+ * the running config stays exactly at bootstrap, so the harness never captures a
+ * half-provisioned container and presents its mixed shapes as device behavior. On a
+ * fatal staging error this refuses the run (exit 1); the caller's teardown still owns
+ * the container.
+ *
+ * Deliberate non-goals, per #62's rules: the management path, `management api
+ * http-commands`, usernames, and `copy running-config startup-config` are all untouched
+ * (docs/CEOS.md: bootstrap afresh after recreating the lab), and the MLAG domain stays
+ * OFF on a single node (#64/#84's foot-gun rule). This is run *setup*, not a test write,
+ * so it sits outside DR-035's test write policy — but keeps its no-persistence half.
+ *
+ * Port budget: the front-panel Ethernet ports come from the run's two data-bridge
+ * NICs (see the topology note in `cmdUp`); a boot without data networks presents
+ * ZERO Ethernet ports and hot-plug after boot inserts nothing (both probed
+ * 2026-11-07). Port names are therefore taken from the observed model — `ethA` is
+ * the configured access port and `ethB` the LACP member whose Port-Channel carries
+ * the trunk — never hard-coded. No interface on the management path is touched.
+ */
+const PROVISION_SESSION = 'lab-provision'
+const PENDING_SESSION = 'lab-pending-capture'
+
+/**
+ * The staging lines, in apply order, aimed at the OBSERVED front-panel ports.
+ * Indentation mirrors the CLI's sub-mode style used by `bootstrapLab`, so the
+ * transcript is readable to a reviewer.
+ * @param {string} ethA @param {string} ethB
+ */
+function provisionStaging(ethA, ethB) {
+  return [
+  // VLAN names belong in vlan sub-mode (probed 2026-11-07: `name …` under
+  // `interface Vlan…` answers `% Invalid input`); the SVI stanza carries addressing only.
+  'vlan 10',
+  '   name LAB-NATIVE',
+  'exit',
+  'vlan 100',
+  '   name LAB-ACCESS',
+  'exit',
+  'vlan 110',
+  '   name LAB-SPARE',
+  'exit',
+  'interface Vlan100',
+  '   ip address 10.0.100.1/24',
+  '   no shutdown',
+  '   vrrp 1 ip 10.0.100.254',
+  '   ip access-group EXT-ACL-1 in',
+  'exit',
+  'interface Vlan110',
+  '   ip address 10.0.110.1/24',
+  '   no shutdown',
+  'exit',
+  // Bare global `spanning-tree` answered `% Incomplete command` on this image (probed
+  // 2026-11-07); the mode knob already ships, so the touched default is MST priority 0.
+  'spanning-tree mst 0 priority 4096',
+  // Configured access port: switchport-model content + per-port STP guards. The ACL
+  // attachment lives on the routed SVI (and is itself a tolerated probe — cEOS-lab 4.28.14M
+  // refused it there on 2026-11-07; the hardware attachment stays #14 §3).
+  `interface ${ethA}`,
+  '   switchport',
+  '   switchport mode access',
+  '   switchport access vlan 100',
+  '   spanning-tree portfast edge',
+  '   spanning-tree bpduguard enable',
+  '   no shutdown',
+  'exit',
+  // LACP: with two ports only, the member is ethB and Po1 is the trunk.
+  `interface ${ethB}`,
+  '   no shutdown',
+  '   channel-group 1 mode active',
+  'exit',
+  'interface Port-Channel1',
+  '   description LAB-LACP',
+  '   switchport mode trunk',
+  '   switchport trunk native vlan 10',
+  '   switchport trunk allowed vlan 100-110',
+  '   switchport trunk group LABGRP',
+  'exit',
+  // Routing + a static next hop so `show ip route` / `show ip interface brief` answer as configured.
+  'ip routing',
+  'ip route 10.20.0.0/24 10.0.100.2',
+  // NTP: an unreachable server is intended — S12 reads the *shape* (`associations` entries, unsynced status).
+  'ntp server 10.20.0.2',
+  // Standard + extended ACLs. Attachment may be refused on cEOS-lab (see the tolerated
+  // set), but the rule entries themselves are what S13's viewer reads.
+  'ip access-list standard STD-ACL-1',
+  '   10 permit 10.0.0.0/8',
+  'exit',
+  'ip access-list extended EXT-ACL-1',
+  '   10 permit tcp any host 10.0.100.1 eq 443',
+  '   20 permit icmp any any',
+  'exit',
+  ]
+}
+
+/**
+ * Commands whose refusal is a **finding**, not a failure — they ride along to probe
+ * capability, and the batch must not die on them. Probed 2026-11-07 on a configured
+ * cEOS-lab 4.28.14M: `switchport trunk group` was ACCEPTED (partly settling DR-028's
+ * cEOS half — DECISIONS open item 4; the 7050TX verdict stays in #14 §3), while
+ * `vrrp … ip` and `ip access-group …` on the SVI and a bare `ip routing` each answered
+ * `% Unavailable command (not supported on this hardware platform)`. None of that is a
+ * 7050TX verdict (DR-043); the lines stay on the wire so the staging transcript
+ * records today's container answer instead of the harness guessing for the device.
+ */
+const PROVISION_TOLERATED = new Set([
+  'switchport trunk group LABGRP',
+  'vrrp 1 ip 10.0.100.254',
+  'ip access-group EXT-ACL-1 in',
+  'ip routing',
+])
+
+/**
+ * Map `%`-error lines to the command that produced them. EOS's own error text carries
+ * the position — `… at line N` — counted against the SAME input array this call was
+ * fed, so that mapping is direct when the marker exists. The echo-scan fallback (last
+ * echoed command line) covers errors without a line marker; an error attributable
+ * neither way stays `(unattributed)` and therefore fatal — silently tolerating an
+ * unknown failure is the worse failure mode.
+ * @param {string} transcript
+ * @param {readonly string[]} inputCommands every line fed to Cli, in order, including
+ *   the `configure session …` opener, so `at line N` indexes this array at N-1.
+ */
+function findStagingErrors(transcript, inputCommands) {
+  /** @type {{command: string, line: string}[]} */
+  const errors = []
+  let lastCommand = null
+  for (const raw of transcript.split('\n')) {
+    const line = raw.trim()
+    if (!line) continue
+    if (line.startsWith('%')) {
+      const marker = /at line (\d+)/i.exec(line)
+      const numbered = marker ? inputCommands[Number(marker[1]) - 1]?.trim() : undefined
+      errors.push({ command: numbered ?? lastCommand ?? '(unattributed)', line })
+      continue
+    }
+    for (const cmd of inputCommands) {
+      const t = cmd.trim()
+      if (t && line.includes(t)) {
+        lastCommand = t
+        break
+      }
+    }
+  }
+  return errors
+}
+
+/**
+ * Provision the representative config. Returns `{ok:true, tolerated}` after a
+ * verified commit (the check that actually proves apply: `show vlan` must list the
+ * new VLANs, independent of the transcript), or `{ok:false, ...}` with the session
+ * already aborted on the staging path.
+ * @param {string} container
+ */
+function provisionLab(container, ethA, ethB) {
+  const stagingInput = [`configure session ${PROVISION_SESSION}`, ...provisionStaging(ethA, ethB)]
+  const staged = cliScriptOpt(container, stagingInput, 180_000)
+  const errors = findStagingErrors(staged, stagingInput)
+  const fatal = errors.filter((e) => !PROVISION_TOLERATED.has(e.command))
+  if (fatal.length > 0) {
+    const aborted = cliScriptOpt(container, [`configure session ${PROVISION_SESSION}`, 'abort', 'end'])
+    return { ok: false, stage: /** @type {'staging' | 'verification'} */ ('staging'), errors, fatal, staged, aborted, missingVlans: [] }
+  }
+  const committed = cliScriptOpt(container, [`configure session ${PROVISION_SESSION}`, 'commit', 'end'], 120_000)
+  // Independent proof of apply: parse the VLAN model back over the CLI, never trust the
+  // commit transcript alone (a Cli echo can render success for a partial apply).
+  const vlanModel = cliJson(container, 'show vlan')
+  const present = Object.keys(vlanModel?.vlans ?? {}).map((v) => String(v))
+  const missingVlans = ['10', '100', '110'].filter((v) => !present.includes(v))
+  if (missingVlans.length > 0) {
+    return { ok: false, stage: 'verification', errors, fatal: [], staged: staged + '\n' + committed, aborted: '', missingVlans }
+  }
+  const pending = openPendingSession(container)
+  return {
+    ok: true,
+    tolerated: errors.filter((e) => PROVISION_TOLERATED.has(e.command)),
+    staged,
+    committed,
+    pending,
+  }
+}
+
+/**
+ * Leave a zero-write **open** config session behind on purpose: `show configuration
+ * sessions [+detail]` (a #62 capture) otherwise has nothing to list, and the field set
+ * `ConfigSessionSummary` models (§5 row 70's `maxOpenSessions`/start-time questions) is
+ * only visible when the device reports at least one session. The session stages a
+ * non-committed change (a hostname the run never applies) and is never committed or
+ * aborted — it disappears with the container. Running-config is untouched by this.
+ * @param {string} container
+ */
+function openPendingSession(container) {
+  return cliScript(container, [`configure session ${PENDING_SESSION}`, 'hostname lab-pending-not-committed'])
+}
+
 /* ------------------------------------------------------------- probe command */
 
 /** @param {ReturnType<typeof labConfig>} cfg @param {NonNullable<ReturnType<typeof readState>>} state */
 async function cmdProbe(cfg, state) {
   const t0 = Date.now()
-  const anchor = readContainerPublicCert(state.container)
+  const anchor = await readContainerPublicCertWait(state.container, cfg.certWaitSec)
   if (!anchor.pem) {
     refuse(
-      `no public certificate anchor was readable inside the container (tried: ${anchor.tried
+      `no public certificate anchor was readable inside the container within ${String(cfg.certWaitSec)}s (tried: ${anchor.tried
         .map((t) => `${t.path} — ${t.reason}`)
         .join('; ')}). Without the container-side certificate there is no trust anchor, and this harness ` +
         'will not fall back to an unverified peer.',
@@ -1152,6 +1543,66 @@ const CAPTURE_CATALOG = [
     id: 'ceos-lab-capability',
     note: 'the exact command `src/resources/interfaces.ts` sends for `getMembers` (the shape row 125 owed to M12). The 2026-11-06 run settled it: an unconfigured group answers `{"portChannels":{}}` over eAPI, which is why `getMembers` yields `[]` while the CLI says "Port-Channel1 not configured as LAG"',
   },
+  /* ---- issue #62: configured-container re-capture batch. Every family below was
+   * either MISSING (no capture at all) or answered EMPTY because `lab-811108-5dcd01`
+   * ran against an unconfigured node. The `provisionLab` block above exists precisely
+   * so these commands answer the way they do on a configured switch; the negative
+   * results that stay negative are still the finding, recorded verbatim. ---- */
+  {
+    command: 'show lag',
+    format: 'json',
+    id: 'ceos-lab-capability',
+    note: 'the reader of S5 (#75) pins its ShowContract key on this reply. Probed 2026-11-07 over the CLI: bare `show lag` answers `% Incomplete command` and `show lag summary`/`show lag detail` `% Invalid input` on cEOS-lab 4.28.14M — the configured Po1 evidence therefore lands in `show port-channel dense` and `show port-channel 1 all-ports` on this target, while `show lag resources` for the hardware stays a #14 §3 line',
+  },
+  {
+    command: 'show port-channel summary',
+    format: 'json',
+    id: 'ceos-lab-capability',
+    note: 'named explicitly by #62; re-probed 2026-11-07 against configured Po1: refuses with "This command is deprecated by show port-channel dense" — that negative is the cEOS verdict; `show port-channel dense` below carries the populated model',
+  },
+  {
+    command: 'show port-channel dense',
+    format: 'json',
+    id: 'ceos-lab-capability',
+    note: 'the replacement spelling 4.28 points at; probed configured container answered `numberOfAggregators/numberOfChannelsInUse/portChannels` 2026-11-07',
+  },
+  { command: 'show spanning-tree', format: 'json', id: 'ceos-lab-capability', note: 'the provisioner touches MST priority 0 + portfast/bpduguard on Eth1 (bare global `spanning-tree` answers `% Incomplete command` on this image — probed 2026-11-07); feeds B3 (#88) and S15 (#85)' },
+  {
+    command: 'show spanning-tree detail',
+    format: 'json',
+    id: 'ceos-lab-capability',
+    note: '#62 asks for detail "if accepted" — acceptance is exactly what is unknown, so a 1002 here is a recorded negative, not a skipped file',
+  },
+  { command: 'show ntp status', format: 'json', id: 'ceos-lab-capability', note: 'configured-but-unreachable server is deliberate: S12 (#82) reads the unsynced shape' },
+  { command: 'show ntp associations', format: 'json', id: 'ceos-lab-capability' },
+  {
+    command: 'show ip interface brief',
+    format: 'json',
+    id: 'ceos-lab-capability',
+    note: 'the text capture exists from 2026-11-06; the json half was never recorded — #62 closes that gap against configured Vlan100/Vlan110',
+  },
+  {
+    command: 'show access-lists',
+    format: 'json',
+    id: 'ceos-lab-capability',
+    note: 'the counters half named by #62; probed 2026-11-07: this image answers `% Invalid input` for `show access-lists` — the negative is recorded, and the populated rule model lands in `show ip access-lists` next. Attachment was refused on cEOS-lab (see PROVISION_TOLERATED), so per-entry packet counters are a #14 §3 hardware question on this repo\u2019s evidence',
+  },
+  {
+    command: 'show ip access-lists',
+    format: 'json',
+    id: 'ceos-lab-capability',
+    note: 'the spelling this container accepts: STD-ACL-1 + EXT-ACL-1 rule entries (plus the read-only default-control-plane-acl, which the redactor must never touch and S13 must not render as user config)',
+  },
+  {
+    command: 'show configuration sessions',
+    format: 'json',
+    id: 'ceos-lab-capability',
+    note: 'captured while `lab-pending-capture` is deliberately left OPEN (zero committed effect) so the field set ConfigSessionSummary models — the §5 row 70 / B4 (#89) questions about maxOpenSessions, maxSavedSessions and start-time fields — has a listed session to model. The 7050TX half of this stays in #14 §3',
+  },
+  { command: 'show configuration sessions detail', format: 'json', id: 'ceos-lab-capability', note: 'verbatim per #62; feeds the same field-set questions' },
+  { command: 'show vrf', format: 'json', id: 'ceos-lab-capability', note: 'read-only prerequisite of B6 (#90); answered `vrfs` on the probed container (cEOS-lab defaults to the default VRF only); empty/1002 answers are recorded as negative results, never files' },
+  { command: 'show ip route', format: 'json', id: 'ceos-lab-capability', note: 'populated by the provisioned SVI connected routes + the provisioned static route; prerequisite of S10 (#80). cEOS-lab refused `ip routing` outright (tolerated probe), so this capture documents what the routing table answers with routing globally unavailable — the `ip routing` verdict on the hardware stays #14 §3' },
+  { command: 'show vrrp', format: 'json', id: 'ceos-lab-capability', note: 'probed: VRRP config was refused on cEOS-lab 4.28.14M and the read answers nothing usable — record as a negative result (never a file), with the staging transcript as the capability evidence' },
 ]
 
 /**
@@ -1191,6 +1642,165 @@ async function captureFromEapi(cfg, pin) {
   }
   void cfg
   return out
+}
+
+/**
+ * One catalog command executed through the container's own CLI.
+ * `Cli -p 15` is enable-mode, so it is the SAME EOS agent and parser answering the
+ * eAPI server — only the transport differs — and it is the only reach path that has
+ * NEVER failed on this host: every provisioning/session interaction this harness
+ * performs already rides through it. JSON replies are fenced by `| json`; text
+ * replies drop the echoed-prompt preamble. A leading `%` error line throws — the
+ * caller records it as a negative result, exactly like the eAPI path.
+ * @param {string} container @param {string} command @param {'json'|'text'} format
+ */
+async function runCliCapture(container, command, format) {
+  const raw = cliScriptOpt(container, [format === 'json' ? `${command} | json` : command], 60_000)
+  if (format === 'json') {
+    const start = raw.indexOf('{')
+    const end = raw.lastIndexOf('}')
+    if (start < 0 || end <= start) throw new Error(`no JSON object in Cli reply for ${command}: ${(raw || '(empty)').slice(0, 200)}`)
+    return JSON.parse(raw.slice(start, end + 1))
+  }
+  const lines = raw.split('\n')
+  const echo = lines.findIndex((l) => /^\s*(>|localhost[>#])\s*\S/.test(l))
+  const body = echo >= 0 ? lines.slice(echo + 1) : lines
+  const first = body.find((l) => l.trim() !== '')
+  if (first && first.trim().startsWith('%')) throw new Error(`Cli answered an error for ${command}: ${first.trim()}`)
+  return { output: `${body.join('\n').replace(/\s+$/g, '')}\n` }
+}
+
+/**
+ * Run {@link CAPTURE_CATALOG} through {@link runCliCapture}. Mirrors
+ * {@link captureFromEapi}'s negative-result semantics verbatim.
+ * @param {string} container
+ */
+async function captureFromCli(container) {
+  /** @type {{command: string, format: string, ok: boolean, result?: any, note?: string, error?: string}[]} */
+  const out = []
+  for (const entry of CAPTURE_CATALOG) {
+    const { command, format, note } = entry
+    try {
+      const result = await runCliCapture(container, command, format)
+      out.push({
+        command,
+        format,
+        ok: true,
+        result,
+        ...(note === undefined ? {} : { note }),
+        ...(format === 'json' && note === undefined ? { note: 'capability observation' } : {}),
+      })
+    } catch (err) {
+      out.push({
+        command,
+        format,
+        ok: false,
+        error: err?.message ?? String(err),
+        note: note === undefined ? 'capability observation — negative result recorded verbatim' : `${note} — negative result recorded verbatim`,
+      })
+    }
+  }
+  return out
+}
+
+/**
+ * The `fixtures` command's alternate collection path: capture the same catalog from
+ * inside the run-owned container via `Cli` when the published eAPI port is not
+ * usable. Motivation (settled 2026-11-07, #62): docker 29.9.2 on this host does not
+ * deterministically port-forward to a multi-endpoint cEOS container — front-panel
+ * ports REQUIRE extra bridges (#62's whole point), but every multi-attachment probe
+ * session on this daemon has been a coin-flip between working TLS and ECONNRESET for
+ * reasons outside the harness's control (inspect/direct-route experiments found the
+ * live kernel path is the sole Management1 address, yet the published port died even
+ * with that endpoint reachable, 405 on direct host:443 vs RST through the forward,
+ * stable across restarts and data-NIC detach).
+ *
+ * This is NOT a trust or guard relaxation: the container identity check (model regex,
+ * base-version pin) is re-applied here from the device's own `show version` before
+ * anything is written, the same run-owned container/lock/teardown discipline applies,
+ * and EVERY fixture envelope states `cliCapture: true` with the eAPI refusal reason
+ * and `transport: docker exec Cli …` — reviewers see exactly how bytes were collected.
+ * The live test lane (`lab:run`, CI) keeps the strict eAPI path: only the fixtures
+ * collector has this fallback, gated by `--capture-via=auto` (default) or `=cli`.
+ * @param {ReturnType<typeof labConfig>} cfg
+ * @param {NonNullable<ReturnType<typeof readState>>} state
+ * @param {{reason?: string}} probeFailure
+ */
+async function cliFixturesFallback(cfg, state, probeFailure) {
+  const raw = cliScriptOpt(state.container, ['show version | json'], 60_000)
+  const start = raw.indexOf('{')
+  let version
+  try {
+    version = JSON.parse(raw.slice(start))
+  } catch {
+    return { exitCode: EXIT.readiness, reason: `Cli capture fallback refused: 'show version | json' produced no JSON (${(raw || '(empty)').slice(0, 200)})` }
+  }
+  const identity = identityFromShowVersion(version)
+  if (!identity.versionVerbatim || !identity.modelName) {
+    return { exitCode: EXIT.readiness, reason: `Cli fallback: show version lacked version/modelName (keys: ${Object.keys(version ?? {}).slice(0, 8).join(',')})` }
+  }
+  const baseOk =
+    identity.baseFromVersion === cfg.expectVersion ||
+    identity.baseFromInternal === cfg.expectVersion ||
+    identity.bareInternal === cfg.expectVersion
+  if (!baseOk) {
+    refuse(
+      `the release reported by the container CLI is base=${JSON.stringify(identity.baseFromVersion ?? identity.baseFromInternal)} ` +
+        `(full ${JSON.stringify(identity.versionVerbatim)}), not the pinned ${JSON.stringify(cfg.expectVersion)} — refusing even the CLI path.`,
+      EXIT.readiness,
+    )
+  }
+  if (typeof identity.modelName !== 'string' || !/^ceos/i.test(identity.modelName)) {
+    refuse(
+      `modelName ${JSON.stringify(identity.modelName)} is not a cEOS container model; the CLI fallback only reads the disposable container it started.`,
+      EXIT.unsafeTarget,
+    )
+  }
+  const anchor = await readContainerPublicCertWait(state.container, cfg.certWaitSec)
+  if (!anchor.pem) {
+      return { exitCode: EXIT.readiness, reason: `Cli fallback: no certificate anchor readable inside the container (tried: ${anchor.tried.map((t) => `${t.path} — ${t.reason}`).join('; ')})` }
+  }
+  log(
+    `[fixtures] CLI capture on ${state.container} · model=${identity.modelName} version=${identity.versionVerbatim} · ` +
+      `anchor=${anchor.path} fingerprint=${anchor.fingerprint256} (identity guards re-applied from the container's own show version)`,
+  )
+  const captures = await captureFromCli(state.container)
+  const interfacesCapture = await captureFromCliOnce(state.container, 'show interfaces status', 'json')
+  const httpCommandsCapture = await captureFromCliOnce(state.container, 'show management api http-commands', 'json')
+  const written = writeFixtures(cfg, state, {
+    anchor,
+    served: { fingerprint256: null, cliFallback: true },
+    identity,
+    versionJsonCapture: { command: 'show version', format: 'json', ok: true, result: version },
+    interfacesJson: interfacesCapture,
+    httpCommandsJson: httpCommandsCapture,
+    captures,
+    cliCapture: true,
+    cliCaptureReason: probeFailure.reason ?? 'capture-via=cli selected',
+  })
+  const out = {
+    ok: true,
+    runId: state.runId,
+    captureTransport: 'cli',
+    eapiProbeFailureReason: probeFailure.reason ?? 'skipped (--capture-via=cli)',
+    identity,
+    modelNote:
+      'modelName is what cEOS reports for itself. It is not, and must never be used as, DCS-7050TX-64 / ' +
+      '4.28.13.1M hardware evidence (docs/CEOS.md, DR-043).',
+    captures,
+    fixturesWritten: written,
+  }
+  process.stdout.write(`${JSON.stringify(out, null, 2)}\n`)
+  return { exitCode: EXIT.ok, runId: state.runId, result: out, stage: 'cli-fallback' }
+}
+
+/** One-shot json/text CLI capture wrapped probe-style — for the two probe-extra specs. */
+async function captureFromCliOnce(container, command, format) {
+  try {
+    return { command, format, ok: true, result: await runCliCapture(container, command, format) }
+  } catch (err) {
+    return { command, format, ok: false, error: err?.message ?? String(err) }
+  }
 }
 
 /* ---------------------------------------------------------------- fixtures */
@@ -1324,11 +1934,24 @@ function writeFixtures(cfg, state, probe) {
         internalVersion: probe.identity.internalVersionVerbatim,
         modelName: probe.identity.modelName,
         hardwareEvidence: 'none — cEOS-lab container capture; not DCS-7050TX-64 / 4.28.13.1M evidence (DR-043)',
+        ...(probe.cliCapture === true
+          ? {
+              cliCapture: true,
+              cliCaptureReason: probe.cliCaptureReason,
+              cliCaptureNote:
+                'bytes collected with `docker exec <run-owned container> Cli -p 15 … | json` because the published eAPI port was ' +
+                'unavailable for this run on this Docker daemon; same EOS agent/parser answers both transports, and the container ' +
+                'identity pins (model regex + base version) were re-checked from this CLI reply before any file was written',
+            }
+          : {}),
         runId: state.runId,
         capturedAt: nowIso(),
         capturedBy: MANAGER,
         endpoint: `${state.hostIp}:${state.port}`,
-        transport: 'https + HTTP basic auth to the run-owned published loopback port; container-side pinned certificate',
+        transport:
+          probe.cliCapture === true
+            ? `docker exec Cli -p 15 (enable-mode) inside the run-owned container ${state.container}; eAPI refusal: ${probe.cliCaptureReason ?? 'n/a'}`
+            : 'https + HTTP basic auth to the run-owned published loopback port; container-side pinned certificate',
         tlsPinFingerprint256: probe.anchor.fingerprint256,
         bootupTimestamp: probe.identity.bootupTimestamp,
         redactionApplied: [
@@ -1409,12 +2032,26 @@ async function cmdFixtures(cfg) {
   try {
     const state = readState(up.runId)
     if (!state) refuse(`state for run ${up.runId} vanished between up and probe`, EXIT.internal)
-    outcome = await cmdProbe(owned, state)
-    if (outcome.exitCode !== EXIT.ok) {
-      log(
-        `[fixtures] probe refused (exit ${String(outcome.exitCode)}${outcome.reason ? `: ${outcome.reason}` : ''}) — this path ` +
-          'wrote no captures, and there is no fallback target to read them from',
-      )
+    if (cfg.captureVia === 'cli') {
+      log('[fixtures] --capture-via=cli — skipping the eAPI probe and capturing through the container CLI (guards re-applied there)')
+      outcome = await cliFixturesFallback(owned, state, {})
+    } else {
+      outcome = await cmdProbe(owned, state)
+      if (outcome.exitCode !== EXIT.ok) {
+        if (cfg.captureVia === 'auto') {
+          log(
+            `[fixtures] eAPI probe refused (exit ${String(outcome.exitCode)}${outcome.reason ? `: ${outcome.reason}` : ''}) — ` +
+              'falling back to the Cli collector INSIDE the same run-owned container; identity guards re-run there and every ' +
+              'fixture envelope records the transport (capture-via=auto)',
+          )
+          outcome = await cliFixturesFallback(owned, state, { reason: outcome.reason })
+        } else {
+          log(
+            `[fixtures] probe refused (exit ${String(outcome.exitCode)}${outcome.reason ? `: ${outcome.reason}` : ''}) — this path ` +
+              'wrote no captures (capture-via=eapi keeps the strict published-eAPI requirement), and there is no fallback target to read them from',
+          )
+        }
+      }
     }
   } catch (err) {
     // A version/model mismatch in `cmdProbe` throws rather than returning: the run still has to die.
@@ -1549,7 +2186,9 @@ function teardownRun(runId) {
   const state = readState(runId)
   dropContainer(containerName(runId), state?.containerId)
   dropNetwork(networkName(runId, 'mgmt'))
-  dropNetwork(networkName(runId, 'data'))
+  dropNetwork(networkName(runId, 'data')) // pre-#62 topologies (idempotent for newer runs)
+  dropNetwork(networkName(runId, 'data1'))
+  dropNetwork(networkName(runId, 'data2'))
 
   const sp = statePath(runId)
   if (fs.existsSync(sp)) {
@@ -1743,6 +2382,8 @@ function labConfig(flags) {
     containerApiPort: int('container-port', DEFAULTS.containerApiPort),
     cliTimeoutSec: int('cli-timeout', DEFAULTS.cliTimeoutSec),
     probeTimeoutSec: int('timeout', DEFAULTS.probeTimeoutSec),
+    frontPanelTimeoutSec: int('front-panel-timeout', DEFAULTS.frontPanelTimeoutSec),
+    certWaitSec: int('cert-wait', DEFAULTS.certWaitSec),
     requestTimeoutMs: int('request-timeout', DEFAULTS.requestTimeoutMs),
     retryDelayMs: int('retry-delay', DEFAULTS.retryDelayMs),
     port: flags['port'] === undefined || flags['port'] === true ? null : Number(flags['port']),
@@ -1755,6 +2396,10 @@ function labConfig(flags) {
     // CI-collected logs must not contain the one-time credential print (docs/CEOS.md: archive only
     // redacted diagnostics). Default stays false so the operator recipe keeps printing.
     quiet: flags['quiet'] === true,
+    captureVia: str('capture-via', DEFAULTS.captureVia),
+  }
+  if (!['auto', 'eapi', 'cli'].includes(cfg.captureVia)) {
+    refuse(`--capture-via must be auto, eapi, or cli, got ${JSON.stringify(cfg.captureVia)}`, EXIT.usage)
   }
   if (!/^[A-Za-z0-9][A-Za-z0-9._:/@-]*$/.test(cfg.image.tag)) {
     refuse(`--image is not a valid docker reference: ${cfg.image.tag}`, EXIT.usage)
@@ -1798,6 +2443,8 @@ flags
   --host-ip <ip>               publish address, default ${DEFAULTS.hostIp}
   --container-port <n>         container eAPI port, default ${DEFAULTS.containerApiPort}
   --cli-timeout <sec>          bounded EOS-CLI wait inside the container, default ${DEFAULTS.cliTimeoutSec}
+  --front-panel-timeout <sec>  bounded wait for front-panel Ethernet ports after start, default ${DEFAULTS.frontPanelTimeoutSec}
+  --cert-wait <sec>            bounded wait for the eAPI certificate anchor to appear in /persist, default ${DEFAULTS.certWaitSec}
   --timeout <sec>              bounded eAPI readiness wait, default ${DEFAULTS.probeTimeoutSec}
   --request-timeout <ms>       per-request deadline, default ${DEFAULTS.requestTimeoutMs}
   --retry-delay <ms>           delay between attempts, default ${DEFAULTS.retryDelayMs}
@@ -1806,6 +2453,12 @@ flags
   --no-fixtures                never write fixtures
   --fixtures-force             allow overwriting existing fixture files
   --yes                        required by the fixtures command: confirms replacing reviewed captures
+  --capture-via <auto|eapi|cli>
+                               fixtures command: how the catalog is collected. auto (default) = published
+                               eAPI first, and only when that probe refuses for endpoint/reachability reasons,
+                               re-run the catalog through 'docker exec Cli' inside the same run-owned container
+                               (model/version guards re-applied; every envelope records cliCapture + reason).
+                               eapi = strict (no fallback). cli = skip the eAPI probe and capture via Cli directly.
   --quiet                      suppress the one-time credential print (CI logs; the 0600 state file
                                remains the only copy and teardown deletes it)
   --all                        with down: tear down every labelled run

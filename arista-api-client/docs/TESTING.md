@@ -137,6 +137,17 @@ the Node TLS tests) and assert on `init.headers`, `init.signal`, and the body.
   implies `--fixtures-force`, and writes are still confined to `fixtures/live/ceos-<version>/`, so a
   container capture can never land on a hardware path. The refresh itself is a trusted-host human act:
   review the diff, and never let a CI job author one (the live lane runs `--no-fixtures`).
+- **Capture transport (`--capture-via=auto|eapi|cli`, DR-123):** the fixtures chain collects the catalog
+  over the published eAPI port; on hosts whose docker daemon port-flakes multi-endpoint cEOS containers
+  (settled 2026-11-07 on docker 29.9.2: RSTs through the forward despite a running EOS server and a live
+  Management1 path, stable across restarts), `auto` falls back to executing the same catalog through
+  `docker exec <run-owned container> Cli -p 15` — the model/base-version/cert-anchor guards are re-run
+  from the container's own `show version | json` first, and every written envelope records
+  `cliCapture: true`, the refusal reason, and `transport: docker exec Cli…`. This fallback exists ONLY
+  in the fixtures collector: live suites (`*.live.test.ts`), `lab:run` and the CI live job must still
+  traverse the real published-eAPI path, because what they test is this client's transport stack against
+  EOS. Use `--capture-via=eapi` on trusted runners to require it, and `=cli` to capture without dialing
+  the port at all.
 
 ---
 
