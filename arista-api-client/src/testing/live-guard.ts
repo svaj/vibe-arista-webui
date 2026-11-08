@@ -8,13 +8,16 @@
  * before calling `describe.skipIf`.
  *
  * DR-035 (`docs/DECISIONS.md:256-263`) and DR-043 (`docs/DECISIONS.md:316-350`) add the target-class
- * and evidence-separation half: a live run may only address a disposable lab target
- * (`EAPI_TARGET_CLASS=lab`), must name the exact endpoint/port rather than inherit a switch profile,
- * and must pin the model + image version it is talking to — because "container results establish only
- * the tested software behavior, not the physical platform's" (DR-043). The cEOS-side checklist that
- * produced these gates is `docs/CEOS.md:121-131`: an allow-listed endpoint *including port and target
- * kind*, `show version` checked against the expected model **and** the exact image version, plus
- * "no silently defaulting to port 443 or a real-switch profile" (`docs/CEOS.md:123-124`).
+ * and evidence-separation half: a live run must declare its class — `EAPI_TARGET_CLASS=lab` for the
+ * disposable container (loopback-only by default) or `EAPI_TARGET_CLASS=hardware` for the physical
+ * switch (#14 §3, gated strictly: named host **and** port in the allow-lists, https only, exact
+ * `4.28.13.1M`/`DCS-7050TX-64` pins, and a model echo in `EAPI_HW_CONSENT`). Both classes must name
+ * the exact endpoint/port rather than inherit a switch profile, and both pin the model + image version
+ * they are talking to — because "container results establish only the tested software behavior, not
+ * the physical platform's" (DR-043), and the reverse separation matters just as much. The cEOS-side
+ * checklist that produced the lab gates is `docs/CEOS.md:121-131`: an allow-listed endpoint *including
+ * port and target kind*, `show version` checked against the expected model **and** the exact image
+ * version, plus "no silently defaulting to port 443 or a real-switch profile" (`docs/CEOS.md:123-124`).
  *
  * ## Deliberate shape choices
  * - **Pure function of an injected env.** `resolveLiveEnv(env)` never reads `process.env` itself and
@@ -30,8 +33,9 @@
  *
  * Not here on purpose: container provisioning, readiness polling and `test/device-allowlist.json`
  * (PLANNED at `docs/CEOS.md:127`, first written by the sibling M12 lane). Until that file exists, the
- * endpoint allow-list below is coded, minimal (loopback + the published lab port), and refuses
- * everything else — including the physical switch, whose host can never satisfy it.
+ * endpoint allow-list below is coded: the lab class defaults to loopback + the published lab port; the
+ * hardware class has **no** defaults at all — every hardware endpoint element must be stated, so a
+ * half-configured lab env can never reach a switch, only an explicitly assembled hardware env can.
  */
 
 import { isInterfaceName } from '../resources/validators'
@@ -75,8 +79,36 @@ export const LAB_ALLOWED_PORTS: readonly number[] = [8443]
 /** Request path eAPI is served on; `contract.ts:62` `DEFAULT_HTTP_PATH`, spelled out to avoid inheriting a profile's path. */
 export const LAB_ENDPOINT_PATH = '/command-api'
 
-/** The only target class a live run accepts (DR-035(e), PLAN.md:394). */
+/** The disposable-target class a live run declares (DR-035(e), PLAN.md:394). */
 export const LAB_TARGET_CLASS = 'lab' as const
+
+/**
+ * The physical-switch class (#14 §3, added 2026-11-08). DR-043 always *separated* hardware evidence
+ * from container results — `recording.ts:144` already carries `'hardware'` in `TARGET_CLASSES` — what
+ * was missing was a way to **address** one without falling through to a lab-shaped run. The hardware
+ * gates below are deliberately stricter than the lab gates (echoed-model consent, no default host or
+ * port, https only, exact image pin, model allow-list): an addressed switch must never look like it
+ * was reached by accident. Mutation stays behind `requireScratchInterface` + the session tools; this
+ * class does not weaken anything DR-035/DR-043 already refuses (`copy run start`, insecure TLS,
+ * implicit 443).
+ */
+export const HARDWARE_TARGET_CLASS = 'hardware' as const
+
+/**
+ * The exact switch image this lane pins, spelled as the fixture spells it
+ * (`test/fixtures/show/show-version--4.28.13.1M-dcs-7050tx-64.json`). Like every pin here: exact —
+ * a fix release (4.28.13.2M) is a *different* pin decision, not a prefix match (DR-043/DR-116's
+ * "never widen").
+ */
+export const HARDWARE_IMAGE_VERSION = '4.28.13.1M'
+
+/**
+ * The consent token for hardware addressing (`EAPI_HW_CONSENT`). The value must **echo the model
+ * name**, which makes an accidental hardware run impossible while still being cheap to type at an
+ * intentional switch session — the operator is proving "I know what box is on the other end", and a
+ * wrong box fails the echo (compared against `EAPI_ALLOW_MODEL` exactly).
+ */
+export const HARDWARE_CONSENT_VARIABLE = 'EAPI_HW_CONSENT'
 
 /** Transports the host harness can reach. `unix`/`http-local` would mean "on the switch itself". */
 export const LIVE_TRANSPORT_KINDS: readonly ('https' | 'http')[] = ['https', 'http']
@@ -92,7 +124,11 @@ export type LiveRefusalCode =
   | 'EAPI_PASS_MISSING'
   | 'EAPI_PASS_VAR_UNSET'
   | 'EAPI_TARGET_CLASS_MISSING'
-  | 'EAPI_TARGET_CLASS_NOT_LAB'
+  | 'EAPI_TARGET_CLASS_UNSUPPORTED'
+  | 'EAPI_HW_CONSENT_MISSING'
+  | 'EAPI_HW_CONSENT_MISMATCH'
+  | 'EAPI_ALLOW_MODEL_NOT_HARDWARE'
+  | 'EAPI_HW_VERSION_NOT_PIN'
   | 'EAPI_PORT_MISSING'
   | 'EAPI_PORT_INVALID'
   | 'EAPI_PORT_NOT_ALLOWED'
@@ -130,7 +166,8 @@ export interface LiveTarget {
   readonly username: string
   /** Cleartext credential, kept only to build transport options. Use {@link describeLiveTarget} for logs. */
   readonly password: string
-  readonly targetClass: typeof LAB_TARGET_CLASS
+  /** Which gate profile authorized this endpoint — 'hardware' targets carry stricter pins (see HARDWARE_TARGET_CLASS). */
+  readonly targetClass: typeof LAB_TARGET_CLASS | typeof HARDWARE_TARGET_CLASS
   /** The exact `modelName` this run requires (DR-043 separation). */
   readonly allowModel: string
   /** The exact `version` this run requires, e.g. `4.28.14M`. */
@@ -221,7 +258,8 @@ function normalizeHost(raw: string): { readonly host: string } | { readonly bad:
  * Accepted variables — `EAPI_LIVE`, `EAPI_HOST`, `EAPI_PORT`, `EAPI_PATH`, `EAPI_USER`, `EAPI_PASS`,
  * `EAPI_PASS_VAR`, `EAPI_TRANSPORT`, `EAPI_TARGET_CLASS`, `EAPI_ALLOW_MODEL`, `EAPI_ALLOW_VERSION`,
  * `EAPI_ALLOW_TRAIN`, `EAPI_ALLOW_HOSTS`, `EAPI_ALLOW_PORTS`, `EAPI_CA_FILE`, `EAPI_FINGERPRINT`,
- * `EAPI_SERVER_NAME`, `EAPI_SCRATCH_INTERFACE`, `EAPI_ALLOW_INSECURE_HTTP`.
+ * `EAPI_SERVER_NAME`, `EAPI_SCRATCH_INTERFACE`, `EAPI_ALLOW_INSECURE_HTTP`, and for
+ * `EAPI_TARGET_CLASS=hardware` also `EAPI_HW_CONSENT` (must echo the model name, DR-035(e)/#14 §3).
  *
  * `EAPI_PASS` vs `EAPI_PASS_VAR`: `EAPI_PASS_VAR` names **another variable** holding the secret, which
  * keeps the value out of this process's own environment dump and out of a CI `--env` list
@@ -241,7 +279,7 @@ export function resolveLiveEnv(env: LiveEnv): LiveResolution {
   // --- 2. credentials (DR-034) ---------------------------------------------------------------------
   const rawHost = envValue(env, 'EAPI_HOST')
   if (rawHost === undefined) {
-    return refusal('EAPI_HOST_MISSING', 'EAPI_HOST is not set — name the lab target (e.g. localhost), docs/CEOS.md:121-124')
+    return refusal('EAPI_HOST_MISSING', 'EAPI_HOST is not set — name the target host (a lab run: typically localhost; a hardware run: the switch itself), docs/CEOS.md:121-124')
   }
   if (/^[a-z][a-z0-9+.-]*:\/\//iu.test(rawHost)) {
     return refusal(
@@ -271,21 +309,27 @@ export function resolveLiveEnv(env: LiveEnv): LiveResolution {
   // --- 3. target class (DR-035/DR-043) --------------------------------------------------------------
   const targetClass = envValue(env, 'EAPI_TARGET_CLASS')
   if (targetClass === undefined) {
-    return refusal('EAPI_TARGET_CLASS_MISSING', 'EAPI_TARGET_CLASS is not set — a live run must declare its target disposable (expected "lab"), DR-035(e)/PLAN.md:394')
+    return refusal('EAPI_TARGET_CLASS_MISSING', 'EAPI_TARGET_CLASS is not set — a live run must declare its class: "lab" for the disposable container, "hardware" for the physical switch (each with its own gate profile), DR-035(e)/PLAN.md:394/#14 §3')
   }
-  if (targetClass !== LAB_TARGET_CLASS) {
+  if (targetClass !== LAB_TARGET_CLASS && targetClass !== HARDWARE_TARGET_CLASS) {
     return refusal(
-      'EAPI_TARGET_CLASS_NOT_LAB',
-      `EAPI_TARGET_CLASS=${safeLabel(targetClass, 'pin')} is refused: live tests run only against a disposable lab target (DR-035/DR-043). EAPI_TARGET_CLASS=lab alone is not proof either (docs/CEOS.md:130) — the endpoint and version pins below also have to hold`,
+      'EAPI_TARGET_CLASS_UNSUPPORTED',
+      `EAPI_TARGET_CLASS=${safeLabel(targetClass, 'pin')} is refused: a live run must name a class this guard knows — ${JSON.stringify(LAB_TARGET_CLASS)} (a disposable lab target) or ${JSON.stringify(HARDWARE_TARGET_CLASS)} (the physical switch, with the stricter §3 gates below), DR-035/DR-043. EAPI_TARGET_CLASS=lab alone is not proof either (docs/CEOS.md:130) — the endpoint and version pins also have to hold`,
     )
   }
+  const hardware = targetClass === HARDWARE_TARGET_CLASS
 
   // --- 4. exact endpoint allow-list (DR-043, docs/CEOS.md:127-129) ----------------------------------
-  const allowedHosts = [...LAB_LOOPBACK_HOSTS, ...envList(env, 'EAPI_ALLOW_HOSTS').map((entry) => entry.toLowerCase())]
+  // For a hardware target the loopback defaults are off the table entirely: the switch host has to be
+  // *named*, which is also what makes "the lab harness accidentally wrote to the production switch"
+  // structurally impossible (DR-043's crossover guard, run from the other side).
+  const allowedHosts = [...(hardware ? [] : LAB_LOOPBACK_HOSTS), ...envList(env, 'EAPI_ALLOW_HOSTS').map((entry) => entry.toLowerCase())]
   if (!allowedHosts.includes(host.host)) {
     return refusal(
       'EAPI_HOST_NOT_ALLOWED',
-      `EAPI_HOST=${JSON.stringify(host.host)} is not an allow-listed lab host (${allowedHosts.join(', ')}; extend with EAPI_ALLOW_HOSTS or the planned test/device-allowlist.json, docs/CEOS.md:127) — this is the "never fall back to the physical switch" rule (DR-043)`,
+      hardware
+        ? `EAPI_HOST=${JSON.stringify(host.host)} is not an allow-listed hardware host — name the switch itself in EAPI_ALLOW_HOSTS (or the planned test/device-allowlist.json, docs/CEOS.md:127). Loopback spellings are the lab lane's defaults only; the "never fall back" guard (DR-043) cuts both ways`
+        : `EAPI_HOST=${JSON.stringify(host.host)} is not an allow-listed lab host (${allowedHosts.join(', ')}; extend with EAPI_ALLOW_HOSTS or the planned test/device-allowlist.json, docs/CEOS.md:127) — this is the "never fall back to the physical switch" rule (DR-043)`,
     )
   }
 
@@ -300,9 +344,14 @@ export function resolveLiveEnv(env: LiveEnv): LiveResolution {
   if (!Number.isInteger(port) || port < 1 || port > 65_535) {
     return refusal('EAPI_PORT_INVALID', `EAPI_PORT=${rawPort} is outside 1-65535`)
   }
-  const allowedPorts = [...LAB_ALLOWED_PORTS, ...envList(env, 'EAPI_ALLOW_PORTS').map((entry) => Number(entry)).filter((entry) => Number.isInteger(entry))]
+  const allowedPorts = [...(hardware ? [] : LAB_ALLOWED_PORTS), ...envList(env, 'EAPI_ALLOW_PORTS').map((entry) => Number(entry)).filter((entry) => Number.isInteger(entry))]
   if (!allowedPorts.includes(port)) {
-    return refusal('EAPI_PORT_NOT_ALLOWED', `EAPI_PORT=${String(port)} is not an allow-listed lab port (${allowedPorts.join(', ')}; extend with EAPI_ALLOW_PORTS) — a lab endpoint is named exactly, port included (docs/CEOS.md:127-128)`)
+    return refusal(
+      'EAPI_PORT_NOT_ALLOWED',
+      hardware
+        ? `EAPI_PORT=${String(port)} is not an allow-listed hardware port — a switch endpoint is named exactly, port included: put it in BOTH EAPI_PORT and EAPI_ALLOW_PORTS (docs/CEOS.md:127-128; there is deliberately no default 443 for a physical target)`
+        : `EAPI_PORT=${String(port)} is not an allow-listed lab port (${allowedPorts.join(', ')}; extend with EAPI_ALLOW_PORTS) — a lab endpoint is named exactly, port included (docs/CEOS.md:127-128)`,
+    )
   }
   const rawPath = envValue(env, 'EAPI_PATH') ?? LAB_ENDPOINT_PATH
   if (!rawPath.startsWith('/')) {
@@ -317,6 +366,9 @@ export function resolveLiveEnv(env: LiveEnv): LiveResolution {
       `EAPI_TRANSPORT=${safeLabel(transport, 'pin')} is refused: a host-side lab run reaches the container over https (or http on loopback). unix/http-local exist only on the switch itself (contract.ts:132-160)`,
     )
   }
+  if (transport === 'http' && hardware) {
+    return refusal('EAPI_INSECURE_HTTP_REFUSED', 'EAPI_TRANSPORT=http is refused for a hardware target even with EAPI_ALLOW_INSECURE_HTTP=1 — cleartext credentials against a switch a person is standing next to is not a knob this lane exposes (DR-008, #14 §3)')
+  }
   if (transport === 'http' && env['EAPI_ALLOW_INSECURE_HTTP']?.trim() !== '1') {
     return refusal('EAPI_INSECURE_HTTP_REFUSED', 'EAPI_TRANSPORT=http needs EAPI_ALLOW_INSECURE_HTTP=1 — cleartext eAPI is a deliberate opt-in, and the lab recipe keeps the API on TLS (DR-008, docs/CEOS.md:88-89)')
   }
@@ -330,17 +382,48 @@ export function resolveLiveEnv(env: LiveEnv): LiveResolution {
   if (allowVersion === undefined) {
     return refusal('EAPI_ALLOW_VERSION_MISSING', `EAPI_ALLOW_VERSION is not set — pin the exact image version, e.g. ${CEOS_LAB_IMAGE_VERSION} for this cEOS lab (PLAN.md:393)`)
   }
-  if (!matchesExactly(allowVersion, CEOS_LAB_IMAGE_VERSION)) {
-    return refusal(
-      'EAPI_LAB_VERSION_NOT_IMAGE',
-      `EAPI_ALLOW_VERSION=${safeLabel(allowVersion, 'pin')} cannot be a lab pin: the disposable cEOS-lab image in this workspace is ${CEOS_LAB_IMAGE_VERSION} (docs/CEOS.md:5-6), and the pin for 4.28.13.1M belongs to the 7050TX-64 lane (DR-043 keeps those fixtures and evidence separate)`,
-    )
-  }
-  if (HARDWARE_MODEL_NAMES.some((model) => matchesExactly(allowModel, model))) {
-    return refusal(
-      'EAPI_LAB_MODEL_IS_HARDWARE',
-      `EAPI_ALLOW_MODEL=${safeLabel(allowModel, 'pin')} is the physical switch's model name, which cannot be the expected model of a lab target (DR-043: container results are not 7050TX-64 evidence)`,
-    )
+  if (hardware) {
+    // The switch lane's own §3 gates (DR-035(e), #14): the model must be this project's SKU, the image
+    // pin exact, and the operator's consent echo the model — each refusal distinct so an accidental
+    // half-configured hardware env names the missing piece instead of reaching a switch.
+    if (!HARDWARE_MODEL_NAMES.some((model) => matchesExactly(allowModel, model))) {
+      return refusal(
+        'EAPI_ALLOW_MODEL_NOT_HARDWARE',
+        `EAPI_ALLOW_MODEL=${safeLabel(allowModel, 'pin')} is not this project's hardware model (${HARDWARE_MODEL_NAMES.join(', ')}) — #14 §3 pins switch evidence to that SKU; any other box is a different pin decision, not this lane`,
+      )
+    }
+    if (!matchesExactly(allowVersion, HARDWARE_IMAGE_VERSION)) {
+      return refusal(
+        'EAPI_HW_VERSION_NOT_PIN',
+        `EAPI_ALLOW_VERSION=${safeLabel(allowVersion, 'pin')} cannot be a hardware pin: switch evidence here is pinned to ${HARDWARE_IMAGE_VERSION} exactly (DR-043/DR-116 — "never widen" applies upward too: 4.28.13.2M is a new decision, not a prefix match)`,
+      )
+    }
+    const consent = envValue(env, HARDWARE_CONSENT_VARIABLE)
+    if (consent === undefined) {
+      return refusal(
+        'EAPI_HW_CONSENT_MISSING',
+        `${HARDWARE_CONSENT_VARIABLE} is not set — addressing a physical switch requires the operator to echo its model name in a second variable (DR-035(e)); the pin this run must echo is EAPI_ALLOW_MODEL=${safeLabel(allowModel, 'pin')}`,
+      )
+    }
+    if (!matchesExactly(consent, allowModel)) {
+      return refusal(
+        'EAPI_HW_CONSENT_MISMATCH',
+        `${HARDWARE_CONSENT_VARIABLE} does not echo EAPI_ALLOW_MODEL — the echo is deliberate: a wrong or unexpected box fails here instead of accepting someone's leftover lab env (DR-035(e))`,
+      )
+    }
+  } else {
+    if (!matchesExactly(allowVersion, CEOS_LAB_IMAGE_VERSION)) {
+      return refusal(
+        'EAPI_LAB_VERSION_NOT_IMAGE',
+        `EAPI_ALLOW_VERSION=${safeLabel(allowVersion, 'pin')} cannot be a lab pin: the disposable cEOS-lab image in this workspace is ${CEOS_LAB_IMAGE_VERSION} (docs/CEOS.md:5-6), and the pin for 4.28.13.1M belongs to the 7050TX-64 lane (DR-043 keeps those fixtures and evidence separate)`,
+      )
+    }
+    if (HARDWARE_MODEL_NAMES.some((model) => matchesExactly(allowModel, model))) {
+      return refusal(
+        'EAPI_LAB_MODEL_IS_HARDWARE',
+        `EAPI_ALLOW_MODEL=${safeLabel(allowModel, 'pin')} is the physical switch's model name, which cannot be the expected model of a lab target (DR-043: container results are not 7050TX-64 evidence) — declare EAPI_TARGET_CLASS=hardware if a switch really is the target`,
+      )
+    }
   }
 
   // --- 7. TLS trust (DR-013, docs/CEOS.md:96-103) ----------------------------------------------------
@@ -368,7 +451,7 @@ export function resolveLiveEnv(env: LiveEnv): LiveResolution {
     path: rawPath,
     username,
     password: secret,
-    targetClass: LAB_TARGET_CLASS,
+    targetClass: hardware ? HARDWARE_TARGET_CLASS : LAB_TARGET_CLASS,
     allowModel,
     allowVersion,
     versionTrain: envValue(env, 'EAPI_ALLOW_TRAIN') ?? DEFAULT_VERSION_TRAIN,

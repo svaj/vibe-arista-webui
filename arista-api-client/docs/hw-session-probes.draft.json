@@ -1,0 +1,107 @@
+{
+  "$comment": [
+    "Reviewed draft for the 7050TX-64 config-session probes (#14 §3; hw-session-probe.live.test.ts).",
+    "This file is the PR review artifact — the operator re-reads it live at the switch before",
+    "EAPI_HW_PROBE_SPEC points at it. Every batch runs inside `configure session hw-probe-<name>`;",
+    "allowCommit batches are mechanically fenced by parseHwProbeSpec to indented children of",
+    "exactly `interface {{SCRATCH}}` (the one designated unused port, from EAPI_SCRATCH_INTERFACE,",
+    "guard-checked + linkStatus-checked at run time). Nothing here touches users, the listener, the",
+    "management path, ZTP, rollback/replace, or persistence — parseHwProbeSpec refuses those lines.",
+    "SUGGESTED RUN ORDER: batches 1-5 (all abort) first while the console is fresh; then 6, 7, 8",
+    "and 9 (the commit set) LAST, in that order, so 9 restores 6-8 before the session ends."
+  ],
+  "batches": [
+    {
+      "name": "session-lifecycle",
+      "question": "named session + description + a no-op stage line: open/diff/abort visible in show configuration sessions (baseline orphan state too)",
+      "commands": [
+        "interface {{SCRATCH}}",
+        "   no shutdown"
+      ],
+      "allowCommit": false
+    },
+    {
+      "name": "switchport-modes",
+      "question": "DR-028/DR-029 shape on the real SKU: switchport on -> mode trunk -> allowed-vlan only -> no switchport (routed conversion) - which transitions answer, which are 1002/1004",
+      "commands": [
+        "interface {{SCRATCH}}",
+        "   switchport",
+        "   switchport mode trunk",
+        "   switchport trunk allowed vlan only 10,20",
+        "   no switchport",
+        "   ip address 172.31.255.4/31"
+      ],
+      "allowCommit": false
+    },
+    {
+      "name": "trunk-groups",
+      "question": "open item 4's OTHER half: does switchport trunk group exist on the 7050TX-64 (cEOS said yes under DR-122; SKU answer still owed)",
+      "commands": [
+        "interface {{SCRATCH}}",
+        "   switchport mode trunk",
+        "   switchport trunk group HWGRP"
+      ],
+      "allowCommit": false
+    },
+    {
+      "name": "vlans-vrrp-iprouting",
+      "question": "target-sensitive set: ip routing acceptance, Vlan-interface + VRRP virtual IP on the SKU (cEOS acceptance proved shape-dependent, DR-122 - never claim container == box)",
+      "commands": [
+        "vlan 4090 name HWPROBE-MAY-FEATURE-ABORT",
+        "interface Vlan4090",
+        "   ip address 169.254.90.1/29",
+        "   vrrp 1 ip 169.254.90.7"
+      ],
+      "allowCommit": false
+    },
+    {
+      "name": "lacp-abort",
+      "question": "implicit Port-Channel creation + mode syntax inside a session on the SKU (LACP limits themselves are a read question: show lag resources capture)",
+      "commands": [
+        "interface {{SCRATCH}}",
+        "   channel-group 999 mode active"
+      ],
+      "allowCommit": false
+    },
+    {
+      "name": "scratch-description",
+      "question": "commit round-trip on the designated scratch port: description set (then batch restore no-ops it)",
+      "commands": [
+        "interface {{SCRATCH}}",
+        "   description HW-CAPTURE-PROBE"
+      ],
+      "allowCommit": true
+    },
+    {
+      "name": "scratch-mtu",
+      "question": "does the SKU accept mtu 9214 on a front-panel port and echo it in show interfaces (features.md ceiling is 7050X-derived)",
+      "commands": [
+        "interface {{SCRATCH}}",
+        "   mtu 9214"
+      ],
+      "allowCommit": true
+    },
+    {
+      "name": "scratch-switchport-restore-order",
+      "question": "L2 mode + access vlan commit cycle on the scratch port (then restore batch undoes both)",
+      "commands": [
+        "interface {{SCRATCH}}",
+        "   switchport",
+        "   switchport mode access",
+        "   switchport access vlan 1"
+      ],
+      "allowCommit": true
+    },
+    {
+      "name": "scratch-restore",
+      "question": "cleanup: return the scratch port to its declared pre-session state (defaults), net-zero for the committed batches",
+      "commands": [
+        "interface {{SCRATCH}}",
+        "   no description",
+        "   no mtu",
+        "   no switchport"
+      ],
+      "allowCommit": true
+    }
+  ]
+}

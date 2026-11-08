@@ -206,10 +206,14 @@ describe('refusal: target class and the crossover between lanes (DR-035/DR-043)'
     expect(reason).toMatch(/disposable/u)
   })
 
-  it('refuses a hardware target outright', () => {
+  it('refuses a lab-shaped endpoint that merely claims the hardware class', () => {
+    // Class 'hardware' is a real class now (it has its own §3 gate profile), but it buys nothing here:
+    // the *endpoint* is still loopback:8443 with no allow-list entries, and neither localhost nor the
+    // published lab port belong to the hardware lane. Host gate refuses before credentials or pins run.
     const { code, reason } = refused(labEnv({ EAPI_TARGET_CLASS: 'hardware' }))
-    expect(code).toBe('EAPI_TARGET_CLASS_NOT_LAB')
-    expect(reason).toMatch(/DR-035/u)
+    expect(code).toBe('EAPI_HOST_NOT_ALLOWED')
+    expect(reason).toMatch(/DR-043/u)
+    expect(reason).toMatch(/never fall back/u)
   })
 
   it('refuses the hardware model as a lab pin (a lab run cannot be "expecting" the 7050TX-64)', () => {
@@ -319,7 +323,7 @@ describe('refusal: a loopback host is never consent by itself (DR-035/DR-043)', 
   it('refuses EAPI_TARGET_CLASS=prod on the lab loopback at the lab port', () => {
     // localhost:8443 is the runbook's lab endpoint, so the endpoint is not what this run is refused for.
     const { code, reason } = refused(labEnv({ EAPI_TARGET_CLASS: 'prod' }))
-    expect(code).toBe('EAPI_TARGET_CLASS_NOT_LAB')
+    expect(code).toBe('EAPI_TARGET_CLASS_UNSUPPORTED')
     expect(reason).toContain('prod')
     expect(reason).toMatch(/disposable lab target/u)
     expect(reason).toMatch(/DR-035/u)
@@ -343,11 +347,15 @@ describe('refusal: a loopback host is never consent by itself (DR-035/DR-043)', 
       EAPI_FINGERPRINT: undefined,
     })
     const { code, reason } = refused(env)
-    expect(code).toBe('EAPI_TARGET_CLASS_NOT_LAB')
+    expect(code).toBe('EAPI_TARGET_CLASS_UNSUPPORTED')
     expect(reason).not.toContain(SECRET_SENTINEL)
     // Ordering, stated positively: had the class been "lab", the same environment would have been refused
     // further down the chain instead — by the endpoint gates first, then the hardware model/image pins.
-    expect(refused({ ...env, EAPI_TARGET_CLASS: 'lab' }).code).not.toBe('EAPI_TARGET_CLASS_NOT_LAB')
+    expect(refused({ ...env, EAPI_TARGET_CLASS: 'lab' }).code).not.toBe('EAPI_TARGET_CLASS_UNSUPPORTED')
+    // …and claiming the new hardware class with this loopback/laboratory endpoint still refuses at the
+    // endpoint gates: the hardware lane's host/port defaults are empty, so "prod"-style pastes do not
+    // become consent by renaming the class.
+    expect(refused({ ...env, EAPI_TARGET_CLASS: 'hardware', EAPI_ALLOW_INSECURE_HTTP: undefined }).code).toBe('EAPI_HOST_NOT_ALLOWED')
   })
 
   it('refuses a blank EAPI_TARGET_CLASS the same as an unset one', () => {
@@ -542,5 +550,110 @@ describe('liveSkipReason is the loud half of DR-034', () => {
   it('unwrapLiveTarget throws the reason when a live body is reached with a refused environment', () => {
     const resolution = resolveLiveEnv({})
     expect(() => unwrapLiveTarget(resolution)).toThrow(/EAPI_LIVE is not set/u)
+  })
+})
+
+/**
+ * The hardware class (#14 §3, DR-035(e)): addressing the physical switch is possible, but ONLY through
+ * a strictly assembled environment — no loopback defaults, no port defaults, https only, the exact
+ * SKU/version pins, and a consent token that echoes the model. These cases pair every refusal code with
+ * the mutation that would have accepted it, which is how "the guard actually checks something" stays
+ * provable (see also the crossover cases above: the lab lane's pins reject 4.28.13.1M in return).
+ */
+describe('hardware class: the physical-switch gate profile (#14 §3)', () => {
+  /** A fully valid hardware environment: what a supervised capture session would carry. */
+  function hwEnv(overrides: Record<string, string | undefined> = {}): LiveEnv {
+    return {
+      EAPI_LIVE: '1',
+      EAPI_HOST: 'switch-1.lab.example',
+      EAPI_PORT: '443',
+      EAPI_USER: 'eapi-capture',
+      EAPI_PASS_VAR: 'EAPI_HW_PW',
+      EAPI_HW_PW: 'hw-placeholder-not-a-secret',
+      EAPI_TARGET_CLASS: 'hardware',
+      EAPI_ALLOW_MODEL: 'DCS-7050TX-64',
+      EAPI_ALLOW_VERSION: '4.28.13.1M',
+      EAPI_HW_CONSENT: 'DCS-7050TX-64',
+      EAPI_ALLOW_HOSTS: 'switch-1.lab.example',
+      EAPI_ALLOW_PORTS: '443',
+      EAPI_CA_FILE: '/tmp/eos-ca.pem',
+      ...overrides,
+    }
+  }
+
+  it('accepts a complete hardware environment: class, pins and trust all as spelled', () => {
+    const target = accepted(hwEnv())
+    expect(target).toMatchObject({
+      transport: 'https',
+      host: 'switch-1.lab.example',
+      port: 443,
+      targetClass: 'hardware',
+      allowModel: 'DCS-7050TX-64',
+      allowVersion: '4.28.13.1M',
+      ca: '/tmp/eos-ca.pem',
+    })
+    // Password still flows only through LiveTarget (the PASS_VAR indirection is the recommended form).
+    expect(target.password).toBe('hw-placeholder-not-a-secret')
+    expect(describeLiveTarget(target)).toContain('targetClass=hardware')
+    expect(describeLiveTarget(target)).not.toContain('hw-placeholder-not-a-secret')
+  })
+
+  it('refuses when the consent token is missing, and a blank token is an unset token', () => {
+    expect(refused(hwEnv({ EAPI_HW_CONSENT: undefined })).code).toBe('EAPI_HW_CONSENT_MISSING')
+    expect(refused(hwEnv({ EAPI_HW_CONSENT: '   ' })).code).toBe('EAPI_HW_CONSENT_MISSING')
+  })
+
+  it('refuses a consent echo that does not name the pinned model — case-insensitised, so spelling is free', () => {
+    expect(refused(hwEnv({ EAPI_HW_CONSENT: 'cEOS' })).code).toBe('EAPI_HW_CONSENT_MISMATCH')
+    expect(refused(hwEnv({ EAPI_HW_CONSENT: 'switch-1.lab.example' })).code).toBe('EAPI_HW_CONSENT_MISMATCH')
+    expect(accepted(hwEnv({ EAPI_HW_CONSENT: 'dcs-7050tx-64' })).targetClass).toBe('hardware')
+  })
+
+  it('refuses a hardware target whose model pin is not this project SKU', () => {
+    // The crossover in its strict direction: a lab image name cannot be a hardware pin either.
+    expect(refused(hwEnv({ EAPI_ALLOW_MODEL: 'cEOS' })).code).toBe('EAPI_ALLOW_MODEL_NOT_HARDWARE')
+    expect(refused(hwEnv({ EAPI_ALLOW_MODEL: 'DCS-7050SX-72' })).code).toBe('EAPI_ALLOW_MODEL_NOT_HARDWARE')
+  })
+
+  it('refuses both wrong version pairings: the lab image on hardware, and a near miss of the switch pin', () => {
+    expect(refused(hwEnv({ EAPI_ALLOW_VERSION: CEOS_LAB_IMAGE_VERSION })).code).toBe('EAPI_HW_VERSION_NOT_PIN')
+    // DR-116's "never widen" applies upward too: a hypothetical fix release is a new decision, not a prefix.
+    expect(refused(hwEnv({ EAPI_ALLOW_VERSION: '4.28.13.1' })).code).toBe('EAPI_HW_VERSION_NOT_PIN')
+    expect(refused(hwEnv({ EAPI_ALLOW_VERSION: '4.28.13.2M' })).code).toBe('EAPI_HW_VERSION_NOT_PIN')
+  })
+
+  it('has no host or port defaults: dropping either allow-list entry refuses the run', () => {
+    expect(refused(hwEnv({ EAPI_ALLOW_HOSTS: undefined })).code).toBe('EAPI_HOST_NOT_ALLOWED')
+    expect(refused(hwEnv({ EAPI_ALLOW_PORTS: undefined })).code).toBe('EAPI_PORT_NOT_ALLOWED')
+    expect(refused(hwEnv({ EAPI_ALLOW_PORTS: '8443' })).code).toBe('EAPI_PORT_NOT_ALLOWED')
+  })
+
+  it('refuses cleartext eAPI to a switch even with the lab lane insecure flag set', () => {
+    const { code, reason } = refused(hwEnv({ EAPI_TRANSPORT: 'http', EAPI_ALLOW_INSECURE_HTTP: '1' }))
+    expect(code).toBe('EAPI_INSECURE_HTTP_REFUSED')
+    expect(reason).toMatch(/hardware target/u)
+  })
+
+  it('still demands a trust anchor: TLS without CA or fingerprint is refused for a switch too', () => {
+    expect(refused(hwEnv({ EAPI_CA_FILE: undefined })).code).toBe('EAPI_TLS_TRUST_MISSING')
+    expect(accepted(hwEnv({ EAPI_CA_FILE: undefined, EAPI_FINGERPRINT: 'AA:BB' })).fingerprint).toBe('AA:BB')
+  })
+
+  it('accepts an SSH-tunnel spelling (loopback + explicit lists) by design — then device self-report decides', () => {
+    // Deliberate shape: with a person standing at the switch, `ssh -L` access is a legitimate operator
+    // choice, and the env carries explicit host/port/consent/pins. What stops a tunneled *lab* box from
+    // masquerading as hardware is matchesDeviceIdentity on the answer — tested next.
+    const target = accepted(hwEnv({ EAPI_HOST: 'localhost', EAPI_ALLOW_HOSTS: 'localhost', EAPI_ALLOW_PORTS: '18443', EAPI_PORT: '18443' }))
+    const wrongBox = matchesDeviceIdentity(target, { version: '4.28.14M', modelName: 'cEOS Lab' })
+    expect(wrongBox?.code).toBe('EAPI_MODEL_MISMATCH')
+    const rightBox = matchesDeviceIdentity(target, { version: '4.28.13.1M', modelName: 'DCS-7050TX-64' })
+    expect(rightBox).toBeUndefined()
+  })
+
+  it('scratch-interface rules apply unchanged to a hardware target (DR-035(b) is not a lab-only rule)', () => {
+    const target = accepted(hwEnv({ EAPI_SCRATCH_INTERFACE: 'Ethernet48' }))
+    expect(requireScratchInterface(target)).toEqual({ ok: true, name: 'Ethernet48' })
+    const noName = accepted(hwEnv())
+    expect(requireScratchInterface(noName)).toMatchObject({ code: 'EAPI_SCRATCH_INTERFACE_MISSING' })
   })
 })

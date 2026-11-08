@@ -1949,6 +1949,50 @@ restores strict fixtures behavior for trusted runners. §5 row 225; docs/CEOS.md
 NIC recipe; open follow-up (filed on #14): whether live-lane provisioning should pin the endpoint order
 experimentally or move CI to a daemon where single-endpoint-forward determinism holds.
 
+### DR-124 — a physical switch becomes addressable through a second live-guard class, gated stricter than the lab class, never looser
+DR-043 always separated hardware *evidence*; #14 §3 needs hardware *addressing*, and the user locked
+the decision to build that lane in-repo. `live-guard.ts` therefore gains `EAPI_TARGET_CLASS=hardware`
+beside `lab`: **no default hosts and no default ports** (both endpoint parts must appear in
+`EAPI_ALLOW_HOSTS`/`EAPI_ALLOW_PORTS`), https-only (the insecure-http flag cannot rescue a switch
+session — credentials cleartext next to a running production box), exact pins
+(`DCS-7050TX-64` ∈ `HARDWARE_MODEL_NAMES`, `HARDWARE_IMAGE_VERSION='4.28.13.1M'` — never-widen
+applies upward: a fix release is a new decision, not a prefix), and an `EAPI_HW_CONSENT` token that
+must echo the model name (wrong box fails the echo; a leftover lab env cannot quietly become a
+hardware env). The lab half of every gate is untouched, including its two crossover refusals
+(`EAPI_LAB_VERSION_NOT_IMAGE`, `EAPI_LAB_MODEL_IS_HARDWARE` — the second now points at the class that
+exists instead of being a dead end). Loopback for hardware is accepted only by explicit allow-list —
+legitimate for an operator `ssh -L` tunnel — and the device's own `show version` answer
+(`matchesDeviceIdentity`) is what finally decides, so even a mislabeled tunnel to a lab container
+refuses. Scratch-interface and persistence guards are class-agnostic (`requireScratchInterface`
+refused a management path on hardware in the unit matrix); `recording.ts` already carried
+`'hardware'` in `TARGET_CLASSES`, so the two vocabulary layers now meet at one meaning. Mutation-
+checked: disabling the consent echo, or giving the hardware lane loopback/8443 defaults, each fails
+its named case (§5 row 226). Tests: `live-guard.test.ts` hardware matrix (+10).
+
+### DR-125 — the switch capture lane lives in the live-test lane + a mechanical probe spec, not a standalone script
+The hardware executors are `src/hw-inventory.live.test.ts` (batch 1 read-only: `HW_INVENTORY_CATALOG`
+= the full cEOS-mirrored family set + §3's target-sensitive shows) and
+`src/hw-session-probe.live.test.ts` (batches 2/3), both gated on the hardware class PLUS their own
+write opt-ins (`EAPI_HW_CAPTURE=1` / `EAPI_HW_SESSION_PROBE=1`) so a hardware *readiness* run never
+rewrites committed evidence — the PLAN.md:395 overwrite lineage moved onto the switch lane. They
+reuse the recorder/writer pair (`buildRecording` → `sanitizeHwRecording` → overwrite-true
+`writeRecording` under identity guards), live because a script re-implementing the guard checks is
+exactly the drift DR-034/DR-035 forbid. Hardware-specific strictness lives in `src/testing/hw-capture.ts`:
+serials under any serial-named key, MACs **anywhere** (whole values and embedded strings — closing
+the cEOS lane's recorded non-`*mac*-key` gap on this lane), `secret sha512/md5`, PEM blocks, and
+operator-supplied `EAPI_HW_SCRUB` literals, each rewrite logged by path-without-value; the recorder's
+own enable-input gate still refuses at `recordingText`. Config-session probes run ONLY batches from a
+pre-reviewed JSON spec (`docs/hw-session-probes.draft.json`, committed and parsed by
+`parseHwProbeSpec`, whose own unit tests are the review surface): listener/user/management-path/ZTP/
+rollback/replace/persistence lines are refused in EVERY batch, `allowCommit` is granted only to
+batches that open with exactly `interface {{SCRATCH}}` and keep every other line an indented child,
+and at run time a commit batch refuses if the scratch port reports `connected`/`errdisabled` —
+"unused" is the operator's declaration, the link is the device's contradiction. Device refusals are
+recorded as answers (which commands the SKU supports IS evidence); transport failures abort. Runbook:
+[docs/HARDWARE-CAPTURE.md](./HARDWARE-CAPTURE.md). **No switch bytes exist yet — the lane is
+implemented-and-waiting-for-the-session; every hardware claim in this repo stays
+`hardwareEvidence:"none"` until §5 row 226's first executed run replaces it.**
+
 ## Open items (need the device)
 
 Use cEOS first for software behavior and schema exploration, recording its model/version;

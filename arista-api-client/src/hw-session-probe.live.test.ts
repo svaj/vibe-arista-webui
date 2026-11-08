@@ -1,0 +1,170 @@
+/**
+ * `hw-session-probe.live.test.ts` — reviewed config-session probes against the physical 7050TX-64
+ * (#14 §3, the "abort-only + ONE designated scratch interface" half of the locked switch-evidence
+ * decision). The commands themselves live in a JSON spec file the operator reviews **before** the
+ * switch session (`parseHwProbeSpec` + `hw-capture.test.ts` enforce the fence mechanically;
+ * `docs/hw-session-probes.draft.json` is the reviewed draft). This file only executes.
+ *
+ * ## Guarantees, in the order they fire
+ * 1. Target gates first (identical to `hw-inventory`): full hardware `resolveLiveEnv` profile +
+ *    `EAPI_HW_SESSION_PROBE=1`; lab-class or half-configured envs skip loudly, they never probe.
+ * 2. The device must self-report the pinned identity (`matchesDeviceIdentity`) before a session opens.
+ * 3. Every spec batch was already shape-validated at parse time; at RUN time each batch additionally
+ *   must survive: `{{SCRATCH}}` resolution through `requireScratchInterface` (guard-accepted
+ *    `Ethernet…` name only), and for `allowCommit` batches the scratch port must not be carrying
+ *    traffic (`linkStatus connected/errdisabled` ⇒ refuse: "unused" is the operator's declaration,
+ *    connected is the device's contradiction of it).
+ * 4. Each batch runs in a NAMED `configure session` (`hw-probe-<name>` — DR-035's auditability rule,
+ *    made physical): stage → record `session.diff()` + `show configuration sessions detail` →
+ *    either `abort()` (the default) or `commit()` (only `allowCommit` batches; never `{persist:true}`,
+ *    DR-024/DR-035(c)). A `finally` aborts anything still open — a dead session on somebody's switch
+ *    holds the config lock (`1006` blast radius), the same reasoning as on a container.
+ * 5. Each batch is one recording case (`configure-session-<name>--hw-session-probe`), sanitized with
+ *    the full hardware scrubber before the write.
+ *
+ * Not in this file: the STATUS.md §3 session-*boundary* questions (`configure session <name>` max
+ * length/charset, `no-commit` acceptance, `commit timer`) — those probe the CLIENT's own guards as
+ * much as the device's, and they run as a dedicated follow-up batch family (#14 §3 line 9-10) once
+ * this one has produced its first recorded baseline.
+ */
+
+import { readFileSync } from 'node:fs'
+
+import { beforeAll, describe, expect, it } from 'vitest'
+
+import { createNode } from './node'
+import { buildRecording, createRecorder } from './testing/recording'
+import { writeRecording } from './testing/recorder-node'
+import { describeLiveTarget, liveTransportOptions, matchesDeviceIdentity, requireScratchInterface, resolveLiveEnv, unwrapLiveTarget, type LiveTarget } from './testing/live-guard'
+import { hwDeviceIdentity, hwProbeCaseName, parseHwProbeSpec, resolveHwScratchToken, sanitizeHwRecording, type HwProbeBatch } from './testing/hw-capture'
+import type { VersionProperties } from './command-layer'
+
+const resolution = resolveLiveEnv(process.env)
+if (!resolution.ok) {
+  console.warn(`hw-session-probe: SKIPPED (DR-034) — ${resolution.reason}`)
+}
+const hardwareTarget = resolution.ok && resolution.targetClass === 'hardware'
+const probeOn = process.env['EAPI_HW_SESSION_PROBE'] === '1'
+if (hardwareTarget && !probeOn) {
+  console.warn('hw-session-probe: SKIPPED — hardware target accepted, but config-session probes need EAPI_HW_SESSION_PROBE=1 plus a reviewed EAPI_HW_PROBE_SPEC file')
+}
+if (probeOn && !hardwareTarget) {
+  console.warn('hw-session-probe: SKIPPED — probes exist only for the hardware class; the container lane probes through scripts/ceos-lab.mjs provisioning instead')
+}
+const runnable = resolution.ok && hardwareTarget && probeOn
+
+function extraSecrets(): string[] {
+  const raw = process.env['EAPI_HW_SCRUB']
+  if (raw === undefined || raw.trim() === '') return []
+  return raw
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter((entry) => entry !== '')
+}
+
+describe.skipIf(!runnable)('hardware session probes: named config sessions on the 7050TX-64 (#14 §3)', () => {
+  let target: LiveTarget
+  let reported: VersionProperties
+  let scratch: string | undefined
+  let batches: readonly HwProbeBatch[] = []
+
+  beforeAll(async () => {
+    target = unwrapLiveTarget(resolution)
+    console.log(`hw-session-probe: target = ${describeLiveTarget(target)}`)
+    const specPath = process.env['EAPI_HW_PROBE_SPEC']
+    if (specPath === undefined || specPath.trim() === '') {
+      throw new Error('hw-session-probe: EAPI_HW_PROBE_SPEC must name the reviewed spec file (default review draft: arista-api-client/docs/hw-session-probes.draft.json — copying it there does NOT mean it is approved for THIS switch day; the operator re-reads it live)')
+    }
+    batches = parseHwProbeSpec(readFileSync(specPath.trim(), 'utf8')).batches
+    if (resolution.ok && resolution.targetClass === 'hardware') {
+      const needScratch = batches.some((batch) => batch.commands.some((cmd) => cmd.includes('{{SCRATCH}}')))
+      if (needScratch) {
+        const scratchGate = requireScratchInterface(target)
+        if (!('name' in scratchGate)) throw new Error(`hw-session-probe: the spec names {{SCRATCH}} but the guard refuses the declared interface — ${scratchGate.reason}`)
+        scratch = scratchGate.name
+      }
+    }
+    const probeNode = createNode(liveTransportOptions(target))
+    reported = await probeNode.getVersion()
+    const identityMismatch = matchesDeviceIdentity(target, { version: reported.version, modelName: reported.modelName })
+    if (identityMismatch !== undefined) throw new Error(`hw-session-probe: refusing to write anywhere — ${identityMismatch.reason}`)
+  })
+
+  it('runs each reviewed batch in a named session and records the diff before commit/abort', async () => {
+    expect(batches.length).toBeGreaterThan(0)
+    const identity = hwDeviceIdentity({ version: reported.version, modelName: reported.modelName }, { topology: `supervised session; scratch=${scratch ?? 'none'}` })
+    const scrub = extraSecrets()
+    const enablePassword = process.env['EAPI_ENABLE_PASS']
+    let committedBatches = 0
+
+    for (const batch of batches) {
+      const commands = resolveHwScratchTokenFor(batch)
+      const recorder = createRecorder()
+      const node = createNode({
+        ...liveTransportOptions(target),
+        ...(enablePassword === undefined || enablePassword === '' ? {} : { enablePassword }),
+        trace: recorder.sink,
+      })
+
+      if (batch.allowCommit) {
+        await assertScratchStillUnused(node)
+      }
+
+      const session = await node.configSession({
+        name: `hw-probe-${batch.name}`,
+        description: batch.question.slice(0, 56),
+      })
+      let committed = false
+      try {
+        await session.run(commands)
+        const diffText = await session.diff()
+        console.log(`hw-session-probe: ${batch.name}: diff captured (${String(diffText.split(/\r?\n/u).filter((line) => line.trim() !== '').length)} line(s))`)
+        if (batch.allowCommit) {
+          await session.commit()
+          committed = true
+          committedBatches += 1
+          await node.exec([`show running-config interface ${scratch ?? '<unset>'}`], { format: 'text' })
+        } else {
+          await session.abort()
+        }
+        // Post-state baseline for the §3 orphan question: what sessions exist after ours closed.
+        await node.exec(['show configuration sessions', 'show configuration sessions detail'], { format: 'json' })
+      } finally {
+        if (!committed && session.isOpen) await session.abort()
+      }
+      if (recorder.incomplete().length > 0) throw new Error(`hw-session-probe: incomplete exchanges in batch ${JSON.stringify(batch.name)} — refusing to write a half-recorded probe`)
+      const built = buildRecording(recorder, identity)
+      const sanitized = sanitizeHwRecording(built, { extraSecrets: scrub })
+      const out = writeRecording(sanitized.fixture, { caseName: hwProbeCaseName(batch.name), overwrite: true })
+      console.log(`hw-session-probe: ${hwProbeCaseName(batch.name)}: ${out.created ? 'created' : 'refreshed'} (${String(out.bytes)} B, ${String(sanitized.log.length)} scrub(s), ${batch.allowCommit ? 'committed' : 'aborted'})`)
+    }
+    console.log(`hw-session-probe: DONE — ${String(batches.length)} batch(es), ${String(committedBatches)} committed (scratch-scoped only)`)
+  })
+
+  function resolveHwScratchTokenFor(batch: HwProbeBatch): readonly string[] {
+    if (!batch.commands.some((cmd) => cmd.includes('{{SCRATCH}}'))) return batch.commands
+    if (scratch === undefined) {
+      // parseHwProbeSpec already gated allowCommit batches on the token; abort-only batches may still
+      // use it for clarity. Either way the NAME must have passed the guard — never a free-text port.
+      throw new Error('hw-session-probe: batch uses {{SCRATCH}} but the declared EAPI_SCRATCH_INTERFACE did not clear requireScratchInterface')
+    }
+    return resolveHwScratchToken(batch.commands, scratch)
+  }
+
+  /**
+   * "One designated UNUSED scratch interface" is the operator's declaration; `linkStatus:
+   * connected` is the switch contradicting it — so a commit batch refuses BEFORE staging. The check
+   * is advisory in one direction only: it cannot prove "unused" (a quiet LACP peer looks down), which
+   * is why the commit fence also needs the spec to be scratch-only by construction (parseHwProbeSpec).
+   */
+  async function assertScratchStillUnused(node: ReturnType<typeof createNode>): Promise<void> {
+    if (scratch === undefined) throw new Error('hw-session-probe: allowCommit batch reached the check with no scratch interface — parser/gate bug')
+    const [status] = await node.exec([`show interfaces ${scratch} status`], { format: 'json' })
+    const statuses = (status?.result as { interfaceStatuses?: Record<string, { linkStatus?: string }> } | undefined)?.interfaceStatuses
+    const link = statuses?.[scratch]?.linkStatus
+    console.log(`hw-session-probe: scratch ${scratch} linkStatus=${link ?? '<unread>'} before commit batch`)
+    if (link === 'connected' || link === 'errdisabled') {
+      throw new Error(`hw-session-probe: refusing commit probes against ${JSON.stringify(scratch)} — linkStatus=${link} contradicts the "unused scratch" declaration (re-declare the port or run abort-only batches)`)
+    }
+  }
+})

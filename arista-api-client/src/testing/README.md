@@ -19,3 +19,11 @@ recorder). Contract and requirements: docs/TESTING.md §3.
 
 Nothing in this directory may open a socket: `npm test` stays offline (DR-034). The loopback
 devices are constructed only by explicit Node tests, exactly as before.
+
+**Guard/policy modules used by the live lanes (imported by path, never via the barrels):**
+`live-guard.ts` (`resolveLiveEnv` — the single opt-in gate, with `lab` and `hardware` target-class
+gate profiles, DR-035/DR-043/DR-124), `live-session-policy.ts` (`runGuardedLiveWriteSession` —
+DR-035's write mechanics) and `hw-capture.ts` (hardware-lane catalog, strict switch redaction, and
+the config-session probe-spec policy — DR-125; operator runbook at `docs/HARDWARE-CAPTURE.md`).
+`live-guard.test.ts`, `live-session-policy.test.ts` and `hw-capture.test.ts` test every refusal
+path offline; the `*.live.test.ts` runners themselves only execute against an accepted target.

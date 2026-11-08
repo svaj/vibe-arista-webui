@@ -181,6 +181,15 @@ source (pyeapi 1.0.4-rc0).
 
 ## 3. Device sweep — the one job that unblocks several milestones
 
+> **2026-11-08 (hardware lane, DR-124/DR-125).** The 7050TX-64 half of this sweep finally has an
+> addressing path: `live-guard.ts` gained a **hardware** class (no default host/port, https-only,
+> exact `DCS-7050TX-64`/`4.28.13.1M` pins, `EAPI_HW_CONSENT` model echo, device self-report still
+> decides), and `src/hw-inventory.live.test.ts` + `src/hw-session-probe.live.test.ts` execute the
+> read-only batch and the reviewed session probes, writing scrubbed evidence under
+> `test/fixtures/recordings/7050tx-64-4.28.13.1M/` (operator runbook: [HARDWARE-CAPTURE.md](./HARDWARE-CAPTURE.md)).
+> **The lane is built, not run** — zero switch bytes are committed, and none of the boxes below
+> changes state until the supervised session happens.
+
 Run the software/schema subset against cEOS first and store captures under
 `test/fixtures/recordings/ceos-4.28.14M/`; repeat target-sensitive checks on the
 7050TX-64 under `recordings/7050tx-64-4.28.13.1M/`. Keep exact version/model metadata,
@@ -275,8 +284,8 @@ is the work state; the §1 table `in-progress`/`done` cell mirrors it, and this 
 | [#11](https://github.com/svaj/vibe-arista-webui/issues/11) | M9 `vlans` + `switchports` | closed (PR #28) |
 | [#12](https://github.com/svaj/vibe-arista-webui/issues/12) | M10 `interfaces` | open — M10a (facade + `BaseInterface` + per-kind grammar, §5 rows 99-106, DR-067-069) on its branch; M10b/M10c open (rows 123-130, DR-070+ reserved) |
 | [#13](https://github.com/svaj/vibe-arista-webui/issues/13) | M11 Capability probe + dry-run | open |
-| [#14](https://github.com/svaj/vibe-arista-webui/issues/14) | M12 Live suite + fixtures + CI | `status:in-progress` — partial: recorder + live-guard + cEOS harness as [PR #29](https://github.com/svaj/vibe-arista-webui/pull/29), live tranches 1-2 (suites, `fixtures:refresh`, job wiring); the #62 configured re-capture batch brings **30 live captures** and the provisioned-capture harness onto this branch (§5 row 225, DR-122/DR-123); the `test/system/*` remainders, the first EXECUTED CI live run and the hardware sweep remain |
-| [#62](https://github.com/svaj/vibe-arista-webui/issues/62) | Configured-device capture batch (show-model gaps the UI screens need) | open — delivered on `agents/issue-62-configured-captures` (provisioning + 31-entry catalog + 30 captures + `--capture-via` fallback); PR pending review |
+| [#14](https://github.com/svaj/vibe-arista-webui/issues/14) | M12 Live suite + fixtures + CI | `status:in-progress` — partial: recorder + live-guard + cEOS harness as [PR #29](https://github.com/svaj/vibe-arista-webui/pull/29), live tranches 1-2 (suites, `fixtures:refresh`, job wiring); the #62 configured re-capture batch brings **30 live captures** and the provisioned-capture harness onto this branch (§5 row 225, DR-122/DR-123); the hardware capture **lane is now built** — `EAPI_TARGET_CLASS=hardware` guard gates, `hw-inventory`/`hw-session-probe` runners, reviewed probe spec, runbook [HARDWARE-CAPTURE.md](./HARDWARE-CAPTURE.md) (§5 row 226, DR-124/DR-125) — its first **executed** switch session is what this list and every §3 box still need; the `test/system/*` remainders and the first EXECUTED CI live run also remain |
+| [#62](https://github.com/svaj/vibe-arista-webui/issues/62) | Configured-device capture batch (show-model gaps the UI screens need) | closed (PR #98; §5 row 225) — provisioning + 31-entry catalog + 30 captures + `--capture-via` fallback landed on main 2026-11-08 |
 | [#15](https://github.com/svaj/vibe-arista-webui/issues/15) | M13 Consumption, docs, release | open |
 | [#16](https://github.com/svaj/vibe-arista-webui/issues/16) | W2 wave-2 module backlog | open |
 | [#17](https://github.com/svaj/vibe-arista-webui/issues/17) | W3 wave-3 module backlog | open |
