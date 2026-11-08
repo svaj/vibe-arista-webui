@@ -758,7 +758,7 @@ async function waitForEosCli(container, timeoutSec) {
  * The mgmt network MUST carry a pinned static subnet because the run-owned
  * relay dials a deterministically-addressed endpoint (see the NIC-topology
  * note in `cmdUp` and DR-034's exact-endpoint rule). TWO bands: the
- * documented 172.31.16-255 pool, then 10.177.16-255 — under WSL2
+ * documented pools for Docker dynamic bridging: the fixed 192.168.255.0/24 band first (the
  * mirrored-mode networking (the default since WSL 2.6; the `iif ethN
  * ipproto … lookup local` rules are the fingerprint) Windows HNS owns pieces
  * of 172.16.0.0/12, and its route reconciliation can silently strip the
@@ -817,6 +817,14 @@ function mgmtSubnetCandidates() {
     return true
   }
   const bands = [
+    // Proven first: 192.168.255.0/24 is the band the local green runs (incl. the 249/249
+    // executed corpus, 2026-11-08) always pinned, and a CI dispatch with the bridge route
+    // VERIFIED LIVE on 172.31.77.0/24 still died with `Client network socket disconnected
+    // before secure TLS` on all 29 attempts and CApi `Hits: 0` — under WSL2 mirrored mode a
+    // route inside Windows' 172.16/12 ownership can look perfect in `ip route` and still
+    // have its traffic eaten. A verified route is necessary, not sufficient; try the
+    // never-poisoned band before the wide pools.
+    { a: 192, b: 168, min: 255, max: 255 },
     { a: 172, b: 31, min: 16, max: 255 },
     { a: 10, b: 177, min: 16, max: 255 },
   ]
@@ -835,7 +843,7 @@ function mgmtSubnetCandidates() {
   }
   if (out.length === 0) {
     refuse(
-      'no free /24 candidate in 172.31.16-255 or 10.177.16-255 for the lab mgmt bridge — clean up stale '
+      'no free /24 candidate in 192.168.255, 172.31.16-255 or 10.177.16-255 for the lab mgmt bridge — clean up stale '
       + 'Docker networks and old bridge routes before retrying (docs/CEOS.md §Host-route reconciliation)',
       EXIT.internal,
     )
@@ -1708,6 +1716,24 @@ async function cmdProbe(cfg, state) {
           + '.wslconfig or a native Linux lab runner).',
         )
         return { exitCode: EXIT.readiness, runId: state.runId, reason: 'mgmt-route-lost-mid-run', detail: routeCheck.why }
+      }
+      // Second fast-fail, the mirrored-mode twin (CI run 42528431866, 2026-11-08): the
+      // connected route reads live the whole time, yet a direct TLS/conn attempt to the
+      // mgmt IP comes back EHOSTUNREACH and CApi records `Hits: 0` — the host's NAT layer
+      // owns the /12 the bridge sits in and eats the traffic the kernel route says is local.
+      // Detecting it at attempt 2 saves the whole 240 s window and names the band.
+      const midRunPeek = state.mgmtContainerIp
+        ? await peekServedCert({ host: String(state.mgmtContainerIp), port: cfg.containerApiPort })
+        : { fingerprint256: null, error: 'no mgmtContainerIp in state' }
+      if (!midRunPeek.fingerprint256 && /EHOSTUNREACH|ENETUNREACH|ECONNRESET/i.test(String(midRunPeek.error ?? ''))) {
+        log(
+          `[probe] REFUSED: the mgmt path to ${String(state.mgmtContainerIp)}:${String(cfg.containerApiPort)} is dead ` +
+            `(${String(midRunPeek.error)}) even though the route reads live (${routeCheck.why}). This /24 is inside the ` +
+            'range the host network stack owns (WSL2 mirrored-mode + Windows HNS on 172.16/12); docs/CEOS.md ' +
+            '§Host-route reconciliation — NAT-mode .wslconfig, a native Linux lab runner, or pinning the lab to the ' +
+            '192.168.255.0/24 band (the harness prefers it for exactly this reason).',
+        )
+        return { exitCode: EXIT.readiness, runId: state.runId, reason: 'mgmt-path-owned-by-host-nat', detail: String(midRunPeek.error) }
       }
     }
     await sleep(cfg.retryDelayMs)

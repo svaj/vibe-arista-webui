@@ -114,12 +114,19 @@ dies `EHOSTUNREACH`. It is per-subnet luck, not a per-octet rule: `.70/.132/.189
 (actions run 42525119847, dispatched exactly this way). Stale `br-` devices + routes surviving WSL
 restarts are the same phenomenon's leftovers (an earlier picker fix excludes CIDRs already in the
 host's route/addr tables, which covers that class). The harness now defends mechanically: `up`
-creates mgmt-bridge candidates — the documented `172.31.16-255` pool then a `10.177.16-255` fallback —
+creates mgmt-bridge candidates — **`192.168.255.0/24` first**, then the documented `172.31.16-255` pool,
+then a `10.177.16-255` fallback —
 and keeps one only when its connected route is genuinely live per `ip route show` + `ip route get`
 (`verifyMgmtBridgeRoute`), rm-ing and re-drawing otherwise (bounded, 40 tries, refusal cites the
 reason list); during probing, two handshake deaths trigger a route re-check and a fast refusal with
-reason `mgmt-route-lost-mid-run` instead of waiting out the timeout window, and probe diagnostics
-print `route: live|BROKEN`. The host-side fixes: `[wsl2] networkingMode=NAT` in
+reason `mgmt-route-lost-mid-run` instead of waiting out the timeout window, and a second check refuses
+with `mgmt-path-owned-by-host-nat` when the route reads live but a **direct** connect to the mgmt IP
+answers `EHOSTUNREACH`. Probe diagnostics print `route: live|BROKEN`. That second case is why the band
+order matters: actions run 42528431866 verified `172.31.77.0/24` as `route: live` at create **and** at
+refusal, still got 29 × `Client network socket disconnected before secure TLS` with EOS `Hits: 0` — a
+route the kernel table vouches for can be HNS-eaten end-to-end — while the same host pinned to
+`192.168.255.0/24` probes ready in 0.2 s. Treat a verified route as necessary, not sufficient. The
+host-side fixes: `[wsl2] networkingMode=NAT` in
 `%UserProfile%\.wslconfig` + `wsl --shutdown` (restarts this session; VS Code reconnects), or run the
 `eos-lab` runner on a native Linux host, where the class does not exist. **Mirrored-mode WSL2 is not
 a supported lab-runner host** unless NAT is set.
