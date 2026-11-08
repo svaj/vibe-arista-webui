@@ -9,6 +9,22 @@ surprise here — this file records what shipped, the migration map records what
 
 ## [Unreleased]
 
+### Fixed — resource readers the first EXECUTED live corpus found wrong (cEOS-lab 4.28.14M, 2026-11-08; DR-128 + §5 row 230)
+- `vrrp`: `preemptDelayMin` / `preemptDelayReload` now read from the line the device actually keeps —
+  4.28.14M folds both seconds onto ONE line (`vrrp N preempt delay minimum 150 reload 0`, each single-half
+  write preserving the other), while the ported upstream regexes end-anchored each half and returned
+  undefined on the very device those writes succeeded against. Upstream's own `$`-anchored regexes never
+  met a real device; parity was kept for the writes only.
+- `bgp.neighbors`: only the BARE `neighbor X next-hop-self` line votes the knob. 4.28.14M renders
+  `no neighbor X next-hop-self receive-only`, `… source-interface` and `… received-evpn-routes
+  route-type ip-prefix` as standing negative sub-feature lines — a shape-anchored probe was voting
+  `nextHopSelf` false even immediately after a successful positive write.
+- Live-lane behavior (not library API): the lab endpoint is now a run-owned literal-loopback byte relay
+  instead of a Docker-published port (DR-128(a)), the live child receives the full TLS trust triple
+  `EAPI_CA_FILE`+`EAPI_FINGERPRINT`+`EAPI_SERVER_NAME` (DR-128(b) — required because cEOS serves a
+  SAN-less `CN=self.signed` certificate), and the CI live job EXCLUDES the two hardware-capture runners
+  rather than counting them as skips (DR-128(c)).
+
 ## [0.1.0] — 2026-11-08
 
 First stamped release of the port. The public surface is the `exports` of `index.ts` (browser-safe

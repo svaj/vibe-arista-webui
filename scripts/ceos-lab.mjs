@@ -767,13 +767,33 @@ function pickMgmtSubnet() {
   const ids = docker(['network', 'ls', '-q']).trim().split('\n').filter(Boolean)
   /** @type {{addr: number[], plen: number}[]} */
   const used = []
+  const absorb = (cidr) => {
+    const [addr, plen] = cidr.split('/')
+    if (!/^(\d{1,3}\.){3}\d{1,3}$/.test(addr)) return
+    used.push({ addr: addr.split('.').map(Number), plen: Math.min(Math.max(Number(plen ?? 24), 0), 32) })
+  }
   for (let i = 0; i < ids.length; i += 40) {
     const res = dockerOpt(['network', 'inspect', ...ids.slice(i, i + 40), '--format', '{{range .IPAM.Config}}{{.Subnet}} {{end}}'])
     if (res.status !== 0) continue
-    for (const cidr of res.stdout.trim().split(/\s+/).filter(Boolean)) {
-      const [addr, plen] = cidr.split('/')
-      if (!/^(\d{1,3}\.){3}\d{1,3}$/.test(addr)) continue
-      used.push({ addr: addr.split('.').map(Number), plen: Math.min(Math.max(Number(plen ?? 24), 0), 32) })
+    for (const cidr of res.stdout.trim().split(/\s+/).filter(Boolean)) absorb(cidr)
+  }
+  // Avoid ZOMBIE kernel bridges, not just Docker-visible ones. Observed twice on 2026-11-08 after a
+  // WSL2 restart: `ip route` still carried `172.31.107.0/24 dev br-84e385ae4402` (and the run-10
+  // bridge's twin) for networks `docker network ls` no longer lists — dockerd recreated its state but
+  // the kernel bridge device/route survived. The freshly-created mgmt bridge then lost the route
+  // lookup to the dead device and every probe died with EHOSTUNREACH at the forwarder's upstream.
+  // Reading the host's main-route table and interface addresses covers that class; absent tooling
+  // (non-Linux dev machines) just means no extra candidates are filtered.
+  for (const args of [['-o', '-4', 'route', 'show', 'table', 'main'], ['-o', '-4', 'addr', 'show']]) {
+    let res
+    try {
+      res = run('ip', args, {})
+    } catch {
+      continue // no `ip` tooling (non-Linux dev box): the docker-side filter still applies
+    }
+    if (res.status !== 0) continue
+    for (const line of res.stdout.split('\n')) {
+      for (const cidr of line.match(/\b\d{1,3}(\.\d{1,3}){3}\/\d+\b/g) ?? []) absorb(cidr)
     }
   }
   /** @param {number[]} a @param {number} ap @param {number[]} b @param {number} bp */

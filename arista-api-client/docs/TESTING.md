@@ -256,8 +256,13 @@ main: same, plus npm pack smoke test (does the tarball's exports map resolve fro
 trusted dispatch only (`ceos-live`): runs-on [self-hosted, linux, eos-lab] (labels GitHub never
       hosts, so it queues until a trusted lab runner exists) + `if: github.event_name ==
       'workflow_dispatch'`; then `lab:list` preflight → `npm run lab:run -- --quiet --no-fixtures
-      --port <n> -- npx vitest run --project live`, teed to a log → `lab:down` under `if: always()`
-      → printed diagnostics → `scripts/assert-live-run.mjs <log> --min-passed 1 --check-secrets`.
+      --port <n> -- npm -w arista-api-client run test:live -- --exclude 'src/hw-*.live.test.ts'`, teed
+      to a log → `lab:down` under `if: always()` → printed diagnostics →
+      `scripts/assert-live-run.mjs <log> --min-passed 1 --check-secrets`.
+      The hardware-capture runners (DR-124/DR-125) are EXCLUDED from this lane rather than counted as
+      skips: they need a supervised `hardware`-class session no CI job can hold, and the zero-skip rule
+      keeps its "a skip means something went wrong" meaning for everything the job can actually run
+      (DR-128(c); the local `npm run test:live` target keeps their loud skips).
       No secrets, no image reference, no `container:` — the per-run lab credential lives only in the
       0600 state file, and --quiet keeps the one-time print out of the artifact.
 per-endpoint concurrency: the run group is `ceos-live-endpoint-<port>` with cancel-in-progress:false

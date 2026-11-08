@@ -86,6 +86,23 @@ from the 2026-11-04 flap is also on record: eAPI `protocol https` is SHUT until
 bootstrap, so probes before the user/API setup fail on ANY topology — bootstrap
 first, then probe.
 
+**Update (2026-11-08, DR-128(a)) — the vendor shape broke again on this host, and the harness no longer
+asks Docker to publish at all.** After a WSL2 restart (same docker 29.9.2, kernel
+6.18.33.2-microsoft-standard-WSL2), even this single-create + connect-before-start topology resolved
+the `-p 127.0.0.1:<port>:443` proxy target to the container's **data1** bridge endpoint (visible in
+the process table as `docker-proxy … -container-ip 172.19.0.2`), which cEOS owns as a front-panel
+Ethernet NIC with no eAPI listener — every handshake reset at the Docker hop while EOS reported
+`Hits: 0, Bytes in: 0`, and a host-direct TLS connect to the mgmt-bridge IP answered normally.
+Docker's CLI cannot qualify `-p` with the container-side endpoint, so `up` creates the container
+**without `-p`** and runs its own detached, run-owned relay (`scripts/eapi-port-forward.mjs`:
+literal-loopback bind, byte-only — the pinned certificate verifies end-to-end through it — killed by
+teardown behind a `/proc` cmdline ownership check, self-extinguishing on the run's state-file watch
+plus max-life/idle limits). Probe refusals now print relay-vs-direct certificate peeks and the
+forwarder's liveness, so the next host flap is attributed mechanically (one such flap, 2026-11-08
+run 10, showed `EHOSTUNREACH` straight at the fresh mgmt bridge — a WSL2/kernel networking race,
+retry-clean). A just-booted node's first probes may also show `ECONNREFUSED` upstream while CApi
+binds; the bounded window absorbs it (recovered at ~30 s in run 9).
+
 In EOS, inspect `show version`, `show interfaces status`, and
 `show management api http-commands`. Confirm the actual management/data interface
 mapping rather than assuming physical port counts or that Docker `eth1` is `Ethernet1`.
@@ -152,7 +169,10 @@ Use the API client's existing opt-in live lane
 
 - `EAPI_LIVE=1`, explicit `EAPI_HOST`, `EAPI_USER`, and `EAPI_PASS` (or `EAPI_PASS_VAR`).
   The harness must support the published host/port, e.g. `localhost:8443`, without
-  silently defaulting to port 443 or a real-switch profile.
+  silently defaulting to port 443 or a real-switch profile. *(Shipped shape, DR-128(a): the
+  endpoint is a **harness-owned loopback relay** to the container's pinned mgmt address — no
+  Docker-published port — and the live child receives the full trust triple
+  `EAPI_CA_FILE`+`EAPI_FINGERPRINT`+`EAPI_SERVER_NAME` because the cEOS certificate has no SAN.)*
 - `EAPI_TARGET_CLASS=lab` for writes and `EAPI_SCRATCH_INTERFACE` discovered from the
   container's interfaces for interface writes.
 - An exact allow-listed endpoint in the planned `test/device-allowlist.json`, including
