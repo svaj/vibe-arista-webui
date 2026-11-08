@@ -87,6 +87,7 @@ const DEFAULTS = {
   containerApiPort: 443,
   cliTimeoutSec: 360,
   probeTimeoutSec: 240,
+  frontPanelTimeoutSec: 60,
   requestTimeoutMs: 15_000,
   retryDelayMs: 5_000,
 }
@@ -715,6 +716,76 @@ async function waitForEosCli(container, timeoutSec) {
 /* --------------------------------------------------------------- up command */
 
 /** @param {ReturnType<typeof labConfig>} cfg */
+/**
+ * Pick a free private /24 under 172.31.16.0–172.31.255.0 for the run's mgmt bridge.
+ * The mgmt network MUST carry a pinned static subnet because the published-port path
+ * leans on a deterministically-addressed PRIMARY endpoint (see the NIC-topology note
+ * in `cmdUp` and DR-034's exact-endpoint rule). Existing networks are read once and
+ * the scan starts at a random octet so racing workers do not pick the same first
+ * candidate. IPv6 ipam entries and link-local noise are ignored.
+ * @returns {{ octetBase: string, cidr: string }}
+ */
+function pickMgmtSubnet() {
+  const ids = docker(['network', 'ls', '-q']).trim().split('\n').filter(Boolean)
+  /** @type {{addr: number[], plen: number}[]} */
+  const used = []
+  for (let i = 0; i < ids.length; i += 40) {
+    const res = dockerOpt(['network', 'inspect', ...ids.slice(i, i + 40), '--format', '{{range .IPAM.Config}}{{.Subnet}} {{end}}'])
+    if (res.status !== 0) continue
+    for (const cidr of res.stdout.trim().split(/\s+/).filter(Boolean)) {
+      const [addr, plen] = cidr.split('/')
+      if (!/^(\d{1,3}\.){3}\d{1,3}$/.test(addr)) continue
+      used.push({ addr: addr.split('.').map(Number), plen: Math.min(Math.max(Number(plen ?? 24), 0), 32) })
+    }
+  }
+  /** @param {number[]} a @param {number} ap @param {number[]} b @param {number} bp */
+  const overlaps = (a, ap, b, bp) => {
+    const bits = Math.min(ap, bp)
+    for (let bit = 0; bit < bits; bit += 8) {
+      const width = Math.min(8, bits - bit)
+      const mask = (0xff << (8 - width)) & 0xff
+      const ia = bit / 8
+      if ((a[ia] & mask) !== (b[ia] & mask)) return false
+    }
+    return true
+  }
+  const start = crypto.randomInt(16, 256)
+  for (let k = 0; k < 240; k++) {
+    const o = 16 + ((start + k) % 240)
+    const cand = [172, 31, o, 0]
+    if (!used.some((u) => overlaps(cand, 24, u.addr, u.plen))) return { octetBase: `172.31.${o}`, cidr: `172.31.${o}.0/24` }
+  }
+  refuse('no free 172.31.16-255.0/24 subnet for the lab mgmt bridge — clean up stale Docker networks before retrying', EXIT.internal)
+}
+
+/**
+ * Poll the interface model until front-panel Ethernet ports exist. NICs bind at cEOS
+ * boot, so this typically returns on the first pass; running out means the data
+ * bridges did not produce ports, and staging would happily create orphan stanzas
+ * (accepted as config, answered as `% Interface does not exist`) — which is exactly
+ * the empty-capture rot #62 is here to fix.
+ * @param {string} container @param {number} timeoutSec
+ * @returns {Promise<string[]>} Ethernet names sorted by index
+ */
+async function waitForFrontPanelPorts(container, timeoutSec) {
+  const t0 = Date.now()
+  /** @type {string[]} */
+  let names = []
+  while (Date.now() - t0 < timeoutSec * 1000) {
+    try {
+      const model = cliJson(container, 'show interfaces status')
+      names = Object.keys(model?.interfaceStatuses ?? {})
+        .filter((n) => /^Ethernet\d+$/.test(n))
+        .sort((a, b) => Number(a.slice(8)) - Number(b.slice(8)))
+      if (names.length > 0) return names
+    } catch {
+      // Cli can answer-but-not-ready here; the bounded loop is the diagnosis path.
+    }
+    await sleep(3000)
+  }
+  return names
+}
+
 async function cmdUp(cfg) {
   const t0 = Date.now()
   const runId = cfg.runId ?? newRunId()
@@ -722,7 +793,8 @@ async function cmdUp(cfg) {
     runId,
     container: containerName(runId),
     mgmt: networkName(runId, 'mgmt'),
-    data: networkName(runId, 'data'),
+    data1: networkName(runId, 'data1'),
+    data2: networkName(runId, 'data2'),
   }
   /** @type {number} */
   let port
@@ -734,26 +806,43 @@ async function cmdUp(cfg) {
     )
     port = await allocateEndpoint(cfg.hostIp, runId, cfg.port)
     log(`[up] run ${runId} · endpoint ${cfg.hostIp}:${port} -> ${names.container}:${cfg.containerApiPort}`)
-    // ONE network attached — evidence 2026-11-04 (post-reboot verification of the 2026-11-03 runs).
-    // Attaching `-mgmt` AND `-data` made the published port flap: `docker run -p` resolves the
-    // container endpoint among the attachments with no documented tie-break, and bare cEOS (this
-    // harness's ZTP-free boot) only plumbs a kernel route/address on the FIRST attachment — the
-    // second NIC answers nothing on its docker-side IP, so whenever the picker chose that endpoint
-    // every TCP+TLS connect to the published port died ECONNRESET (30/30 probe attempts) while
-    // `docker exec` curl of the container's own eth0 returned 405. Detaching the second network at
-    // runtime made the published path work instantly (405 = method, not transport). The data NIC has
-    // no consumer yet — two-node MLAG topologies (DR-043) belong to a later lane, and when they come,
-    // attach-then-publish must name the endpoint explicitly instead of relying on the picker.
-    for (const net of [names.mgmt]) {
-      docker(['network', 'create', `--label=${LABEL_RUN}=${runId}`, `--label=${LABEL_MANAGER}=${MANAGER}`, net])
+    // NIC topology, re-settled on 2026-11-07 for issue #62. cEOS binds kernel NICs to
+    // front-panel Ethernet ports ONLY at boot: a single-NIC node presents ZERO Ethernet
+    // ports (`interface Ethernet1` then answers `% Interface does not exist … until the
+    // module is inserted`), and hot-plugging a network into a running node inserts
+    // nothing (probed: attaching two more networks to a booted cEOS left the model
+    // unchanged). The 2026-11-06 captures' `Et1`/`Et2` came from an older multi-attach
+    // boot; the #62 evidence needs those ports back, so a run now creates mgmt + data1 +
+    // data2 and attaches ALL THREE AT CREATE. The 2026-11-04 note for the
+    // published-port flapping is superseded by today's controlled test on this daemon
+    // (docker 29.9.2): with the mgmt network NAMED FIRST (primary endpoint), a pinned
+    // static subnet, and explicit container-side target order, every TLS probe on the
+    // published port served the mgmt certificate; what had actually made the port look
+    // dead in the earlier investigation is that eAPI `protocol https` is SHUT until the
+    // bootstrap runs — probes before bootstrap fail on any topology. The mgmt-side
+    // safeguards (loopback publish, per-endpoint locks, model/version pins) are
+    // unchanged; the two data bridges carry no published port and no route the host
+    // would trust — they exist to boot the switch with front-panel ports.
+    const mgmtSubnet = pickMgmtSubnet()
+    const mgmtIp = `${mgmtSubnet.octetBase}.10`
+    for (const net of [names.mgmt, names.data1, names.data2]) {
+      const netArgs = ['network', 'create', `--label=${LABEL_RUN}=${runId}`, `--label=${LABEL_MANAGER}=${MANAGER}`]
+      if (net === names.mgmt) netArgs.push(`--subnet=${mgmtSubnet.cidr}`)
+      netArgs.push(net)
+      docker(netArgs)
     }
+    log(`[up] mgmt network pinned to ${mgmtSubnet.cidr} (container ${mgmtIp}); data nets carry the front-panel NICs`)
     const createArgs = [
       'create',
       `--name=${names.container}`,
       '--privileged',
       `--label=${LABEL_RUN}=${runId}`,
       `--label=${LABEL_MANAGER}=${MANAGER}`,
+      // mgmt FIRST (primary endpoint) with the pinned address — see the note above.
       `--network=${names.mgmt}`,
+      `--ip=${mgmtIp}`,
+      `--network=${names.data1}`,
+      `--network=${names.data2}`,
       `-p=${cfg.hostIp}:${port}:${cfg.containerApiPort}`,
     ]
     for (const [k, v] of VENDOR_ENV) createArgs.push('-e', `${k}=${v}`)
@@ -803,11 +892,25 @@ async function cmdUp(cfg) {
     const bootstrapTranscript = bootstrapLab(names.container, creds)
     const bootstrapMs = Date.now() - bootstrapStart
 
+    // The front-panel model must be populated BEFORE provisioning references the ports
+    // (a staging line aimed at a noninserted module is accepted as orphan config and
+    // poisons every interface capture). NICs bind at boot, so by the time Cli answers
+    // this is usually already true; the bounded poll is for slow hosts, not optimism.
+    const frontPanels = await waitForFrontPanelPorts(names.container, cfg.frontPanelTimeoutSec)
+    if (frontPanels.length < 2) {
+      refuse(
+        `cEOS presented only ${String(frontPanels.length)} front-panel Ethernet port(s) ` +
+          `(${frontPanels.join(',') || 'none'}) within ${String(cfg.frontPanelTimeoutSec)}s — the run's two data ` +
+          'networks did not bind at boot; provisioning would stage orphan stanzas and the #62 captures would be empty.',
+        EXIT.readiness,
+      )
+    }
+
     // Issue #62: the captures the UI screens need only answer in the configured shape,
     // so `up` now provisions that shape before anything is read. A refusal here lands in
     // the catch below: teardown runs, no probe is taken, no half-configured capture set exists.
     const provisionStart = Date.now()
-    const provision = provisionLab(names.container)
+    const provision = provisionLab(names.container, frontPanels[0], frontPanels[1])
     const provisionMs = Date.now() - provisionStart
     if (!provision.ok) {
       const detail =
@@ -828,10 +931,13 @@ async function cmdUp(cfg) {
 
     const state = {
       runId,
-      schema: 1,
+      schema: 2,
       container: names.container,
       containerId: cid,
-      networks: { mgmt: names.mgmt },
+      networks: { mgmt: names.mgmt, data1: names.data1, data2: names.data2 },
+      mgmtSubnet: mgmtSubnet.cidr,
+      mgmtContainerIp: mgmtIp,
+      frontPanelPorts: frontPanels,
       hostIp: cfg.hostIp,
       port,
       containerApiPort: cfg.containerApiPort,
@@ -966,19 +1072,24 @@ function bootstrapLab(container, creds) {
  * OFF on a single node (#64/#84's foot-gun rule). This is run *setup*, not a test write,
  * so it sits outside DR-035's test write policy — but keeps its no-persistence half.
  *
- * Port budget, settled from the 2026-11-06 captures: this cEOS-lab profile exposes
- * exactly **two** front-panel ports (`Et1`/`Et2`, type `EbraTestPhyPort`), so Eth2
- * carries the LACP membership and the Port-Channel itself is the trunk; Eth1 carries
- * the configured-L2 access evidence (the configured-port half DR-018/DR-029 still owed).
+ * Port budget: the front-panel Ethernet ports come from the run's two data-bridge
+ * NICs (see the topology note in `cmdUp`); a boot without data networks presents
+ * ZERO Ethernet ports and hot-plug after boot inserts nothing (both probed
+ * 2026-11-07). Port names are therefore taken from the observed model — `ethA` is
+ * the configured access port and `ethB` the LACP member whose Port-Channel carries
+ * the trunk — never hard-coded. No interface on the management path is touched.
  */
 const PROVISION_SESSION = 'lab-provision'
 const PENDING_SESSION = 'lab-pending-capture'
 
 /**
- * The staging lines, in apply order. Indentation mirrors the CLI's sub-mode style
- * used by `bootstrapLab`, so the transcript is readable to a reviewer.
+ * The staging lines, in apply order, aimed at the OBSERVED front-panel ports.
+ * Indentation mirrors the CLI's sub-mode style used by `bootstrapLab`, so the
+ * transcript is readable to a reviewer.
+ * @param {string} ethA @param {string} ethB
  */
-const PROVISION_STAGING = [
+function provisionStaging(ethA, ethB) {
+  return [
   // VLAN names belong in vlan sub-mode (probed 2026-11-07: `name …` under
   // `interface Vlan…` answers `% Invalid input`); the SVI stanza carries addressing only.
   'vlan 10',
@@ -1006,7 +1117,7 @@ const PROVISION_STAGING = [
   // Configured access port: switchport-model content + per-port STP guards. The ACL
   // attachment lives on the routed SVI (and is itself a tolerated probe — cEOS-lab 4.28.14M
   // refused it there on 2026-11-07; the hardware attachment stays #14 §3).
-  'interface Ethernet1',
+  `interface ${ethA}`,
   '   switchport',
   '   switchport mode access',
   '   switchport access vlan 100',
@@ -1014,8 +1125,8 @@ const PROVISION_STAGING = [
   '   spanning-tree bpduguard enable',
   '   no shutdown',
   'exit',
-  // LACP: with two ports only, the member is Eth2 and Po1 is the trunk.
-  'interface Ethernet2',
+  // LACP: with two ports only, the member is ethB and Po1 is the trunk.
+  `interface ${ethB}`,
   '   no shutdown',
   '   channel-group 1 mode active',
   'exit',
@@ -1040,7 +1151,8 @@ const PROVISION_STAGING = [
   '   10 permit tcp any host 10.0.100.1 eq 443',
   '   20 permit icmp any any',
   'exit',
-]
+  ]
+}
 
 /**
  * Commands whose refusal is a **finding**, not a failure — they ride along to probe
@@ -1101,8 +1213,8 @@ function findStagingErrors(transcript, inputCommands) {
  * already aborted on the staging path.
  * @param {string} container
  */
-function provisionLab(container) {
-  const stagingInput = [`configure session ${PROVISION_SESSION}`, ...PROVISION_STAGING]
+function provisionLab(container, ethA, ethB) {
+  const stagingInput = [`configure session ${PROVISION_SESSION}`, ...provisionStaging(ethA, ethB)]
   const staged = cliScriptOpt(container, stagingInput, 180_000)
   const errors = findStagingErrors(staged, stagingInput)
   const fatal = errors.filter((e) => !PROVISION_TOLERATED.has(e.command))
@@ -1857,7 +1969,9 @@ function teardownRun(runId) {
   const state = readState(runId)
   dropContainer(containerName(runId), state?.containerId)
   dropNetwork(networkName(runId, 'mgmt'))
-  dropNetwork(networkName(runId, 'data'))
+  dropNetwork(networkName(runId, 'data')) // pre-#62 topologies (idempotent for newer runs)
+  dropNetwork(networkName(runId, 'data1'))
+  dropNetwork(networkName(runId, 'data2'))
 
   const sp = statePath(runId)
   if (fs.existsSync(sp)) {
@@ -2051,6 +2165,7 @@ function labConfig(flags) {
     containerApiPort: int('container-port', DEFAULTS.containerApiPort),
     cliTimeoutSec: int('cli-timeout', DEFAULTS.cliTimeoutSec),
     probeTimeoutSec: int('timeout', DEFAULTS.probeTimeoutSec),
+    frontPanelTimeoutSec: int('front-panel-timeout', DEFAULTS.frontPanelTimeoutSec),
     requestTimeoutMs: int('request-timeout', DEFAULTS.requestTimeoutMs),
     retryDelayMs: int('retry-delay', DEFAULTS.retryDelayMs),
     port: flags['port'] === undefined || flags['port'] === true ? null : Number(flags['port']),
