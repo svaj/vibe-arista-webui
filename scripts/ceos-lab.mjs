@@ -91,6 +91,8 @@ const DEFAULTS = {
   certWaitSec: 120,
   requestTimeoutMs: 15_000,
   retryDelayMs: 5_000,
+  /** fixtures-command capture transport: see `--capture-via` in the usage text. */
+  captureVia: 'auto',
 }
 
 /**
@@ -1642,6 +1644,165 @@ async function captureFromEapi(cfg, pin) {
   return out
 }
 
+/**
+ * One catalog command executed through the container's own CLI.
+ * `Cli -p 15` is enable-mode, so it is the SAME EOS agent and parser answering the
+ * eAPI server — only the transport differs — and it is the only reach path that has
+ * NEVER failed on this host: every provisioning/session interaction this harness
+ * performs already rides through it. JSON replies are fenced by `| json`; text
+ * replies drop the echoed-prompt preamble. A leading `%` error line throws — the
+ * caller records it as a negative result, exactly like the eAPI path.
+ * @param {string} container @param {string} command @param {'json'|'text'} format
+ */
+async function runCliCapture(container, command, format) {
+  const raw = cliScriptOpt(container, [format === 'json' ? `${command} | json` : command], 60_000)
+  if (format === 'json') {
+    const start = raw.indexOf('{')
+    const end = raw.lastIndexOf('}')
+    if (start < 0 || end <= start) throw new Error(`no JSON object in Cli reply for ${command}: ${(raw || '(empty)').slice(0, 200)}`)
+    return JSON.parse(raw.slice(start, end + 1))
+  }
+  const lines = raw.split('\n')
+  const echo = lines.findIndex((l) => /^\s*(>|localhost[>#])\s*\S/.test(l))
+  const body = echo >= 0 ? lines.slice(echo + 1) : lines
+  const first = body.find((l) => l.trim() !== '')
+  if (first && first.trim().startsWith('%')) throw new Error(`Cli answered an error for ${command}: ${first.trim()}`)
+  return { output: `${body.join('\n').replace(/\s+$/g, '')}\n` }
+}
+
+/**
+ * Run {@link CAPTURE_CATALOG} through {@link runCliCapture}. Mirrors
+ * {@link captureFromEapi}'s negative-result semantics verbatim.
+ * @param {string} container
+ */
+async function captureFromCli(container) {
+  /** @type {{command: string, format: string, ok: boolean, result?: any, note?: string, error?: string}[]} */
+  const out = []
+  for (const entry of CAPTURE_CATALOG) {
+    const { command, format, note } = entry
+    try {
+      const result = await runCliCapture(container, command, format)
+      out.push({
+        command,
+        format,
+        ok: true,
+        result,
+        ...(note === undefined ? {} : { note }),
+        ...(format === 'json' && note === undefined ? { note: 'capability observation' } : {}),
+      })
+    } catch (err) {
+      out.push({
+        command,
+        format,
+        ok: false,
+        error: err?.message ?? String(err),
+        note: note === undefined ? 'capability observation — negative result recorded verbatim' : `${note} — negative result recorded verbatim`,
+      })
+    }
+  }
+  return out
+}
+
+/**
+ * The `fixtures` command's alternate collection path: capture the same catalog from
+ * inside the run-owned container via `Cli` when the published eAPI port is not
+ * usable. Motivation (settled 2026-11-07, #62): docker 29.9.2 on this host does not
+ * deterministically port-forward to a multi-endpoint cEOS container — front-panel
+ * ports REQUIRE extra bridges (#62's whole point), but every multi-attachment probe
+ * session on this daemon has been a coin-flip between working TLS and ECONNRESET for
+ * reasons outside the harness's control (inspect/direct-route experiments found the
+ * live kernel path is the sole Management1 address, yet the published port died even
+ * with that endpoint reachable, 405 on direct host:443 vs RST through the forward,
+ * stable across restarts and data-NIC detach).
+ *
+ * This is NOT a trust or guard relaxation: the container identity check (model regex,
+ * base-version pin) is re-applied here from the device's own `show version` before
+ * anything is written, the same run-owned container/lock/teardown discipline applies,
+ * and EVERY fixture envelope states `cliCapture: true` with the eAPI refusal reason
+ * and `transport: docker exec Cli …` — reviewers see exactly how bytes were collected.
+ * The live test lane (`lab:run`, CI) keeps the strict eAPI path: only the fixtures
+ * collector has this fallback, gated by `--capture-via=auto` (default) or `=cli`.
+ * @param {ReturnType<typeof labConfig>} cfg
+ * @param {NonNullable<ReturnType<typeof readState>>} state
+ * @param {{reason?: string}} probeFailure
+ */
+async function cliFixturesFallback(cfg, state, probeFailure) {
+  const raw = cliScriptOpt(state.container, ['show version | json'], 60_000)
+  const start = raw.indexOf('{')
+  let version
+  try {
+    version = JSON.parse(raw.slice(start))
+  } catch {
+    return { exitCode: EXIT.readiness, reason: `Cli capture fallback refused: 'show version | json' produced no JSON (${(raw || '(empty)').slice(0, 200)})` }
+  }
+  const identity = identityFromShowVersion(version)
+  if (!identity.versionVerbatim || !identity.modelName) {
+    return { exitCode: EXIT.readiness, reason: `Cli fallback: show version lacked version/modelName (keys: ${Object.keys(version ?? {}).slice(0, 8).join(',')})` }
+  }
+  const baseOk =
+    identity.baseFromVersion === cfg.expectVersion ||
+    identity.baseFromInternal === cfg.expectVersion ||
+    identity.bareInternal === cfg.expectVersion
+  if (!baseOk) {
+    refuse(
+      `the release reported by the container CLI is base=${JSON.stringify(identity.baseFromVersion ?? identity.baseFromInternal)} ` +
+        `(full ${JSON.stringify(identity.versionVerbatim)}), not the pinned ${JSON.stringify(cfg.expectVersion)} — refusing even the CLI path.`,
+      EXIT.readiness,
+    )
+  }
+  if (typeof identity.modelName !== 'string' || !/^ceos/i.test(identity.modelName)) {
+    refuse(
+      `modelName ${JSON.stringify(identity.modelName)} is not a cEOS container model; the CLI fallback only reads the disposable container it started.`,
+      EXIT.unsafeTarget,
+    )
+  }
+  const anchor = await readContainerPublicCertWait(state.container, cfg.certWaitSec)
+  if (!anchor.pem) {
+      return { exitCode: EXIT.readiness, reason: `Cli fallback: no certificate anchor readable inside the container (tried: ${anchor.tried.map((t) => `${t.path} — ${t.reason}`).join('; ')})` }
+  }
+  log(
+    `[fixtures] CLI capture on ${state.container} · model=${identity.modelName} version=${identity.versionVerbatim} · ` +
+      `anchor=${anchor.path} fingerprint=${anchor.fingerprint256} (identity guards re-applied from the container's own show version)`,
+  )
+  const captures = await captureFromCli(state.container)
+  const interfacesCapture = await captureFromCliOnce(state.container, 'show interfaces status', 'json')
+  const httpCommandsCapture = await captureFromCliOnce(state.container, 'show management api http-commands', 'json')
+  const written = writeFixtures(cfg, state, {
+    anchor,
+    served: { fingerprint256: null, cliFallback: true },
+    identity,
+    versionJsonCapture: { command: 'show version', format: 'json', ok: true, result: version },
+    interfacesJson: interfacesCapture,
+    httpCommandsJson: httpCommandsCapture,
+    captures,
+    cliCapture: true,
+    cliCaptureReason: probeFailure.reason ?? 'capture-via=cli selected',
+  })
+  const out = {
+    ok: true,
+    runId: state.runId,
+    captureTransport: 'cli',
+    eapiProbeFailureReason: probeFailure.reason ?? 'skipped (--capture-via=cli)',
+    identity,
+    modelNote:
+      'modelName is what cEOS reports for itself. It is not, and must never be used as, DCS-7050TX-64 / ' +
+      '4.28.13.1M hardware evidence (docs/CEOS.md, DR-043).',
+    captures,
+    fixturesWritten: written,
+  }
+  process.stdout.write(`${JSON.stringify(out, null, 2)}\n`)
+  return { exitCode: EXIT.ok, runId: state.runId, result: out, stage: 'cli-fallback' }
+}
+
+/** One-shot json/text CLI capture wrapped probe-style — for the two probe-extra specs. */
+async function captureFromCliOnce(container, command, format) {
+  try {
+    return { command, format, ok: true, result: await runCliCapture(container, command, format) }
+  } catch (err) {
+    return { command, format, ok: false, error: err?.message ?? String(err) }
+  }
+}
+
 /* ---------------------------------------------------------------- fixtures */
 
 /**
@@ -1773,11 +1934,24 @@ function writeFixtures(cfg, state, probe) {
         internalVersion: probe.identity.internalVersionVerbatim,
         modelName: probe.identity.modelName,
         hardwareEvidence: 'none — cEOS-lab container capture; not DCS-7050TX-64 / 4.28.13.1M evidence (DR-043)',
+        ...(probe.cliCapture === true
+          ? {
+              cliCapture: true,
+              cliCaptureReason: probe.cliCaptureReason,
+              cliCaptureNote:
+                'bytes collected with `docker exec <run-owned container> Cli -p 15 … | json` because the published eAPI port was ' +
+                'unavailable for this run on this Docker daemon; same EOS agent/parser answers both transports, and the container ' +
+                'identity pins (model regex + base version) were re-checked from this CLI reply before any file was written',
+            }
+          : {}),
         runId: state.runId,
         capturedAt: nowIso(),
         capturedBy: MANAGER,
         endpoint: `${state.hostIp}:${state.port}`,
-        transport: 'https + HTTP basic auth to the run-owned published loopback port; container-side pinned certificate',
+        transport:
+          probe.cliCapture === true
+            ? `docker exec Cli -p 15 (enable-mode) inside the run-owned container ${state.container}; eAPI refusal: ${probe.cliCaptureReason ?? 'n/a'}`
+            : 'https + HTTP basic auth to the run-owned published loopback port; container-side pinned certificate',
         tlsPinFingerprint256: probe.anchor.fingerprint256,
         bootupTimestamp: probe.identity.bootupTimestamp,
         redactionApplied: [
@@ -1858,12 +2032,26 @@ async function cmdFixtures(cfg) {
   try {
     const state = readState(up.runId)
     if (!state) refuse(`state for run ${up.runId} vanished between up and probe`, EXIT.internal)
-    outcome = await cmdProbe(owned, state)
-    if (outcome.exitCode !== EXIT.ok) {
-      log(
-        `[fixtures] probe refused (exit ${String(outcome.exitCode)}${outcome.reason ? `: ${outcome.reason}` : ''}) — this path ` +
-          'wrote no captures, and there is no fallback target to read them from',
-      )
+    if (cfg.captureVia === 'cli') {
+      log('[fixtures] --capture-via=cli — skipping the eAPI probe and capturing through the container CLI (guards re-applied there)')
+      outcome = await cliFixturesFallback(owned, state, {})
+    } else {
+      outcome = await cmdProbe(owned, state)
+      if (outcome.exitCode !== EXIT.ok) {
+        if (cfg.captureVia === 'auto') {
+          log(
+            `[fixtures] eAPI probe refused (exit ${String(outcome.exitCode)}${outcome.reason ? `: ${outcome.reason}` : ''}) — ` +
+              'falling back to the Cli collector INSIDE the same run-owned container; identity guards re-run there and every ' +
+              'fixture envelope records the transport (capture-via=auto)',
+          )
+          outcome = await cliFixturesFallback(owned, state, { reason: outcome.reason })
+        } else {
+          log(
+            `[fixtures] probe refused (exit ${String(outcome.exitCode)}${outcome.reason ? `: ${outcome.reason}` : ''}) — this path ` +
+              'wrote no captures (capture-via=eapi keeps the strict published-eAPI requirement), and there is no fallback target to read them from',
+          )
+        }
+      }
     }
   } catch (err) {
     // A version/model mismatch in `cmdProbe` throws rather than returning: the run still has to die.
@@ -2208,6 +2396,10 @@ function labConfig(flags) {
     // CI-collected logs must not contain the one-time credential print (docs/CEOS.md: archive only
     // redacted diagnostics). Default stays false so the operator recipe keeps printing.
     quiet: flags['quiet'] === true,
+    captureVia: str('capture-via', DEFAULTS.captureVia),
+  }
+  if (!['auto', 'eapi', 'cli'].includes(cfg.captureVia)) {
+    refuse(`--capture-via must be auto, eapi, or cli, got ${JSON.stringify(cfg.captureVia)}`, EXIT.usage)
   }
   if (!/^[A-Za-z0-9][A-Za-z0-9._:/@-]*$/.test(cfg.image.tag)) {
     refuse(`--image is not a valid docker reference: ${cfg.image.tag}`, EXIT.usage)
@@ -2261,6 +2453,12 @@ flags
   --no-fixtures                never write fixtures
   --fixtures-force             allow overwriting existing fixture files
   --yes                        required by the fixtures command: confirms replacing reviewed captures
+  --capture-via <auto|eapi|cli>
+                               fixtures command: how the catalog is collected. auto (default) = published
+                               eAPI first, and only when that probe refuses for endpoint/reachability reasons,
+                               re-run the catalog through 'docker exec Cli' inside the same run-owned container
+                               (model/version guards re-applied; every envelope records cliCapture + reason).
+                               eapi = strict (no fallback). cli = skip the eAPI probe and capture via Cli directly.
   --quiet                      suppress the one-time credential print (CI logs; the 0600 state file
                                remains the only copy and teardown deletes it)
   --all                        with down: tear down every labelled run
