@@ -893,6 +893,66 @@ function verifyMgmtBridgeRoute(cidr, mgmtIp) {
 }
 
 /**
+ * The hop-level facts a probe refusal needs when `verifyMgmtBridgeRoute` says LIVE yet a connect
+ * to the mgmt IP answers `EHOSTUNREACH`. That combination means the routing table is not the
+ * failing hop — the candidates are (a) the mgmt endpoint never landed on the bridge the route
+ * names (the Docker-29/WSL2 multi-attach endpoint class that also ate the old `-p` publish),
+ * (b) the bridge device is administratively/carrier down, or (c) the container's own interface
+ * never took the address, so host-side ARP simply fails. Each has a distinct fingerprint:
+ *
+ * - `docker inspect .NetworkSettings.Networks` → which network(s) the container is on and with
+ *   which IP/endpoint id; compare the mgmt endpoint id against the bridge the route names.
+ * - `ip -s link show <bridge>` → `LOWER_GROUP`/carrier plus RX/TX counters — a bridge that
+ *   transmitted 0 bytes while the relay pushed bytes has a veth problem, not a route problem.
+ * - `ip neigh show <mgmtIp>` → `REACHABLE` (path fine, app layer), `FAILED`/absent (ARP never
+ *   answered: L2 or addressing), `PERMANENT` (someone pre-seeded it).
+ * - `bridge link show` filtered to that bridge → whether a veth is attached at all.
+ *
+ * Every fact is best-effort: absent tooling or a container that just went away contributes a
+ * marker instead of failing the diagnosis.
+ * @param {string} container @param {string} cidr @param {string} mgmtIp
+ * @returns {string[]} one line per fact, already labelled
+ */
+function pathEvidence(container, cidr, mgmtIp) {
+  const lines = []
+  const netJson = dockerOpt(['inspect', '--format', '{{json .NetworkSettings.Networks}}', container])
+  if (netJson.status === 0) {
+    try {
+      /** @type {Record<string, {IPAddress?: string, NetworkID?: string}>} */
+      const nets = JSON.parse(String(netJson.stdout))
+      lines.push(`container networks: ${Object.entries(nets).map(([name, ep]) => `${name}=${String(ep.IPAddress ?? '?')}/${String(ep.NetworkID ?? '?').slice(0, 12)}`).join(' ') || '(none)'}`)
+    } catch {
+      lines.push('container networks: unparseable inspect output')
+    }
+  } else {
+    lines.push(`container networks: inspect failed (${String(netJson.stderr ?? '').trim().split('\n')[0]})`)
+  }
+  const show = run('ip', ['route', 'show', cidr], {})
+  const bridgeDev = (String(show.stdout ?? '').match(/\bdev\s+(br-\S+)/) ?? [])[1]
+  if (bridgeDev === undefined) {
+    lines.push(`bridge device: none named by \`ip route show ${cidr}\``)
+    return lines
+  }
+  const link = run('ip', ['-s', 'link', 'show', bridgeDev], {})
+  const linkText = String(link.stdout ?? '').replace(/\s+/g, ' ').trim()
+  lines.push(`bridge ${bridgeDev}: ${link.status === 0 ? (linkText || '(empty)') : `ip link failed (${String(link.stderr ?? '').trim()})`}`)
+  const neigh = run('ip', ['neigh', 'show', mgmtIp], {})
+  lines.push(`arp for ${mgmtIp}: ${String(neigh.stdout ?? '').trim() || 'no neighbour entry (ARP never answered)'}`)
+  const attached = run('bridge', ['link', 'show'], {})
+  const veths = String(attached.stdout ?? '').split('\n').filter((line) => line.includes(`master ${bridgeDev}`))
+  lines.push(`veths on ${bridgeDev}: ${veths.length === 0 ? (attached.status === 0 ? 'NONE attached' : '`bridge link` unavailable') : veths.map((line) => line.trim().split(':')[1]?.trim() ?? line.trim()).join(' ')}`)
+  const inside = dockerOpt(['exec', container, 'cat', '/proc/net/route'])
+  if (inside.status === 0) {
+    lines.push(`container routes: ${String(inside.stdout).trim().split('\n').slice(1, 4).map((r) => r.split('\t')[1] + '→' + r.split('\t')[2]).join(' ') || '(only default)'}`)
+  }
+  const addrInside = dockerOpt(['exec', container, 'cat', '/proc/net/dev'])
+  if (addrInside.status === 0) {
+    lines.push(`container ifaces: ${String(addrInside.stdout).split('\n').slice(2).map((l) => l.split(':')[0].trim()).join(' ')}`)
+  }
+  return lines
+}
+
+/**
  * Poll the interface model until front-panel Ethernet ports exist. NICs bind at cEOS
  * boot, so this typically returns on the first pass; running out means the data
  * bridges did not produce ports, and staging would happily create orphan stanzas
@@ -1733,6 +1793,9 @@ async function cmdProbe(cfg, state) {
             '§Host-route reconciliation — NAT-mode .wslconfig, a native Linux lab runner, or pinning the lab to the ' +
             '192.168.255.0/24 band (the harness prefers it for exactly this reason).',
         )
+        for (const line of pathEvidence(String(state.container), String(state.mgmtSubnet ?? ''), String(state.mgmtContainerIp ?? ''))) {
+          log(`[probe] ${line}`)
+        }
         return { exitCode: EXIT.readiness, runId: state.runId, reason: 'mgmt-path-owned-by-host-nat', detail: String(midRunPeek.error) }
       }
     }
@@ -1771,6 +1834,9 @@ async function cmdProbe(cfg, state) {
       `route: ${routeVerdict.ok ? 'live' : 'BROKEN'} (${routeVerdict.why}); ` +
       `forwarder: ${forwarderStatus}`,
   )
+  for (const line of pathEvidence(String(state.container), String(state.mgmtSubnet ?? ''), String(state.mgmtContainerIp ?? ''))) {
+    log(`[probe] ${line}`)
+  }
   log(`[probe] EOS-side API state:\n${api.stdout.trim().split('\n').slice(0, 12).join('\n')}`)
   log(`[probe] container log tail:\n${(logs.stdout + logs.stderr).trim().split('\n').slice(-8).join('\n')}`)
   return { exitCode: EXIT.readiness, runId: state.runId, reason: lastReason, attempts }
