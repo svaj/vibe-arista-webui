@@ -32,7 +32,9 @@ import {
   liveTransportOptions,
   matchesDeviceIdentity,
   matchesExactly,
+  requireLabFullWrite,
   requireScratchInterface,
+  requireScratchVlan,
   resolveLiveEnv,
   versionInTrain,
   assertNoPersistenceCommand,
@@ -68,6 +70,25 @@ function refused(env: LiveEnv): { code: string; reason: string } {
   const resolution = resolveLiveEnv(env)
   if (resolution.ok) throw new Error(`expected refusal ${JSON.stringify(env)}, got an accepted target for ${describeLiveTarget(resolution)}`)
   return { code: resolution.code, reason: resolution.reason }
+}
+
+
+/** A complete hardware env (mirror of the nested `hwEnv` in the hardware matrix — kept module-level for reuse by the DR-126 gate tests). */
+function hwEnvLike(): LiveEnv {
+  return {
+    EAPI_LIVE: '1',
+    EAPI_HOST: 'switch-1.lab.example',
+    EAPI_PORT: '443',
+    EAPI_USER: 'eapi-capture',
+    EAPI_PASS: 'hw-placeholder-not-a-secret',
+    EAPI_TARGET_CLASS: 'hardware',
+    EAPI_ALLOW_MODEL: 'DCS-7050TX-64',
+    EAPI_ALLOW_VERSION: '4.28.13.1M',
+    EAPI_HW_CONSENT: 'DCS-7050TX-64',
+    EAPI_ALLOW_HOSTS: 'switch-1.lab.example',
+    EAPI_ALLOW_PORTS: '443',
+    EAPI_CA_FILE: '/tmp/eos-ca.pem',
+  }
 }
 
 describe('the accept path (a complete, allow-listed lab target)', () => {
@@ -465,6 +486,37 @@ describe('identity matching against what the device reports (docs/CEOS.md:113/12
     const refusal = matchesDeviceIdentity(target, { version: '4.31.2F', modelName: 'cEOS' })
     expect(refusal?.code).toBe('EAPI_VERSION_TRAIN_MISMATCH')
     expect(refusal?.reason).toMatch(/4\.28/u)
+  })
+})
+
+
+describe('the full-write lab gates (#14 D-phase, DR-126)', () => {
+  it('requireScratchVlan: unset is a refusal, and the shape bounds are 2-4094 minus 1006-1199', () => {
+    const base = unwrapLiveTarget(resolveLiveEnv(labEnv()) as never)
+    expect(requireScratchVlan(base)).toMatchObject({ code: 'EAPI_SCRATCH_VLAN_MISSING' })
+    for (const [span, expected] of [['1', 'EAPI_SCRATCH_VLAN_INVALID'], ['2', 'ok'], ['1005', 'ok'], ['1006', 'EAPI_SCRATCH_VLAN_INVALID'], ['1199', 'EAPI_SCRATCH_VLAN_INVALID'], ['1200', 'ok'], ['4094', 'ok'], ['4095', 'EAPI_SCRATCH_VLAN_INVALID'], ['Ten', 'EAPI_SCRATCH_VLAN_INVALID'], ['', 'EAPI_SCRATCH_VLAN_MISSING']] as const) {
+      const t = unwrapLiveTarget(resolveLiveEnv(labEnv({ EAPI_SCRATCH_VLAN: span })) as never)
+      const gate = requireScratchVlan(t)
+      if (expected === 'ok') expect(gate, span).toEqual({ ok: true, vlan: Number(span) })
+      else expect(gate, span).toMatchObject({ code: expected })
+    }
+  })
+
+  it('requireLabFullWrite: consent is exact-1, and it can never be satisfied on the hardware class', () => {
+    const lab = unwrapLiveTarget(resolveLiveEnv(labEnv()) as never)
+    expect(requireLabFullWrite(lab, {})).toMatchObject({ code: 'EAPI_LAB_FULL_WRITE_MISSING' })
+    expect(requireLabFullWrite(lab, { EAPI_LAB_FULL_WRITE: 'true' })).toMatchObject({ code: 'EAPI_LAB_FULL_WRITE_MISSING' })
+    expect(requireLabFullWrite(lab, { EAPI_LAB_FULL_WRITE: '1' })).toBeUndefined()
+    const hw = unwrapLiveTarget(resolveLiveEnv(hwEnvLike()) as never)
+    const refusal = requireLabFullWrite(hw, { EAPI_LAB_FULL_WRITE: '1' })
+    expect(refusal?.code).toBe('EAPI_FULL_WRITE_NOT_LAB')
+  })
+
+  it('EAPI_SCRATCH_VLAN rides LiveTarget/describeLiveTarget like the scratch interface', () => {
+    const t = unwrapLiveTarget(resolveLiveEnv(labEnv({ EAPI_SCRATCH_VLAN: '1200' })) as never)
+    expect(t.scratchVlan).toBe('1200')
+    expect(describeLiveTarget(t)).toContain('scratchVlan=1200')
+    expect(describeLiveTarget(unwrapLiveTarget(resolveLiveEnv(labEnv()) as never))).not.toContain('scratchVlan')
   })
 })
 

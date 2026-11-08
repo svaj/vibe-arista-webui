@@ -143,6 +143,11 @@ export type LiveRefusalCode =
   | 'EAPI_SCRATCH_INTERFACE_MISSING'
   | 'EAPI_SCRATCH_INTERFACE_INVALID'
   | 'EAPI_SCRATCH_INTERFACE_NOT_ETHERNET'
+  | 'EAPI_SCRATCH_VLAN_MISSING'
+  | 'EAPI_SCRATCH_VLAN_INVALID'
+  | 'EAPI_LAB_FULL_WRITE_MISSING'
+  | 'EAPI_FULL_WRITE_NOT_LAB'
+  | 'EAPI_LAB_WRITE_FORBIDDEN'
   | 'EAPI_MODEL_MISMATCH'
   | 'EAPI_VERSION_MISMATCH'
   | 'EAPI_VERSION_TRAIN_MISMATCH'
@@ -176,6 +181,12 @@ export interface LiveTarget {
   readonly versionTrain: string
   /** Set only when `EAPI_SCRATCH_INTERFACE` names a valid `Ethernet<index>` (DR-035(b), PLAN.md:394). */
   readonly scratchInterface?: string | undefined
+  /**
+   * The one spare VLAN the lab lane may create/rename/delete (`EAPI_SCRATCH_VLAN`, #14 D-phase). Raw
+   * digits as given — shape is enforced by `requireScratchVlan` at use time, same split as the scratch
+   * interface: env collects, the gate decides.
+   */
+  readonly scratchVlan?: string | undefined
   /** Trust material for the lab cert (a PEM path or inline PEM — see `transports/node-tls.ts`). */
   readonly ca?: string | undefined
   /** Certificate pin, SHA-256/SHA-1 hex (`transports/contract.ts:167`). */
@@ -257,9 +268,11 @@ function normalizeHost(raw: string): { readonly host: string } | { readonly bad:
  *
  * Accepted variables — `EAPI_LIVE`, `EAPI_HOST`, `EAPI_PORT`, `EAPI_PATH`, `EAPI_USER`, `EAPI_PASS`,
  * `EAPI_PASS_VAR`, `EAPI_TRANSPORT`, `EAPI_TARGET_CLASS`, `EAPI_ALLOW_MODEL`, `EAPI_ALLOW_VERSION`,
- * `EAPI_ALLOW_TRAIN`, `EAPI_ALLOW_HOSTS`, `EAPI_ALLOW_PORTS`, `EAPI_CA_FILE`, `EAPI_FINGERPRINT`,
+ * `*EAPI_ALLOW_TRAIN`, `EAPI_ALLOW_HOSTS`, `EAPI_ALLOW_PORTS`, `EAPI_CA_FILE`, `EAPI_FINGERPRINT`,
  * `EAPI_SERVER_NAME`, `EAPI_SCRATCH_INTERFACE`, `EAPI_ALLOW_INSECURE_HTTP`, and for
  * `EAPI_TARGET_CLASS=hardware` also `EAPI_HW_CONSENT` (must echo the model name, DR-035(e)/#14 §3).
+ * Read-but-validated-late (the gate at use time decides): `EAPI_SCRATCH_INTERFACE`,
+ * `EAPI_SCRATCH_VLAN` (#14 D-phase spare VLAN for the full-write lab lane, DR-126).
  *
  * `EAPI_PASS` vs `EAPI_PASS_VAR`: `EAPI_PASS_VAR` names **another variable** holding the secret, which
  * keeps the value out of this process's own environment dump and out of a CI `--env` list
@@ -440,8 +453,9 @@ export function resolveLiveEnv(env: LiveEnv): LiveResolution {
     )
   }
 
-  // --- 8. scratch interface (only when the caller asks for it; see requireScratchInterface) ----------
+  // --- 8. scratch handles (only when the caller asks for them; see requireScratchInterface/requireScratchVlan) ---
   const scratchInterface = envValue(env, 'EAPI_SCRATCH_INTERFACE')
+  const scratchVlan = envValue(env, 'EAPI_SCRATCH_VLAN')
 
   return {
     ok: true,
@@ -456,6 +470,7 @@ export function resolveLiveEnv(env: LiveEnv): LiveResolution {
     allowVersion,
     versionTrain: envValue(env, 'EAPI_ALLOW_TRAIN') ?? DEFAULT_VERSION_TRAIN,
     ...(scratchInterface === undefined ? {} : { scratchInterface }),
+    ...(scratchVlan === undefined ? {} : { scratchVlan }),
     ...(ca === undefined ? {} : { ca }),
     ...(fingerprint === undefined ? {} : { fingerprint }),
     ...(serverName === undefined ? {} : { serverName }),
@@ -493,6 +508,7 @@ export function describeLiveTarget(target: LiveTarget): string {
     `train=${target.versionTrain}`,
     `tls=${trust}`,
     ...(target.scratchInterface === undefined ? [] : [`scratch=${target.scratchInterface}`]),
+    ...(target.scratchVlan === undefined ? [] : [`scratchVlan=${target.scratchVlan}`]),
   ].join(' ')
 }
 
@@ -594,6 +610,55 @@ export function requireScratchInterface(target: LiveTarget): { ok: true; name: s
     return refusal('EAPI_SCRATCH_INTERFACE_NOT_ETHERNET', `EAPI_SCRATCH_INTERFACE=${JSON.stringify(name)} is not an Ethernet port — management/Vlan/Port-Channel names are off-limits for test writes (docs/CEOS.md:131)`)
   }
   return { ok: true, name }
+}
+
+/**
+ * The scratch-VLAN gate: the VLAN half of DR-035(b), added for #14's full-write lab lane (DR-126).
+ * The pyeapi `test_vlans` suite creates/renames/deletes VLANs by fixed id; on a *throwaway* container
+ * that is allowed — but still only inside one explicitly-declared spare id, so an env typo or a suite
+ * bug cannot wander across the container's provisioned VLAN set (VLANs 10/100/110 carry the capture
+ * fixtures' meaning, per `lab-provision`).
+ *
+ * Bounds: digits, 2–4094 (1 is the default VLAN every port starts on), and **1006–1199 excluded** —
+ * EOS's reserved-range window, off-limits even on containers so a suite that passes here cannot pass
+ * differently than it would on the SKU.
+ */
+export function requireScratchVlan(target: LiveTarget): { ok: true; vlan: number } | LiveRefusal {
+  const raw = target.scratchVlan
+  if (raw === undefined) {
+    return refusal('EAPI_SCRATCH_VLAN_MISSING', 'EAPI_SCRATCH_VLAN is not set — a VLAN write needs an explicitly declared spare id, never one the suite picked (DR-035(b)/DR-126)')
+  }
+  if (!/^\d+$/u.test(raw)) {
+    return refusal('EAPI_SCRATCH_VLAN_INVALID', `EAPI_SCRATCH_VLAN=${JSON.stringify(raw)} is not a decimal VLAN id (the value the gate will not print is also never a name — EOS vlans are numbered)`)
+  }
+  const vlan = Number(raw)
+  if (!Number.isInteger(vlan) || vlan < 2 || vlan > 4_094) {
+    return refusal('EAPI_SCRATCH_VLAN_INVALID', `EAPI_SCRATCH_VLAN=${String(vlan)} is outside the configurable range (2-4094; vlan 1 is the default every port begins on and is never a scratch)`)
+  }
+  if (vlan >= 1_006 && vlan <= 1_199) {
+    return refusal('EAPI_SCRATCH_VLAN_INVALID', `EAPI_SCRATCH_VLAN=${String(vlan)} falls in EOS's reserved range 1006-1199 — refused here so the lane cannot pass on a container and then answer differently on the SKU`)
+  }
+  return { ok: true, vlan }
+}
+
+/**
+ * The full-write-lab consent (#14 D-phase, DR-126): the user decision was that the port of
+ * `pyeapi/test/system/*` writes **fully** against the disposable container — users, VLANs, routes,
+ * protocols — because the container is thrown away. That widens DR-035(b)'s scratch rule for the
+ * `lab` class ONLY, and only behind this explicit env opt-in; the hardware class can never get here
+ * (`EAPI_FULL_WRITE_NOT_LAB`, its writes stay behind `hw-session-probe`'s scratch fence), and
+ * `live-session-policy.ts:labWriteScope` still keeps the self-lockout set (the listener, the
+ * management path, the API user in use, `copy run start`) off-limits on the container too — a
+ * self-destructed run is still a dead run even when the box is disposable.
+ */
+export function requireLabFullWrite(target: LiveTarget, env: LiveEnv): LiveRefusal | undefined {
+  if (target.targetClass !== LAB_TARGET_CLASS) {
+    return refusal('EAPI_FULL_WRITE_NOT_LAB', 'full-write lab sessions are refused for a hardware target — switch writes stay inside the reviewed hw-session-probe fence (DR-124/DR-125); this is the lane the container-only decision covers')
+  }
+  if (env['EAPI_LAB_FULL_WRITE']?.trim() !== '1') {
+    return refusal('EAPI_LAB_FULL_WRITE_MISSING', 'EAPI_LAB_FULL_WRITE=1 is not set — a live suite that writes beyond the scratch interface/VLAN must declare it is talking to the throwaway lab container (user decision 2026-11-07, DR-126). The scratch-only rules of DR-035(b) still stand for lab suites that do not opt in')
+  }
+  return undefined
 }
 
 /**
