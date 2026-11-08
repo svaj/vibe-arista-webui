@@ -40,7 +40,7 @@ Node ≥ 20, ESM only ([DR-021](./DECISIONS.md#dr-021--esm-only-exports-conditio
 ## 2. Five-minute tour
 
 ```ts
-import { createNode, readProfiles } from '@devhax-heavy-industries/arista-eapi/node';
+import { createNode } from '@devhax-heavy-industries/arista-eapi/node';
 
 const node = createNode({
   kind: 'https',
@@ -50,8 +50,9 @@ const node = createNode({
   fingerprint: 'sha256:3f2b…c1',            // Node entry only: pin the device certificate
 });
 
-// read a typed show
-const version = await node.show('version');
+// read device identity — `show('version')` stays `unknown` until you MAP it (§4's augmentation);
+// getVersion() is the typed accessor that works out of the box, memoised (and kept by refresh(), row 35)
+const version = await node.getVersion();
 console.log(version.version, version.modelName);          // "4.28.13.1M" "DCS-7050TX-64"
 
 // read a resource
@@ -88,14 +89,15 @@ authoritative for commands it accepts.
 createConnection({ kind: 'https', host, username, password, port: 443, timeoutMs: 60_000 });
 
 // Node: from eapi.conf (~/.eapi.conf, /mnt/flash/eapi.conf, or $EAPI_CONF)
-import { readProfiles } from '@devhax-heavy-industries/arista-eapi/node';
-const store = readProfiles();                   // { veos01: { kind:'http', host:'veos01' }, … }
-const node = store.nodeFor('veos01');           // host defaults to the section name, as pyeapi does
-await node.vlans.getAll();
-for (const name of store.hostsForTag('rack-a')) { /* … */ }
+import { createConnection, createNodeFor, loadProfileStore } from '@devhax-heavy-industries/arista-eapi/node';
+const store = loadProfileStore();                // every [connection:…] section, parsed to data (DR-038)
+const veos = createNodeFor('veos01', { store }); // host defaults to the section name, as pyeapi does
+await veos.vlans.getAll();
+for (const name of store.hostsForTag('rack-a') ?? []) { /* tags are optional, so the list can be absent */ }
 
-// browser: profiles come from app config (never the filesystem)
-const node = nodeFromProfile({ name: 'lab-switch', kind: 'https', host: '10.0.0.30' });
+// browser: profiles come from app config (never the filesystem) — the profile-object form of createNode
+import { createNode } from '@devhax-heavy-industries/arista-eapi';
+const lab = createNode({ profile: { name: 'lab-switch', transport: 'https', host: '10.0.0.30' } });
 ```
 
 Transports (`kind`): `https` (default) · `http` (needs `allowInsecureTransport`) ·
@@ -113,11 +115,11 @@ two switches — or one test and one app — cannot overwrite each other.
 
 ```ts
 // any entry: parse text you obtained yourself (no filesystem, no globals)
-import { parseEapiConf, ProfileStore, createNode } from '@devhax-heavy-industries/arista-eapi'
+import { createProfiles, createNode, parseEapiConf } from '@devhax-heavy-industries/arista-eapi'
 
-const store = new ProfileStore()
-store.load(parseEapiConf(confText))        // problems are values too: store.issues() carries line numbers
-const node = createNode({ kind: 'profile', name: 'lab-2', store })
+const parsed = parseEapiConf(confText)
+const store = createProfiles(parsed.profiles)    // problems are values too: parsed.issues carries line numbers
+const node = createNode({ profileName: 'lab-2', store })   // the profile form — there is no kind: 'profile'
 ```
 
 ```ts
@@ -360,23 +362,23 @@ rules and banner-body refusals are **client-side policy with the EOS figures owe
 ### The two base classes
 
 ```ts
-// a named collection — VLANs, interfaces, users
-class Vlans extends EntityCollection<VlanEntry, number, VlanAttrs> {
-  getAll(): Promise<ResourceTable<number, VlanEntry>>;   // ReadonlyMap: device order, real key types
-  get(id: number): Promise<VlanEntry | undefined>;       // no `default=` fallback parameter
-  create(id: number, attrs?: VlanAttrs): Promise<void>;  // rejects with CommandError if refused
-  delete(id: number): Promise<void>;
-  setDefault(id: number): Promise<void>;                 // pyeapi spells this `default(vid)`
-}
+// what a collection's typed surface looks like from the consumer's side (the Entity/EntityCollection
+// bases are INTERNAL — you never construct a resource, you use node.vlans / node.system / …):
+import type { Node, ResourceTable, Vlan, VlanAttrs, VlansResource } from '@devhax-heavy-industries/arista-eapi'
+declare const vlans: VlansResource                    // this IS node.vlans
 
-// a single global-ish entity — hostname/routing/banners (M8), spanning-tree, MLAG
-class SystemSettings extends Entity<SystemState> {
-  get(): Promise<SystemState>;      // never `undefined`: a global with nothing configured still answers
-}
+const table: ResourceTable<number, Vlan> = await vlans.getAll()  // ReadonlyMap: device order, real key types
+const one: Vlan | undefined = await vlans.get(20)              // no `default=` fallback parameter
+await vlans.create(20, { name: 'PROD' } satisfies VlanAttrs)   // rejects with CommandError if refused
+await vlans.delete(20)
+await vlans.setDefault(20)                                    // pyeapi spells this `default(vid)`
+for (const [id, v] of table) { console.log(id, v.state) }      // ONE getAll serves every element —
+                                                               // a per-element read never happens (DR-030)
 
-const vlans = new Vlans(node);      // ResourceBase refuses a Node missing
-                                    // getRunningConfig/getStartupConfig/chunkConfig/configure — at `new`
-await vlans.has(20);                // and .keys() / .entries(): ONE getAll() each, never a read per element
+declare const node2: Node
+const system = await node2.system.get()   // Entity<SystemSettings>: never `undefined` — a global with
+                                          // nothing configured still answers (rows 83/84)
+console.log(system.hostname ?? '')        // (and `system.setHostname(…)`, `setBanner(…)` etc. are the writes)
 ```
 
 pyeapi's `vlans[20]`, `len(vlans)`, `for vlan in vlans` and `vlans()` are **not** ported (DR-004, §7):
@@ -400,6 +402,8 @@ DR-037 refuses `set_x(name, None)` meaning `no …`.
 ### Building a command line, and what it refuses
 
 ```ts
+import { commandBuilder, submodeCommands } from '@devhax-heavy-industries/arista-eapi';
+
 commandBuilder('ip routing', { value: true });                    // 'ip routing'          (value=True)
 commandBuilder('mtu', { value: 1500 });                           // 'mtu 1500'
 commandBuilder('mtu', { mode: 'no' });                            // 'no mtu'              (disable=True)
@@ -407,7 +411,8 @@ commandBuilder('mtu', { mode: 'default' });                       // 'default mt
 commandBuilder('name', { mode: 'default', value: 'PROD' });       // 'default name'  — mode preempts value
 commandBuilder('mtu', { value: 0 });                              // 'mtu 0'          — upstream answered 'no mtu'
 commandBuilder('mtu', {});                                        // throws NotSupportedError (upstream: 'no mtu')
-commandBuilder('mtu', { mode: 'set', value: false });             // throws — falsy is not a value
+commandBuilder('mtu', { mode: 'set', value: false as never });    // not even assignable — CommandValue is string | number | true;
+                                                                   // the cast demonstrates the RUNTIME guard a JS/decoded caller still hits (row 73)
 commandBuilder('mtu 1500\nno ip routing', { value: 1 });          // throws — a line boundary is TWO commands;
                                                                   // use { cmd, input } (DR-015, row 74)
 submodeCommands('interface Ethernet1', ['mtu 1500']);             // ['interface Ethernet1', 'mtu 1500']
@@ -427,15 +432,17 @@ A module never runs `show running-config`, never chunks text itself and never ca
 the `Node`'s job (one read per config change, DR-026/DR-030):
 
 ```ts
-// on ResourceBase (what a module calls) — all three delegate to the Node's memoized document:
-await this.config();                    // cached text (async on purpose: DR-005)
-await this.configSections();            // ReadonlyMap of section keys → text
-await this.getBlock('vlan 20');         // string | undefined
-await this.section(/^interface\s+Et/);  // throws NotFoundError when absent
+// on Node — one read per config change, every split derived from the same memoized document:
+import type { Node } from '@devhax-heavy-industries/arista-eapi'
+declare const node: Node
 
-// on Node (same code path, usable from a screen or a script):
-await node.chunkConfig({ config: 'startup-config' });
-await node.getBlock('vlan 20');
+await node.chunkConfig({ config: 'startup-config' });  // ConfigSections: section keys → text (row 80)
+await node.getBlock('vlan 20');                        // string | undefined — absence is a value
+await node.section(/^interface\s+Et/);                 // throws NotFoundError when absent (rows 50/80)
+
+// (Inside a module the same four calls exist as PROTECTED `config()` / `configSections()` /
+//  `getBlock()` / `section()` on ResourceBase — always delegating to the Node's memo, DR-030;
+//   `config()` is async on purpose: DR-005 forbids I/O-hiding sync properties.)
 ```
 
 Then parse with M6's primitives, not your own regex (this is PLAN's M6 exit gate, and the reason
@@ -443,7 +450,9 @@ Then parse with M6's primitives, not your own regex (this is PLAN's M6 exit gate
 `interfaces.py:65`/`:108`/`:206`):
 
 ```ts
-const body = (await vlans.getBlock(20)) ?? '';
+import { parseConfigBlock, valueAfterKeyword, valuesAfterKeyword } from '@devhax-heavy-industries/arista-eapi';
+
+const body = (await node.getBlock('vlan 20')) ?? '';
 const parsed = parseConfigBlock(body, {
   name: (block) => valueAfterKeyword(block.body, 'name'),                 // 'WAN' — run gone, quotes off
   trunkGroups: (block) => valuesAfterKeyword(block.body, 'trunk group'),  // ['red','blue'] — no ' group' tail
@@ -476,7 +485,8 @@ lands at the keyword: `valueAfterKeyword` / `valuesAfterKeyword` apply the whole
 through them; `findValue` stays available for its actual first-token contract, and the manual pattern —
 
 ```ts
-const trunkAllowed = (block: ConfigBlock): string[] =>
+import type { ConfigFieldExtractor } from '@devhax-heavy-industries/arista-eapi';
+const trunkAllowed: ConfigFieldExtractor<string[]> = (block) =>
   block.body
     .filter((line) => line.text.startsWith('switchport trunk allowed vlan '))
     .map((line) => line.text.slice('switchport trunk allowed vlan '.length));
@@ -495,7 +505,14 @@ pyeapi's `node.api('vlans')` loaded a **module by name** (`client.py:945`); here
 of a closed map, memoised per `Node` (DR-006/DR-052):
 
 ```ts
-const registry = createResourceRegistry({ myThing: (node) => new MyThing(node) }, node);
+import { createResourceRegistry, type Node } from '@devhax-heavy-industries/arista-eapi';
+
+class MyThing {
+  constructor(readonly node: Node) {}
+  async label(): Promise<string> { return (await this.node.getVersion()).modelName }  // resources go through the Node, never their own transport
+}
+
+const registry = createResourceRegistry({ myThing: (n) => new MyThing(n) }, node);
 registry.get('myThing');          // the same instance on every call, for this Node only
 registry.has('other');            // false — and get('other') throws naming what IS registered
 ```
@@ -537,13 +554,17 @@ Never branch on message text. Codes are the API ([DR-010](./DECISIONS.md#dr-010-
 ## 8. Capabilities (is this feature even here?)
 
 ```ts
-const cap = await node.capabilities.probe('mlag');
-cap.supported;                       // false
-cap.reason;                          // 'no-such-command' (1002) | 'not-eapi-drivable' (1004)
-                                     // | 'denied' (1005) | 'locked' (1006)
-cap.commands;                        // what it tried — inside a session it always aborts
+import { probeCommands, type CapabilityVerdict } from '@devhax-heavy-industries/arista-eapi';
 
-await node.capabilities.invalidate('mlag');
+const outcome = await probeCommands(node, ['show mlag'], { featureProbeCommands: { mlag: ['show mlag'] } });
+const verdict: CapabilityVerdict | undefined = outcome.results[0]?.verdict;
+verdict;                             // 'unsupported' answers the 1002; also 'not-rejected' / 'incompatible' / …
+outcome.session.aborted;             // true — the probe's session always aborts, whatever the answers were
+outcome.configLocked;                // true (1006) means THIS run proves nothing at all
+
+// Verdict CACHING is a client decision (DECISIONS DR-033: nothing device-side invalidates it) — feed
+// probeCommands through src/capabilities.ts CapabilityCache and call cache.invalidate(endpoint) when
+// your own writes land. The probe never consults a hard-coded feature matrix.
 ```
 
 The client deliberately does **not** ship a hard-coded 7050TX-64 feature matrix
@@ -555,11 +576,14 @@ and ArToggles decide support on the device, not us.
 ## 9. Testing your own code against it
 
 ```ts
+import { Node } from '@devhax-heavy-industries/arista-eapi';
 import { mockTransport } from '@devhax-heavy-industries/arista-eapi/testing';
 
-const t = mockTransport().replies('show vlan', 'recordings/lab/vlan-two-vlans');
-const node = new Node(t);
-expect(await node.vlans.get(20)).toBeUndefined();
+const t = mockTransport({ address: 'https://lab-mock/command-api' })
+  .replies(['enable', 'show vlan'].join('\n'), [{ vlans: { 1: { name: 'default', state: 'active' }, 10: { name: 'MGMT', state: 'active' } } }]);
+const mock = new Node(t);                  // the real command layer: DR-017 ids, DR-012 fallbacks, everything
+const got = await mock.vlans.get(20);      // in a real test: expect(got).toBeUndefined() under vitest
+if (got !== undefined) throw new Error('vlan 20 is not in this scripted answer');
 ```
 
 For React screens, drive the real client against a mock so loading / error / empty states are honest:

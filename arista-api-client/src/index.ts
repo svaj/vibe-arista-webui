@@ -363,7 +363,7 @@ import type { Transport } from './transports/contract'
 // `ospf`/`bgp` (W3a #48-#49), `routemaps`/`vxlan` (W3b #50/#52) and `vrrp` with `Node.vrrp` (W3c #51).
 export { Entity, EntityCollection, ResourceBase } from './resources/base'
 export { commandBuilder, submodeCommands } from './resources/command-builder'
-export { parseConfigBlock } from './resources/config-block'
+export { parseConfigBlock, valueAfterKeyword, valuesAfterKeyword } from './resources/config-block'
 export { assertInterfaceName, assertVlanId, INTERFACE_KINDS, isInterfaceName, isVlanId, parseInterfaceName } from './resources/validators'
 export { createResourceRegistry, RESOURCE_FACTORIES, ResourceRegistry } from './resources/registry'
 export { InterfacesResource, INTERFACE_STATUS_COMMAND } from './resources/interfaces'
