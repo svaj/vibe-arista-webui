@@ -2078,7 +2078,7 @@ the one-line preempt-delay fold, `next-hop-self` sub-feature renderings, committ
 reuse, and the pyeapi `portfast edge` pair that re-types itself — upstream parity kept, expectations
 re-pinned to the device's own words).
 
-### DR-129 — the mgmt bridge's subnet is create-verified-retried against LIVE host routes, the pool gained a 10.177 band, and a mid-run route deletion fast-fails the probe
+### DR-129 — the mgmt bridge's subnet is create-verified-retried against LIVE host routes, the pool leads with the never-owned 192.168.255.0/24 band, and two mid-run fast-fails refuse a poisoned path
 The first trusted `workflow_dispatch` (actions run 42525119847, this repo, label `eos-lab`) died the way
 local runs 10-11 had: `EHOSTUNREACH` at the relay's upstream socket — but the runner's own machine was
 fresh (container booted, CLI answered, cert anchor written), and `ip route get 172.31.193.10` on that
@@ -2087,20 +2087,60 @@ host resolved **via the LAN default gateway**, not the just-created bridge. Root
 reconciliation (and HNS's own /24 allocations inside that band) can void the kernel route a new Docker
 bridge settles — deterministically per-subnet-lucky (.70/.132/.189 fine, .159/.193 class dead), which
 no retry of the published-port path or single-band picker can out-guess. Decision (harness-side,
-`scripts/ceos-lab.mjs`): (1) the picker yields candidates band-major — documented `172.31.16-255`, then
-`10.177.16-255` — still filtered against docker networks AND host route/addr CIDRs; (2) `cmdUp` creates
+`scripts/ceos-lab.mjs`): (1) the picker yields candidates band-major — **`192.168.255.0/24` first**, then
+`172.31.16-255`, then `10.177.16-255` — still filtered against docker networks AND host route/addr CIDRs; (2) `cmdUp` creates
 each candidate, **verifies** the connected route twice over (`ip route show <cidr>` must hold a
 `scope link … dev br-` entry and `ip route get <mgmtIp>` must resolve `dev br-`, never `via` a
 gateway), rm-s and re-draws otherwise, bounded at 40 and refusing with the reason list; (3) during
 probing, after two failed handshakes the same verifier runs live and an unlive route refuses
-immediately with reason `mgmt-route-lost-mid-run` (the remaining window cannot restore a deleted
-kernel route), and refusal diagnostics print `route: live|BROKEN`. What this does NOT do: it does not
+immediately with reason `mgmt-route-lost-mid-run`, and a **route-live-but-path-dead** direct peek
+(`EHOSTUNREACH`/`ENETUNREACH`/`ECONNRESET` straight at the mgmt IP while the route reads live) refuses with
+`mgmt-path-owned-by-host-nat` — no window restores path ownership the route table cannot show; refusal
+diagnostics print `route: live|BROKEN`. The band order is load-bearing, not cosmetic: actions run
+42528431866 (2026-11-08) verified `172.31.77.0/24` as `route: live` at create AND at refusal, yet all 29
+probe attempts returned `Client network socket disconnected before secure TLS` with EOS reporting
+`Hits: 0` and the direct mgmt peek answering `EHOSTUNREACH` — a HNS-eaten /24 passes the route proof
+cleanly. Pin that same host to `192.168.255.0/24` and it probes ready in 0.2 s (local `up` + `probe`,
+2026-11-08, after this change): **a verified route is necessary, not sufficient**, so the uncontested band
+is tried before the wide pools. What this does NOT do: it does not
 make a route-eating host a usable lab runner — docs/CEOS.md §mirrored-mode names the fixes
 (`[wsl2] networkingMode=NAT` + `wsl --shutdown`, or a native Linux host for the `eos-lab` runner);
 the endpoint contract (relay, loopback, locks, TLS triple) is untouched, and the refusal reuses
 `EXIT.readiness` because no container is started and no eAPI call is attempted until the path is
 proven. Evidence: create-verify retry proven against the live host on the dispatch branch; the failed
 dispatch log is itself the poisoned-case record.
+
+### DR-130 — containerlab is evaluated on this host (one real deploy/destroy cycle) and staged for the TWO-NODE lanes only; the single-node lab harness keeps its own bring-up
+Evidence from the lab host (clab 0.83.0, our locally imported `arista/ceos:4.28.14M`): a 1-node topology with
+the top-level `mgmt: {ipv4-subnet: 10.177.16.0/24}` key (current schema — `topology.mgmt` and per-node
+`mgmt:` are both rejected now) deploys right — `--privileged`, `/mnt/flash` bind, its own generated
+`node.{key,crt}`/`ca.crt` bound under `/persist/secure/ssl/…`, systemd env, a 27 s postdeploy bootstrap —
+labels every object (`clab-node-longname/kind/mgmt-net-bridge`), pins a node IP on its own `clab` bridge
+(route live at deploy: `dev br-a91… scope link`), and `destroy` removes container, network, and the
+`/etc/hosts` + `/etc/ssh/ssh_config.d/clab-<topo>.conf` entries it added (verified clean).
+
+What clab does NOT own, and the lane keeps regardless of substrate: run-owned one-time credentials (clab's
+bootstrap uses its own defaults), the consent matrix + scratch discipline (DR-035/DR-065/DR-125/DR-126),
+pinned-cert extraction and the fingerprint cross-check (with clab binding its own certs the anchor read
+changes source but stays a docker-exec-of-the-public-half job), eAPI readiness as a real authenticated
+call (clab marks nodes `running` after postdeploy while docs/CEOS.md's own lesson says the API is SHUT
+pre-bootstrap), the #62 provisioning batch, recorder + redaction, and endpoint liveness defenses — the
+clab bridge is the same `docker network` primitive the DR-129 poison class attacks, and clab has no
+create-verify-and-rotate for it.
+
+Decision: the single-node harness stays as built (green 249/249; every part that actually failed this
+month is harness-owned). containerlab is adopted as the substrate for the **two-node topology lanes** —
+MLAG B3 (#14 §3: "two-node MLAG/routing coverage requires its own isolated topology"; #79's pair half)
+and routed-pair/neighbor evidence — where point-to-point `links:` between `kind: ceos` nodes replace
+hand-built data bridges instead of growing a second topology engine here. Layering on such a lane:
+our verified-subnet preflight + locks map to `clab-node-longname` ownership exactly like `LABEL_RUN`;
+our Cli bootstrap owns credentials; our readiness/identity guards gate the suites; suites dial the
+pinned node IPs — front-panel Ethernet arrives as kernel interfaces, so the relay's endpoint ambiguity
+(DR-128(a)) simply doesn't exist on link traffic; teardown = `containerlab destroy` only after our
+label-verified existence checks. Side-effect note recorded: clab writes host SSH config + hosts entries
+(self-repaired on destroy) — outside this harness's no-host-mutation posture, acceptable only under the
+"dedicated trusted lab runner" boundary docs/CEOS.md already names. A clab-pinned version and these
+constraints belong in that future feature request (§3 sweep and the CI green run still gate this).
 
 ## Open items (need the device)
 
