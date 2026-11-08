@@ -6,9 +6,12 @@ import type { RouteRegistry } from '../router'
  * F1 application chrome (issue #63): skip link, brand/topbar with anchor-driven navigation, a
  * presentational connection-status slot, and the routed outlet.
  *
- * Nothing here contacts the device — `status` is supplied by the caller (issue #64 wires the real
- * connection state). Issue #66 (F6) later lifts the duplicate chrome out of `SwitchManager`; until then
- * the routed screen renders its own `main.shell` inside this outlet, so the interim UI shows two tiers.
+ * Nothing here contacts the device — `status` is optional and supplied by the caller. Since F6
+ * (#68) every routed screen renders **inside** this outlet: the screen no longer opens its own
+ * `main.shell`, so the app has one skip link, one topbar and one `#workspace` target. A screen that
+ * knows device reachability renders the F3 `ConnectionHeader` itself (it owns the read); the
+ * presentational `status` slot on this bar remains for chrome-level claims the shell can make
+ * without touching a device.
  */
 
 export type ConnectionStatusTone = 'ok' | 'warn' | 'error'

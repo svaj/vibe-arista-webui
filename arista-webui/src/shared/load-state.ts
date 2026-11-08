@@ -1,7 +1,7 @@
 /**
  * Shared device-read state machine for the Web UI screens (issue #64, F2 of the UI roadmap epic #60).
  *
- * These are the primitives `src/features/SwitchManager.tsx` hand-rolls today — the
+ * These are the primitives the pre-F6 `src/features/SwitchManager.tsx` hand-rolled — the
  * `{ kind: 'loading' } | { kind: 'error'; message } | { kind: 'ready'; data }` union and the
  * `errorMessage()` normaliser — lifted out so every later screen (#71-#85) inherits the same
  * loading/error/empty discipline instead of re-copying it (the epic's standing screen rule).
@@ -12,13 +12,14 @@
  * are separate exported interfaces so a screen can name one (e.g. render a `ReadyState<Data>` prop)
  * without restating the union. See `load-state.test.ts` for the type-level pins.
  *
- * **Error-vs-empty rule (pinned by `App.test.tsx` "renders device read failures as errors, not empty
- * results"):** a failed read must land on the `error` branch carrying `error.message`, never on a
- * `ready` branch with an empty payload, and never as a blank panel. A *successful but empty* read is
- * `ready` with empty data — the two states stay distinct and are the caller's to render differently.
+ * **Error-vs-empty rule (pinned by `VlanAssignment.test.tsx` "renders device read failures as errors,
+ * not empty results", moved here with the screen by F6/#68):** a failed read must land on the `error`
+ * branch carrying `error.message`, never on a `ready` branch with an empty payload, and never as a
+ * blank panel. A *successful but empty* read is `ready` with empty data — the two states stay
+ * distinct and are the caller's to render differently.
  *
- * F6 (#68) rewires `SwitchManager` onto these; nothing consumes them yet. Import them directly
- * (`../shared/load-state`) — this directory deliberately has no `index.ts` barrel.
+ * F6 (#68) put the first consumer on these: the VLAN screen imports them directly
+ * (`../../shared/load-state`) — this directory deliberately has no `index.ts` barrel.
  */
 
 /** The read has started (or a refresh was requested) and the device has not answered yet. */

@@ -18,7 +18,8 @@
  * it", not "the device cannot send it": EOS models answer more fields than any single capture, so
  * narrowing here is a floor, and the screens below only ever read modelled keys.
  *
- * This augmentation is in the app's own compilation (imported by `src/features/SwitchManager.tsx`),
+ * This augmentation is in the app's own compilation (imported for its side effect by
+ * `src/features/vlans/VlanAssignment.tsx` since F6/#68),
  * so `node.show('version')` types end-to-end; `src/eapi/show-contracts.test.ts` pins each shape
  * against verbatim capture payloads, and `src/eapi-show-contracts.test.ts` proves the consumer
  * spelling still merges through the package's published types.

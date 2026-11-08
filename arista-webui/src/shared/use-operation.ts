@@ -1,6 +1,6 @@
 /**
  * The shared operation primitive (issue #64, F2 of epic #60): the `busy`/`notice`/`failure` triplet
- * every mutating action in `src/features/SwitchManager.tsx` re-implements (`preview`, `commitDraft`,
+ * every mutating action in the pre-F6 `src/features/SwitchManager.tsx` re-implemented (`preview`, `commitDraft`,
  * `abortDraft`, `abortPending` each do `setFailure('')` → optional progress `setNotice(…)` →
  * `setBusy(true)` → `try`/`catch (setFailure(errorMessage(error)))` → `finally setBusy(false)`).
  *

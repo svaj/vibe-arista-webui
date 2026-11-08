@@ -110,6 +110,30 @@ tbody tr:last-child td { border-bottom: 0; }
 .route-fallback h2 { margin-top: 6px; }
 .route-fallback-home { display: inline-flex; min-height: 42px; align-items: center; margin-top: 16px; padding: 9px 14px; color: var(--ink); border: 1px solid var(--line); border-radius: 5px; background: var(--surface); font-size: 14px; font-weight: 650; text-decoration: none; transition: background-color 140ms ease, border-color 140ms ease; }
 .route-fallback-home:hover { background: var(--surface-muted); border-color: #9aaba5; }
+
+/* --- F6 screen split (issue #68). Two jobs, both because the per-screen `main.shell` is gone:
+
+   1. the connection cluster left the screen's private topbar and is the F3 `ConnectionHeader`,
+      rendered inside the outlet — under the shell header, right-aligned as the old topbar placed it,
+      never inside a second `<header>`;
+   2. the layout container every later screen inherits: one 1440px measure with the old gutters,
+      shared by header/outlet so the chrome and the routed screen stay on the same column. --- */
+.shell-header, .shell-outlet, .screen-connection { width: 100%; max-width: 1440px; margin-inline: auto; padding-inline: 36px; }
+/* A page shorter than the viewport still exposes the gutter: the old `main.shell` padded its own
+   box, so the measure has to be inset at the root instead. */
+#root { padding-inline: clamp(14px, 2.4vw, 36px); }
+.shell-outlet { min-height: calc(100vh - 92px); padding-bottom: 56px; }
+.screen-connection { display: flex; justify-content: flex-end; gap: 9px; padding-top: 16px; padding-bottom: 12px; }
+
+@media (max-width: 860px) {
+  .shell-header, .shell-outlet, .screen-connection { padding-inline: 22px; }
+}
+
+@media (max-width: 560px) {
+  .shell-header, .shell-outlet, .screen-connection { padding-inline: 14px; }
+  .shell-outlet { min-height: 0; }
+  .screen-connection { justify-content: flex-start; padding-top: 12px; }
+}
 .route-fallback-home:focus-visible { outline: 3px solid #22735f; outline-offset: 3px; }
 
 @media (max-width: 560px) {

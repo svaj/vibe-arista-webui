@@ -1,6 +1,7 @@
 /**
  * The shared device-read hook (issue #64, F2 of epic #60): the eager read batch + cancel-on-unmount
- * `active` flag + `reloadKey` refresh that `src/features/SwitchManager.tsx` inlines today.
+ * `active` flag + `reloadKey` refresh that `src/features/SwitchManager.tsx` inlined before F6 (#68)
+ * rewired the screen — now `src/features/vlans/VlanAssignment.tsx` — onto this hook.
  *
  * The hook owns only the state machine, never the read itself: the caller's `loader` is whatever
  * batch of client calls that screen needs (`Promise.all` of `vlans.getAll()`/`switchports.getAll()`/
@@ -49,7 +50,7 @@ export interface DeviceReadResult<T> {
  * Reads device state into a {@link LoadState}, re-running whenever `deps` (plus this hook's own
  * `reloadKey`/`enabled`/`disabledMessage`) change. A dependency change keeps showing the previous
  * payload until the new read resolves — only {@link DeviceReadResult.reload} resets to `loading`,
- * matching the current `SwitchManager` behaviour.
+ * matching the behaviour the pre-F6 screen had.
  */
 export function useDeviceRead<T>(
   loader: () => PromiseLike<T>,
@@ -98,7 +99,7 @@ export function useDeviceRead<T>(
     // `deps` is the caller's contract (the same list the inlined effect used); the last three are
     // ours. The spread trips `react-hooks/exhaustive-deps` ("complex expression") and the
     // synchronous disabled-slot write trips `set-state-in-effect` — the same warning
-    // `src/features/SwitchManager.tsx` already carries for the effect being extracted. Hoisting the
+    // the pre-F6 screen already carried for the effect being extracted. Hoisting the
     // list into a variable is worse: it swaps in "dependency list is not an array literal".
   }, [...deps, reloadKey, enabled, disabledMessage])
 
