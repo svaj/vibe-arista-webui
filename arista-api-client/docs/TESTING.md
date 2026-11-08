@@ -153,6 +153,16 @@ the Node TLS tests) and assert on `init.headers`, `init.signal`, and the body.
 
 ## 5. Live tier
 
+> **What actually shipped (M12, DR-034/DR-035/DR-124/DR-126):** the single gate is
+> `src/testing/live-guard.ts:resolveLiveEnv(process.env)` with **two** target-class profiles —
+> `lab` (loopback+published port, 4.28.14M pin) and `hardware` (#14 §3: no host/port defaults,
+> https-only, exact SKU/version pins, `EAPI_HW_CONSENT` echo — runbook `docs/HARDWARE-CAPTURE.md`).
+> Suites import `live-guard` + `live-session-policy` as `./testing/…` (the `testing-live.ts` sketch
+> below predates the real layout and imports); writes go through `runGuardedLiveWriteSession`, and
+> the **full-write lab** lane (`EAPI_LAB_FULL_WRITE=1`, `EAPI_SCRATCH_VLAN`) adds the pre-wire
+> self-lockout fence `withLabWriteScope` at the transport seam. `liveSuite(…)`/`scratch` below are
+> the shape, not the shipped names.
+
 ```ts
 // src/resources/vlans.live.test.ts
 import { liveSuite, liveNode } from '../testing-live.ts';

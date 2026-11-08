@@ -1993,6 +1993,28 @@ recorded as answers (which commands the SKU supports IS evidence); transport fai
 implemented-and-waiting-for-the-session; every hardware claim in this repo stays
 `hardwareEvidence:"none"` until §5 row 226's first executed run replaces it.**
 
+### DR-126 — the full-write lab lane: `EAPI_LAB_FULL_WRITE=1` widens DR-035(b) for the throwaway container ONLY, and the self-lockout set is refused before the wire at the shared transport seam
+The locked decision (2026-11-07) ports `pyeapi/test/system/*` **fully** (users, VLANs, routes,
+protocols, `system` setters) against disposable cEOS. DR-035(b)'s scratch-only rule was written when
+that was forbidden; it is amended, not deleted: `live-guard.ts:requireLabFullWrite(target, env)`
+accepts the widening for `targetClass=lab` + `EAPI_LAB_FULL_WRITE=1` only — the hardware class gets
+`EAPI_FULL_WRITE_NOT_LAB` unconditionally (its writes stay inside the `hw-session-probe` reviewed
+fence, DR-125), and lab suites that do not opt in keep the old rules untouched. `EAPI_SCRATCH_VLAN`
+(`requireScratchVlan`) joins `EAPI_SCRATCH_INTERFACE`: single declared spare VLAN, digits 2–4094,
+VLAN 1 (the default every port starts on) and the reserved 1006–1199 window refused so the lane
+cannot pass on a container and answer differently on the SKU. What the widening does NOT touch:
+`live-session-policy.ts:labWriteScopeRefusal` + `withLabWriteScope` — the listener, the built-in
+`admin`/`netadmin`, the API user in use, the management path and `copy run start` are self-destruct
+even in a throwaway box (a killed session is a dead run), so they are refused **before**
+`Transport.execute` sends anything, at the one choke point every resource facade shares — a policy
+only hand-written suites remember is a policy the ported half forgets. Config-batch detection keys on
+the `configure terminal|session` marker (every session batch carries its opener — documented at
+`live-session-policy.test.ts`), `input` bodies are scanned line-wise, and the refusal prints the
+first two words only (a staged line can carry a `secret <hash>` tail; DR-011 covers test output).
+`Node.callMethod` (verifyConfig/completions/help) passes through: those verbs answer *about* commands
+and never apply them. Mutation-checked: forcing the scope check to return no-refusal fails 5 named
+cases; admitting VLAN 1 fails its case; admitting full-write on hardware fails its case. §5 row 227.
+
 ## Open items (need the device)
 
 Use cEOS first for software behavior and schema exploration, recording its model/version;
