@@ -9,6 +9,34 @@ surprise here — this file records what shipped, the migration map records what
 
 ## [Unreleased]
 
+### Changed — the second supervised switch day: what the box answered, and the read that stranded a commit (2026-11-08; DR-135 + §5 row 235)
+- `src/hw-session-probe.live.test.ts`: reads that happen **after** a batch has closed (the scratch
+  read-back following a `commit`, and the `show configuration sessions[ detail]` post-state read) can no
+  longer control the run. A typed `EapiError` there is logged and collected, the committed batch still
+  writes its recording, and the loop continues. Run 2 proved the cost of the old shape: the read-back
+  killed the harness one statement after a SUCCESSFUL commit, so that batch's evidence was lost, the
+  restore set never ran, and `description HW-CAPTURE-PROBE` stayed committed on the scratch port.
+  If the recording write itself fails after a commit, the harness now prints which restore batch to run.
+- `src/testing/hw-capture.ts` `hwScratchReadBackCommand()`: the post-commit read-back is
+  `show running-config **interfaces** <intf>` — plural, device-verified. This unit answers the singular
+  spelling with `1002 % Incomplete token (at token 2: 'interface')`; Arista's own system suite writes
+  the plural everywhere. Pinned offline so a run card cannot reintroduce the singular form.
+- New `EAPI_HW_PROBE_ONLY=<batch names>` resume filter (`selectHwProbeBatches`): a switch day that
+  stopped partway can run just the batches still owed, in the reviewed spec's order; an unknown batch
+  name is a hard refusal, never a silent skip.
+- `docs/hw-session-probes.draft.json` rev 3: the `vlans-vrrp-iprouting` batch — the one rev 2 left
+  multi-question — is split into `vlan-inline-name` / `vlan-block-form` / `vlan-interface-ip` /
+  `vlan-interface-vrrp` / `ip-routing`, because the device refused its FIRST line (`vlan 4090 name …`
+  → `Invalid input (at token 2: 'name')`: the inline form is not this SKU's grammar) and EOS staged
+  nothing behind it. `scratch-restore` is now pinned to include `no description` so the commit set is
+  net-zero even after an interrupted day.
+- Device answers captured on the `-R` unit and committed as seven
+  `configure-session-*--hw-session-probe` recordings: `switchport mode trunk`,
+  `no switchport` + an address, `switchport trunk group HWGRP` (open item 4's verb half — trunk groups
+  DO exist on this SKU) and `channel-group 999 mode active` (with the implicit `interface
+  Port-Channel999` in the diff) all stage clean; `switchport trunk allowed vlan only …` is refused
+  (bare spelling commits), so the `only` keyword is a documented non-support on this box.
+
 ### Changed — hw-session-probe records device refusals instead of dying on them (2026-11-08; DR-134 + §5 row 234)
 - `src/hw-session-probe.live.test.ts`: a batch-level `1002`/`1004` from staging (or from the
   `show session-config diffs` read) is now recorded as that batch's answer and the batch loop

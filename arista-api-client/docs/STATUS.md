@@ -227,6 +227,33 @@ source (pyeapi 1.0.4-rc0).
 > `assertInterfaceName` all-digit grammar would REJECT ports this device reports as real interfaces
 > (open item 7 now has device evidence; M10's parser must widen to the discriminated union accordingly).
 
+> **2026-11-08, later (session probes EXECUTED — run 2, DR-134 then DR-135).** Eight of the eleven
+> reviewed batches reached the box and **7 probe recordings landed** under
+> `recordings/7050tx-64-r-4.28.13.1M/configure-session-*--hw-session-probe.json`. Device answers
+> captured: inside a named session the SKU stages `switchport` + `switchport mode trunk`,
+> `no switchport` + `ip address …/31` (L2→routed conversion works in a session),
+> `switchport trunk group HWGRP` (**open item 4's verb half: trunk groups exist on this unit**), and
+> `channel-group 999 mode active` — whose diff also shows the device creating the implicit
+> `interface Port-Channel999` block. Refused, recorded as the answer: `switchport trunk allowed vlan
+> only 10,20` → `Invalid input (at token 4: 'only')` (the bare spelling commits — DR-042's class on
+> hardware), and `vlan 4090 name X` → `Invalid input (at token 2: 'name')`, so the inline
+> `vlan <id> name` one-liner is NOT this box's grammar and the VLAN/SVI/VRRP/`ip routing` questions
+> behind it were never asked (that batch is what rev 3 splits into five one-question batches).
+> Named-session grammar answered as a side effect: every batch opened
+> `configure session hw-probe-<name> description "…"` with feature-text in the description and the
+> device accepted it, and `show configuration sessions detail` shows `state/commitUser/completedTime`
+> with `maxOpenSessions: 5` / `maxSavedSessions: 1` — the same field set the container answers.
+> **The run also exposed a harness bug that cost the day (DR-135):** after `scratch-description`
+> COMMITTED, the runner's own read-back used the singular `show running-config interface …`; the box
+> answers `1002 % Incomplete token (at token 2: 'interface')` (the plural `show running-config
+> interfaces <intf>` is what it takes, and what Arista's own system suite writes). That throw happened
+> one statement after a successful write, so the batch's recording was lost, the restore set never
+> ran, and **the switch currently carries `description HW-CAPTURE-PROBE` on Ethernet22** — the first
+> resumed command is `EAPI_HW_PROBE_ONLY=scratch-restore`. Post-batch reads are now refuse-and-log, the
+> spelling lives in `hwScratchReadBackCommand()`, and `EAPI_HW_PROBE_ONLY` makes a stopped day
+> resumable. No box below flips from run 2 alone: the commit set and the session-grammar family
+> (items 5/7/8) still have to complete on the box.
+
 Run the software/schema subset against cEOS first and store captures under
 `test/fixtures/recordings/ceos-4.28.14M/`; repeat target-sensitive checks on the
 7050TX-64 under `recordings/7050tx-64-4.28.13.1M/`. Keep exact version/model metadata,
@@ -293,11 +320,25 @@ which needs explicit authorization on hardware and unconditional cleanup.
       `show port-channel detail` likewise, while `show port-channel dense` captured — the member-limit
       row must come from the SKU datasheet, not this command
 - [ ] `show session-config diffs` behaviour inside a scratch session + `commit timer` confirm semantics
+      **(diffs half captured on the box 2026-11-08: every `hw-session-probe` case file embeds a
+      replayable `show session-config diffs` exchange — a staged no-op answers a 0-line diff, and the
+      accepted lines show up as `+` lines including the implicit `interface Port-Channel999` block that
+      `channel-group 999 mode active` creates; refused lines appear in NO diff, which is how the `only`
+      and inline-`vlan name` refusals were proven to have staged nothing. `commit timer` remains
+      unasked — that batch family has not run on hardware yet.)**
 - [ ] `configure session <name>` boundaries: the longest accepted name and the character set (our
       `MAX_SESSION_NAME_LENGTH` and refusals are **this port's** bounds, not a captured device limit)
       → open item 7
 - [ ] `configure session <name> description "…"` quoting depth (embedded `"`, `#`, `;`, backslash), and
       whether `no-commit` is accepted or answered `1002` on the 7050TX-64 → open item 8
+      **(partial 2026-11-08: the plain form `configure session hw-probe-<name> description "<free text
+      with / + : and spaces>"` was accepted by the box on all eight batches that opened a session. What
+      it does NOT prove: that the text round-trips — the read at the end of a batch showed
+      `sessions: {}` (the non-`detail` form hides completed sessions) and the only entry in the
+      `detail` form was the earlier lab session with `description: ""`, because our probe sessions were
+      aborted/committed out of the open set. The depth questions (embedded quotes, `#`, `;`, backslash),
+      a description read-back while a session is OPEN, and `no-commit` all still need the follow-up
+      grammar family, which deliberately does not live in this spec)**
 - [ ] which of `copy running-config startup-config`, `rollback clean-config [ { groups } ]`,
       `rollback <name>` and `configure replace <url>` answer `1002`/`1004` per platform (cEOS first, then
       target — the class of gap DR-042 warns about)

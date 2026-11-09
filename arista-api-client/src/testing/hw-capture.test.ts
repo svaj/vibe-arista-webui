@@ -25,10 +25,12 @@ import {
   hwCaseName,
   hwDeviceIdentity,
   hwProbeCaseName,
+  hwScratchReadBackCommand,
   parseHwProbeSpec,
   redactHwValue,
   resolveHwScratchToken,
   sanitizeHwRecording,
+  selectHwProbeBatches,
   type HwRedactOptions,
 } from './hw-capture'
 
@@ -318,6 +320,11 @@ describe('the committed draft probe spec is itself machine-checked (review-befor
     }
     // A restore batch exists so committed probes are net-zero on the running switch.
     expect(spec.batches.some((batch) => batch.name.includes('restore') && batch.allowCommit)).toBe(true)
+    // It must also clear whatever the commit set writes, or a crash mid-commit-set leaves the operator's
+    // port holding a mutation with no re-state line (DR-135: run 2 stranded `description
+    // HW-CAPTURE-PROBE` on Ethernet22 exactly this way).
+    const restore = spec.batches.find((batch) => batch.name === 'scratch-restore')
+    expect(restore?.commands.map((cmd) => cmd.trim())).toContain('no description')
     // DR-134 pin (first probe run, 2026-11-08): the REV-1 restore batch carried a committed
     // `no switchport`, which would have STRANDED the scratch port routed — its pre-session state has
     // been L2-by-default since the default the lab read left. A committed restore line may never
@@ -332,6 +339,55 @@ describe('the committed draft probe spec is itself machine-checked (review-befor
     // (`switchport trunk allowed vlan only …` 1002 masked the routed-conversion line). Each refused
     // sub-question earns its OWN batch name -> its own recording.
     expect(spec.batches.some((batch) => batch.name === 'trunk-allowed-only')).toBe(true)
-    expect(spec.batches.length).toBeGreaterThanOrEqual(11)
+    // The same failure hit run 2 through the one batch REV 2 left unsplit: `vlan 4090 name …` was
+    // refused first and the SVI/VRRP/ip-routing questions behind it were never asked (DR-135). REV 3
+    // splits them, one NEW line per batch with only already-accepted context above it.
+    const names = new Set(spec.batches.map((batch) => batch.name))
+    expect(names.has('vlans-vrrp-iprouting'), 'the masked multi-question batch must not come back').toBe(false)
+    for (const splitName of ['vlan-inline-name', 'vlan-block-form', 'vlan-interface-ip', 'vlan-interface-vrrp', 'ip-routing']) {
+      expect(names.has(splitName), `rev-3 split batch ${splitName} is missing`).toBe(true)
+    }
+    // A staged VLAN/VLAN-interface batch must never be committed: parseHwProbeSpec bounds commits to
+    // the scratch interface, and these batches sit OUTSIDE it on purpose (abort-only answers).
+    for (const splitName of ['vlan-inline-name', 'vlan-block-form', 'vlan-interface-ip', 'vlan-interface-vrrp', 'ip-routing']) {
+      expect(spec.batches.find((batch) => batch.name === splitName)?.allowCommit, `${splitName} must stay abort-only`).toBe(false)
+    }
+    expect(spec.batches.length).toBeGreaterThanOrEqual(15)
+  })
+})
+
+describe('the post-commit scratch read-back (hardware-verified command spelling)', () => {
+  it('sends the PLURAL `interfaces` keyword — the SKU answered the singular form 1002', () => {
+    // Live evidence, 2026-11-08 run 2: `show running-config interface Ethernet22` =>
+    // Error [1002] … "% Incomplete token (at token 2: 'interface')", one statement AFTER a successful
+    // commit. Arista's own system suite uses the plural (`test_api_interfaces.py:202,:239,:283`).
+    expect(hwScratchReadBackCommand('Ethernet22')).toBe('show running-config interfaces Ethernet22')
+  })
+
+  it('never emits a bare `show running-config …` for an empty interface name', () => {
+    expect(() => hwScratchReadBackCommand('')).toThrow(/non-empty interface/u)
+  })
+})
+
+describe('the resume filter for a partially completed switch day', () => {
+  const batches: readonly { name: string; question: string; commands: readonly string[]; allowCommit: boolean }[] = [
+    { name: 'scratch-description', question: 'q', commands: ['interface {{SCRATCH}}', '   description X'], allowCommit: true },
+    { name: 'scratch-mtu', question: 'q', commands: ['interface {{SCRATCH}}', '   mtu 9214'], allowCommit: true },
+    { name: 'scratch-restore', question: 'q', commands: ['interface {{SCRATCH}}', '   no description'], allowCommit: true },
+  ]
+
+  it('runs everything when the filter is absent or blank', () => {
+    expect(selectHwProbeBatches(batches, undefined).map((b) => b.name)).toEqual(['scratch-description', 'scratch-mtu', 'scratch-restore'])
+    expect(selectHwProbeBatches(batches, '   ').map((b) => b.name)).toEqual(['scratch-description', 'scratch-mtu', 'scratch-restore'])
+  })
+
+  it('selects the named batches but keeps the SPEC order, restore last', () => {
+    expect(selectHwProbeBatches(batches, 'scratch-restore,scratch-mtu').map((b) => b.name)).toEqual(['scratch-mtu', 'scratch-restore'])
+  })
+
+  it('refuses an unknown batch name instead of silently skipping the one intended', () => {
+    // Silent no-ops are how a half-restored port survives a switch day on a physical device.
+    expect(() => selectHwProbeBatches(batches, 'scratch-descrption')).toThrow(/does not have/u)
+    expect(() => selectHwProbeBatches(batches, 'scratch-descrption')).toThrow(/scratch-description, scratch-mtu, scratch-restore/u)
   })
 })
