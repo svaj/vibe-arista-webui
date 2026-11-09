@@ -190,6 +190,21 @@ source (pyeapi 1.0.4-rc0).
 > **The lane is built, not run** — zero switch bytes are committed, and none of the boxes below
 > changes state until the supervised session happens.
 
+> **2026-11-08 (first supervised attempts, DR-131/DR-132).** The lane was addressed twice and **still
+> captured nothing** — which is the guard doing its job. (1) With every env gate satisfied, the unit
+> answered `show version` with `modelName "DCS-7050TX-64-R"` and `EAPI_MODEL_MISMATCH` refused the run:
+> the pin set is now the exact pair `DCS-7050TX-64` / `DCS-7050TX-64-R` (open item 1's spelling half —
+> this box and the recorded fixture stay open, and evidence for this unit lands under
+> `recordings/7050tx-64-r-4.28.13.1M/`). The unit's `version` answered `4.28.13.1M`, so the image pin
+> below is confirmed. (2) The eAPI certificate is `CN=self.signed` with **no extensions/SAN**, so a
+> hardware run needs `EAPI_CA_FILE` + `EAPI_FINGERPRINT` + `EAPI_SERVER_NAME` — the pin is not a trust
+> anchor and does not waive the name check (`transports/node-tls.ts`). (3) The runbook's unscoped
+> `npm run test:live` staged real lines on the scratch port from the **lab** corpus
+> (`switchport mode trunk` / trunk allowed+native / `default interface`), so the lab lane's scratch gate
+> now refuses the hardware class (`EAPI_HARDWARE_WRITE_FENCE`, DR-132); batch 1 runs one file. Nothing in
+> this paragraph checks a box: it records what the first attempts proved about the lane, and the
+> read-only sweep still has to happen on a pinned run.
+
 Run the software/schema subset against cEOS first and store captures under
 `test/fixtures/recordings/ceos-4.28.14M/`; repeat target-sensitive checks on the
 7050TX-64 under `recordings/7050tx-64-4.28.13.1M/`. Keep exact version/model metadata,
@@ -220,7 +235,9 @@ which needs explicit authorization on hardware and unconditional cleanup.
 > pending-session trick, `--capture-via` transport fallback per DR-123) live in
 > [scripts/ceos-lab.mjs](../../scripts/ceos-lab.mjs) and docs/CEOS.md.
 
-- [ ] `show version` → exact `modelName`, `version`, `serialNum`, image
+- [ ] `show version` → exact `modelName`, `version`, `serialNum`, image (console half settled
+      2026-11-08: `DCS-7050TX-64-R` on `4.28.13.1M` — DR-131 / open item 1; the recorded fixture and the
+      serial/image stay owed, and for this unit they land under `recordings/7050tx-64-r-4.28.13.1M/`)
 - [ ] `show license features` · `show license all` → which features are licensed (VXLAN/VRF/MLAG)
 - [ ] `show management api http-commands` · `… https certificate` → listeners, TLS versions, cert to pin
 - [ ] `show configuration sessions` → baseline orphan state before any test writes

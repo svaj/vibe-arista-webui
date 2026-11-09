@@ -79,7 +79,10 @@ describe.skipIf(!runnable)('hardware session probes: named config sessions on th
     if (resolution.ok && resolution.targetClass === 'hardware') {
       const needScratch = batches.some((batch) => batch.commands.some((cmd) => cmd.includes('{{SCRATCH}}')))
       if (needScratch) {
-        const scratchGate = requireScratchInterface(target)
+        // The ONLY exempt call site of the DR-132 hardware write fence: this lane's mutations are fenced
+        // by their own chain (EAPI_HW_SESSION_PROBE=1 above, a spec mechanically reviewed by
+        // parseHwProbeSpec, and assertScratchStillUnused before any commit batch).
+        const scratchGate = requireScratchInterface(target, { hardwareSessionProbe: true })
         if (!('name' in scratchGate)) throw new Error(`hw-session-probe: the spec names {{SCRATCH}} but the guard refuses the declared interface — ${scratchGate.reason}`)
         scratch = scratchGate.name
       }

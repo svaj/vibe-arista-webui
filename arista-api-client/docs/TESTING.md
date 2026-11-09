@@ -128,7 +128,10 @@ the Node TLS tests) and assert on `init.headers`, `init.signal`, and the body.
 - Config-text fixtures must be real 4.28 output once M12 runs the device sweep; before that, mark
   hand-authored ones `# SYNTHETIC — verify on device` so nobody trusts them as truth.
 - Keep `recordings/ceos-4.28.14M/` separate from `recordings/7050tx-64-4.28.13.1M/`,
-  including config-text captures. Record exact version/model, image identity, commands/format,
+  including config-text captures. The hardware directory follows the name the device reports, so the
+  `-R` unit found by the first supervised session files under `7050tx-64-r-4.28.13.1M/` — `targetSlug`
+  derives it and `assertRecordingIdentity` refuses an envelope that disagrees with its directory (DR-131).
+  Record exact version/model, image identity, commands/format,
   and topology alongside captures; redact identifying data as well as credentials.
   cEOS recordings must never overwrite hardware fixtures.
 - Regenerate cEOS captures with **`npm run fixtures:refresh -- --yes`** (root or client workspace;

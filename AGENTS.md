@@ -1,7 +1,7 @@
 # Vibe-Arista-Webui
 
 ## About
-A Typescript EOS eAPI client and a React frontend (using that eAPI client) to manage an arista switch.  In particular the DCS-7050TX-64, running EOS 4.28.
+A Typescript EOS eAPI client and a React frontend (using that eAPI client) to manage an arista switch.  In particular the DCS-7050TX-64, running EOS 4.28.  The unit self-reports `modelName: DCS-7050TX-64-R` (airflow variant — verified in the 2026-11-08 supervised session), so the live-lane hardware pin set carries both exact spellings; see `arista-api-client/src/testing/live-guard.ts` and DECISIONS DR-131.
 
 ## Tech stack
 * Monorepo: plain npm workspaces

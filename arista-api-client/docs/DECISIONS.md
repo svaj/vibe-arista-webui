@@ -2142,6 +2142,66 @@ label-verified existence checks. Side-effect note recorded: clab writes host SSH
 "dedicated trusted lab runner" boundary docs/CEOS.md already names. A clab-pinned version and these
 constraints belong in that future feature request (§3 sweep and the CI green run still gate this).
 
+### DR-131 — the hardware model pin is a set of EXACT names, and the first supervised session added `DCS-7050TX-64-R`
+Evidence (2026-11-08, the first supervised 7050TX-64 session under
+[`HARDWARE-CAPTURE.md`](./HARDWARE-CAPTURE.md)): with every env gate satisfied — host and port in both
+allow-lists, https, `EAPI_ALLOW_VERSION=4.28.13.1M`, `EAPI_HW_CONSENT` echoing the base model — the run
+refused at `matchesDeviceIdentity`: the unit answered `show version` with
+`modelName: "DCS-7050TX-64-R"` while the pin demanded `DCS-7050TX-64` (`EAPI_MODEL_MISMATCH`,
+"refusing to run against a different device"), and **zero bytes were captured**. That is the guard
+working as designed (DR-035(e)/DR-043): the device self-report, not the env, has the last say, and the
+refusal cost the run before it could file container-shaped expectations against a real switch.
+
+Decision: `HARDWARE_MODEL_NAMES` becomes the **exact set** `['DCS-7050TX-64', 'DCS-7050TX-64-R']`.
+`-R` is Arista's airflow/reversibility suffix on the same board — the same SKU family DR-032 and
+`AGENTS.md` name — so addressing that unit belongs in this lane rather than in an operator loosening a
+pin at the console (the runbook rule "the pin *is* the finding" points the change at this file, not at
+the env). What the decision is **not**:
+- not a prefix or suffix rule. `DCS-7050TX-64-RR`, `DCS-7050TX-64 R`, `DCS-7050TX64-R` and `DCS-7050TX-6`
+  stay refused (`EAPI_ALLOW_MODEL_NOT_HARDWARE`), pinned by test; DR-116's never-widen rule still bites.
+- not a capability claim. It settles nothing about VXLAN/VRF/MLAG licensing, TCAM profiles or LAG limits
+  (open items 2/4/6) — a model string is not a feature matrix (DR-043), and `docs/features.md` stays
+  titled for the wrong platform until open item 6 is done.
+- not the §3 box. Open item 1's **spelling** half is now answered from the session console; the recorded
+  half is still owed, and `targetSlug` files it honestly: the `-R` unit's evidence lands under
+  `test/fixtures/recordings/7050tx-64-r-4.28.13.1M/`, the directory its own `modelName` earned, not the
+  `7050tx-64-4.28.13.1M/` the docs first guessed (`recording.ts:265` derives, `:294` refuses a mismatch).
+
+Operator consequence: `EAPI_ALLOW_MODEL` **and** the `EAPI_HW_CONSENT` echo must both carry the exact
+reported string — the echo binds the variant, so a base-name echo against a `-R` pin refuses with
+`EAPI_HW_CONSENT_MISMATCH` rather than addressing a box the operator did not name.
+
+### DR-132 — a hardware-class env never runs the lab lane's scratch writes; the fence sits in `requireScratchInterface`
+Same session, second finding, and the worse one: pointing `npm run test:live` at the switch did not only
+probe it. The `live-*.live.test.ts` scratch-write families reached the physical port — `live-switchports`
+staged `switchport mode trunk` + `switchport trunk allowed vlan 1-10` + `switchport trunk native vlan 1`
+and ran `default interface Ethernet22`, and `live-interfaces` staged a description write — while the
+suite's own refusal text said "switch writes stay inside the reviewed hw-session-probe fence".
+`requireLabFullWrite` (DR-126) fenced only the **full-write** families; the DR-035(b) scratch-only
+families never asked which class of target they were talking to.
+
+Mitigating facts, recorded rather than excused: nothing was persisted (`copy run start` is mechanically
+refused, DR-035(c)), every batch ran in a named session that committed or aborted, the runbook names the
+scratch port as an operator declaration, and the port really was spare — the writes then read back clean
+(`mode access`, `accessVlan 1`, `trunkAllowedVlans 1-4094` after the `default interface` restore). Still:
+a lane whose safety depends on a person noticing which of 21 files is dialing a switch is not a lane.
+
+Decision: `requireScratchInterface(target, options?)` now refuses the **hardware** class with a new
+`EAPI_HARDWARE_WRITE_FENCE` code, and `src/hw-session-probe.live.test.ts` — the only lane fenced by its
+own consent chain (`EAPI_HW_SESSION_PROBE=1`, a spec mechanically refused-forbidden-family-checked by
+`parseHwProbeSpec`, and `assertScratchStillUnused` before any commit batch) — states its exception in
+code with `{ hardwareSessionProbe: true }`. Placement is deliberate: the fence lives at the gate the nine
+lab call sites already walk through, not in nine hand-written suites a tenth can forget, and the default
+is the refusal, so forgetting the question can only over-refuse. Name vetting is unchanged for the exempt
+lane (`…_MISSING` / `_INVALID` / `_NOT_ETHERNET` still fire, pinned by the amended test).
+**Mutation-checked:** disabling the fence fails exactly the two lane tests, and dropping `-R` from the
+pin set fails exactly the DR-131 test — both guards are load-bearing, not decorative.
+Out of scope on purpose: lab-suite *reads* may still run against a switch. They are pinned to container
+provisioning and must never be read as §3 evidence (DR-043), and a per-file class declaration across 19
+suites is a bigger change than the runbook needs — `HARDWARE-CAPTURE.md` now scopes each batch to its own
+file instead. Open question kept honest: a mid-run wire failure still leaves the client-side DR-025
+journal holding the session name, so the runbook gained a `show configuration sessions` check step.
+
 ## Open items (need the device)
 
 Use cEOS first for software behavior and schema exploration, recording its model/version;
@@ -2150,6 +2210,11 @@ read-only items can be swept with `runCmds`; items 5, 7 and 8 need a separate au
 config session and are **not read-only**:
 
 1. `modelName` exact string on this unit (`DCS-7050TX-64` vs `-SSD`) and `version`; drives DR-032.
+   **(Console half settled 2026-11-08: the supervised session's unit reports `DCS-7050TX-64-R` on
+   `4.28.13.1M`, and the guard refused the base pin until DR-131 added that exact spelling to the set —
+   the `-SSD` guess is not this box. The recorded half (`show version` as a fixture with `serialNum` and
+   the image string) still gates the §3 box; expect the capture under
+   `recordings/7050tx-64-r-4.28.13.1M/`.)**
 2. `show license features` + `show license all` + ArToggle state: whether VXLAN / VRF routing / MLAG are
    licensed on this SKU (decides whether `VxlanInterface` belongs in wave 3 or never — DR-004).
 3. `show management api http-commands` + `show management api http-commands https certificate`:

@@ -1,14 +1,19 @@
 # Hardware capture lane — the supervised 7050TX-64 session runbook
 
-Status: **implemented, never yet executed** — every byte of switch evidence this repo stores is
-still `hardwareEvidence:"none"` (DR-043). This page exists for the one planned **switch session**
-(#14 §3): the operator sits at/beside the DCS-7050TX-64 running **4.28.13.1M**, and the harness runs
-its read-only inventory plus the reviewed config-session probes against it, live.
+Status: **built, addressed twice, still not captured** — the switching-on facts below come from the
+first supervised sessions on 2026-11-08 (unit `192.168.1.254`), which cleared the guard chain and the TLS
+trust path and then refused at the device's own `modelName` (DR-131) — so every byte of switch evidence
+this repo stores is still `hardwareEvidence:"none"` (DR-043), and `test/fixtures/recordings/` holds no
+`7050tx-64*` directory yet. This page exists for the one planned **switch session** (#14 §3): the
+operator sits at/beside the DCS-7050TX-64 (-R variant included, see §1) running **4.28.13.1M**, and the
+harness runs its read-only inventory plus the reviewed config-session probes against it, live.
 
 Container capture is a different lane with different rules — see [CEOS.md](./CEOS.md) for that one.
 Nothing here shares bytes with it: hardware captures land under
-`test/fixtures/recordings/7050tx-64-4.28.13.1M/` (`recording.ts` `TARGET_CLASSES`/`targetSlug`
-make the crossover a throw, not a convention), while cEOS evidence lives in
+`test/fixtures/recordings/<slug>/`, where `targetSlug` derives the directory from the **device-reported**
+model + version — `7050tx-64-4.28.13.1M/` for a base unit, `7050tx-64-r-4.28.13.1M/` for the `-R` unit
+this lane actually has (`recording.ts:265`; `:294` refuses a file whose envelope disagrees with its
+directory, which is what makes the crossover a throw, not a convention), while cEOS evidence lives in
 `test/fixtures/live/ceos-4.28.14M/` + `recordings/ceos-4.28.14M/`.
 
 ## 1. Why the gates read the way they do
@@ -21,39 +26,93 @@ deliberately stricter than the lab class (#14 §3, DR-035(e) made two-way):
 | host | loopback by default; switch hosts never | **no defaults at all** — the switch host must appear in `EAPI_ALLOW_HOSTS` |
 | port | 8443 by default | **no defaults at all** — the port must be in both `EAPI_PORT` and `EAPI_ALLOW_PORTS` |
 | transport | https; http with an explicit flag | **https only** — cleartext with operator credentials is refused even with the flag |
-| model pin | must NOT be `DCS-7050TX-64` | must be exactly `DCS-7050TX-64` (`HARDWARE_MODEL_NAMES`) |
+| model pin | must NOT be a `DCS-7050TX-64…` name | must be exactly one of `DCS-7050TX-64` / `DCS-7050TX-64-R` (`HARDWARE_MODEL_NAMES`, exact set — **DR-131**) |
 | version pin | must be exactly `4.28.14M` | must be exactly `4.28.13.1M` (`HARDWARE_IMAGE_VERSION`) — no prefix, no "newer is fine": a fix release is a new pin decision (DR-116's never-widen rule cuts upward too) |
-| consent | — | `EAPI_HW_CONSENT` must echo the model name — a wrong or unexpected box fails the echo |
-| after all env gates | `matchesDeviceIdentity` compares the device's own `show version` answer against every pin — the last say belongs to the device, not the env | same |
+| consent | — | `EAPI_HW_CONSENT` must echo the model name — a wrong or unexpected box fails the echo. It binds the **variant**: a `DCS-7050TX-64` echo against a `…-R` pin is `EAPI_HW_CONSENT_MISMATCH`. |
+| after all env gates | `matchesDeviceIdentity` compares the device's own `show version` answer against every pin — the last say belongs to the device, not the env | same — and that is how the 2026-11-08 session found the `-R` suffix: the env passed, the box said otherwise, nothing was captured. |
 
 The env-vs-env checks and the device self-report are both required, so *either* alone being wrong
 refuses the run. Loopback spellings are accepted for hardware sessions only when explicitly
 allow-listed — legitimate for an `ssh -L` operator tunnel — and then a *lab* box masquerading over
-the tunnel is caught by `matchesDeviceIdentity` (its `modelName` is not `DCS-7050TX-64`).
+the tunnel is caught by `matchesDeviceIdentity` (its `modelName` is not one of the pinned hardware
+names — a cEOS answer is `EAPI_MODEL_MISMATCH`, never a near miss).
+
+> **DR-132 — the lab corpus never writes a switch.** Pointing `npm run test:live` at a switch used to let
+> the `live-*.live.test.ts` **scratch-write** families stage real lines on the declared scratch port
+> (`default interface`, trunk/access writes) — only the DR-126 full-write families self-refused. Now
+> `requireScratchInterface` refuses the hardware class outright (`EAPI_HARDWARE_WRITE_FENCE`) and only
+> `src/hw-session-probe.live.test.ts` opts out, in code, behind its own consent chain. Lab-suite *reads*
+> still run unless you scope the file list — see §3.
 
 ## 2. Preparing the switch side (by hand, as the operator)
 
-1. Confirm the image: `show version` → `4.28.13.1M`, model `DCS-7050TX-64`. If either differs,
-   stop: this lane is pinned, and re-pinning is a DECISIONS.md change, not an env edit.
+1. Confirm the image: `show version` → `4.28.13.1M`, model `DCS-7050TX-64` **or** `DCS-7050TX-64-R`
+   (the airflow variant the 2026-11-08 unit reported — DR-131; copy the string out of `show version` and
+   use it verbatim for both `EAPI_ALLOW_MODEL` and the consent echo). If either differs, stop: this lane
+   is pinned, and re-pinning is a DECISIONS.md change, not an env edit.
 2. eAPI is already reachable (it has been, this whole project). Read the listener facts —
    `show management api http-commands` and `show management api http-commands https certificate` —
    these also feed §3 evidence. Do NOT change listener or ZTP state during this session;
    bootstrap/listener questions belong to #14 §2, not to a capture run.
-3. Trust material, both accepted forms:
-   - `EAPI_FINGERPRINT`: the SHA-256 of the server certificate — get it from the CLI above
-     (or `openssl s_client -connect <host>:443 </dev/null 2>/dev/null | openssl x509 -fingerprint -sha256 -noout` from a host that can reach it), or let the first refused run's error report peer vs pinned on a deliberate probe.
-   - `EAPI_CA_FILE`: path to the device's CA PEM (the `https certificate` read shows the cert;
-     the CA used to sign it lives in the switch's `end-entity` file — copy it down, do not trust
-     the network path to fetch it).
+3. Trust material — **the proven set is three variables, not a choice of two** (measured on the
+   2026-11-08 unit: `subject=CN=self.signed`, `issuer=CN=self.signed`, and *no extensions at all*, so
+   the eAPI certificate carries **no SAN** — the same shape as cEOS's `capi.pem`):
+
+   ```sh
+   # (a) the leaf, as a clean PEM: self-signed, so the leaf IS its own issuer/CA for verification
+   openssl s_client -connect <host>:443 </dev/null 2>/dev/null \
+     | openssl x509 -outform PEM > /tmp/eapi-<host>.pem
+   export EAPI_CA_FILE=/tmp/eapi-192.168.1.254.pem      # path or inline PEM both work
+   # (b) the pin — cross-check it against the file you just dumped, or you are pinning a different port
+   openssl x509 -in /tmp/eapi-<host>.pem -noout -fingerprint -sha256
+   export EAPI_FINGERPRINT='E6:A2:…:69:18'              # colons fine, quotes required
+   # (c) the verification NAME — Node's own check has no IP SAN to match, so it needs the subject CN
+   export EAPI_SERVER_NAME=self.signed
+   ```
+
+   Why each is needed, in the order they fail:
+   - **Pin alone is not a trust anchor.** `resolveTlsConnect` keeps `rejectUnauthorized: true`
+     (`transports/node-tls.ts`); `node-https.test.ts` pins that behaviour as
+     "pinning a fingerprint without a `ca` does not bypass chain verification (pin ⊂ trust, never a
+     replacement)". Against a self-signed device cert a pin-only run dies `TlsError: self signed
+     certificate`. The cEOS harness sets `EAPI_CA_FILE` **and** `EAPI_FINGERPRINT` for the same reason
+     (`scripts/ceos-lab.mjs:2690`).
+   - **The pin must be the hex only.** OpenSSL prints `sha256 Fingerprint=AA:BB:…`; the `Fingerprint=`
+     prefix is *not* stripped (`normalizeFingerprint` removes `0x` and `[\s:._-]` only), so pasting the
+     whole line fails with `fingerprint must be 64 hex digits (SHA-256) or 40 hex digits (SHA-1)`.
+     Colon-separated, spaces, dashes and dots are all accepted; 64 hex → SHA-256, 40 hex → SHA-1.
+   - **A pin does not waive the name check.** With no SAN and an `EAPI_HOST` that is an IP, the run dies
+     `Hostname/IP does not match certificate's altnames`. `EAPI_SERVER_NAME` carries the subject CN so
+     Node's CN fallback has a chance — exactly what the lab harness derives mechanically
+     (`ceos-lab.mjs:356-367`, injected at `:2693`). If the device CN is not DNS-shaped, that is a §3
+     finding, not something to loosen around.
+   - Keep the CLI reads too (`… https certificate`): they are §3 evidence, and `EAPI_CA_FILE` may equally
+     be the switch's issuing CA if you prefer anchoring there — but then pin *that* cert's fingerprint,
+     since the served leaf is what the transport compares.
 4. Decide the one **scratch interface**: an unused front-panel port (`Ethernet1`–`Ethernet64`).
    Verify it yourself (cable out, no LAG member) — the runner also refuses at commit time if
    `show interfaces <i> status` answers `connected`/`errdisabled`, but the *declaration* is yours.
-5. The capture user: an eAPI user with `network-api` role suffices for reads; if its role needs
+   Note what the declaration is now worth: with DR-132, naming a scratch port in a hardware env no longer
+   authorises the lab suites to write it.
+5. Clear stale sessions before you start. A run that died mid-batch leaves a named session pending on the
+   switch *and* a DR-025 journal entry that refuses the next `configure terminal` with
+   `cannot configure() in terminal mode while config session "…" is open`. From the CLI:
+
+   ```
+   show configuration sessions
+   configure session <name> abort
+   ```
+
+   Names this lane leaves behind are recognisable: `hw-probe-<batch>` (this lane) and `m12c-sp-*` /
+   `<suite>-<label>-r<runid>` (the lab corpus).
+6. The capture user: an eAPI user with `network-api` role suffices for reads; if its role needs
    `enable`, also set `EAPI_ENABLE_PASS` (never in shell history — `read -rs`).
 
 ## 3. Running batch 1 — read-only inventory
 
-From the repo root, with everything explicit (this is the point, not ceremony):
+From the repo root, with everything explicit (this is the point, not ceremony). The block below is the
+shape the 2026-11-08 session verified: the first five attempts failed on the missing name check, and
+with `EAPI_SERVER_NAME` set the switch answered `show version` on the first try:
 
 ```sh
 export EAPI_LIVE=1
@@ -64,14 +123,29 @@ export EAPI_PORT=443
 export EAPI_ALLOW_PORTS=443
 export EAPI_USER=<apiuser>
 export EAPI_PASS_VAR=EAPI_HW_PW            # read -rs EAPI_HW_PW '<the password>'; never inline
-export EAPI_ALLOW_MODEL=DCS-7050TX-64
+export EAPI_ALLOW_MODEL=DCS-7050TX-64-R    # verbatim from `show version` — see §2.1 (DR-131)
 export EAPI_ALLOW_VERSION=4.28.13.1M
-export EAPI_HW_CONSENT=DCS-7050TX-64
-export EAPI_FINGERPRINT=<sha256-hex-from-step-2>   # or EAPI_CA_FILE=<path>
+export EAPI_HW_CONSENT=DCS-7050TX-64-R     # must echo the pin, variant included
+export EAPI_CA_FILE=/tmp/eapi-<host>.pem   # the leaf PEM, self-signed (see §2.3)
+export EAPI_FINGERPRINT='<sha256 hex, colons ok, no "Fingerprint=" label>'
+export EAPI_SERVER_NAME=self.signed        # the cert has no SAN; without this every call dies in TLS
 export EAPI_HW_SCRUB=<hostname>,<mgmt-ip>,<lab-domain>   # literals scrubbed from every value
 export EAPI_HW_CAPTURE=1                   # THE write opt-in: files land, overwrite allowed
-npm run test:live -w arista-api-client
 ```
+
+**Scope the run to the hardware files.** `npm run test:live` runs the whole live project — all 21 files —
+and this lane shares that project with the lab corpus. Since DR-132 the lab suites can no longer write a
+switch (their scratch families self-refuse with `EAPI_HARDWARE_WRITE_FENCE`), but their **read** cases
+still run, and their expectations are pinned to container provisioning, so their output is not §3
+evidence (DR-043). Batch 1 is one file:
+
+```sh
+npx vitest run -w arista-api-client --project live src/hw-inventory.live.test.ts
+```
+
+If you want the lab corpus against the switch deliberately as an extra read pass, run it separately and
+keep its log out of the evidence commit; the CI shape excludes the hardware files the other way
+(`test:live -- --exclude 'src/hw-*.live.test.ts'`, §5 row 230/DR-128(c)).
 
 `src/hw-inventory.live.test.ts` runs `HW_INVENTORY_CATALOG` (`src/testing/hw-capture.ts`) — every
 family the cEOS lane captures **plus** the target-sensitive §3 shows (`show license features/all`,
@@ -95,11 +169,16 @@ forbidden families refused per §3; commit batches fenced to indented children o
 
 ```sh
 # same environment as batch 1, then:
-export EAPI_SCRATCH_INTERFACE=Ethernet44       # the port from step 2.4 (guard-checked)
+export EAPI_SCRATCH_INTERFACE=Ethernet<n>      # the port from step 2.4 (guard-checked, §2.5 first)
 export EAPI_HW_PROBE_SPEC=$PWD/arista-api-client/docs/hw-session-probes.draft.json
 export EAPI_HW_SESSION_PROBE=1                 # THE session opt-in
 npx vitest run src/hw-session-probe.live.test.ts -w arista-api-client --project live
 ```
+
+This is the **only** lane the guard lets mutate a switch: it states the exception in code
+(`requireScratchInterface(target, { hardwareSessionProbe: true })`), and every other live suite gets
+`EAPI_HARDWARE_WRITE_FENCE` from that same gate (DR-132). Keep the file-scoped command — batch 2/3 opens
+real config sessions, and an unscoped run would also walk the lab corpus's reads over the same port.
 
 Each batch opens `configure session hw-probe-<name>`, stages, records `session.diff()` +
 `show configuration sessions[ detail]`, and **aborts** unless the batch is `allowCommit` — which
@@ -115,5 +194,13 @@ as `configure-session-<name>--hw-session-probe`.
   naming model/version verbatim (that is what unblocks DR-043's hardware gate on the UI contracts).
 - Open items 4/5/7/8 and the licensing/TCAM/LAG questions get DECISIONS.md answers or explicit
   refusals — never container substitutions.
+- Expect the directory name the device earned: `recordings/7050tx-64-r-4.28.13.1M/` for this unit, and
+  `hw-inventory` prints case names/bytes/scrub-counts per case — review the `git diff` before committing,
+  the JSON itself is the review.
+- Re-read `show configuration sessions` on the switch after the run. Anything left pending is either a
+  batch that died mid-flight (abort it from the CLI, §2.5) or the lane's own deliberate
+  `hw-probe-<batch>` orphan experiment — the two are distinguished by the probe spec, not by luck.
 - If the run refused: print the guard code, fix the env, re-run. Never loosen a pin to make a
-  refusal go away; the pin *is* the finding if the device disagrees with it.
+  refusal go away; the pin *is* the finding if the device disagrees with it — which is precisely how
+  DR-131 happened. The one legitimate change is a new exact entry in `HARDWARE_MODEL_NAMES` with a
+  DECISIONS.md entry naming the evidence, and the refusal text tells you when that is the case.
