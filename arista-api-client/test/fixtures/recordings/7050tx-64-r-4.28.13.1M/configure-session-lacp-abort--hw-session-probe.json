@@ -12,7 +12,7 @@
   },
   "captures": [
     {
-      "requestId": "7af23c8657b0-1",
+      "requestId": "62802d9b6a81-1",
       "commands": [
         "enable",
         "configure session hw-probe-lacp-abort description \"implicit Port-Channel creation + mode syntax inside a se\"",
@@ -28,7 +28,7 @@
       ]
     },
     {
-      "requestId": "7af23c8657b0-2",
+      "requestId": "62802d9b6a81-2",
       "commands": [
         "enable",
         "configure session hw-probe-lacp-abort description \"implicit Port-Channel creation + mode syntax inside a se\"",
@@ -43,12 +43,12 @@
           "output": ""
         },
         {
-          "output": "--- system:/running-config\n+++ session:/hw-probe-lacp-abort-session-config\n@@ -31,6 +31,8 @@\n !\n interface Port-Channel20\n !\n+interface Port-Channel999\n+!\n interface Ethernet1\n    description to_10g_multigig_switch\n !\n@@ -84,6 +86,7 @@\n !\n interface Ethernet22\n    description HW-CAPTURE-PROBE\n+   channel-group 999 mode active\n !\n interface Ethernet23\n !\n"
+          "output": "--- system:/running-config\n+++ session:/hw-probe-lacp-abort-session-config\n@@ -31,6 +31,8 @@\n !\n interface Port-Channel20\n !\n+interface Port-Channel999\n+!\n interface Ethernet1\n    description to_10g_multigig_switch\n !\n@@ -85,6 +87,7 @@\n interface Ethernet22\n    description HW-CAPTURE-PROBE\n    mtu 9214\n+   channel-group 999 mode active\n !\n interface Ethernet23\n !\n"
         }
       ]
     },
     {
-      "requestId": "7af23c8657b0-3",
+      "requestId": "62802d9b6a81-3",
       "commands": [
         "enable",
         "configure session hw-probe-lacp-abort description \"implicit Port-Channel creation + mode syntax inside a se\"",
@@ -62,7 +62,7 @@
       ]
     },
     {
-      "requestId": "7af23c8657b0-4",
+      "requestId": "62802d9b6a81-4",
       "commands": [
         "enable",
         "show configuration sessions"
@@ -78,7 +78,7 @@
       ]
     },
     {
-      "requestId": "7af23c8657b0-5",
+      "requestId": "62802d9b6a81-5",
       "commands": [
         "enable",
         "show configuration sessions detail"
@@ -89,15 +89,7 @@
         {
           "maxSavedSessions": 1,
           "maxOpenSessions": 5,
-          "sessions": {
-            "hw-probe-scratch-description": {
-              "instances": {},
-              "state": "completed",
-              "commitUser": "svaj",
-              "description": "\"commit round-trip on the designated scratch port: descri\"",
-              "completedTime": 1794189394.6353116
-            }
-          }
+          "sessions": {}
         }
       ]
     }

@@ -12,7 +12,7 @@
   },
   "captures": [
     {
-      "requestId": "1ae57cbfbf23-1",
+      "requestId": "9dc759a05e97-1",
       "commands": [
         "enable",
         "configure session hw-probe-vlan-inline-name description \"run-2 answer, now its own batch: is the one-line `vlan <\"",
@@ -34,7 +34,7 @@
       }
     },
     {
-      "requestId": "1ae57cbfbf23-2",
+      "requestId": "9dc759a05e97-2",
       "commands": [
         "enable",
         "configure session hw-probe-vlan-inline-name description \"run-2 answer, now its own batch: is the one-line `vlan <\"",
@@ -54,7 +54,7 @@
       ]
     },
     {
-      "requestId": "1ae57cbfbf23-3",
+      "requestId": "9dc759a05e97-3",
       "commands": [
         "enable",
         "configure session hw-probe-vlan-inline-name description \"run-2 answer, now its own batch: is the one-line `vlan <\"",
@@ -68,7 +68,7 @@
       ]
     },
     {
-      "requestId": "1ae57cbfbf23-4",
+      "requestId": "9dc759a05e97-4",
       "commands": [
         "enable",
         "show configuration sessions"
@@ -84,7 +84,7 @@
       ]
     },
     {
-      "requestId": "1ae57cbfbf23-5",
+      "requestId": "9dc759a05e97-5",
       "commands": [
         "enable",
         "show configuration sessions detail"
@@ -95,15 +95,7 @@
         {
           "maxSavedSessions": 1,
           "maxOpenSessions": 5,
-          "sessions": {
-            "hw-probe-scratch-description": {
-              "instances": {},
-              "state": "completed",
-              "commitUser": "svaj",
-              "description": "\"commit round-trip on the designated scratch port: descri\"",
-              "completedTime": 1794189394.635311
-            }
-          }
+          "sessions": {}
         }
       ]
     }

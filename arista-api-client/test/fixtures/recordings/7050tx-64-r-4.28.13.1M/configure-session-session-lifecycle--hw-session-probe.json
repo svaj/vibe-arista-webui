@@ -12,7 +12,7 @@
   },
   "captures": [
     {
-      "requestId": "e81de72f4f77-1",
+      "requestId": "3e0cb552c547-1",
       "commands": [
         "enable",
         "configure session hw-probe-session-lifecycle description \"named session + description + a no-op stage line: open/d\"",
@@ -28,7 +28,7 @@
       ]
     },
     {
-      "requestId": "e81de72f4f77-2",
+      "requestId": "3e0cb552c547-2",
       "commands": [
         "enable",
         "configure session hw-probe-session-lifecycle description \"named session + description + a no-op stage line: open/d\"",
@@ -48,7 +48,7 @@
       ]
     },
     {
-      "requestId": "e81de72f4f77-3",
+      "requestId": "3e0cb552c547-3",
       "commands": [
         "enable",
         "configure session hw-probe-session-lifecycle description \"named session + description + a no-op stage line: open/d\"",
@@ -62,7 +62,7 @@
       ]
     },
     {
-      "requestId": "e81de72f4f77-4",
+      "requestId": "3e0cb552c547-4",
       "commands": [
         "enable",
         "show configuration sessions"
@@ -78,7 +78,7 @@
       ]
     },
     {
-      "requestId": "e81de72f4f77-5",
+      "requestId": "3e0cb552c547-5",
       "commands": [
         "enable",
         "show configuration sessions detail"
@@ -89,15 +89,7 @@
         {
           "maxSavedSessions": 1,
           "maxOpenSessions": 5,
-          "sessions": {
-            "hw-probe-scratch-description": {
-              "instances": {},
-              "state": "completed",
-              "commitUser": "svaj",
-              "description": "\"commit round-trip on the designated scratch port: descri\"",
-              "completedTime": 1794189394.6353111
-            }
-          }
+          "sessions": {}
         }
       ]
     }

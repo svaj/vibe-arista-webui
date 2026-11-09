@@ -12,7 +12,7 @@
   },
   "captures": [
     {
-      "requestId": "5590cc4345e9-1",
+      "requestId": "42f725059573-1",
       "commands": [
         "enable",
         "configure session hw-probe-ip-routing description \"global `ip routing` acceptance inside a named session (a\"",
@@ -26,7 +26,7 @@
       ]
     },
     {
-      "requestId": "5590cc4345e9-2",
+      "requestId": "42f725059573-2",
       "commands": [
         "enable",
         "configure session hw-probe-ip-routing description \"global `ip routing` acceptance inside a named session (a\"",
@@ -41,12 +41,12 @@
           "output": ""
         },
         {
-          "output": "--- system:/running-config\n+++ session:/hw-probe-ip-routing-session-config\n@@ -176,7 +176,7 @@\n interface Management1\n    ip address <hw-redacted>/24\n !\n-no ip routing\n+ip routing\n !\n monitor session 1 source Ethernet37\n monitor session 1 destination Ethernet3\n"
+          "output": "--- system:/running-config\n+++ session:/hw-probe-ip-routing-session-config\n@@ -177,7 +177,7 @@\n interface Management1\n    ip address <hw-redacted>/24\n !\n-no ip routing\n+ip routing\n !\n monitor session 1 source Ethernet37\n monitor session 1 destination Ethernet3\n"
         }
       ]
     },
     {
-      "requestId": "5590cc4345e9-3",
+      "requestId": "42f725059573-3",
       "commands": [
         "enable",
         "configure session hw-probe-ip-routing description \"global `ip routing` acceptance inside a named session (a\"",
@@ -60,7 +60,7 @@
       ]
     },
     {
-      "requestId": "5590cc4345e9-4",
+      "requestId": "42f725059573-4",
       "commands": [
         "enable",
         "show configuration sessions"
@@ -76,7 +76,7 @@
       ]
     },
     {
-      "requestId": "5590cc4345e9-5",
+      "requestId": "42f725059573-5",
       "commands": [
         "enable",
         "show configuration sessions detail"
@@ -87,15 +87,7 @@
         {
           "maxSavedSessions": 1,
           "maxOpenSessions": 5,
-          "sessions": {
-            "hw-probe-scratch-description": {
-              "instances": {},
-              "state": "completed",
-              "commitUser": "svaj",
-              "description": "\"commit round-trip on the designated scratch port: descri\"",
-              "completedTime": 1794189394.6353106
-            }
-          }
+          "sessions": {}
         }
       ]
     }

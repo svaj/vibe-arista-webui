@@ -12,7 +12,7 @@
   },
   "captures": [
     {
-      "requestId": "20d43599a484-1",
+      "requestId": "c6aa3982e3c7-1",
       "commands": [
         "enable",
         "configure session hw-probe-switchport-l2-baseline description \"DR-029 precondition on the real SKU: plain `switchport` \"",
@@ -30,7 +30,7 @@
       ]
     },
     {
-      "requestId": "20d43599a484-2",
+      "requestId": "c6aa3982e3c7-2",
       "commands": [
         "enable",
         "configure session hw-probe-switchport-l2-baseline description \"DR-029 precondition on the real SKU: plain `switchport` \"",
@@ -45,12 +45,12 @@
           "output": ""
         },
         {
-          "output": "--- system:/running-config\n+++ session:/hw-probe-switchport-l2-baseline-session-config\n@@ -84,6 +84,7 @@\n !\n interface Ethernet22\n    description HW-CAPTURE-PROBE\n+   switchport mode trunk\n !\n interface Ethernet23\n !\n"
+          "output": "--- system:/running-config\n+++ session:/hw-probe-switchport-l2-baseline-session-config\n@@ -85,6 +85,7 @@\n interface Ethernet22\n    description HW-CAPTURE-PROBE\n    mtu 9214\n+   switchport mode trunk\n !\n interface Ethernet23\n !\n"
         }
       ]
     },
     {
-      "requestId": "20d43599a484-3",
+      "requestId": "c6aa3982e3c7-3",
       "commands": [
         "enable",
         "configure session hw-probe-switchport-l2-baseline description \"DR-029 precondition on the real SKU: plain `switchport` \"",
@@ -64,7 +64,7 @@
       ]
     },
     {
-      "requestId": "20d43599a484-4",
+      "requestId": "c6aa3982e3c7-4",
       "commands": [
         "enable",
         "show configuration sessions"
@@ -80,7 +80,7 @@
       ]
     },
     {
-      "requestId": "20d43599a484-5",
+      "requestId": "c6aa3982e3c7-5",
       "commands": [
         "enable",
         "show configuration sessions detail"
@@ -91,15 +91,7 @@
         {
           "maxSavedSessions": 1,
           "maxOpenSessions": 5,
-          "sessions": {
-            "hw-probe-scratch-description": {
-              "instances": {},
-              "state": "completed",
-              "commitUser": "svaj",
-              "description": "\"commit round-trip on the designated scratch port: descri\"",
-              "completedTime": 1794189394.6353114
-            }
-          }
+          "sessions": {}
         }
       ]
     }

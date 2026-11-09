@@ -307,6 +307,33 @@ source (pyeapi 1.0.4-rc0).
 > (completed-session slot empty, every canonical opener free; the rev-5 restore runs last and returns the
 > port to the empty pre-probe stanza the run-1 inventory captured; expect ~4 min inside `commit-timer`).
 
+> **2026-11-09, run 6 (main at `548f594` = #114 merged, spec rev 5): the first CLEAN pass — 17/17 batches,
+> 5 commits, 0 opener refusals, 100% green, `DONE` printed.** The run card above executed exactly as
+> planned and the read-back prints (now honest — `hwReadBackOutput`) agree with the captures for the first
+> time: commit batches returned `scratch block 3 line(s); markers still on the port: HW-CAPTURE-PROBE /
+> HWPROBE-TIMER`, and after `scratch-restore` committed, the port block read **1 line — a bare
+> `interface Ethernet22`**: the two lines the probe lane owed since run 2 are gone, and that is
+> recording-verified (the restore session's diff removed exactly `description HW-CAPTURE-PROBE` +
+> `mtu 9214`), not inferred from the console like the run-5 lesson demanded. §3's device sweep on this
+> box is therefore DONE except the deliberately-deferred families. New answers run 6 added: a **0-line
+> (no-op) commit is ACCEPTED** — `scratch-description`, `scratch-mtu` and `scratch-switchport-restore-order`
+> re-staged values the port already carried (run 5 left them), diffed 0 lines, and committed anyway,
+> parking their names like any commit (`configure-session-scratch-description--hw-session-probe.json`
+> embeds the 0-line diff plus the `state: completed` entry); DR-137's rotation reconfirmed (each later
+> canonical opener worked because the fresh commit displaced the last saved entry); commit-timer reproduced
+> end-to-end (same `pendingCommitTimer`, `commitBy` 743985 vs run 5's 704038 on the uptime clock — the
+> ~11 h gap matches the two wall-clock runs almost exactly, which corroborates the uptime reading); the
+> `commit-timer` block-check refused nothing again. **Switch state now:** Ethernet22's stanza is EMPTY
+> (net-zero debt paid), `no ip routing` remains the saved state, no pending sessions, and the single
+> completed-session slot holds **`hw-probe-scratch-restore`** — the last plain commit — so the next
+> scratch run's `scratch-restore` opener will refuse once and retry under the run tag. Remaining device
+> §3 asks (all deferred-by-design): the second-`commit`-confirms-or-resets half of item 5 (needs the
+> `commit <intf> verify`/`revert <intf>` pair, which this repo still refuses to compose unread), the
+> longest-name/charset session boundary and description quote-depth + `no-commit` (items 7/8 — adversarial
+> names/descriptions do not belong on the one-scratch-port licence), and the bare `show session-config`
+> form (still missing). A further full run is optional from here: the sweep's open lines cannot be
+> answered by re-running rev 5.
+
 Run the software/schema subset against cEOS first and store captures under
 `test/fixtures/recordings/ceos-4.28.14M/`; repeat target-sensitive checks on the
 7050TX-64 under `recordings/7050tx-64-4.28.13.1M/`. Keep exact version/model metadata,

@@ -9,6 +9,22 @@ surprise here — this file records what shipped, the migration map records what
 
 ## [Unreleased]
 
+### Evidence — probe run 6: the first CLEAN full pass, and the scratch port is finally net-zero (2026-11-09 09:48; DR-137 close + §5 row 238)
+- 17/17 batches with #114's code and spec rev 5: 0 opener refusals, 5 commits, 0 harness faults, `DONE` printed,
+  suite green — all 17 probe recordings refreshed under `recordings/7050tx-64-r-4.28.13.1M/`.
+- **The `description HW-CAPTURE-PROBE` + `mtu 9214` the lane owed since run 2 is PAID**: the rev-5 restore
+  committed, its session diff removed exactly those two lines, and the post-restore read-back in the capture is a
+  bare `interface Ethernet22` — an empty stanza, verified from the recording (the run-5 lesson: console prints are
+  claims; this time they agree).
+- New device answer: a **0-line-diff (no-op) commit is ACCEPTED** and still parks the session name — three scratch
+  batches re-staged values the port already carried, diffed empty, committed anyway (DR-137's rotation semantics
+  reconfirmed: `scratch-mtu` and `scratch-switchport-restore-order` opened canonically right after
+  `scratch-description` parked, because each new commit displaces the saved entry).
+- `commit-timer` reproduced run 5 end-to-end; `commitBy` uptime continuity (704038 → 743985 ≈ the 11 h between the
+  two wall-clock starts) corroborates the uptime-clock interpretation.
+- Slot after run 6: `hw-probe-scratch-restore` (last plain commit) — a re-run refuses-and-retries exactly that one
+  opener. Both run-5 harness fixes (`hwReadBackOutput`, the `'<batch>'` summary crash) are now proven on hardware.
+
 ### Fixed — probe run 5, the first full pass: two lane-print defects that contradicted the recordings, and one invented restore token (2026-11-08; DR-137 + §5 row 237)
 - `docs/hw-session-probes.draft.json` (rev 5): `scratch-restore` is now exactly `no description` + `no mtu` —
   the two lines the box itself staged cleanly inside the very session that refused the next token, and the

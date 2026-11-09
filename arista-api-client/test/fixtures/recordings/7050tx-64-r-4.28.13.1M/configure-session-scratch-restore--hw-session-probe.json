@@ -12,7 +12,7 @@
   },
   "captures": [
     {
-      "requestId": "288db9a7cdab-1",
+      "requestId": "fcc8ee28db94-1",
       "commands": [
         "enable",
         "show interfaces Ethernet22 status"
@@ -42,36 +42,25 @@
       ]
     },
     {
-      "requestId": "288db9a7cdab-2",
+      "requestId": "fcc8ee28db94-2",
       "commands": [
         "enable",
         "configure session hw-probe-scratch-restore description \"cleanup toward the declared pre-session L2-default state\"",
         "interface Ethernet22",
         "   no description",
-        "   no mtu",
-        "   switchport mode auto",
-        "   switchport access vlan 1"
+        "   no mtu"
       ],
       "format": "json",
-      "error": {
-        "data": [
-          {},
-          {},
-          {},
-          {},
-          {},
-          {
-            "errors": [
-              "Invalid input (at token 2: 'auto')"
-            ]
-          }
-        ],
-        "message": "CLI command 6 of 7 '   switchport mode auto' failed: invalid command",
-        "code": 1002
-      }
+      "result": [
+        {},
+        {},
+        {},
+        {},
+        {}
+      ]
     },
     {
-      "requestId": "288db9a7cdab-3",
+      "requestId": "fcc8ee28db94-3",
       "commands": [
         "enable",
         "configure session hw-probe-scratch-restore description \"cleanup toward the declared pre-session L2-default state\"",
@@ -91,11 +80,11 @@
       ]
     },
     {
-      "requestId": "288db9a7cdab-4",
+      "requestId": "fcc8ee28db94-4",
       "commands": [
         "enable",
         "configure session hw-probe-scratch-restore description \"cleanup toward the declared pre-session L2-default state\"",
-        "abort"
+        "commit"
       ],
       "format": "json",
       "result": [
@@ -105,7 +94,23 @@
       ]
     },
     {
-      "requestId": "288db9a7cdab-5",
+      "requestId": "fcc8ee28db94-5",
+      "commands": [
+        "enable",
+        "show running-config interfaces Ethernet22"
+      ],
+      "format": "text",
+      "result": [
+        {
+          "output": ""
+        },
+        {
+          "output": "interface Ethernet22\n"
+        }
+      ]
+    },
+    {
+      "requestId": "fcc8ee28db94-6",
       "commands": [
         "enable",
         "show configuration sessions"
@@ -121,7 +126,7 @@
       ]
     },
     {
-      "requestId": "288db9a7cdab-6",
+      "requestId": "fcc8ee28db94-7",
       "commands": [
         "enable",
         "show configuration sessions detail"
@@ -132,7 +137,15 @@
         {
           "maxSavedSessions": 1,
           "maxOpenSessions": 5,
-          "sessions": {}
+          "sessions": {
+            "hw-probe-scratch-restore": {
+              "instances": {},
+              "state": "completed",
+              "commitUser": "svaj",
+              "description": "\"cleanup toward the declared pre-session L2-default state\"",
+              "completedTime": 1794235839.3797812
+            }
+          }
         }
       ]
     }
