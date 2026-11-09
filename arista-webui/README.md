@@ -2,7 +2,9 @@
 
 An operational web UI for an Arista switch, backed by the workspace eAPI client.
 Routed screens: `#/interfaces` (S1 #71 — every interface with link/protocol/admin state, MTU, LAG
-membership, the management-path answer, and staged `description` / `mtu` / `shutdown` writes) and
+membership, the management-path answer, and staged `description` / `mtu` / `shutdown` writes),
+`#/vlans/manage` (S2 #72 — the VLAN table with referencing config lines, staged create / rename /
+clear-name / state / delete writes, and trunk groups gated on the #67 capability verdict), and
 `#/vlans` (F6 #68 — VLAN inventory and access-port assignment).
 Changes are staged in a named EOS config session and require a reviewed device diff plus explicit
 confirmation before commit. Commits affect running-config only; startup-config is never saved implicitly.
