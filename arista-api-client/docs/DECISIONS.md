@@ -2369,7 +2369,7 @@ sends to this box — which is the answer §3 owed, and it is why the spec gaine
 `ip` arm stays legal in the resource because it must read configs that still spell it; that half is
 already pinned offline and needs no hardware claim.
 
-**Harness rule 1 — a config-session name is a one-slot resource on the box.** Run 5 reached
+**Harness rule 1 — a config-session name is a one-slot resource on the box.** Run 4 reached
 `scratch-description`, whose canonical name `hw-probe-scratch-description` had been **committed** by run 2,
 and the device refused the *opener*: `Error [1000] … 'configure session hw-probe-scratch-description
 description "…"' failed: could not run command`. The reason is visible in the same files:
@@ -2465,7 +2465,7 @@ config session and are **not read-only**:
    `ConfigSession#commitWithRevertTimer` (`config-session.ts:856`); the lane then reads the session table,
    asks whether an armed timer blocks a second session, reads `show startup-config` for the staged marker
    (the persistence question DR-035(c) refuses to assume), sits out the 2:00 deadline and re-reads the port.
-   NO device answer yet — that is run 6's job, including the case where the box refuses a timed commit
+   NO device answer yet — that is run 5's job, including the case where the box refuses a timed commit
    outright, which is also an answer. The `commit <intf> verify` / `revert <intf>` confirm-and-cancel arm is
    deliberately still unasked: the repo has never composed that pair for a device, and DR-135 is exactly what
    an invented spelling on a switch costs.)**

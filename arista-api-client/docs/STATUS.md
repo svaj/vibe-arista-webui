@@ -384,7 +384,7 @@ which needs explicit authorization on hardware and unconditional cleanup.
       through this client's own `ConfigSession#commitWithRevertTimer` (`config-session.ts:856`) and then reads
       the session table, asks whether the armed timer blocks a second `configure session`, reads
       `show startup-config` for the staged marker (DR-035(c)'s persistence question, asked rather than
-      assumed) and sits out the deadline to re-read the port. NO device answer yet — run 6 asks it, including
+      assumed) and sits out the deadline to re-read the port. NO device answer yet — the next run (run 5) asks it, including
       the answer "this SKU refuses a timed commit". The `commit <intf> verify` / `revert <intf>`
       confirm-and-cancel pair is deliberately unasked: this repo has never composed that pair for a device,
       and DR-135 is what an invented spelling on this box costs.)**

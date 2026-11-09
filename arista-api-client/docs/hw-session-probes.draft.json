@@ -38,7 +38,7 @@
     "again, and VRRP's v2 spelling was REFUSED: `vrrp 1 ip <addr>` -> `Unavailable command (This command",
     "is deprecated by 'vrrp ipv4')`. That last answer is a client question, not just a fact: this package",
     "composes `vrrp <n> ipv4 <addr>` on >= 4.21.3, so REV 4 asks the modern spelling too",
-    "(`vlan-interface-vrrp-ipv4`). Run 5 then stopped at scratch-description because the box refused the",
+    "(`vlan-interface-vrrp-ipv4`). Run 4 then stopped at scratch-description because the box refused the",
     "OPENER -- its completed-session slot (maxSavedSessions: 1) still holds the name run 2's commit",
     "parked there -- and the harness called abort() on the handle the client model had marked lost, so",
     "the client's own DR-023 error killed the loop before that batch's refusals reached disk (the",
