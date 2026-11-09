@@ -549,6 +549,23 @@ describe('the write-side gates (DR-035)', () => {
     expect(refusal?.code).toBe('EAPI_PERSISTENCE_REFUSED')
     expect(assertNoPersistenceCommand(['copy run start'])?.code).toBe('EAPI_PERSISTENCE_REFUSED')
   })
+
+  it('fences every lab-lane scratch write away from a physical switch (DR-132, #14 §3)', () => {
+    // The 2026-11-08 session: a hardware env passed the readiness gate for the lab suites, so the
+    // scratch-write families staged real lines on the switch port before the identity check stopped the
+    // run. requireLabFullWrite only covered the DR-126 families; this gate covers the scratch-only ones.
+    const target = accepted({ ...hwEnvLike(), EAPI_SCRATCH_INTERFACE: 'Ethernet22' })
+    expect(target.targetClass).toBe('hardware')
+    const fenced = requireScratchInterface(target)
+    expect('code' in fenced ? fenced.code : '').toBe('EAPI_HARDWARE_WRITE_FENCE')
+    if ('reason' in fenced) expect(fenced.reason).toMatch(/hw-session-probe/u)
+    // The one exempt call site states it in code, and states a name the guards already vet.
+    expect(requireScratchInterface(target, { hardwareSessionProbe: true })).toEqual({ ok: true, name: 'Ethernet22' })
+    // The opt-in is inert for a lab target — it cannot widen what the lab gate already refuses.
+    const lab = accepted(labEnv({ EAPI_SCRATCH_INTERFACE: 'Management0' }))
+    const stillRefused = requireScratchInterface(lab, { hardwareSessionProbe: true })
+    expect('code' in stillRefused ? stillRefused.code : '').toBe('EAPI_SCRATCH_INTERFACE_NOT_ETHERNET')
+  })
 })
 
 describe('operator output stays secret-free (DR-011)', () => {
@@ -667,6 +684,26 @@ describe('hardware class: the physical-switch gate profile (#14 §3)', () => {
     expect(refused(hwEnv({ EAPI_ALLOW_MODEL: 'DCS-7050SX-72' })).code).toBe('EAPI_ALLOW_MODEL_NOT_HARDWARE')
   })
 
+  it('accepts the -R variant the first supervised session reported, as an exact name only (DR-131)', () => {
+    // Evidence: the 2026-11-08 session's switch answered `show version` with modelName
+    // "DCS-7050TX-64-R", and the base pin refused the run before any byte was captured. The pin set now
+    // carries both spellings; the device self-report still decides which one a run may address.
+    const target = accepted(hwEnv({ EAPI_ALLOW_MODEL: 'DCS-7050TX-64-R', EAPI_HW_CONSENT: 'DCS-7050TX-64-R' }))
+    expect(target.allowModel).toBe('DCS-7050TX-64-R')
+    expect(matchesDeviceIdentity(target, { version: '4.28.13.1M', modelName: 'DCS-7050TX-64-R' })).toBeUndefined()
+    // The two spellings are never interchangeable: a base-pinned run still refuses this box.
+    expect(matchesDeviceIdentity(accepted(hwEnv()), { version: '4.28.13.1M', modelName: 'DCS-7050TX-64-R' })?.code).toBe('EAPI_MODEL_MISMATCH')
+    expect(matchesDeviceIdentity(target, { version: '4.28.13.1M', modelName: 'DCS-7050TX-64' })?.code).toBe('EAPI_MODEL_MISMATCH')
+    // Exact entries, not a suffix rule: admitting -R does not admit the rest of that name space.
+    for (const near of ['DCS-7050TX-64-RR', 'DCS-7050TX-64 R', 'DCS-7050TX64-R', 'DCS-7050TX-6']) {
+      expect(refused(hwEnv({ EAPI_ALLOW_MODEL: near, EAPI_HW_CONSENT: near })).code, near).toBe('EAPI_ALLOW_MODEL_NOT_HARDWARE')
+    }
+    // The consent echo binds the variant, so a run cannot echo the family and address the variant.
+    expect(refused(hwEnv({ EAPI_ALLOW_MODEL: 'DCS-7050TX-64-R', EAPI_HW_CONSENT: 'DCS-7050TX-64' })).code).toBe('EAPI_HW_CONSENT_MISMATCH')
+    // Crossover keeps working on the new member: a lab run may not claim either hardware spelling.
+    expect(refused(labEnv({ EAPI_ALLOW_MODEL: 'DCS-7050TX-64-R' })).code).toBe('EAPI_LAB_MODEL_IS_HARDWARE')
+  })
+
   it('refuses both wrong version pairings: the lab image on hardware, and a near miss of the switch pin', () => {
     expect(refused(hwEnv({ EAPI_ALLOW_VERSION: CEOS_LAB_IMAGE_VERSION })).code).toBe('EAPI_HW_VERSION_NOT_PIN')
     // DR-116's "never widen" applies upward too: a hypothetical fix release is a new decision, not a prefix.
@@ -702,10 +739,18 @@ describe('hardware class: the physical-switch gate profile (#14 §3)', () => {
     expect(rightBox).toBeUndefined()
   })
 
-  it('scratch-interface rules apply unchanged to a hardware target (DR-035(b) is not a lab-only rule)', () => {
+  it('a hardware scratch name is vetted by the same rules, and only the reviewed probe lane may use it (DR-035(b) + DR-132)', () => {
+    // Amended 2026-11-08: this case used to assert `requireScratchInterface(target)` answers ok for a
+    // hardware target. The first supervised session showed what that meant in practice — the lab lane's
+    // scratch-write families staged real lines on the switch — so the class fence (DR-132) now refuses
+    // non-hw-lane callers. What did NOT change: the exempt lane gets the identical name vetting.
     const target = accepted(hwEnv({ EAPI_SCRATCH_INTERFACE: 'Ethernet48' }))
-    expect(requireScratchInterface(target)).toEqual({ ok: true, name: 'Ethernet48' })
-    const noName = accepted(hwEnv())
-    expect(requireScratchInterface(noName)).toMatchObject({ code: 'EAPI_SCRATCH_INTERFACE_MISSING' })
+    expect(requireScratchInterface(target, { hardwareSessionProbe: true })).toEqual({ ok: true, name: 'Ethernet48' })
+    expect(requireScratchInterface(accepted(hwEnv()), { hardwareSessionProbe: true })).toMatchObject({ code: 'EAPI_SCRATCH_INTERFACE_MISSING' })
+    expect(requireScratchInterface(accepted(hwEnv({ EAPI_SCRATCH_INTERFACE: 'Management1' })), { hardwareSessionProbe: true })).toMatchObject({ code: 'EAPI_SCRATCH_INTERFACE_NOT_ETHERNET' })
+    expect(requireScratchInterface(accepted(hwEnv({ EAPI_SCRATCH_INTERFACE: 'Ethernet' })), { hardwareSessionProbe: true })).toMatchObject({ code: 'EAPI_SCRATCH_INTERFACE_INVALID' })
+    // Declaring a scratch port in a hardware env is not consent for a lab suite to write that port.
+    expect(requireScratchInterface(target)).toMatchObject({ code: 'EAPI_HARDWARE_WRITE_FENCE' })
+    expect(requireScratchInterface(accepted(hwEnv()))).toMatchObject({ code: 'EAPI_HARDWARE_WRITE_FENCE' })
   })
 })

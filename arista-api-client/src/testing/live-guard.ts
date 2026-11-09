@@ -53,11 +53,22 @@ export const CEOS_LAB_IMAGE_VERSION = '4.28.14M'
 export const DEFAULT_VERSION_TRAIN = '4.28'
 
 /**
- * The one hardware model this project targets, spelled as its own fixture spells it
- * (`test/fixtures/show/show-version--4.28.13.1M-dcs-7050tx-64.json:5`). Naming it lets the guard
+ * The exact hardware model names this project targets, spelled as its own fixture spells the base one
+ * (`test/fixtures/show/show-version--4.28.13.1M-dcs-7050tx-64.json:5`). Naming the set lets the guard
  * refuse the `EAPI_TARGET_CLASS=lab` + hardware-model pairing instead of discovering it later.
+ *
+ * `DCS-7050TX-64-R` was added by the first supervised switch session (2026-11-08): the unit answered
+ * `show version` with exactly that string, so the base pin refused the run with `EAPI_MODEL_MISMATCH`
+ * **before a single byte was captured** — the guard worked as designed, and the device (not the env)
+ * had the last say (DR-131). `-R` is the airflow variant of the same board, so addressing it belongs in
+ * this lane; that answer settles DECISIONS open item 1's spelling question and nothing else.
+ *
+ * The set is a list of EXACT names, never a prefix or suffix rule: accepting `-R` does not admit
+ * `DCS-7050TX-64-RR`, and any other suffix (or a `-SSD` class variant) is a new pin decision
+ * (DR-043/DR-116 never-widen). Adding a member changes *addressing* only — it is not a feature,
+ * TCAM or licensing claim, which stay open items 2/4/6 (DR-043).
  */
-export const HARDWARE_MODEL_NAMES: readonly string[] = ['DCS-7050TX-64']
+export const HARDWARE_MODEL_NAMES: readonly string[] = ['DCS-7050TX-64', 'DCS-7050TX-64-R']
 
 /**
  * Hosts a lab run may address. The lab target is reached through a Docker-published port on this
@@ -143,6 +154,7 @@ export type LiveRefusalCode =
   | 'EAPI_SCRATCH_INTERFACE_MISSING'
   | 'EAPI_SCRATCH_INTERFACE_INVALID'
   | 'EAPI_SCRATCH_INTERFACE_NOT_ETHERNET'
+  | 'EAPI_HARDWARE_WRITE_FENCE'
   | 'EAPI_SCRATCH_VLAN_MISSING'
   | 'EAPI_SCRATCH_VLAN_INVALID'
   | 'EAPI_LAB_FULL_WRITE_MISSING'
@@ -593,12 +605,38 @@ function escapeRegExp(value: string): string {
 }
 
 /**
+ * Which lane is asking for the scratch interface. Defaults to the lab lane, and that default is
+ * load-bearing: it is what keeps a hardware-shaped env from mutating a switch through a lab suite.
+ */
+export interface ScratchInterfaceGateOptions {
+  /**
+   * `true` only from `src/hw-session-probe.live.test.ts` — the one lane whose switch writes are fenced
+   * by their own consent chain (`EAPI_HW_SESSION_PROBE=1`, a probe spec reviewed on the PR, and the
+   * scratch-still-unused check before a commit batch). Everything else must take the refusal.
+   */
+  readonly hardwareSessionProbe?: boolean | undefined
+}
+
+/**
  * The write-side gate: DR-035(b) lets a live test touch only `EAPI_SCRATCH_INTERFACE`, and
  * docs/CEOS.md:131 keeps the management path out of test mutations — so a name must parse as an
  * interface (`validators.ts:97-99`, the same rule the resources use) **and** be an `Ethernet…`.
  * A write-side live test calls this and fails loudly when it is unset rather than picking an interface.
+ *
+ * The first class check is the hardware fence (DR-132): the readiness gate deliberately accepts a
+ * hardware env for every suite, and on 2026-11-08 that meant the *lab* lane's scratch writes really
+ * landed on a physical switch (`default interface Ethernet22`, trunk/access writes) before the identity
+ * check stopped the rest of the run. `requireLabFullWrite` only covered the DR-126 full-write families,
+ * so the fence for the scratch-only families sits here, at the gate every one of those suites already
+ * calls, rather than in 19 hand-written files a future suite can forget.
  */
-export function requireScratchInterface(target: LiveTarget): { ok: true; name: string } | LiveRefusal {
+export function requireScratchInterface(target: LiveTarget, options: ScratchInterfaceGateOptions = {}): { ok: true; name: string } | LiveRefusal {
+  if (target.targetClass === HARDWARE_TARGET_CLASS && options.hardwareSessionProbe !== true) {
+    return refusal(
+      'EAPI_HARDWARE_WRITE_FENCE',
+      'this scratch gate is the lab lane write gate: with EAPI_TARGET_CLASS=hardware the only allowed mutation path is src/hw-session-probe.live.test.ts running a reviewed probe spec (DR-124/DR-125/DR-132) — a lab suite staging lines on a switch port is exactly the accident that fence exists to prevent',
+    )
+  }
   const name = target.scratchInterface
   if (name === undefined) {
     return refusal('EAPI_SCRATCH_INTERFACE_MISSING', 'EAPI_SCRATCH_INTERFACE is not set — a write needs an explicitly named scratch port, never one inferred from `show interfaces` (DR-035(b), PLAN.md:394)')

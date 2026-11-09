@@ -9,6 +9,29 @@ surprise here — this file records what shipped, the migration map records what
 
 ## [Unreleased]
 
+### Changed — the hardware capture lane, from the first supervised 7050TX-64 sessions (2026-11-08; DR-131/DR-132 + §5 row 232)
+- `live-guard.ts` `HARDWARE_MODEL_NAMES` is now the **exact set** `DCS-7050TX-64` / `DCS-7050TX-64-R`:
+  the unit in front of the first session answered `show version` with the `-R` spelling, so a fully
+  gated run refused at `matchesDeviceIdentity` and captured nothing (the guard worked; the pin set was
+  the stale part). Exact members only — `-RR`, `DCS-7050TX-64 R`, `DCS-7050TX-6` stay refused, and a
+  base-pinned run still refuses a `-R` box. Evidence for this unit files under
+  `test/fixtures/recordings/7050tx-64-r-4.28.13.1M/`, since `targetSlug` derives the directory from what
+  the device reported.
+- **Live-lane behaviour change:** `requireScratchInterface(target, options?)` now refuses the
+  `hardware` target class with `EAPI_HARDWARE_WRITE_FENCE` unless the caller states
+  `{ hardwareSessionProbe: true }` — which only `src/hw-session-probe.live.test.ts` does, behind its own
+  consent chain. Before this, an unscoped `npm run test:live` against a switch let the **lab** corpus
+  stage real lines on the declared scratch port (`switchport mode trunk`, trunk allowed/native,
+  `default interface Ethernet22`); only the DR-126 full-write families self-refused. Nothing was ever
+  persisted (`copy run start` stays mechanically refused), and the exempt lane's name vetting is
+  unchanged. Both guards are mutation-checked.
+- `docs/HARDWARE-CAPTURE.md` corrected against measured device behaviour: the trust set is three
+  variables, not a choice of two — the eAPI cert is `CN=self.signed` with **no SAN**, so a fingerprint
+  pin alone still dies on chain verification and an IP host additionally needs `EAPI_SERVER_NAME`; the
+  pin parser accepts OpenSSL's colon form but not its printed `Fingerprint=` label; batch 1/2/3 are now
+  scoped to their own files; and a `show configuration sessions` cleanup step was added for sessions a
+  dead run leaves behind.
+
 ### Fixed — resource readers the first EXECUTED live corpus found wrong (cEOS-lab 4.28.14M, 2026-11-08; DR-128 + §5 row 230)
 - `vrrp`: `preemptDelayMin` / `preemptDelayReload` now read from the line the device actually keeps —
   4.28.14M folds both seconds onto ONE line (`vrrp N preempt delay minimum 150 reload 0`, each single-half
