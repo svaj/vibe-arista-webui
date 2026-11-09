@@ -48,4 +48,13 @@ describe('App composition (F6 chrome)', () => {
     expect(document.querySelectorAll('.skip-link')).toHaveLength(1)
     expect(screen.getByRole('heading', { level: 2, name: 'VLAN assignment' })).toBeInTheDocument()
   })
+
+  it('puts the S2 (#72) VLAN-management screen in the nav without stealing the home state', () => {
+    render(<App />)
+
+    const manage = screen.getByRole('link', { name: 'VLAN management' })
+    expect(manage).toHaveAttribute('href', '#/vlans/manage')
+    expect(manage).not.toHaveAttribute('aria-current', 'page')
+    expect(screen.getByRole('link', { name: 'VLAN assignment' })).toHaveAttribute('aria-current', 'page')
+  })
 })
