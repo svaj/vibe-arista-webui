@@ -1,0 +1,68 @@
+{
+  "format": "arista-eapi-recording/v1",
+  "identity": {
+    "targetSlug": "7050tx-64-r-4.28.13.1M",
+    "targetClass": "hardware",
+    "modelName": "DCS-7050TX-64-R",
+    "aristaVersion": "4.28.13.1M",
+    "versionNumber": "4.28.13.1",
+    "provenance": "captured",
+    "endpoint": "https://<hw-redacted>:443/command-api",
+    "topology": "supervised 7050TX-64 session; single device; recorder per case"
+  },
+  "captures": [
+    {
+      "requestId": "0c6ee340022b-1",
+      "commands": [
+        "enable",
+        "show ip route"
+      ],
+      "format": "json",
+      "result": [
+        {},
+        {
+          "vrfs": {
+            "default": {
+              "routes": {
+                "0.0.0.0/0": {
+                  "kernelProgrammed": true,
+                  "directlyConnected": false,
+                  "routeAction": "forward",
+                  "routeLeaked": false,
+                  "vias": [
+                    {
+                      "interface": "Management1",
+                      "nexthopAddr": "<hw-redacted>"
+                    }
+                  ],
+                  "metric": 0,
+                  "hardwareProgrammed": true,
+                  "routeType": "static",
+                  "preference": 1
+                },
+                "<hw-redacted>/24": {
+                  "kernelProgrammed": true,
+                  "directlyConnected": true,
+                  "routeAction": "forward",
+                  "routeLeaked": false,
+                  "vias": [
+                    {
+                      "interface": "Management1"
+                    }
+                  ],
+                  "hardwareProgrammed": true,
+                  "routeType": "connected"
+                }
+              },
+              "allRoutesProgrammedKernel": true,
+              "routingDisabled": true,
+              "allRoutesProgrammedHardware": true,
+              "defaultRouteState": "reachable"
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "incomplete": []
+}

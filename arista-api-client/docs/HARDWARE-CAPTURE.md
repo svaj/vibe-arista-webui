@@ -1,12 +1,11 @@
 # Hardware capture lane — the supervised 7050TX-64 session runbook
 
-Status: **built, addressed twice, still not captured** — the switching-on facts below come from the
-first supervised sessions on 2026-11-08 (unit `192.168.1.254`), which cleared the guard chain and the TLS
-trust path and then refused at the device's own `modelName` (DR-131) — so every byte of switch evidence
-this repo stores is still `hardwareEvidence:"none"` (DR-043), and `test/fixtures/recordings/` holds no
-`7050tx-64*` directory yet. This page exists for the one planned **switch session** (#14 §3): the
-operator sits at/beside the DCS-7050TX-64 (-R variant included, see §1) running **4.28.13.1M**, and the
-harness runs its read-only inventory plus the reviewed config-session probes against it, live.
+Status: **batch 1 EXECUTED and committed 2026-11-08** (PR #110 lane): 44 recordings + 9 device
+negatives under `test/fixtures/recordings/7050tx-64-r-4.28.13.1M/`, identity-stamped and scrubbed —
+as re-verified after the DR-133 fix (the first-write set leaked a running-config secret standing in
+KEY position and the mgmt IP in the envelopes; regenerated from the original bytes, originals never
+committed). Batches 2/3 (the reviewed config-session probes) remain to run. Container capture is a
+different lane with different rules — see [CEOS.md](./CEOS.md) for that one.
 
 Container capture is a different lane with different rules — see [CEOS.md](./CEOS.md) for that one.
 Nothing here shares bytes with it: hardware captures land under
@@ -192,6 +191,11 @@ as `configure-session-<name>--hw-session-probe`.
 
 - The §3 checklist boxes in `docs/STATUS.md` get checked **only** against recorded files, each
   naming model/version verbatim (that is what unblocks DR-043's hardware gate on the UI contracts).
+- The committed-tree suite (`recorder-node.test.ts`) is the last line: every recording under
+  `test/fixtures/recordings/` is text-scanned for crypt(3) hashes, un-redacted `secret`/`enable
+  password` payloads and private-key armour, and only doc-named slug directories are allowed — a
+  review miss cannot survive `npm test` (DR-133; batch 1 found exactly such a miss, in KEY position
+  of the running-config `cmds` object).
 - Open items 4/5/7/8 and the licensing/TCAM/LAG questions get DECISIONS.md answers or explicit
   refusals — never container substitutions.
 - Expect the directory name the device earned: `recordings/7050tx-64-r-4.28.13.1M/` for this unit, and

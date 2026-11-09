@@ -425,6 +425,12 @@ describe.skipIf(!readReady)('live client reads: pyeapi test/system/test_client.p
     // flash:/startup-config (No such file or directory)`), so the memo arm is exercised through the
     // device's honest answer — a raised CommandError per call — and the printed batch counts record what
     // the client actually re-asked (errors are not memoised: row 34's memo covers successful texts only).
+    // Existence is a TARGET property, not a client property: the first executed hardware read (2026-11-08,
+    // DR-131 session) answered `show startup-config` with a real 4,478 B config — a switch has one — so
+    // the second call is served from the memo and the wire count is 1. Since the fence (DR-132) leaves
+    // lab READS reachable on a hardware target, the assertion pins the memo rule outcome-conditionally:
+    // text-then-memo (1 batch) vs error-then-re-ask (2 batches). The regex line below still pins that
+    // the spelling is bare `show startup-config` (no `all`) on either branch.
     const startupOutcomes: string[] = []
     for (const pass of ['first', 'second'] as const) {
       try {
@@ -434,8 +440,9 @@ describe.skipIf(!readReady)('live client reads: pyeapi test/system/test_client.p
         startupOutcomes.push(`${pass}: ${rawErr.constructor.name}: ${rawErr.message.split('\n')[0]?.slice(0, 120) ?? ''}`)
       }
     }
-    console.log(`${SUITE}: startup-config evidence — ${JSON.stringify(startupOutcomes)}; batches mentioning startup: ${String(countMatching(batches, 'startup-config'))}`)
-    expect(countMatching(batches, 'startup-config')).toBe(2)
+    const startupHasText = /^first: text \d+ chars$/u.test(startupOutcomes[0] ?? '')
+    console.log(`${SUITE}: startup-config evidence — ${JSON.stringify(startupOutcomes)}; batches mentioning startup: ${String(countMatching(batches, 'startup-config'))} (existence=${startupHasText ? 'present: memoised' : 'absent: re-asked twice'})`)
+    expect(countMatching(batches, 'startup-config'), startupHasText ? 'a successful startup read must be memoised (row 34)' : 'an erroring startup read must not be memoised (row 34: memo covers successful texts only)').toBe(startupHasText ? 1 : 2)
     expect(batches.some((batch) => batch.some((line) => /^show startup-config$/u.test(line)))).toBe(true)
 
     // refresh() is the single invalidation point (row 34/DR-030).

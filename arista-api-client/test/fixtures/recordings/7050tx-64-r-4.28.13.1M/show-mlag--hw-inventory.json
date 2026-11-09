@@ -1,0 +1,44 @@
+{
+  "format": "arista-eapi-recording/v1",
+  "identity": {
+    "targetSlug": "7050tx-64-r-4.28.13.1M",
+    "targetClass": "hardware",
+    "modelName": "DCS-7050TX-64-R",
+    "aristaVersion": "4.28.13.1M",
+    "versionNumber": "4.28.13.1",
+    "provenance": "captured",
+    "endpoint": "https://<hw-redacted>:443/command-api",
+    "topology": "supervised 7050TX-64 session; single device; recorder per case"
+  },
+  "captures": [
+    {
+      "requestId": "067875147b8f-1",
+      "commands": [
+        "enable",
+        "show mlag"
+      ],
+      "format": "json",
+      "result": [
+        {},
+        {
+          "localInterface": "",
+          "state": "disabled",
+          "reloadDelay": 300,
+          "peerLink": "",
+          "dualPrimaryDetectionState": "disabled",
+          "reloadDelayNonMlag": 300,
+          "mlagPorts": {
+            "Disabled": 0,
+            "Active-partial": 0,
+            "Inactive": 0,
+            "Configured": 0,
+            "Active-full": 0
+          },
+          "portsErrdisabled": false,
+          "dualPrimaryPortsErrdisabled": false
+        }
+      ]
+    }
+  ],
+  "incomplete": []
+}

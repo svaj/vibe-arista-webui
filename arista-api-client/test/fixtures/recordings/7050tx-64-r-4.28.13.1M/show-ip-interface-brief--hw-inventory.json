@@ -1,0 +1,44 @@
+{
+  "format": "arista-eapi-recording/v1",
+  "identity": {
+    "targetSlug": "7050tx-64-r-4.28.13.1M",
+    "targetClass": "hardware",
+    "modelName": "DCS-7050TX-64-R",
+    "aristaVersion": "4.28.13.1M",
+    "versionNumber": "4.28.13.1",
+    "provenance": "captured",
+    "endpoint": "https://<hw-redacted>:443/command-api",
+    "topology": "supervised 7050TX-64 session; single device; recorder per case"
+  },
+  "captures": [
+    {
+      "requestId": "ca3b200f2b07-1",
+      "commands": [
+        "enable",
+        "show ip interface brief"
+      ],
+      "format": "json",
+      "result": [
+        {},
+        {
+          "interfaces": {
+            "Management1": {
+              "name": "Management1",
+              "interfaceStatus": "connected",
+              "interfaceAddress": {
+                "ipAddr": {
+                  "maskLen": 24,
+                  "address": "<hw-redacted>"
+                }
+              },
+              "ipv4Routable240": false,
+              "lineProtocolStatus": "up",
+              "mtu": 1500
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "incomplete": []
+}

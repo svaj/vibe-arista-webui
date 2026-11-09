@@ -1,0 +1,74 @@
+{
+  "format": "arista-eapi-recording/v1",
+  "identity": {
+    "targetSlug": "7050tx-64-r-4.28.13.1M",
+    "targetClass": "hardware",
+    "modelName": "DCS-7050TX-64-R",
+    "aristaVersion": "4.28.13.1M",
+    "versionNumber": "4.28.13.1",
+    "provenance": "captured",
+    "endpoint": "https://<hw-redacted>:443/command-api",
+    "topology": "supervised 7050TX-64 session; single device; recorder per case"
+  },
+  "captures": [
+    {
+      "requestId": "03b8f75052a2-1",
+      "commands": [
+        "enable",
+        "show mlag detail"
+      ],
+      "format": "json",
+      "result": [
+        {},
+        {
+          "localInterface": "",
+          "state": "disabled",
+          "reloadDelay": 300,
+          "peerLink": "",
+          "dualPrimaryDetectionState": "disabled",
+          "reloadDelayNonMlag": 300,
+          "mlagPorts": {
+            "Disabled": 0,
+            "Active-partial": 0,
+            "Inactive": 0,
+            "Configured": 0,
+            "Active-full": 0
+          },
+          "portsErrdisabled": false,
+          "dualPrimaryPortsErrdisabled": false,
+          "detail": {
+            "failoverCauseList": [
+              "Unknown"
+            ],
+            "udpHeartbeatsSent": 0,
+            "lacpStandby": false,
+            "mlagState": "disabled",
+            "heartbeatInterval": 4000,
+            "dualPrimaryNonMlagRecoveryDelay": null,
+            "effectiveHeartbeatInterval": 0,
+            "heartbeatTimeout": 0,
+            "stateChanges": 0,
+            "fastMacRedirectionEnabled": false,
+            "peerPortsErrdisabled": false,
+            "mlagHwReady": true,
+            "udpHeartbeatAlive": false,
+            "failoverInitiated": false,
+            "peerMlagState": "unknown",
+            "secondaryFromFailover": false,
+            "dualPrimaryMlagRecoveryDelay": null,
+            "primaryPriority": 32767,
+            "failover": false,
+            "enabled": false,
+            "peerMacRoutingSupported": true,
+            "peerPrimaryPriority": 0,
+            "udpHeartbeatsReceived": 0,
+            "peerMacAddress": "00:00:00:00:00:00",
+            "mountChanges": 0,
+            "heartbeatTimeoutsSinceReboot": 0
+          }
+        }
+      ]
+    }
+  ],
+  "incomplete": []
+}

@@ -2202,6 +2202,52 @@ suites is a bigger change than the runbook needs — `HARDWARE-CAPTURE.md` now s
 file instead. Open question kept honest: a mid-run wire failure still leaves the client-side DR-025
 journal holding the session name, so the runbook gained a `show configuration sessions` check step.
 
+### DR-133 — the hardware scrubber walks KEYS and the identity envelope; the recording tree grows a credential-leak scan
+The DR-132 lane shipped, `EAPI_ALLOW_MODEL` moved to the reported `-R` name, and batch 1 **executed**
+(2026-11-08 evening): 44 case files under `recordings/7050tx-64-r-4.28.13.1M/`, 9 recorded device
+negatives, zero write side effects (read-only by construction). Reviewing the diff before commit — the
+runbook's own step — found a live credential the scrubber had counted as clean:
+`username <user> privilege 15 role ops secret sha512 $6$<real hash>` sat verbatim in
+`show-running-config[-all]--hw-inventory.json`. Root cause is a shape fact the container lane had already
+learned and the hardware lane had not: **EOS answers `show running-config` (json) as a `cmds` object
+keyed by the config LINE**, so every secret-bearing line is a KEY, and `redactHwValue` walked only string
+VALUES. The proof it is a walker gap, not a rules gap: the text-form capture of the same command
+(`--hw-text`, where the config is one `output` string) scrubbed correctly in the same run. The lab lane's
+`redactCopy` (`scripts/ceos-lab.mjs:2246`) has always rewritten keys — with collision-safe renaming — and
+the committed cEOS `show-running-config.json` shows the scrubbed key; the hw re-entry of those rules had
+dropped the key walk. A second omission in the same review: `identity.endpoint` carries the switch's real
+management address in all 44 envelopes (`https://<mgmt-ip>:443/command-api`), untouched because
+`sanitizeHwRecording` only mapped captures — while docs/TESTING.md:131 says "redact identifying data as
+well as credentials", and this module's own preamble calls the hostname/IP "a lab map".
+
+Decision (all in `hw-capture.ts`): (1) the string-rule chain is extracted and applied to object **keys**
+as well as values — same rules, collision-safe renaming so a scrub can never drop a device entry — and
+value log paths ride the *scrubbed* key so the log stays secret-free even when the raw key was the secret
+line; (2) `sanitizeHwRecording` also scrubs the identity envelope's free-text fields (`endpoint`,
+`topology`, `image`), while `assertFixtureIdentity`/`loadRecordingFor` match fields
+(`targetSlug`/`modelName`/`aristaVersion`/`versionNumber`/`targetClass`/`provenance`) stay verbatim —
+they are the device's honest words; (3) the committed-tree suite grows a **credential-leak scan**
+(`recorder-node.test.ts`): every recording is read as TEXT and refused for crypt(3) hashes, un-redacted
+`secret …`/`enable … password` payloads, and PEM private-key armour — text scanning bites keys, values
+and raw bodies without the walker needing to know which is which, which is exactly what the pre-fix run
+would have needed. (4) Companion: `live-client`'s startup-config memo count was pinned to the container
+having no such file (`2` wire asks from error-memo non-caching); the switch HAS a startup-config, the
+memo served, and the hardware-target read pass correctly showed `1`. The assertion is now conditional on
+the device's answer (absent → 2, present → 1) — the memo rule itself is pinned either way, and this is
+the pattern for any later container-shape assumption the hardware read pass breaks (DR-043 applies to
+expectations, not just fixtures).
+
+Re-scrub, not re-capture: the 44 pre-fix files were regenerated from the original bytes through the
+fixed code path (`parseRecording` → `sanitizeHwRecording` → the same deterministic serializer), so the
+REPLAYABLE device answers are untouched — only the scrubber's output changed. The originals (with the
+hash) live only at `/tmp/hw-recordings-pre-fix/` on the session host and must never reach git; rotate
+the exposed `svaj` secret anyway — it crossed the wire daily for these sessions but sat in a reviewable
+candidate. The extras list for the envelope scrub was declared as the tree's own addressing literals
+(`192.168.1.254`, gateway/DNS `192.168.1.1`, broadcast `.0`); an operator re-running batch 1 sets them
+via `EAPI_HW_SCRUB` and the runbook's counts print the totals.
+**Mutated both half-rules to confirm the new tests bite** (key-walk off → the DR-133 case fails;
+identity walk off → the envelope case fails), and the leak scan passes against the cEOS tree unchanged.
+
 ## Open items (need the device)
 
 Use cEOS first for software behavior and schema exploration, recording its model/version;
@@ -2210,28 +2256,46 @@ read-only items can be swept with `runCmds`; items 5, 7 and 8 need a separate au
 config session and are **not read-only**:
 
 1. `modelName` exact string on this unit (`DCS-7050TX-64` vs `-SSD`) and `version`; drives DR-032.
-   **(Console half settled 2026-11-08: the supervised session's unit reports `DCS-7050TX-64-R` on
-   `4.28.13.1M`, and the guard refused the base pin until DR-131 added that exact spelling to the set —
-   the `-SSD` guess is not this box. The recorded half (`show version` as a fixture with `serialNum` and
-   the image string) still gates the §3 box; expect the capture under
-   `recordings/7050tx-64-r-4.28.13.1M/`.)**
+   **(Settled 2026-11-08 — the supervised session's unit reports `DCS-7050TX-64-R` on `4.28.13.1M`
+   (DR-131 refused the base pin until that exact spelling joined the set; the `-SSD` guess is not this
+   box), and the recorded half is now committed: `show-version--hw-inventory.json` carries `modelName
+   DCS-7050TX-64-R` / `internalVersion 4.28.13.1M-41622611.428131M`, with the serial field present but
+   `<hw-redacted-serial>` per the lane's asset policy.)**
 2. `show license features` + `show license all` + ArToggle state: whether VXLAN / VRF routing / MLAG are
    licensed on this SKU (decides whether `VxlanInterface` belongs in wave 3 or never — DR-004).
+   **(Captured on the `-R` unit 2026-11-08: this box reports ZERO optional features — `active: []`,
+   `missing: []`, `features: {}` — so nothing is licensed AND nothing is licensable-listed. Strong lean
+   toward "Vxlan never on this unit"; the config-level `vxlan interface` attempt in the §4 probe batch
+   is the definitive sentence before DR-004 closes.)**
 3. `show management api http-commands` + `show management api http-commands https certificate`:
    TLS versions/ssl-profile support (7050TX is ALE-era; `DEFAULT_TLS_PROTOCOLS = ['1.0','1.1','1.2']`
    in `HttpServiceConstants.py:44` looks stale but unconfirmed), and whether the intended config style
    uses `management api http-commands` or `management http-server` (mutually exclusive — DR-036).
+   **(Answered on the `-R` unit 2026-11-08: `tlsProtocol: ["1.0","1.1","1.2"]` — the image default is
+   live-truth on this box, not stale — with `httpsServer` running on 443 and the `http`/localhost/unix
+   servers `configured: false`; the configured style is `management api http-commands` (DR-036 half
+   settled for this switch), `fipsEnabled: false`; the cert PEM is captured but redacted at write, so
+   pinning rides `EAPI_FINGERPRINT` as §3 of the runbook now records.)**
 4. Does `switchport trunk group` exist on this SKU (DR-028) and what does
    `show interfaces switchport json` actually return? **(cEOS half settled 2026-11-07: the command is
    ACCEPTED on cEOS-lab 4.28.14M and the switchports model answers populated groups for configured
-   ports — `show-interfaces-switchport.json`, run `lab-1899774-8d6173`, DR-122. The 7050TX-64 half stays
-   open and is a #14 §3 line.)**
+   ports — `show-interfaces-switchport.json`, run `lab-1899774-8d6173`, DR-122. Hardware json-shape half
+   answered 2026-11-08 on the `-R` unit: `show-interfaces-switchport--hw-inventory.json` answers a 66-port
+   `switchports` map, every record exactly `{enabled, switchportInfo}` (no group field anywhere — but no
+   port has a configured group, so absence proves nothing about support). The remaining half — does the
+   `switchport trunk group` VERB exist on this SKU — is precisely what the §4 probe batch's
+   `switchport trunk group lab0` staging answers; §3's session-probe half stays with #14.)**
 5. `configure session <name> commit timer <hh:mm:ss>`: semantics of the confirming second `commit`
    (python layer verified, native `ConfigAgent`/`libCliSession` not inspected — DR-022).
 6. `features.md` is titled "Supported Features — Arista **7050X**" and carries FlexProfile footnotes,
    while the hardware is **DCS-7050TX-64** and this build exposes ALE `hardware tcam` /
    `system profile` instead. The feature matrix needs re-deriving from the correct SKU page — affects
    which modules ever get promised to the UI.
+   **(Half broken 2026-11-08: on the exact `-R` unit, `show hardware tcam`, `show hardware tcam profile`
+   AND `show systems` all answer `invalid command` (recorded negatives, §5 row 233) — the "this build
+   exposes ALE hardware tcam" sentence is false for those spellings on 4.28.13.1M. The re-derive must
+   pair the SKU page with the captured `show version --detail` hardware block; which command actually
+   answers TCAM/profile here is a fresh §3 line to probe.)**
 7. **Interface-name grammar on this unit** (DR-053): `assertInterfaceName` accepts exactly the six kind
    spellings pyeapi's `VALID_INTERFACES` lists (`interfaces.py:71-78`) plus an all-digit index. Unverified
    on the 7050TX-64 / 4.28.13.1M — and refused here rather than guessed — are subinterface forms
@@ -2239,6 +2303,12 @@ config session and are **not read-only**:
    kind upstream omits. Needs a `show interfaces description` (or equivalent) capture from the M12 (#14)
    sweep; M10 (#12) will widen the parser to the discriminated union PLAN asks for only once that
    evidence exists. Same class of open identifier question as item 1's `modelName`.
+   **(Evidence arrived 2026-11-08: 16 of the unit's 66 `show interfaces switchport` map keys are
+   `Ethernet49/1`…`Ethernet52/4` **slash-split front-panel ports** (same names in
+   `show interfaces status`) — which `assertInterfaceName`'s all-digit-index rule would REJECT — and no
+   subinterface or `Peer-Ethernet` form appears anywhere in the 80-key configs read. The slash-split
+   class is now device-confirmed, so M10 (#12) can widen the grammar to PLAN's discriminated union on
+   captured truth; `Ethernet1.100`-style subinterfaces and `Peer-Ethernet` remain unexercised.)**
 
 7. **Config-session name grammar on the 4.28.13.1M target and in cEOS** (DR-047): the longest
    `configure session <name>` EOS accepts and the character set it matches. `MAX_SESSION_NAME_LENGTH = 64`

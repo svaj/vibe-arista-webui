@@ -1,0 +1,32 @@
+{
+  "format": "arista-eapi-recording/v1",
+  "identity": {
+    "targetSlug": "7050tx-64-r-4.28.13.1M",
+    "targetClass": "hardware",
+    "modelName": "DCS-7050TX-64-R",
+    "aristaVersion": "4.28.13.1M",
+    "versionNumber": "4.28.13.1",
+    "provenance": "captured",
+    "endpoint": "https://<hw-redacted>:443/command-api",
+    "topology": "supervised 7050TX-64 session; single device; recorder per case"
+  },
+  "captures": [
+    {
+      "requestId": "3b1d39546256-1",
+      "commands": [
+        "enable",
+        "show version"
+      ],
+      "format": "text",
+      "result": [
+        {
+          "output": ""
+        },
+        {
+          "output": "Arista DCS-7050TX-64-R\nHardware version: 11.12\nSerial number: SSJ17171298\nHardware MAC address: 2899.3ab9.0b33\nSystem MAC address: 2899.3ab9.0b33\n\nSoftware image version: 4.28.13.1M\nArchitecture: i686\nInternal build version: 4.28.13.1M-41622611.428131M\nInternal build ID: 79df91a6-df08-40bc-b28b-185dc1d05e55\nImage format version: 3.0\nImage optimization: Strata-4GB\n\nUptime: 1 week, 1 day, 0 hours and 25 minutes\nTotal memory: 3982512 kB\nFree memory: 2556128 kB\n\n"
+        }
+      ]
+    }
+  ],
+  "incomplete": []
+}

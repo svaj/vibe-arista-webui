@@ -1,0 +1,72 @@
+{
+  "format": "arista-eapi-recording/v1",
+  "identity": {
+    "targetSlug": "7050tx-64-r-4.28.13.1M",
+    "targetClass": "hardware",
+    "modelName": "DCS-7050TX-64-R",
+    "aristaVersion": "4.28.13.1M",
+    "versionNumber": "4.28.13.1",
+    "provenance": "captured",
+    "endpoint": "https://<hw-redacted>:443/command-api",
+    "topology": "supervised 7050TX-64 session; single device; recorder per case"
+  },
+  "captures": [
+    {
+      "requestId": "9e79c44d7587-1",
+      "commands": [
+        "enable",
+        "show lldp neighbors"
+      ],
+      "format": "json",
+      "result": [
+        {},
+        {
+          "tablesLastChangeTime": 1793998915.252285,
+          "tablesAgeOuts": 1,
+          "tablesInserts": 62,
+          "lldpNeighbors": [
+            {
+              "ttl": 120,
+              "neighborDevice": "1c2a.a332.1d90",
+              "neighborPort": "TE5",
+              "port": "Ethernet1"
+            },
+            {
+              "ttl": 180,
+              "neighborDevice": "5c35.fc88.1820",
+              "neighborPort": "da9c.c65b.4969",
+              "port": "Ethernet13"
+            },
+            {
+              "ttl": 120,
+              "neighborDevice": "GR6EXX0C-1820",
+              "neighborPort": "5c35.fc88.1820",
+              "port": "Ethernet13"
+            },
+            {
+              "ttl": 3601,
+              "neighborDevice": "SVAJTOWER",
+              "neighborPort": "a036.9f30.278c",
+              "port": "Ethernet17"
+            },
+            {
+              "ttl": 3601,
+              "neighborDevice": "SVAJTOWER",
+              "neighborPort": "a036.9f30.278e",
+              "port": "Ethernet18"
+            },
+            {
+              "ttl": 120,
+              "neighborDevice": "1c2a.a332.1d90",
+              "neighborPort": "TE2",
+              "port": "Management1"
+            }
+          ],
+          "tablesDeletes": 56,
+          "tablesDrops": 0
+        }
+      ]
+    }
+  ],
+  "incomplete": []
+}

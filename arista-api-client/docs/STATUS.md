@@ -205,6 +205,28 @@ source (pyeapi 1.0.4-rc0).
 > this paragraph checks a box: it records what the first attempts proved about the lane, and the
 > read-only sweep still has to happen on a pinned run.
 
+> **2026-11-08, later (batch 1 EXECUTED — DR-133).** The scope fix + `-R` pin landed (PR #109) and
+> `hw-inventory` ran: **44 recordings under `recordings/7050tx-64-r-4.28.13.1M/`, 9 device negatives
+> recorded-as-answers** (`show systems`, `show environment {,temperature,cooling,last}`,
+> `show hardware tcam[ profile]`, `show lag resources`, `show port-channel detail` → `invalid command`
+> on this unit; `show startup-config` answered **`unconverted command` in JSON form** and the
+> text-form re-read produced the file — a DR-042-class json/text split, first seen on hardware). Pre-commit
+> review then caught the DR-133 redaction miss (a live `secret sha512 $6$…` hash survives as a running-config
+> **key**; the mgmt IP sat in all 44 `identity.endpoint` envelopes); the scrubber now walks keys and the
+> envelope, the 44 files were regenerated from the original bytes through the fixed code, and
+> `recorder-node.test.ts` text-scans every committed recording for credential residue on every `npm test`.
+> Device facts worth naming: `tlsProtocol: ["1.0","1.1","1.2"]` (open item 3 — the image's "stale-looking"
+> TLS default is EXACTLY what this unit answers), listener shape `management api http-commands` on 443
+> with http/localhost/unix servers off, license tables report **zero optional features** (`active: []`,
+> `missing: []`, `features: {}`), baseline `show configuration sessions` = `sessions: {}`,
+> `maxOpenSessions: 5` / `maxSavedSessions: 1` — hardware agrees with the cEOS field set — while the
+> `detail` form listed the earlier committed lab-lane session `m12a-intf-clear-Ethernet22`
+> (`state: completed`, `completedTime` present: the device keeps finished sessions up to the save cap;
+> the `m12c-sp-*` name from the refused run never reached the device at all). And the switchport capture
+> keys several ports as **`Ethernet52/1` / `Ethernet52/3`-style split names — the `EAPI_SCRATCH_INTERFACE`/
+> `assertInterfaceName` all-digit grammar would REJECT ports this device reports as real interfaces
+> (open item 7 now has device evidence; M10's parser must widen to the discriminated union accordingly).
+
 Run the software/schema subset against cEOS first and store captures under
 `test/fixtures/recordings/ceos-4.28.14M/`; repeat target-sensitive checks on the
 7050TX-64 under `recordings/7050tx-64-4.28.13.1M/`. Keep exact version/model metadata,
@@ -235,16 +257,41 @@ which needs explicit authorization on hardware and unconditional cleanup.
 > pending-session trick, `--capture-via` transport fallback per DR-123) live in
 > [scripts/ceos-lab.mjs](../../scripts/ceos-lab.mjs) and docs/CEOS.md.
 
-- [ ] `show version` → exact `modelName`, `version`, `serialNum`, image (console half settled
-      2026-11-08: `DCS-7050TX-64-R` on `4.28.13.1M` — DR-131 / open item 1; the recorded fixture and the
-      serial/image stay owed, and for this unit they land under `recordings/7050tx-64-r-4.28.13.1M/`)
-- [ ] `show license features` · `show license all` → which features are licensed (VXLAN/VRF/MLAG)
-- [ ] `show management api http-commands` · `… https certificate` → listeners, TLS versions, cert to pin
-- [ ] `show configuration sessions` → baseline orphan state before any test writes
-- [ ] `show interface switchport`-equivalent / `show interfaces <Eth1> switchport` → DR-028/DR-029 shape
+- [x] `show version` → exact `modelName`, `version`, `serialNum`, image — **captured on the `-R` unit**
+      (2026-11-08, `show-version[+detail]--hw-inventory(-text)`: `modelName DCS-7050TX-64-R`,
+      `version 4.28.13.1M`, `internalVersion 4.28.13.1M-41622611.428131M`; serial present but
+      `<hw-redacted-serial>` per the lane's asset policy — the field set and format are the evidence,
+      the number deliberately is not) — DR-131/DR-133
+- [x] `show license features` · `show license all` → which features are licensed (VXLAN/VRF/MLAG) —
+      **captured**; this unit reports **no optional features at all** (`active: []`, `missing: []`,
+      `features: {}`): nothing licensable is installed, which leans open item 2 toward "Vxlan never
+      on this unit" — the config-level probe (a `vxlan interface` attempt in the §3 scratch session)
+      is what closes the sentence
+- [x] `show management api http-commands` · `… https certificate` → listeners, TLS versions, cert to pin —
+      **captured**: `tlsProtocol: ["1.0","1.1","1.2"]` (the `HttpServiceConstants` default is confirmed
+      live, not stale on this unit), https server on 443 running / http / localhost / unix servers
+      `running: false, configured: false` (the DR-036 config style on this switch is
+      `management api http-commands`), the certificate read returns the PEM (redacted at write —
+      fingerprint pinning rides `EAPI_FINGERPRINT`, §3 TLS note above)
+- [x] `show configuration sessions` → baseline orphan state before any test writes — **captured**:
+      `sessions: {}` (clean — the refused run's name never reached the device), `maxOpenSessions: 5`,
+      `maxSavedSessions: 1`; the `detail` form adds `state/commitUser/completedTime` and keeps completed
+      sessions visible up to the cap
+- [x] `show interface switchport`-equivalent / `show interfaces <Eth1> switchport` → DR-028/DR-029 shape
+      — **captured** 2026-11-08 (`show-interfaces-switchport--hw-inventory`: 66-port `switchports` map,
+      per-port `{enabled, switchportInfo}` — the DR-029 read shape on real hardware; the global form is
+      what the catalog runs, and it answers per-port records inside it. Open item 4's `trunk group`
+      support sentence moves to the §4 probe batch, since no configured group exists to read.)
 - [ ] `show hardware tcam profile` / `show system profile`-family → replace the 7050X/FlexProfile
-      assumptions in [`docs/features.md`](../../docs/features.md)
-- [ ] `show lag resources` → real LAG member limits (features.md row is 7050X-derived)
+      assumptions in [`docs/features.md`](../../docs/features.md) — **answered as negatives on 11-08:**
+      `show hardware tcam`, `show hardware tcam profile` and `show systems` are `invalid command` on
+      this unit (`hw-inventory` recorded them); `show version --detail` answered and carries the
+      hardware block, so the replacement matrix must be re-derived from the SKU page plus that
+      capture — the ALE `hardware tcam` spelling from the image notes does NOT exist on this box
+- [ ] `show lag resources` → real LAG member limits (features.md row is 7050X-derived) — **answered
+      as a negative on 11-08:** `show lag resources` is `invalid command` on this unit (recorded);
+      `show port-channel detail` likewise, while `show port-channel dense` captured — the member-limit
+      row must come from the SKU datasheet, not this command
 - [ ] `show session-config diffs` behaviour inside a scratch session + `commit timer` confirm semantics
 - [ ] `configure session <name>` boundaries: the longest accepted name and the character set (our
       `MAX_SESSION_NAME_LENGTH` and refusals are **this port's** bounds, not a captured device limit)

@@ -1,0 +1,51 @@
+{
+  "format": "arista-eapi-recording/v1",
+  "identity": {
+    "targetSlug": "7050tx-64-r-4.28.13.1M",
+    "targetClass": "hardware",
+    "modelName": "DCS-7050TX-64-R",
+    "aristaVersion": "4.28.13.1M",
+    "versionNumber": "4.28.13.1",
+    "provenance": "captured",
+    "endpoint": "https://<hw-redacted>:443/command-api",
+    "topology": "supervised 7050TX-64 session; single device; recorder per case"
+  },
+  "captures": [
+    {
+      "requestId": "ac1fd7b7c051-1",
+      "commands": [
+        "enable",
+        "show interfaces trunk"
+      ],
+      "format": "json",
+      "result": [
+        {},
+        {
+          "trunks": {
+            "Port-Channel10": {
+              "linkStatus": "trunking",
+              "allowedVlans": {
+                "vlanIds": [],
+                "allVlans": true
+              },
+              "portMode": "trunk",
+              "activeVlans": {
+                "vlanIds": [
+                  1
+                ]
+              },
+              "nativeVlan": 1,
+              "phoneTrunk": false,
+              "forwardingVlans": {
+                "vlanIds": [
+                  1
+                ]
+              }
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "incomplete": []
+}
