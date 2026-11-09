@@ -166,7 +166,8 @@ describe.skipIf(!runnable)('hardware session probes: named config sessions on th
         await assertScratchStillUnused(node)
       }
 
-      // Run 5 (2026-11-08 21:32, on PR #112's code) died HERE, and it was two separate failures wearing one
+      // Run 4 (2026-11-08 21:32, PR #112's code and spec rev 3 — see the run numbering in DECISIONS
+      // DR-136) died HERE, and it was two separate failures wearing one
       // stack trace (DR-136):
       //  - the DEVICE refused the OPENER line, not a staged command:
       //    `Error [1000] … 'configure session hw-probe-scratch-description description "…"' failed: could
@@ -176,7 +177,7 @@ describe.skipIf(!runnable)('hardware session probes: named config sessions on th
       //  - the HARNESS then called `abort()` on the handle the client model had marked `lost`, which
       //    throws this client's own DR-023 `SessionError`, and nothing caught it: the batch's refusals
       //    were in the recorder but never reached disk, and every later batch (the restore set again)
-      //    was skipped with the switch still carrying run 2's committed `description`.
+      //    was skipped with the switch still carrying that earlier commit's `description`.
       // So a refusal is now kept with its full text, an OPENER refusal is recorded as evidence and the
       // batch retries under a run-scoped session name, and closing a handle always obeys the handle.
       let active: ConfigSession | undefined
@@ -358,7 +359,7 @@ describe.skipIf(!runnable)('hardware session probes: named config sessions on th
   /**
    * Close a handle the way its STATE allows (DR-136): `abort()` only while this client still believes a
    * session exists. On a `lost` handle `abort()` throws the client's own DR-023 `SessionError` — there is
-   * is nothing on the switch to abort — and in run 5 that uncaught state error killed the loop one step
+   * is nothing on the switch to abort — and in run 4 that uncaught state error killed the loop one step
    * AFTER the device had answered, throwing away bytes the lane had already captured.
    * A refused abort (1006 lock, or a session another CLI already ended) is recorded, never fatal: the
    * runbook's §2.5 console check (`show configuration sessions`) is the backstop for a real pending one.

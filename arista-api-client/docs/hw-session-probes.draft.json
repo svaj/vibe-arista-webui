@@ -27,11 +27,11 @@
     "crashed one statement AFTER committing scratch-description (a harness bug, fixed in the runner:",
     "the scratch read-back used the singular `show running-config interface`, which this SKU refuses).",
     "STATE ON THE SWITCH RIGHT NOW: Ethernet22 carries a committed `description HW-CAPTURE-PROBE`",
-    "(run 2, never restored — the restore set never ran). If the operator wants scratch-description to",
+    "(from run 2, never restored — the restore set never ran). If the operator wants scratch-description to",
     "show a real diff, run the restore batch ALONE first (EAPI_HW_PROBE_ONLY=scratch-restore), then the",
     "full spec; otherwise scratch-description re-commits a no-op and the trailing restore still nets",
     "the port clean.",
-    "REV 4 (2026-11-08, after run 5, DR-136): run 5 answered five more questions on the box -- the",
+    "REV 4 (2026-11-08, after run 4, DR-136): run 4 answered five more questions on the box -- the",
     "`vlan <id>` BLOCK form stages (`vlan 4090` + indented `name`), a **dangling** `interface Vlan4090`",
     "stages with an address even though VLAN 4090 exists only in that same session, `ip routing` stages",
     "(and the diff showed the box running `no ip routing` today), `switchport trunk group HWGRP` staged",
@@ -135,7 +135,7 @@
     },
     {
       "name": "vlan-interface-vrrp-ipv4",
-      "question": "REV 4, the follow-up run 5 forced: does the SKU take the MODERN spelling `vrrp <group> ipv4 <addr>` that the refusal names? This client composes exactly that on >= 4.21.3 (src/resources/vrrp.ts:618), and the cEOS corpus proves the pair exists in the image — the box's answer is what licenses the modern arm on hardware (DR-043)",
+      "question": "REV 4, the follow-up run 4 forced: does the SKU take the MODERN spelling `vrrp <group> ipv4 <addr>` that the refusal names? This client composes exactly that on >= 4.21.3 (src/resources/vrrp.ts:618), and the cEOS corpus proves the pair exists in the image — the box's answer is what licenses the modern arm on hardware (DR-043)",
       "commands": [
         "interface Vlan4090",
         "   vrrp 1 ipv4 169.254.90.7"

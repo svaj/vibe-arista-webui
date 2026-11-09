@@ -2337,9 +2337,17 @@ Not a loosening of any write gate: the commit fence, the scratch-only parser rul
 *read* can no longer strand a committed *write* without its record or its restore.
 
 ### DR-136 — the third switch hour: a saved session name is a one-slot resource, a `lost` handle may not be aborted, and the box answered five grammar questions
-Runs 3-5 (2026-11-08, after PR #112 merged at `276fffb`) completed eleven probe batches and failed on the
+Runs 3-4 (2026-11-08, after PR #112 merged at `276fffb`) completed eleven probe batches and failed on the
 twelfth -- `scratch-description`, the first COMMIT batch the lane reached. Two harness rules and five device
 answers came out of it.
+
+The run numbering this entry and STATUS.md §3 use for the probe lane: **run 1** = the first attempt, aborted
+mid-`switchport-modes` (DR-134); **run 2** = 20:57, which recorded seven batches and DID commit
+`scratch-description` before the singular read-back killed it (DR-135) -- that is the commit whose session
+name still owns the box's single completed-session slot, and the `description HW-CAPTURE-PROBE` still sitting
+on Ethernet22; **run 3** = 21:21 on a stale local main (spec rev 2, so it re-asked the unsplit VLAN batch);
+**run 4** = 21:32, PR #112's code with spec rev 3, which is where the two failures below show up and where
+the five new recordings come from.
 
 **The device answers, all inside `configure session hw-probe-<name>` on the `-R` unit and recorded as
 `configure-session-<name>--hw-session-probe.json`:**
@@ -2519,8 +2527,8 @@ config session and are **not read-only**:
    (`configure-session-session-lifecycle--hw-session-probe.json` and every probe batch's post-state read).
    `configure session <name> description "…"` also round-trips on the box: the completed entry came back as
    `"commit round-trip on the designated scratch port: descri"`, quotes and all, so the device stores the CLI
-   token as sent rather than unwrapping it — the entry is run 2's commit, read back in the `detail` post-state
-   of the run 4/5 batches (`configure-session-session-lifecycle--hw-session-probe.json`, DR-136). Still open: the
+   token as sent rather than unwrapping it — the entry came from run 2's commit, read back in the `detail` post-state of
+   run 4's batches (`configure-session-session-lifecycle--hw-session-probe.json`, DR-136). Still open: the
    embedded-quote depth, `no-commit` acceptance, and `show session-config` without `diffs`.)**
 
 MLAG (`mlag` module, 21 upstream system tests): investigate supported control-plane

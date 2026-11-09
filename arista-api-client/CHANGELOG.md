@@ -9,10 +9,10 @@ surprise here — this file records what shipped, the migration map records what
 
 ## [Unreleased]
 
-### Changed — probe run 5's two failures, and five more grammar answers from the box (2026-11-08; DR-136 + §5 row 236)
+### Changed — probe run 4's two failures, and five more grammar answers from the box (2026-11-08; DR-136 + §5 row 236)
 - `src/testing/hw-capture.ts`: a config-session **name is a one-slot device resource**. The box keeps ONE
-  completed session (`maxSavedSessions: 1`) and run 2's commit parked `hw-probe-scratch-description` there,
-  so run 5's attempt to re-open that exact name was refused (`Error [1000] … could not run command`) — a
+  completed session (`maxSavedSessions: 1`) and run 2's commit parked `hw-probe-scratch-description`
+  there, so run 4's attempt to re-open that exact name was refused (`Error [1000] … could not run command`) — a
   committed probe batch would otherwise be unprobeable for the life of that saved entry. New
   `hwProbeSessionName()` / `hwProbeRetrySessionName(name, runTag)` / `hwProbeRunTag()`: the harness tries the
   canonical name first, records the refusal as §3 evidence, and retries the batch under
@@ -20,7 +20,7 @@ surprise here — this file records what shipped, the migration map records what
   cap). Case names stay batch-keyed, so one batch is still exactly one recording.
 - `src/hw-session-probe.live.test.ts`: `closeHandle()` replaces the bare `abort()` — a handle this client has
   marked `lost` has no session behind it, and `abort()` on it throws this package's own DR-023
-  `SessionError`. Uncaught, that killed run 5 **after** the device had answered, discarding
+  `SessionError`. Uncaught, that killed run 4 **after** the device had answered, discarding
   `scratch-description`'s captured refusals and skipping the restore set for the second time
   (`description HW-CAPTURE-PROBE` is still committed on the scratch port). Refused aborts are recorded with a
   pointer to the runbook's console check; non-`EapiError` faults still kill the run. Both names' refusals now

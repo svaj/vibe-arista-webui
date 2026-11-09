@@ -397,7 +397,7 @@ describe('the committed draft probe spec is itself machine-checked (review-befor
     for (const splitName of ['vlan-inline-name', 'vlan-block-form', 'vlan-interface-ip', 'vlan-interface-vrrp', 'vlan-interface-vrrp-ipv4', 'ip-routing']) {
       expect(spec.batches.find((batch) => batch.name === splitName)?.allowCommit, `${splitName} must stay abort-only`).toBe(false)
     }
-    // REV 4 (run 5, DR-136): the box REFUSED the legacy VRRP spelling and named its replacement —
+    // REV 4 (run 4, DR-136): the box REFUSED the legacy VRRP spelling and named its replacement —
     // `vrrp 1 ip <addr>` -> `Unavailable command (This command is deprecated by 'vrrp ipv4')`. That is
     // exactly the arm this client composes on >= 4.21.3 (`src/resources/vrrp.ts:618`), and §3 may not
     // borrow the cEOS answer for it (DR-043), so the modern form gets its own batch.

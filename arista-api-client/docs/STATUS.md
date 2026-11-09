@@ -254,8 +254,8 @@ source (pyeapi 1.0.4-rc0).
 > resumable. No box below flips from run 2 alone: the commit set and the session-grammar family
 > (items 5/7/8) still have to complete on the box.
 
-> **2026-11-08, probe runs 4-5 (PR #112 code, DR-136).** Eleven batches answered; this commit carries
-> **11 probe recordings** (six refreshed from run 2 plus five new single-question batches:
+> **2026-11-08, run 4 (PR #112 code, spec rev 3, DR-136).** Eleven batches answered; this commit carries
+> **11 probe recordings** (six refreshed from the earlier probe run plus five new single-question batches:
 > `vlan-inline-name`, `vlan-block-form`, `vlan-interface-ip`, `vlan-interface-vrrp`, `ip-routing`) and removes
 > the run-2 `vlans-vrrp-iprouting` file, whose batch the split replaced — its one useful answer (`vlan 4090
 > name X` refused at token `name`) survives as `vlan-inline-name`, so no evidence is lost by the rename. Device
@@ -268,7 +268,7 @@ source (pyeapi 1.0.4-rc0).
 > modern arm that `src/resources/vrrp.ts:618` already composes on `>= 4.21.3`, so the hardware sentence for
 > §3's VRRP line is "modern spelling or nothing", and rev 4 asks that spelling in
 > `vlan-interface-vrrp-ipv4`. The run then stopped at `scratch-description` for a **new** reason: the box
-> refused to re-open that name, because run 2's COMMIT parked it in the single completed-session slot
+> refused to re-open that name, because run 2's commit parked it in the single completed-session slot
 > (`maxSavedSessions: 1`, and `show configuration sessions detail` still showed it `state: completed`) — a
 > config-session name is a one-slot resource for the name's owner, not a free identifier. The harness made
 > it worse: the refusal path called `abort()` on the handle the model had marked `lost`, this client's own

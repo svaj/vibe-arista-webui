@@ -196,7 +196,7 @@ worse than none.
 
 **A committed session's NAME is taken (DR-136).** The box keeps **one** completed session
 (`maxSavedSessions: 1`, hardware-verified) and the name of the last commit sits in it. Re-opening that exact
-name is refused — run 5 saw `Error [1000] … 'configure session hw-probe-scratch-description description
+name is refused — run 4 saw `Error [1000] … 'configure session hw-probe-scratch-description description
 "…"' failed: could not run command` for a name run 2 had committed. The lane handles it: it tries the
 canonical `hw-probe-<name>` first, prints and records the refusal (that IS §3 evidence about name reuse), and
 retries the same batch under `hw-probe-<name>-<run tag>`; one batch still produces exactly one recording. On
@@ -209,7 +209,7 @@ recording and cannot stop the loop. The read-back command itself comes from `hwS
 (`show running-config **interfaces** <intf>`, plural) because that is the only spelling this box takes:
 the singular form answered `1002 % Incomplete token (at token 2: 'interface')` — and when the harness
 still used it, that refusal landed one statement **after** a successful commit, so the port kept the
-mutation, the batch's recording was lost, and the restore set never ran (run 2, 2026-11-08:
+mutation, the batch's recording was lost, and the restore set never ran (first probe attempt, 2026-11-08:
 `description HW-CAPTURE-PROBE` stayed on the scratch port).
 
 **Resuming a stopped day:** `EAPI_HW_PROBE_ONLY=scratch-restore` (comma-separated batch names from the

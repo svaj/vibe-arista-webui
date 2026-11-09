@@ -561,8 +561,8 @@ export function hwProbePendingRevertSessions(sessions: readonly { name: string; 
  * A DIFFERENT session name for the retry that an OPENER refusal forces (DR-136, found live 2026-11-08).
  *
  * The box keeps ONE completed session (`maxSavedSessions: 1`, verified on hardware), and a COMMITTED
- * probe session parks its own name there — run 2's `configure session hw-probe-scratch-description`
- * commit left that exact name in the completed list, and run 5's attempt to open it again was refused
+ * probe session parks its own name there — an earlier `configure session hw-probe-scratch-description`
+ * commit left that exact name in the completed list, and a later run's attempt to open it was refused
  * (`Error [1000] … 'configure session hw-probe-scratch-description description "…"' failed: could not
  * run command`). Since the canonical names are deterministic, a batch that has EVER committed could
  * never be probed again while the switch remembers it — a lane blocker, not a device limit. So the
