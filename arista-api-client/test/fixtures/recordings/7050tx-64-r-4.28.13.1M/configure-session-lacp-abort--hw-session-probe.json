@@ -1,0 +1,106 @@
+{
+  "format": "arista-eapi-recording/v1",
+  "identity": {
+    "targetSlug": "7050tx-64-r-4.28.13.1M",
+    "targetClass": "hardware",
+    "modelName": "DCS-7050TX-64-R",
+    "aristaVersion": "4.28.13.1M",
+    "versionNumber": "4.28.13.1",
+    "provenance": "captured",
+    "endpoint": "https://<hw-redacted>:443/command-api",
+    "topology": "supervised session; scratch=Ethernet22"
+  },
+  "captures": [
+    {
+      "requestId": "fb48ecab6e27-1",
+      "commands": [
+        "enable",
+        "configure session hw-probe-lacp-abort description \"implicit Port-Channel creation + mode syntax inside a se\"",
+        "interface Ethernet22",
+        "   channel-group 999 mode active"
+      ],
+      "format": "json",
+      "result": [
+        {},
+        {},
+        {},
+        {}
+      ]
+    },
+    {
+      "requestId": "fb48ecab6e27-2",
+      "commands": [
+        "enable",
+        "configure session hw-probe-lacp-abort description \"implicit Port-Channel creation + mode syntax inside a se\"",
+        "show session-config diffs"
+      ],
+      "format": "text",
+      "result": [
+        {
+          "output": ""
+        },
+        {
+          "output": ""
+        },
+        {
+          "output": "--- system:/running-config\n+++ session:/hw-probe-lacp-abort-session-config\n@@ -31,6 +31,8 @@\n !\n interface Port-Channel20\n !\n+interface Port-Channel999\n+!\n interface Ethernet1\n    description to_10g_multigig_switch\n !\n@@ -83,6 +85,7 @@\n interface Ethernet21\n !\n interface Ethernet22\n+   channel-group 999 mode active\n !\n interface Ethernet23\n !\n"
+        }
+      ]
+    },
+    {
+      "requestId": "fb48ecab6e27-3",
+      "commands": [
+        "enable",
+        "configure session hw-probe-lacp-abort description \"implicit Port-Channel creation + mode syntax inside a se\"",
+        "abort"
+      ],
+      "format": "json",
+      "result": [
+        {},
+        {},
+        {}
+      ]
+    },
+    {
+      "requestId": "fb48ecab6e27-4",
+      "commands": [
+        "enable",
+        "show configuration sessions"
+      ],
+      "format": "json",
+      "result": [
+        {},
+        {
+          "maxSavedSessions": 1,
+          "maxOpenSessions": 5,
+          "sessions": {}
+        }
+      ]
+    },
+    {
+      "requestId": "fb48ecab6e27-5",
+      "commands": [
+        "enable",
+        "show configuration sessions detail"
+      ],
+      "format": "json",
+      "result": [
+        {},
+        {
+          "maxSavedSessions": 1,
+          "maxOpenSessions": 5,
+          "sessions": {
+            "m12a-intf-clear-Ethernet22": {
+              "instances": {},
+              "state": "completed",
+              "commitUser": "svaj",
+              "description": "",
+              "completedTime": 1794182736.3879657
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "incomplete": []
+}

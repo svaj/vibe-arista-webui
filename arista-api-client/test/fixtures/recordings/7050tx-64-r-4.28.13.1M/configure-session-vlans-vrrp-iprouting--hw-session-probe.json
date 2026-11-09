@@ -1,0 +1,115 @@
+{
+  "format": "arista-eapi-recording/v1",
+  "identity": {
+    "targetSlug": "7050tx-64-r-4.28.13.1M",
+    "targetClass": "hardware",
+    "modelName": "DCS-7050TX-64-R",
+    "aristaVersion": "4.28.13.1M",
+    "versionNumber": "4.28.13.1",
+    "provenance": "captured",
+    "endpoint": "https://<hw-redacted>:443/command-api",
+    "topology": "supervised session; scratch=Ethernet22"
+  },
+  "captures": [
+    {
+      "requestId": "647dfee60d7a-1",
+      "commands": [
+        "enable",
+        "configure session hw-probe-vlans-vrrp-iprouting description \"target-sensitive set: ip routing acceptance, Vlan-interf\"",
+        "vlan 4090 name HWPROBE-MAY-FEATURE-ABORT",
+        "interface Vlan4090",
+        "   ip address 169.254.90.1/29",
+        "   vrrp 1 ip 169.254.90.7"
+      ],
+      "format": "json",
+      "error": {
+        "data": [
+          {},
+          {},
+          {
+            "errors": [
+              "Invalid input (at token 2: 'name')"
+            ]
+          }
+        ],
+        "message": "CLI command 3 of 6 'vlan 4090 name HWPROBE-MAY-FEATURE-ABORT' failed: invalid command",
+        "code": 1002
+      }
+    },
+    {
+      "requestId": "647dfee60d7a-2",
+      "commands": [
+        "enable",
+        "configure session hw-probe-vlans-vrrp-iprouting description \"target-sensitive set: ip routing acceptance, Vlan-interf\"",
+        "show session-config diffs"
+      ],
+      "format": "text",
+      "result": [
+        {
+          "output": ""
+        },
+        {
+          "output": ""
+        },
+        {
+          "output": ""
+        }
+      ]
+    },
+    {
+      "requestId": "647dfee60d7a-3",
+      "commands": [
+        "enable",
+        "configure session hw-probe-vlans-vrrp-iprouting description \"target-sensitive set: ip routing acceptance, Vlan-interf\"",
+        "abort"
+      ],
+      "format": "json",
+      "result": [
+        {},
+        {},
+        {}
+      ]
+    },
+    {
+      "requestId": "647dfee60d7a-4",
+      "commands": [
+        "enable",
+        "show configuration sessions"
+      ],
+      "format": "json",
+      "result": [
+        {},
+        {
+          "maxSavedSessions": 1,
+          "maxOpenSessions": 5,
+          "sessions": {}
+        }
+      ]
+    },
+    {
+      "requestId": "647dfee60d7a-5",
+      "commands": [
+        "enable",
+        "show configuration sessions detail"
+      ],
+      "format": "json",
+      "result": [
+        {},
+        {
+          "maxSavedSessions": 1,
+          "maxOpenSessions": 5,
+          "sessions": {
+            "m12a-intf-clear-Ethernet22": {
+              "instances": {},
+              "state": "completed",
+              "commitUser": "svaj",
+              "description": "",
+              "completedTime": 1794182736.3879662
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "incomplete": []
+}

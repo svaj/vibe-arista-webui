@@ -1,0 +1,108 @@
+{
+  "format": "arista-eapi-recording/v1",
+  "identity": {
+    "targetSlug": "7050tx-64-r-4.28.13.1M",
+    "targetClass": "hardware",
+    "modelName": "DCS-7050TX-64-R",
+    "aristaVersion": "4.28.13.1M",
+    "versionNumber": "4.28.13.1",
+    "provenance": "captured",
+    "endpoint": "https://<hw-redacted>:443/command-api",
+    "topology": "supervised session; scratch=Ethernet22"
+  },
+  "captures": [
+    {
+      "requestId": "3cc171e7f9f9-1",
+      "commands": [
+        "enable",
+        "configure session hw-probe-switchport-l2-baseline description \"DR-029 precondition on the real SKU: plain `switchport` \"",
+        "interface Ethernet22",
+        "   switchport",
+        "   switchport mode trunk"
+      ],
+      "format": "json",
+      "result": [
+        {},
+        {},
+        {},
+        {},
+        {}
+      ]
+    },
+    {
+      "requestId": "3cc171e7f9f9-2",
+      "commands": [
+        "enable",
+        "configure session hw-probe-switchport-l2-baseline description \"DR-029 precondition on the real SKU: plain `switchport` \"",
+        "show session-config diffs"
+      ],
+      "format": "text",
+      "result": [
+        {
+          "output": ""
+        },
+        {
+          "output": ""
+        },
+        {
+          "output": "--- system:/running-config\n+++ session:/hw-probe-switchport-l2-baseline-session-config\n@@ -83,6 +83,7 @@\n interface Ethernet21\n !\n interface Ethernet22\n+   switchport mode trunk\n !\n interface Ethernet23\n !\n"
+        }
+      ]
+    },
+    {
+      "requestId": "3cc171e7f9f9-3",
+      "commands": [
+        "enable",
+        "configure session hw-probe-switchport-l2-baseline description \"DR-029 precondition on the real SKU: plain `switchport` \"",
+        "abort"
+      ],
+      "format": "json",
+      "result": [
+        {},
+        {},
+        {}
+      ]
+    },
+    {
+      "requestId": "3cc171e7f9f9-4",
+      "commands": [
+        "enable",
+        "show configuration sessions"
+      ],
+      "format": "json",
+      "result": [
+        {},
+        {
+          "maxSavedSessions": 1,
+          "maxOpenSessions": 5,
+          "sessions": {}
+        }
+      ]
+    },
+    {
+      "requestId": "3cc171e7f9f9-5",
+      "commands": [
+        "enable",
+        "show configuration sessions detail"
+      ],
+      "format": "json",
+      "result": [
+        {},
+        {
+          "maxSavedSessions": 1,
+          "maxOpenSessions": 5,
+          "sessions": {
+            "m12a-intf-clear-Ethernet22": {
+              "instances": {},
+              "state": "completed",
+              "commitUser": "svaj",
+              "description": "",
+              "completedTime": 1794182736.387966
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "incomplete": []
+}
