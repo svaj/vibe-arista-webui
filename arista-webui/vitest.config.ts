@@ -28,6 +28,9 @@ export default defineConfig({
       //   99.15/88.52/100/100 · src/App.tsx 100/50/100/100 (the half-branch at :12 is the
       //   proxy-configured arm, which no offline test can take — the live arm belongs to the
       //   browser E2E lane).
+      // #70 (F8) added the redaction guard (175 tests) and measured 93.38/84.67/96.1/96.82 — the
+      // floors below are left untouched for now so the ratchet lands once with the screen wave
+      // (#71+), which is what moves `src/features/` the most; re-measure and raise there.
       // Floors sit ~2-4 points under each measured figure, so erosion fails the leg while honest
       // rounding of a ~400-statement corpus doesn't flap. Screen issues RAISE these floors as they
       // add tests (ratchet up, never down).

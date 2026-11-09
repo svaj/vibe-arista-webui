@@ -291,6 +291,11 @@ never overwrite hardware fixtures with cEOS recordings.
    fault injection or mocks may supplement but do not count as real-cEOS coverage.
 4. Report Playwright and API live results separately. A passing mock E2E run must not
    be labeled cEOS coverage. Capture redacted diagnostics before teardown on failure.
+   The webui-side half of this hygiene — what a committed component fixture may contain,
+   why `transport.sent()`/`bodies()` are never asserted as cleartext, and scrubbing
+   host/user/serial/MAC out of trace/video/HAR artifacts — is the F8 (#70) contract in
+   `arista-webui/README.md`, enforced by
+   `arista-webui/src/testing/redaction-guard.test.ts`.
 5. Initially use explicit trusted `workflow_dispatch` on a dedicated Linux runner with
    authorized image access. Keep ordinary PR checks offline. Any future automatic
    cEOS lane needs a trusted-code policy, image licensing/access review, and isolated
