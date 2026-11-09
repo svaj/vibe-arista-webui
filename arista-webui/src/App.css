@@ -197,3 +197,9 @@ tbody tr:last-child td { border-bottom: 0; }
 .band-flag-unknown { color: var(--ink); border-color: var(--warning); background: var(--warning-soft); }
 .band-address { display: inline-block; margin-left: 6px; color: var(--muted); font-family: var(--mono); font-size: 11px; overflow-wrap: anywhere; }
 .read-error { font-family: var(--mono); font-size: 12px; overflow-wrap: anywhere; }
+
+/* S2 (#72) VLAN management. The reference list is the in-use guard's evidence: it shows the actual
+   running-config line the reference comes from, so the operator is not asked to trust a count. */
+.ref-list { display: grid; gap: 3px; margin: 6px 0; padding-left: 18px; }
+.ref-list code { color: var(--ink); font-family: var(--mono); font-size: 11px; overflow-wrap: anywhere; }
+.group-list { font-family: var(--mono); font-size: 11px; overflow-wrap: anywhere; }

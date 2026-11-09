@@ -3,6 +3,7 @@ import { createNode } from '@devhax-heavy-industries/arista-eapi'
 import './App.css'
 import { AppShell } from './components/AppShell'
 import { InterfacesDashboard } from './features/interfaces/InterfacesDashboard'
+import { VlanManagement } from './features/vlans/VlanManagement'
 import { VlanAssignment } from './features/vlans/VlanAssignment'
 import type { RouteRegistry } from './router'
 
@@ -25,6 +26,10 @@ function App() {
     '/interfaces': {
       title: 'Interfaces',
       element: <InterfacesDashboard node={node} proxyConfigured={__EAPI_PROXY_CONFIGURED__} />,
+    },
+    '/vlans/manage': {
+      title: 'VLAN management',
+      element: <VlanManagement node={node} proxyConfigured={__EAPI_PROXY_CONFIGURED__} />,
     },
     [HOME_PATH]: {
       title: 'VLAN assignment',

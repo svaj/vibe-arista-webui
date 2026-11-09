@@ -70,6 +70,7 @@ import type { DeviceIdentity } from '../../shared/identity'
 import { softErrorText, softRead, softValue, useDeviceRead } from '../../shared/use-device-read'
 import { useOperation } from '../../shared/use-operation'
 import { ConfirmProvider, useConfirm } from '../../shared/use-confirm'
+import { stageLines } from '../staged-batch'
 import type { ShowManagementApiHttpCommandsReply } from '../../eapi/show-contracts'
 
 // The M13/S1 screen contracts ride this import (ARCHITECTURE §9.1 augmentation), so
@@ -135,19 +136,6 @@ export function managementInterfaces(reply: ShowManagementApiHttpCommandsReply |
     if (iface !== '') named.add(iface)
   }
   return [...named]
-}
-
-/**
- * `submodeCommands`/`commandBuilder` answer `CommandSpec[]` (a spec may be `{ cmd, input }` for a
- * multiline command). Every line this screen stages is a plain string, and the shutdown guard plus the
- * review panel both read the text — so the narrowing is asserted rather than cast, and a future verb
- * that stages an object spec fails loudly here instead of showing the operator `undefined`.
- */
-function stageLines(batch: readonly CommandSpec[]): readonly string[] {
-  return batch.map((entry) => {
-    if (typeof entry === 'string') return entry
-    throw new Error(`this screen stages plain command lines; got an object spec for ${JSON.stringify(entry.cmd)}`)
-  })
 }
 
 /** The channel-group relation inverted: member name → the group whose section names it. */

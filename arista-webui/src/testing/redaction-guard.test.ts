@@ -183,6 +183,8 @@ describe('the committed webui payload tree is clean', () => {
     // a loud failure rather than a silent hole.
     const committedFiles = corpus.filter((file) => file.path.includes('/fixtures/')).map((file) => file.path).sort()
     expect(committedFiles).toEqual([
+      // S2 (#72) added a second device-facing screen but committed no device payload: its scenarios use
+      // inline mock replies. If a lab capture is ever added next to that screen, it must appear here too.
       'src/features/interfaces/fixtures/show-interfaces-status--ceos-4.28.14M.json',
       CLEAN_FIXTURE_PATH,
     ])
