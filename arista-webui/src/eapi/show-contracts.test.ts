@@ -24,6 +24,7 @@ import type { ShowReply } from '@devhax-heavy-industries/arista-eapi'
 import type {
   ShowInterfaceStatusRow,
   ShowInterfacesStatusReply,
+  ShowManagementApiHttpCommandsReply,
   ShowMlagReply,
   ShowVersionReply,
   ShowVlanEntry,
@@ -39,6 +40,8 @@ describe('the augmentation lands on every modelled M13 literal (ARCHITECTURE §9
     expectTypeOf<Exactly<ShowReply<'interfaces status'>, ShowInterfacesStatusReply>>().toEqualTypeOf<true>()
     expectTypeOf<Exactly<ShowReply<'vlan'>, ShowVlanReply>>().toEqualTypeOf<true>()
     expectTypeOf<Exactly<ShowReply<'mlag'>, ShowMlagReply>>().toEqualTypeOf<true>()
+    // S1 (#71) added the sixth literal; the spelling is the command with no `show ` prefix.
+    expectTypeOf<Exactly<ShowReply<'management api http-commands'>, ShowManagementApiHttpCommandsReply>>().toEqualTypeOf<true>()
   })
 
   it('`show lag` stays unmodelled until a capture exists — no invented LAG shape (STATUS §3)', () => {
@@ -175,6 +178,79 @@ describe('the contracts accept the recorded device replies verbatim (compiler-si
     expect(capMlag.state).toBe('disabled')
     expect(capMlag.mlagPorts['Active-full']).toBe(0)
     expect(capMlag.peerLink).toBe('')
+  })
+
+  // `…/recordings/7050tx-64-r-4.28.13.1M/show-management-api-http-commands--hw-inventory.json`,
+  // capture 1's second `result` entry. Two deliberate departures from a byte-exact copy, both F8 (#70)
+  // contract (d): the `users` map is empty here because the real capture keys it by the **operator's
+  // login** with byte/counter values, and the endpoint host stays the capture lane's `<hw-redacted>`.
+  // The key *shape* — `users` is an object, `urls` names `Management1` — is what the contract pins.
+  const capMgmtApiHardware: ShowManagementApiHttpCommandsReply = {
+    httpServer: { running: false, configured: false, port: 80 },
+    users: {},
+    bytesOut: 11620105,
+    logLevel: 'none',
+    dscpValue: 0,
+    corsOrigins: [],
+    hitCount: 75,
+    vrf: 'default',
+    lastHitTime: 1794184543.7545743,
+    tlsProtocol: ['1.0', '1.1', '1.2'],
+    localHttpServer: { running: false, configured: false, port: 8080 },
+    executionTime: 68.98355392968551,
+    enabled: true,
+    fipsEnabled: false,
+    httpsServer: { running: true, configured: true, port: 443 },
+    requestCount: 66,
+    vrfs: ['default'],
+    urls: ['Management1 : https://<hw-redacted>:443'],
+    unixSocketServer: { running: false, configured: false },
+    bytesIn: 12169,
+    commandCount: 172,
+    iframeAncestors: [],
+  }
+
+  // `…/live/ceos-4.28.14M/show-management-api-http-commands.json` → `result`. Note the device pads the
+  // interface token with SPACES before the colon — a screen parser cannot assume one space.
+  const capMgmtApiCeos: ShowManagementApiHttpCommandsReply = {
+    tlsProtocol: ['1.0', '1.1', '1.2'],
+    urls: ['Vlan100     : https://10.0.100.1:443'],
+    httpServer: { running: false, configured: false, port: 80 },
+    users: {},
+    localHttpServer: { running: false, configured: false, port: 8080 },
+    executionTime: 0,
+    dscpValue: 0,
+    bytesOut: 0,
+    enabled: true,
+    fipsEnabled: false,
+    httpsServer: { running: true, configured: true, port: 443 },
+    corsOrigins: [],
+    hitCount: 0,
+    vrf: 'default',
+    iframeAncestors: [],
+    unixSocketServer: { running: false, configured: false },
+    requestCount: 0,
+    vrfs: ['default'],
+    commandCount: 0,
+    logLevel: 'none',
+    bytesIn: 0,
+  }
+
+  it('both management-api captures type, and the serving interface is readable from each', () => {
+    expect(capMgmtApiHardware.urls[0]).toContain('Management1')
+    expect(capMgmtApiCeos.urls[0]).toContain('Vlan100')
+    expect(capMgmtApiHardware.lastHitTime).toBeTypeOf('number')
+    // The cEOS answer carries no `lastHitTime` key, so the contract cannot promise it.
+    expect(capMgmtApiCeos.lastHitTime).toBeUndefined()
+    for (const reply of [capMgmtApiHardware, capMgmtApiCeos]) {
+      expect(reply.enabled).toBe(true)
+      expect(reply.vrf).toBe('default')
+      expect(reply.httpsServer.running).toBe(true)
+      expect(Array.isArray(reply.urls)).toBe(true)
+    }
+    // @ts-expect-error - `urls` is a string list, not a map, so a screen cannot index it by interface
+    const notAMap = capMgmtApiHardware.urls.Management1
+    expect(notAMap).toBeUndefined()
   })
 
   it('both interface-status spellings type, empty map included', () => {

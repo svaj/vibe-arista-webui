@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { createNode } from '@devhax-heavy-industries/arista-eapi'
 import './App.css'
 import { AppShell } from './components/AppShell'
+import { InterfacesDashboard } from './features/interfaces/InterfacesDashboard'
 import { VlanAssignment } from './features/vlans/VlanAssignment'
 import type { RouteRegistry } from './router'
 
@@ -15,10 +16,16 @@ function App() {
     path: '/command-api',
   }) : undefined)
 
-  // The routed screen keeps its own `{ node, proxyConfigured }` props byte-identical through the F6
+  // The routed screens keep their own `{ node, proxyConfigured }` props byte-identical through the F6
   // split (#68): the registry element closes over the values App already owns, so one route needs no
-  // context or render-prop layer — and the screen's fake-node test harness is unchanged by the move.
+  // context or render-prop layer — and each screen's fake-node test harness is unchanged by the move.
+  // S1 (#71) registers `#/interfaces` first for nav prominence; the empty hash still homes on the VLAN
+  // workflow until a later decision changes HOME_PATH.
   const routes: RouteRegistry = {
+    '/interfaces': {
+      title: 'Interfaces',
+      element: <InterfacesDashboard node={node} proxyConfigured={__EAPI_PROXY_CONFIGURED__} />,
+    },
     [HOME_PATH]: {
       title: 'VLAN assignment',
       element: <VlanAssignment node={node} proxyConfigured={__EAPI_PROXY_CONFIGURED__} />,

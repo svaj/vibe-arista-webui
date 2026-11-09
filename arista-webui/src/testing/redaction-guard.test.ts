@@ -177,9 +177,15 @@ describe('the committed webui payload tree is clean', () => {
     // The redacted forms show up often enough that a rule regressing to "flag everything" fails here.
     expect(joined.split('00:00:00:00:00:00').length - 1).toBeGreaterThanOrEqual(6)
     expect(joined.split('serialNumber').length - 1).toBeGreaterThanOrEqual(4)
-    // The `fixtures/` half of the glob is live, not a promise: screen fixtures (#71+) are scanned the
-    // moment they are committed, and this corpus already carries one.
-    expect(corpus.filter((file) => file.path.includes('/fixtures/')).map((file) => file.path)).toEqual([CLEAN_FIXTURE_PATH])
+    // The `fixtures/` half of the glob is live, not a promise: a screen fixture is scanned the moment
+    // it is committed. Pinned as an exact set, so a new fixture lands here in review (S1 #71 added the
+    // interface-status rows beside the guard's own clean example) and an unscanned payload directory is
+    // a loud failure rather than a silent hole.
+    const committedFiles = corpus.filter((file) => file.path.includes('/fixtures/')).map((file) => file.path).sort()
+    expect(committedFiles).toEqual([
+      'src/features/interfaces/fixtures/show-interfaces-status--ceos-4.28.14M.json',
+      CLEAN_FIXTURE_PATH,
+    ])
   })
 
   it('the clean fixture passes every rule, so the guard does not flag the forms captures use', () => {

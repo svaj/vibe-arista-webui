@@ -1,0 +1,55 @@
+{
+  "_fixture": {
+    "purpose": "S1 (#71): the device answer behind the interfaces dashboard's status columns, kept as a committed file so the F8 (#70) redaction guard scans it and every screen test can load the same bytes with Vite `?raw`.",
+    "source": "arista-api-client/test/fixtures/live/ceos-4.28.14M/show-interfaces-status.json -> the `result.interfaceStatuses` member, copied verbatim (3 rows: Ethernet2, Port-Channel1, Ethernet1)",
+    "whythese": "This is the populated re-capture (run `lab-1637825-9bbb4b`, 2026-11-09). The 2026-11-06 run of the same command answered an EMPTY map, which is why the screen renders an empty status table as empty rather than as \"no ports exist\".",
+    "spelling": "The recorded row spells the operational column `linkStatus` and carries the device's mis-cased `autoNegotigateActive` sibling. The client reads `linkStatus`/`interfaceStatus` in capture order (interfaces.ts divergence 12); `show interfaces status` carries NO `mtu` key on either target, which is why S1 reads MTU from running-config instead.",
+    "redaction": "already-redacted vendor capture: no MAC appears in this command's rows; container evidence only, `hardwareEvidence: none` (DR-043) — it proves nothing about the 7050TX-64.",
+    "alsoOnHardware": "arista-api-client/test/fixtures/recordings/7050tx-64-r-4.28.13.1M/show-interfaces-status--hw-inventory.json answers the SAME map key with 67 rows (and no `mtu`), confirming the command exists on the unit; those rows are not copied here."
+  },
+  "interfaceStatuses": {
+    "Ethernet2": {
+      "vlanInformation": {
+        "vlanExplanation": "in Po1",
+        "interfaceForwardingModel": "dataLink"
+      },
+      "bandwidth": 1000000000,
+      "interfaceType": "EbraTestPhyPort",
+      "description": "",
+      "autoNegotiateActive": false,
+      "duplex": "duplexFull",
+      "autoNegotigateActive": false,
+      "linkStatus": "connected",
+      "lineProtocolStatus": "up"
+    },
+    "Port-Channel1": {
+      "vlanInformation": {
+        "interfaceMode": "trunk",
+        "interfaceForwardingModel": "bridged"
+      },
+      "bandwidth": 0,
+      "interfaceType": "N/A",
+      "description": "LAB-LACP",
+      "autoNegotiateActive": false,
+      "duplex": "duplexFull",
+      "autoNegotigateActive": false,
+      "linkStatus": "notconnect",
+      "lineProtocolStatus": "lowerLayerDown"
+    },
+    "Ethernet1": {
+      "vlanInformation": {
+        "interfaceMode": "bridged",
+        "vlanId": 100,
+        "interfaceForwardingModel": "bridged"
+      },
+      "bandwidth": 1000000000,
+      "interfaceType": "EbraTestPhyPort",
+      "description": "",
+      "autoNegotiateActive": false,
+      "duplex": "duplexFull",
+      "autoNegotigateActive": false,
+      "linkStatus": "connected",
+      "lineProtocolStatus": "up"
+    }
+  }
+}

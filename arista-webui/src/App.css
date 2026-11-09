@@ -179,3 +179,21 @@ tbody tr:last-child td { border-bottom: 0; }
 @media (max-width: 560px) {
   .confirm-dialog-actions { align-items: stretch; flex-direction: column-reverse; }
 }
+
+/* S1 (#71) interfaces dashboard. Appended only, same rule F1/F3/F4 followed: nothing above this line
+   changes. Every band-path state carries TEXT in the cell (the class is decoration), because the
+   Management-path column is a safety claim and colour alone cannot carry it (WCAG 1.4.1). */
+.cell-note { display: block; margin-left: 6px; color: var(--muted); font-size: 11px; font-weight: 500; }
+.field-note { margin: 6px 0 14px; color: var(--muted); font-size: 12px; }
+.field-note code { font-family: var(--mono); font-size: 11px; }
+.staged-argv { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 12px; }
+.staged-argv code { padding: 4px 8px; color: var(--ink); border: 1px solid var(--line); border-radius: 3px; background: var(--surface-muted); font-family: var(--mono); font-size: 12px; overflow-wrap: anywhere; }
+.band-flag { display: inline-block; padding: 3px 7px; border: 1px solid var(--line); border-radius: 3px; font-size: 11px; font-weight: 650; overflow-wrap: anywhere; }
+/* The device itself named this interface as the eAPI listener: the one state that is a fact, not a hint. */
+.band-flag-eapi-served { color: var(--danger); border-color: #e2b9b1; background: #fff5f2; }
+.band-flag-addressed { color: var(--warning); background: var(--warning-soft); }
+.band-flag-not-eapi-path { color: var(--muted); background: var(--surface-muted); }
+/* Unknown renders louder than the honest negative: an unreadable answer must not read as "safe". */
+.band-flag-unknown { color: var(--ink); border-color: var(--warning); background: var(--warning-soft); }
+.band-address { display: inline-block; margin-left: 6px; color: var(--muted); font-family: var(--mono); font-size: 11px; overflow-wrap: anywhere; }
+.read-error { font-family: var(--mono); font-size: 12px; overflow-wrap: anywhere; }
