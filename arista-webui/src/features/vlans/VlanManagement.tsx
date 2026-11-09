@@ -166,6 +166,20 @@ function referencesFor(id: number, switchports: ReadonlyMap<string, Switchport>)
   return { lines, keywords }
 }
 
+/**
+ * Mirrors the two client rules that keep a value on one config line: C0 controls plus DEL
+ * (`hasControlCharacter`, `vlans.ts:275`) and any line boundary the composer refuses
+ * (DR-015). Checked by code point rather than regex so the lint rule about control characters in
+ * patterns stays honest, and scanned on the raw field so a trailing boundary cannot hide.
+ */
+function hasControlOrLineBoundary(value: string): boolean {
+  for (const character of value) {
+    const point = character.codePointAt(0) ?? 0
+    if (point < 0x20 || point === 0x7f || point === 0x85 || point === 0x2028 || point === 0x2029) return true
+  }
+  return false
+}
+
 const vlanIdOf = (vlan: Vlan): number => Number(vlan.id)
 const writableId = (id: number): boolean => Number.isInteger(id) && id >= 1 && id <= 4094
 
@@ -291,7 +305,7 @@ function VlanManagementWorkspace({ node, proxyConfigured = true }: VlanManagemen
     if (action === 'delete' && selectedRow?.unwritable === true) return 'This VLAN id is one the client can read but not write (DR-059); the delete is refused rather than silently re-forming an id the device wrote strangely.'
     if ((action === 'create' || action === 'rename') && name.trim() === '') return 'A name needs a value. Clear a name with the "Clear name" action instead of sending an empty value (DR-037: the client refuses `name` with no value).'
     if (usesNameField && /\s$/u.test(name)) return 'A name with trailing whitespace cannot read back through this client (it reads the text after the keyword) — pyeapi keeps it verbatim.'
-    if (/\r|\n/.test(usesNameField ? name : group)) return 'A line break cannot be one config line (command-builder.ts, row 74 / DR-015).'
+    if (hasControlOrLineBoundary(usesNameField ? name : group)) return 'A VLAN name or trunk-group value cannot contain a control character, line break or line separator — one config line per command (command-builder.ts, DR-015), and the client refuses a control character in a name for the same reason (assertVlanName).'
     if (usesGroupField) {
       // The capability answer is the first question for these two actions: without an `available` verdict
       // this screen sends nothing at all, so no command text is even examined (DECISIONS open item 4).

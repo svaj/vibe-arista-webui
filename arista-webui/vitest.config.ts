@@ -37,18 +37,18 @@ export default defineConfig({
       //   94.21/91.1/100/99.31 (its one uncovered line is `stageLines`' object-spec throw, which no
       //   all-strings stage can reach) · src/features/vlans unchanged 79.54/79.1/82.75/90 ·
       //   src/testing 100/88 (65 stmts) · src/shared 96.94 stmts / 86.40 branch / 99.43 lines.
-      // #72 (S2, stacked on S1) measured 227 tests, all files 93.46/87.1/96.56/97.93
+      // #72 (S2, stacked on S1) measured 228 tests, all files 93.61/87.23/96.57/97.94
       //   (stmts/branch/funcs/lines), with the same JSON-derived per-directory figures:
-      //   src/features/vlans now 88.81/84.39/90.8/96.26 across both screens (`VlanAssignment`
-      //   79.54/79.1/82.75/90, new `VlanManagement` 92.59/86.85/94.82/98.83 — the two uncovered lines
-      //   are the probe's `1006` config-lock notice (:450) and the row of the probe-cleanup section
-      //   that only renders when the probe itself listed a pending session (:517). Both arms need a
+      //   src/features/vlans now 89.32/84.72/90.9/96.32 across both screens (`VlanAssignment`
+      //   79.54/79.1/82.75/90, new `VlanManagement` 93.21/87.24/94.91/98.85 — the two uncovered lines
+      //   are the probe's `1006` config-lock notice (:464) and the row of the probe-cleanup section
+      //   that only renders when the probe itself listed a pending session (:531). Both arms need a
       //   probe run that reports the lock; the offline seam drives the equivalent cleanup through the
       //   device-state session list instead, so neither line executes in the mocked lane) ·
       //   src/features 100/100/100/100 once `staged-batch.test.ts` pinned the object-spec throw.
       //   Interfaces re-measured 94.67/91.45/100/100 for the same reason: the shared narrowing moved
       //   out of the screen. No new per-directory floor was added for `src/features/vlans/`, because
-      //   its measured functions figure (90.8) sits under the global 95 and writing a floor there now
+      //   its measured functions figure (90.9) sits under the global 95 and writing a floor there now
       //   would be a ratchet-down rather than a ratchet-up — the coverage lane (#69) should decide it.
       //   One correction for #69 while it is open: before that narrowing was pinned,
       //   `src/features/staged-batch.ts` reported 66.66 lines and the entry keyed `src/features/`

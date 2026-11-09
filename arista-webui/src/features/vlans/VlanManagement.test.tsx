@@ -13,7 +13,7 @@
  * screen sends are asserted verbatim, and each verdict arm is driven by a scripted
  * `validateChanges` outcome — accepted, `1002`, or a thrown failure.
  */
-import { render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ConfigSession, Switchport, Vlan } from '@devhax-heavy-industries/arista-eapi'
@@ -432,6 +432,28 @@ describe('VlanManagement — staged writes and the in-use guard', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Preview change' }))
     expect(await screen.findByRole('alert')).toHaveTextContent(/refused on this screen/u)
     expect(session.run).not.toHaveBeenCalled()
+  })
+
+  it('refuses a value that would break the config line, by code point, before any command runs', async () => {
+    // A U+2028 line separator is not a control character, so a `/[\r\n]/` test would miss it; and a BEL is
+    // not whitespace, so the whitespace guards would miss that. Both belong to the client's own rules
+    // (`assertVlanName` / the composer), and this screen mirrors them — without opening a session.
+    const { node, session } = makeFakes()
+    await ready(node)
+
+    for (const point of ['\u2028', '\u0007']) {
+      await userEvent.selectOptions(screen.getByRole('combobox', { name: /^VLAN/u }), '20')
+      const nameField = screen.getByLabelText('Name') as HTMLInputElement
+      fireEvent.change(nameField, { target: { value: `VOICE${point}LAB` } })
+      // The field kept the character, so nothing but the guard stands between this value and the device.
+      expect(nameField.value).toContain(point)
+      await userEvent.click(screen.getByRole('button', { name: 'Preview change' }))
+      expect((await screen.findAllByRole('alert')).some((n) => /control character, line break or line separator/u.test(n.textContent ?? ''))).toBe(true)
+      expect(session.run).not.toHaveBeenCalled()
+      expect(session.commit).not.toHaveBeenCalled()
+    }
+    // `configSession` itself is deliberately not asserted here: the mount capability probe legitimately
+    // opens one (and always aborts it). What must stay unwritten is the staged command seam above.
   })
 
   it('refuses an empty name and an out-of-range id without staging a command', async () => {
