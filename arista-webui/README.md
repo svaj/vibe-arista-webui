@@ -1,9 +1,11 @@
 # Arista EOS Switch Workspace
 
-An operational web UI for VLAN inventory and access-port VLAN assignment, backed by the
-workspace eAPI client. Changes are staged in a named EOS config session and require a
-reviewed device diff plus explicit confirmation before commit. Commits affect
-running-config only; startup-config is never saved implicitly.
+An operational web UI for an Arista switch, backed by the workspace eAPI client.
+Routed screens: `#/interfaces` (S1 #71 — every interface with link/protocol/admin state, MTU, LAG
+membership, the management-path answer, and staged `description` / `mtu` / `shutdown` writes) and
+`#/vlans` (F6 #68 — VLAN inventory and access-port assignment).
+Changes are staged in a named EOS config session and require a reviewed device diff plus explicit
+confirmation before commit. Commits affect running-config only; startup-config is never saved implicitly.
 
 ## Local Development
 
@@ -57,7 +59,11 @@ widens it by declaration merging in [`src/eapi/show-contracts.ts`](src/eapi/show
 so `node.show('version')` and friends type end-to-end without an upstream release. The modelled
 commands are the M13 screens' five literals — `version`, `interfaces status`, `vlan`, `mlag` and
 `lag` — **except `lag`, which is held until a `show lag` capture exists** (it stays `unknown`;
-narrow on purpose or wait for the STATUS §3 hardware sweep). Every modelled field was read out of
+narrow on purpose or wait for the STATUS §3 hardware sweep), **plus
+`'management api http-commands'`**, added for S1 (#71): that command's `urls[]` names the interface
+the device is actually serving eAPI on — `Management1` in the 7050TX-64 capture, `Vlan100` in the
+cEOS-lab one (endpoint host left redacted by the capture lane) — which is the readable half of the
+dashboard's shutdown guard. Every modelled field was read out of
 a recorded reply under `arista-api-client/test/fixtures/`, and
 `src/eapi/show-contracts.test.ts` pins each contract against verbatim copies of those captures —
 a contract that drifts from real device output fails `npm run typecheck`. The header renders a

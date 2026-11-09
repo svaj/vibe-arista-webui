@@ -7,8 +7,9 @@
  * consumers widen it by declaration merging "so app code gets typed `show` output without waiting
  * for upstream releases"), and `Node#show` keys the map on the command literal **without** its
  * `show ` prefix (`command-layer.ts`'s `showCommand`, pinning MIGRATION.md §2 / USAGE.md §4:
- * `node.show('vlan 20')`, contract key `'lag counters'`). So these five keys are `version`,
- * `'interfaces status'`, `vlan`, `mlag`, and `lag`.
+ * `node.show('vlan 20')`, contract key `'lag counters'`). So the M13 keys are `version`,
+ * `'interfaces status'`, `vlan`, `mlag`, and `lag` — and S1 (#71) adds
+ * `'management api http-commands'`, also capture-backed on both targets.
  *
  * **Evidence rule, identical to the client's capture discipline (DR-043):** every field below was
  * read out of a recorded reply, not out of documentation prose. A key present with the same type
@@ -210,11 +211,64 @@ export interface ShowMlagReply {
  * source (the Port-Channel field group in `resources/interfaces.ts`, M10c/DR-075). This is closed
  * territory, not a pending capture.
  */
+/**
+ * `show management api http-commands` — added for S1 (#71), because the shutdown guard asks a question
+ * no config read can answer: **which interface is eAPI actually being served on?** The device answers
+ * that about itself, in `urls[]`, so this is the strongest readable in-band signal the repo has.
+ *
+ * Two captures, both positive:
+ * - DCS-7050TX-64 / **4.28.13.1M**:
+ *   `arista-api-client/test/fixtures/recordings/7050tx-64-r-4.28.13.1M/show-management-api-http-commands--hw-inventory.json`
+ *   → `urls: ["Management1 : https://<hw-redacted>:443"]` (the host is redacted by the capture lane),
+ *   `vrf: "default"`, `httpsServer.running: true`.
+ * - cEOS-lab **4.28.14M** (`hardwareEvidence: "none"`, DR-043):
+ *   `arista-api-client/test/fixtures/live/ceos-4.28.14M/show-management-api-http-commands.json`
+ *   → `urls: ["Vlan100     : https://10.0.100.1:443"]` — same key, and the interface token is padded
+ *   with spaces before the colon, so a parser must not assume single spacing.
+ *
+ * Every key below is required because both captures carry it with the same type; the one optional key
+ * names which capture it came from. `users` stays `Readonly<Record<string, unknown>>` on purpose: the
+ * hardware capture's entries are per-username counters (`requestCount`/`bytesOut`/`lastHitTime` under a
+ * login name), which is exactly the operator-identifying data F8 (#70) contract (d) scrubs from
+ * artifacts — and no screen reads it. `urls` is the only member S1 consumes.
+ */
+export interface ShowManagementApiHttpCommandsReply {
+  /** One entry per serving endpoint, `"<interface> : <scheme>://<host>:<port>"` — device-padded. */
+  readonly urls: readonly string[]
+  /** The VRF the API is bound to (`"default"` in both captures). */
+  readonly vrf: string
+  readonly vrfs: readonly string[]
+  readonly enabled: boolean
+  readonly httpsServer: { readonly running: boolean; readonly configured: boolean; readonly port: number }
+  readonly httpServer: { readonly running: boolean; readonly configured: boolean; readonly port: number }
+  readonly localHttpServer: { readonly running: boolean; readonly configured: boolean; readonly port: number }
+  readonly unixSocketServer: { readonly running: boolean; readonly configured: boolean }
+  readonly tlsProtocol: readonly string[]
+  /** Per-username usage counters — deliberately not modelled further (F8 contract d). */
+  readonly users: Readonly<Record<string, unknown>>
+  readonly corsOrigins: readonly unknown[]
+  readonly iframeAncestors: readonly unknown[]
+  readonly logLevel: string
+  readonly dscpValue: number
+  readonly fipsEnabled: boolean
+  readonly bytesIn: number
+  readonly bytesOut: number
+  readonly commandCount: number
+  readonly executionTime: number
+  readonly hitCount: number
+  readonly requestCount: number
+  /** Hardware capture only (the cEOS answer carries no `lastHitTime` key). */
+  readonly lastHitTime?: number
+}
+
 declare module '@devhax-heavy-industries/arista-eapi' {
   interface ShowContracts {
     version: ShowVersionReply
     'interfaces status': ShowInterfacesStatusReply
     vlan: ShowVlanReply
     mlag: ShowMlagReply
+    // S1 (#71): the in-band/management-path read. Positive captures on BOTH targets, so this is a
+    // modelled command, not a `lag`-style recorded refusal.
+    'management api http-commands': ShowManagementApiHttpCommandsReply
   }
 }

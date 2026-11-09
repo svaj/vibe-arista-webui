@@ -28,21 +28,31 @@ export default defineConfig({
       //   99.15/88.52/100/100 · src/App.tsx 100/50/100/100 (the half-branch at :12 is the
       //   proxy-configured arm, which no offline test can take — the live arm belongs to the
       //   browser E2E lane).
-      // #70 (F8) added the redaction guard (175 tests) and measured 93.38/84.67/96.1/96.82 — the
-      // floors below are left untouched for now so the ratchet lands once with the screen wave
-      // (#71+), which is what moves `src/features/` the most; re-measure and raise there.
-      // Floors sit ~2-4 points under each measured figure, so erosion fails the leg while honest
-      // rounding of a ~400-statement corpus doesn't flap. Screen issues RAISE these floors as they
-      // add tests (ratchet up, never down).
+      // #70 (F8) added the redaction guard (175 tests) and measured 93.38/84.67/96.1/96.82, leaving
+      // the floors untouched so the ratchet would land with the screen wave.
+      // #71 (S1, this branch) measured 199 tests, all files 93.59/87.06/97.05/97.47
+      // (stmts/branch/funcs/lines), with per-directory aggregates recomputed from
+      // `coverage/coverage-final.json` rather than read off the truncated text table:
+      //   src/features 89.27 stmts (261) / 86.76 branch (370) · src/features/interfaces
+      //   94.21/91.1/100/99.31 (its one uncovered line is `stageLines`' object-spec throw, which no
+      //   all-strings stage can reach) · src/features/vlans unchanged 79.54/79.1/82.75/90 ·
+      //   src/testing 100/88 (65 stmts) · src/shared 96.94 stmts / 86.40 branch / 99.43 lines.
+      // Floors below are set ~2-4 points under those figures (ratchet up, never down). Two notes for
+      // the coverage-lane owner (#69): (1) `src/shared/` branch coverage is 86.40 while that entry
+      // asks for 87, and the leg still exits 0 — the per-glob `branches` figure does not appear to be
+      // enforced the way `lines` is, so treat per-dir branch floors as advisory until #69 re-checks;
+      // (2) the text table truncates directory names, so per-directory claims come from the JSON.
       thresholds: {
         'src/components/': { lines: 98, branches: 90 },
         'src/components/ui/': { lines: 90, branches: 84 },
-        'src/features/': { lines: 86, branches: 77 },
+        'src/features/': { lines: 90, branches: 84 },
+        'src/features/interfaces/': { lines: 96, branches: 88 },
         'src/shared/': { lines: 98, branches: 87 },
-        lines: 92,
-        branches: 82,
-        functions: 92,
-        statements: 88,
+        'src/testing/': { lines: 96, branches: 82 },
+        lines: 95,
+        branches: 85,
+        functions: 95,
+        statements: 90,
       },
     },
   },
