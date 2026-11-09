@@ -318,5 +318,20 @@ describe('the committed draft probe spec is itself machine-checked (review-befor
     }
     // A restore batch exists so committed probes are net-zero on the running switch.
     expect(spec.batches.some((batch) => batch.name.includes('restore') && batch.allowCommit)).toBe(true)
+    // DR-134 pin (first probe run, 2026-11-08): the REV-1 restore batch carried a committed
+    // `no switchport`, which would have STRANDED the scratch port routed — its pre-session state has
+    // been L2-by-default since the default the lab read left. A committed restore line may never
+    // take the port out of the class the operator declared it in.
+    for (const batch of commitBatches) {
+      for (const cmd of batch.commands) {
+        expect(cmd.trim().toLowerCase(), `restore batch ${batch.name} would re-class the scratch port: ${JSON.stringify(cmd)}`).not.toBe('no switchport')
+      }
+    }
+    // DR-134 granularity: EOS stops a staged batch at the first refused line, so a multi-question
+    // batch silently loses every question queued behind a refusal — which is exactly how run 1 died
+    // (`switchport trunk allowed vlan only …` 1002 masked the routed-conversion line). Each refused
+    // sub-question earns its OWN batch name -> its own recording.
+    expect(spec.batches.some((batch) => batch.name === 'trunk-allowed-only')).toBe(true)
+    expect(spec.batches.length).toBeGreaterThanOrEqual(11)
   })
 })

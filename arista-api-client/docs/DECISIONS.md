@@ -2248,6 +2248,46 @@ via `EAPI_HW_SCRUB` and the runbook's counts print the totals.
 **Mutated both half-rules to confirm the new tests bite** (key-walk off → the DR-133 case fails;
 identity walk off → the envelope case fails), and the leak scan passes against the cEOS tree unchanged.
 
+### DR-134 — the probe harness records device refusals and CONTINUES; probe specs ask one question per batch
+The first executed `hw-session-probe` run (2026-11-08 evening, after DR-133 merged): batch 1
+(`session-lifecycle`) captured clean — a no-op staged line yields a **0-line diff** (the honest
+baseline for the `show session-config diffs` §3 line on this box) — then batch 2 died mid-staging:
+
+```
+CommandError: [1002] CLI command 6 of 8 '   switchport trunk allowed vlan only 10,20' failed:
+invalid command [errors: ["Invalid input (at token 4: 'only')"]]
+```
+
+Two separable findings. The **device** one is evidence: EOS 4.28.13.1M on this SKU does not know the
+`only` keyword in `switchport trunk allowed vlan only A,B` (the bare spelling, by contrast, was proven
+accepted AND committed on this same switch by the lab corpus hours earlier — `m12c-sp-trunk-*` sessions,
+read back as `trunkAllowedVlans "1-10"`). That asymmetry is exactly DR-042's class and belongs with
+DR-028/DR-029. The **harness** one was the worse bug: a batch-level `CommandError` propagated out of
+the loop, so batches 3-9 (trunk-group existence, routed conversion, VRRP/VLAN, LACP, the whole commit
+set) never ran — and EOS itself stops a staged batch at the refused line, so even a continuing harness
+would have masked every question behind the refusal inside the SAME batch. The session cleanup
+survived correctly (the `finally` aborted batch 2's half-staged session), so no damage, just an
+amputated run.
+
+Decision (both layers):
+1. **Harness** (`hw-session-probe.live.test.ts`): staging refusals AND `session-config diffs` refusals
+   (only typed `EapiError`s — transport/state-machine faults still kill the run, same half-capture
+   rule as `hw-inventory`) are recorded into the batch's case file, logged as the batch answer, and
+   the loop CONTINUES. An `allowCommit` batch whose staging came back with a refusal **skips the
+   commit** and aborts — a half-refused batch never commits. Per-run counts print
+   `N answered by a device refusal`.
+2. **Spec granularity** (`docs/hw-session-probes.draft.json` rev 2): the multi-question
+   `switchport-modes` batch became three one-question batches (`switchport-l2-baseline`,
+   `trunk-allowed-only`, `routed-conversion`) so each refused line owns its own recording instead of
+   hiding its neighbours. One-question-per-batch is now the spec convention, pinned in the machine
+   check alongside a second rev-2 fix the reviewer caught in the same sitting: the committed
+   `scratch-restore` batch ended with `no switchport`, which would have STRANDED the scratch port
+   routed — its pre-session state has been L2-default since the lab runs `default interface`d it — so
+   the pin `a commit batch may never stage a bare 'no switchport'` blocks the recurrence; the
+   byte-pristine option is documented as the operator's own `default interface <scratch>` at the CLI.
+Not a widening of anything: refused batches still abort, commit batches still fence to the scratch
+interface, and a refusal still never commits.
+
 ## Open items (need the device)
 
 Use cEOS first for software behavior and schema exploration, recording its model/version;

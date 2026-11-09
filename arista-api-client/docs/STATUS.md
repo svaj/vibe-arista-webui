@@ -312,6 +312,10 @@ which needs explicit authorization on hardware and unconditional cleanup.
       — `diff()` is pinned only by the mock pair in `config-session.test.ts`, and
       `test/fixtures/show/show-configuration-sessions--pending-orphans.json` is hand-authored until M12 (#14)
       replaces it
+      **(progress 2026-11-08, DR-134: every `hw-session-probe` case file embeds the replayable
+      `show session-config diffs` exchange for its batch — session-lifecycle's 0-line diff for a staged
+      no-op is the baseline captured on the box; the bare `show session-config` form and the
+      commit-timer behaviour still wait for the rest of the probe set + the follow-up grammar family)**
 
 Suggested first command batch (no writes):
 

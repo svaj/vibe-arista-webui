@@ -7,8 +7,16 @@
     "exactly `interface {{SCRATCH}}` (the one designated unused port, from EAPI_SCRATCH_INTERFACE,",
     "guard-checked + linkStatus-checked at run time). Nothing here touches users, the listener, the",
     "management path, ZTP, rollback/replace, or persistence — parseHwProbeSpec refuses those lines.",
-    "SUGGESTED RUN ORDER: batches 1-5 (all abort) first while the console is fresh; then 6, 7, 8",
-    "and 9 (the commit set) LAST, in that order, so 9 restores 6-8 before the session ends."
+    "SUGGESTED RUN ORDER: the abort-only batches first while the console is fresh; then",
+    "scratch-description, scratch-mtu, scratch-switchport-restore-order and scratch-restore (the",
+    "commit set) LAST, in that order, so restore undoes the committed set before the session ends.",
+    "REV 2 (2026-11-08, DR-134): (a) the first executed run died INSIDE switchport-modes when the",
+    "SKU refused `switchport trunk allowed vlan only 10,20` — EOS 4.28.13.1M answers 1002 / Invalid",
+    "input at token 'only', and it stops that staged batch right there, masking the batch's later",
+    "questions. So that batch is now three one-question batches, and the harness likewise records a",
+    "refusal and continues instead of throwing. (b) scratch-restore drops `no switchport`: the port's",
+    "pre-session state is L2-by-default (mode access after the default it carries since run 1), so a",
+    "committed `no switchport` would strand the port routed instead of net-zero."
   ],
   "batches": [
     {
@@ -21,15 +29,32 @@
       "allowCommit": false
     },
     {
-      "name": "switchport-modes",
-      "question": "DR-028/DR-029 shape on the real SKU: switchport on -> mode trunk -> allowed-vlan only -> no switchport (routed conversion) - which transitions answer, which are 1002/1004",
+      "name": "switchport-l2-baseline",
+      "question": "DR-029 precondition on the real SKU: plain `switchport` + `switchport mode trunk` stage accepted inside a session (the trunk READ shape came from batch 1; this is the write shape)",
       "commands": [
         "interface {{SCRATCH}}",
         "   switchport",
+        "   switchport mode trunk"
+      ],
+      "allowCommit": false
+    },
+    {
+      "name": "trunk-allowed-only",
+      "question": "the line that killed run 1: does the SKU CLI know the `only` keyword in `switchport trunk allowed vlan only A,B`? (the BARE spelling is already PROVEN accepted and committed by the lab corpus on this switch, 2026-11-08)",
+      "commands": [
+        "interface {{SCRATCH}}",
         "   switchport mode trunk",
-        "   switchport trunk allowed vlan only 10,20",
+        "   switchport trunk allowed vlan only 10,20"
+      ],
+      "allowCommit": false
+    },
+    {
+      "name": "routed-conversion",
+      "question": "L2 to Routed conversion inside a session on the SKU: no switchport + a /31 — accepted (then aborted), and does a non-default address stage on a front-panel port",
+      "commands": [
+        "interface {{SCRATCH}}",
         "   no switchport",
-        "   ip address 172.31.255.4/31"
+        "   ip address 172.31.255.5/31"
       ],
       "allowCommit": false
     },
@@ -56,7 +81,7 @@
     },
     {
       "name": "lacp-abort",
-      "question": "implicit Port-Channel creation + mode syntax inside a session on the SKU (LACP limits themselves are a read question: show lag resources capture)",
+      "question": "implicit Port-Channel creation + mode syntax inside a session on the SKU (LACP limits themselves were a read question — and batch 1 ANSWERED it on 2026-11-08: `show lag resources` is invalid command on this unit)",
       "commands": [
         "interface {{SCRATCH}}",
         "   channel-group 999 mode active"
@@ -83,7 +108,7 @@
     },
     {
       "name": "scratch-switchport-restore-order",
-      "question": "L2 mode + access vlan commit cycle on the scratch port (then restore batch undoes both)",
+      "question": "L2 mode + access vlan commit cycle on the scratch port (then the restore batch re-states the defaults)",
       "commands": [
         "interface {{SCRATCH}}",
         "   switchport",
@@ -94,12 +119,13 @@
     },
     {
       "name": "scratch-restore",
-      "question": "cleanup: return the scratch port to its declared pre-session state (defaults), net-zero for the committed batches",
+      "question": "cleanup toward the declared pre-session L2-default state (REV-2: `no switchport` DROPPED — it would strand the port routed; explicit `switchport mode auto`/`access vlan 1` re-state what a pristine default port carries implicitly, so for a byte-clean port the authorized step is the operator typing `default interface <scratch>` at the CLI console)",
       "commands": [
         "interface {{SCRATCH}}",
         "   no description",
         "   no mtu",
-        "   no switchport"
+        "   switchport mode auto",
+        "   switchport access vlan 1"
       ],
       "allowCommit": true
     }
