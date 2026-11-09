@@ -2337,8 +2337,9 @@ Not a loosening of any write gate: the commit fence, the scratch-only parser rul
 *read* can no longer strand a committed *write* without its record or its restore.
 
 ### DR-136 — the third switch hour: a saved session name is a one-slot resource, a `lost` handle may not be aborted, and the box answered five grammar questions
-Runs 3-5 (2026-11-08, after PR #112 merged at `276fffb`) took the probe lane to batch 8 of 17. Two
-harness rules and five device answers came out of it.
+Runs 3-5 (2026-11-08, after PR #112 merged at `276fffb`) completed eleven probe batches and failed on the
+twelfth -- `scratch-description`, the first COMMIT batch the lane reached. Two harness rules and five device
+answers came out of it.
 
 **The device answers, all inside `configure session hw-probe-<name>` on the `-R` unit and recorded as
 `configure-session-<name>--hw-session-probe.json`:**
