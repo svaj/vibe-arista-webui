@@ -44,6 +44,16 @@
  * `:530`/`:537`/`:542` (primary_ip), `:588` (priority), `:629` (description), `:674` (ip_version),
  * `:746`/`:752` (secondary), `:796` (timers), `:1015` (delay_reload), and `:1156`/`:1172` (tracks)).
  *
+ * The family split is now HARDWARE-confirmed on the pinned target, from the #14 §3 session probes
+ * (DR-136): the 7050TX-64-R / 4.28.13.1M **refuses** the legacy write and names its replacement —
+ * `vrrp 1 ip <addr>` answers `1002 Unavailable command (This command is deprecated by 'vrrp ipv4')
+ * (at token 2: 'ip')` and stages nothing (`configure-session-vlan-interface-vrrp--hw-session-probe.json`,
+ * 2026-11-08). Since 4.28.13.1 is on the modern side of upstream's own `>= 4.21.3` cut, that is the arm the
+ * setters pick here (`:618`/`:665`/`:688`), so this module sends the spelling the box takes; the legacy arms
+ * stay in the READER because configs (and upstream's pinned fakes) still spell them. Do not read that as
+ * VRRP being unsupported on the SKU — the modern spelling's own answer is the `vlan-interface-vrrp-ipv4`
+ * batch, asked in the same session day, and only that pair settles §3's VRRP line for the box (DR-043).
+ *
  * ## Divergences this file owns
  *
  * The follow-up round of W3c (2026-11-07) recorded them: MIGRATION.md §5 **rows 213-224** and

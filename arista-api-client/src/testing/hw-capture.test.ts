@@ -22,9 +22,15 @@ import {
   HW_SESSION_SCENARIO,
   HW_TEXT_SCENARIO,
   HW_ZEROED_MAC,
+  HW_PROBE_SESSION_PREFIX,
   hwCaseName,
   hwDeviceIdentity,
   hwProbeCaseName,
+  hwProbePendingRevertSessions,
+  hwProbeRetrySessionName,
+  hwProbeRunTag,
+  hwProbeSessionName,
+  hwProbeTimerWaitMs,
   hwScratchReadBackCommand,
   parseHwProbeSpec,
   redactHwValue,
@@ -284,6 +290,32 @@ describe('the probe-spec parser (policy made mechanical)', () => {
     expect(() => parseHwProbeSpec(JSON.stringify(bad))).toThrow(/persistence/u)
   })
 
+  it('refuses a staged commit-session EXEC verb in any batch — those are lifecycle, not staged config', () => {
+    // Why this fence exists at all: `commit <intf>`/`revert <intf>` are not staged config — they act on the
+    // SESSION immediately, and the `<intf>` form implicitly saves to startup-config (DECISIONS DR-081), a
+    // write no spec line could be reviewed for. `abort` staged would end the batch's own session early.
+    for (const cmd of ['commit Ethernet22 verify', 'revert Ethernet22', 'abort', 'copy running-config session-config', '   commit Ethernet22 verify']) {
+      for (const commitable of [true, false]) {
+        const bad = { batches: [{ name: 'x', question: 'q', commands: ['interface {{SCRATCH}}', '   no shutdown', cmd], allowCommit: commitable }] }
+        expect(() => parseHwProbeSpec(JSON.stringify(bad)), `${cmd} allowCommit=${String(commitable)}`).toThrow(/never belongs in `commands`/u)
+      }
+    }
+  })
+
+  it('carries commitWithRevertTimer through to the batch, refusing a timer this client cannot send', () => {
+    const ok = { batches: [{ name: 'commit-timer', question: 'q', commands: ['interface {{SCRATCH}}', '   description T'], allowCommit: true, commitWithRevertTimer: '00:02:00' }] }
+    expect(parseHwProbeSpec(JSON.stringify(ok)).batches[0]?.commitWithRevertTimer).toBe('00:02:00')
+    for (const bad of ['2:00', '99 minutes', '00:00:00', '', '00:90:00']) {
+      const spec = { batches: [{ ...ok.batches[0], commitWithRevertTimer: bad }] }
+      expect(() => parseHwProbeSpec(JSON.stringify(spec)), JSON.stringify(bad)).toThrow(/commitWithRevertTimer/u)
+    }
+  })
+
+  it('refuses a revert timer on a batch it may not commit (the fence is what bounds it)', () => {
+    const bad = { batches: [{ name: 'x', question: 'q', commands: ['interface {{SCRATCH}}', '   description T'], allowCommit: false, commitWithRevertTimer: '00:02:00' }] }
+    expect(() => parseHwProbeSpec(JSON.stringify(bad))).toThrow(/needs allowCommit: true/u)
+  })
+
   it('names the failing batch/field in every structural refusal, and rejects duplicate batch names', () => {
     expect(() => parseHwProbeSpec('{"batches":[]}')).toThrow(/non-empty `batches`/u)
     expect(() => parseHwProbeSpec(JSON.stringify({ batches: [{ name: 'BAD NAME', question: 'q', commands: ['x'], allowCommit: false }] }))).toThrow(/batches\[0\]\.name/u)
@@ -325,6 +357,19 @@ describe('the committed draft probe spec is itself machine-checked (review-befor
     // HW-CAPTURE-PROBE` on Ethernet22 exactly this way).
     const restore = spec.batches.find((batch) => batch.name === 'scratch-restore')
     expect(restore?.commands.map((cmd) => cmd.trim())).toContain('no description')
+    // The restore batch must be LAST: it is the net-zero guarantee for everything the commit set leaves
+    // behind, including a revert that never fires (run 2 left `description HW-CAPTURE-PROBE` on the port
+    // because a crash skipped it).
+    expect(spec.batches.at(-1)?.name).toBe('scratch-restore')
+    // Dr-136 follow-up: the timed batch has to run BEFORE the restore (the lane waits its deadline out,
+    // and the restore then clears whatever the box left applied), and the spec timer must be short enough
+    // that the lane actually waits it — otherwise the config lock would still be held when the next batch
+    // opened.
+    const timed = spec.batches.find((batch) => batch.commitWithRevertTimer !== undefined)
+    expect(timed?.name).toBe('commit-timer')
+    expect(timed?.allowCommit, 'a revert timer is only legal on a commit batch').toBe(true)
+    expect(hwProbeTimerWaitMs(timed?.commitWithRevertTimer ?? '00:00:00'), 'the lane must be able to sit out this timer before touching the port again').toBeDefined()
+    expect(spec.batches.findIndex((batch) => batch.name === 'commit-timer')).toBeLessThan(spec.batches.findIndex((batch) => batch.name === 'scratch-restore'))
     // DR-134 pin (first probe run, 2026-11-08): the REV-1 restore batch carried a committed
     // `no switchport`, which would have STRANDED the scratch port routed — its pre-session state has
     // been L2-by-default since the default the lab read left. A committed restore line may never
@@ -349,10 +394,20 @@ describe('the committed draft probe spec is itself machine-checked (review-befor
     }
     // A staged VLAN/VLAN-interface batch must never be committed: parseHwProbeSpec bounds commits to
     // the scratch interface, and these batches sit OUTSIDE it on purpose (abort-only answers).
-    for (const splitName of ['vlan-inline-name', 'vlan-block-form', 'vlan-interface-ip', 'vlan-interface-vrrp', 'ip-routing']) {
+    for (const splitName of ['vlan-inline-name', 'vlan-block-form', 'vlan-interface-ip', 'vlan-interface-vrrp', 'vlan-interface-vrrp-ipv4', 'ip-routing']) {
       expect(spec.batches.find((batch) => batch.name === splitName)?.allowCommit, `${splitName} must stay abort-only`).toBe(false)
     }
-    expect(spec.batches.length).toBeGreaterThanOrEqual(15)
+    // REV 4 (run 5, DR-136): the box REFUSED the legacy VRRP spelling and named its replacement —
+    // `vrrp 1 ip <addr>` -> `Unavailable command (This command is deprecated by 'vrrp ipv4')`. That is
+    // exactly the arm this client composes on >= 4.21.3 (`src/resources/vrrp.ts:618`), and §3 may not
+    // borrow the cEOS answer for it (DR-043), so the modern form gets its own batch.
+    expect(names.has('vlan-interface-vrrp-ipv4'), 'the modern-spelling VRRP follow-up is missing').toBe(true)
+    const vrrpModern = spec.batches.find((batch) => batch.name === 'vlan-interface-vrrp-ipv4')
+    expect(vrrpModern?.commands.map((cmd) => cmd.trim())).toContain('vrrp 1 ipv4 169.254.90.7')
+    // §3's `commit timer` line lives in this lane now: a revert timer is armed by a COMMIT, so it can only
+    // be asked where commits are legal — and it must be fenced and ordered like one.
+    expect(names.has('commit-timer'), 'the commit-timer batch is missing').toBe(true)
+    expect(spec.batches.length).toBeGreaterThanOrEqual(17)
   })
 })
 
@@ -366,6 +421,54 @@ describe('the post-commit scratch read-back (hardware-verified command spelling)
 
   it('never emits a bare `show running-config …` for an empty interface name', () => {
     expect(() => hwScratchReadBackCommand('')).toThrow(/non-empty interface/u)
+  })
+})
+
+describe('probe session names (the DR-136 opener-refusal retry)', () => {
+  it('builds the canonical greppable name from a batch name', () => {
+    expect(hwProbeSessionName('trunk-groups')).toBe(`${HW_PROBE_SESSION_PREFIX}trunk-groups`)
+  })
+
+  it('names a refused batch retryably: distinct from the canonical name, same prefix, inside the length cap', () => {
+    const canonical = hwProbeSessionName('scratch-description')
+    const retry = hwProbeRetrySessionName('scratch-description', hwProbeRunTag(1_794_189_394_635))
+    expect(retry).not.toBe(canonical)
+    expect(retry.startsWith(HW_PROBE_SESSION_PREFIX)).toBe(true)
+    // The longest legal spec batch name (parser: [a-z0-9][a-z0-9-]{0,39}) plus prefix, separator and tag still
+    // fits this client's own session-name cap, so the retry can never be refused by assertSessionName.
+    const longest = hwProbeRetrySessionName('a'.repeat(40), 'zzzzzzzz')
+    expect(longest.length).toBeLessThanOrEqual(64)
+    expect(longest).toMatch(/^[a-z0-9-]+$/u)
+  })
+
+  it('refuses a run tag with nothing alphanumeric in it, instead of building a name the guard may reject', () => {
+    expect(() => hwProbeRetrySessionName('x', '---')).toThrow(/non-empty alphanumeric/u)
+  })
+
+  it('refuses a batch name the spec parser itself would refuse', () => {
+    for (const bad of ['', 'Bad-Name', 'has space', 'x'.repeat(41)]) {
+      expect(() => hwProbeSessionName(bad), bad).toThrow(/spec batch name/u)
+    }
+  })
+})
+
+describe('the revert-timer wait window', () => {
+  it('waits out a short timer with slack, and refuses to wait out a long or zero one', () => {
+    expect(hwProbeTimerWaitMs('00:02:00')).toBe((120 + 15) * 1000)
+    expect(hwProbeTimerWaitMs('00:00:00')).toBeUndefined()
+    expect(hwProbeTimerWaitMs('01:00:00')).toBeUndefined()
+    expect(hwProbeTimerWaitMs('00:00:00')).toBeUndefined()
+  })
+
+  it('refuses a timer this client could not have sent', () => {
+    for (const bad of ['2:00', '24:00:00', '99 minutes', '']) {
+      expect(() => hwProbeTimerWaitMs(bad), bad).toThrow(/HH:MM:SS/u)
+    }
+  })
+
+  it('reports the session table in the shape §3 reads it', () => {
+    const pending = [{ name: 'commit timer conflict', state: 'pending-revert', commitBy: 2 }, { name: 'closed', state: 'completed' }]
+    expect(hwProbePendingRevertSessions(pending as never)).toEqual([{ name: 'commit timer conflict', state: 'pending-revert' }, { name: 'closed', state: 'completed' }])
   })
 })
 

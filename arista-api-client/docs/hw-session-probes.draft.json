@@ -30,7 +30,23 @@
     "(run 2, never restored — the restore set never ran). If the operator wants scratch-description to",
     "show a real diff, run the restore batch ALONE first (EAPI_HW_PROBE_ONLY=scratch-restore), then the",
     "full spec; otherwise scratch-description re-commits a no-op and the trailing restore still nets",
-    "the port clean."
+    "the port clean.",
+    "REV 4 (2026-11-08, after run 5, DR-136): run 5 answered five more questions on the box -- the",
+    "`vlan <id>` BLOCK form stages (`vlan 4090` + indented `name`), a **dangling** `interface Vlan4090`",
+    "stages with an address even though VLAN 4090 exists only in that same session, `ip routing` stages",
+    "(and the diff showed the box running `no ip routing` today), `switchport trunk group HWGRP` staged",
+    "again, and VRRP's v2 spelling was REFUSED: `vrrp 1 ip <addr>` -> `Unavailable command (This command",
+    "is deprecated by 'vrrp ipv4')`. That last answer is a client question, not just a fact: this package",
+    "composes `vrrp <n> ipv4 <addr>` on >= 4.21.3, so REV 4 asks the modern spelling too",
+    "(`vlan-interface-vrrp-ipv4`). Run 5 then stopped at scratch-description because the box refused the",
+    "OPENER -- its completed-session slot (maxSavedSessions: 1) still holds the name run 2's commit",
+    "parked there -- and the harness called abort() on the handle the client model had marked lost, so",
+    "the client's own DR-023 error killed the loop before that batch's refusals reached disk (the",
+    "restore batches still never ran). REV 4 also adds `commit-timer`, the §3/open-item-5 question the",
+    "spec used to defer: it can only be armed by a commit, and it is fenced to the scratch port like",
+    "every other commit batch -- but it holds the config lock for its own 2-minute window, so run it",
+    "after the abort-only set and before `scratch-restore`, and expect the next session opened during",
+    "that window to be refused (the harness asks that question inside the batch on purpose)."
   ],
   "batches": [
     {
@@ -110,10 +126,19 @@
     },
     {
       "name": "vlan-interface-vrrp",
-      "question": "the question actually owed since run 1: VRRP (v2 form `vrrp <group> ip <addr>`) on an SVI on the SKU. The interface line above is the already-accepted context, per DR-134 one NEW line per batch",
+      "question": "run-5 answer, now its own recording: the v2 spelling `vrrp <group> ip <addr>` on an SVI — the SKU refuses it (1002 Unavailable command, deprecated by vrrp ipv4) while the SVI block itself staged",
       "commands": [
         "interface Vlan4090",
         "   vrrp 1 ip 169.254.90.7"
+      ],
+      "allowCommit": false
+    },
+    {
+      "name": "vlan-interface-vrrp-ipv4",
+      "question": "REV 4, the follow-up run 5 forced: does the SKU take the MODERN spelling `vrrp <group> ipv4 <addr>` that the refusal names? This client composes exactly that on >= 4.21.3 (src/resources/vrrp.ts:618), and the cEOS corpus proves the pair exists in the image — the box's answer is what licenses the modern arm on hardware (DR-043)",
+      "commands": [
+        "interface Vlan4090",
+        "   vrrp 1 ipv4 169.254.90.7"
       ],
       "allowCommit": false
     },
@@ -162,6 +187,16 @@
         "   switchport access vlan 1"
       ],
       "allowCommit": true
+    },
+    {
+      "name": "commit-timer",
+      "question": "STATUS §3 / open item 5, asked of the box: does a commit with a revert timer arm (`commitWithRevertTimer: 00:02:00` via this client's own timed-commit verb), does the box then show the session while it is armed, does an armed timer block another `configure session` (1006), and does the revert fire by itself when the deadline passes (scratch block read before and after)? A refused timed commit is recorded as the answer, not a crash",
+      "commands": [
+        "interface {{SCRATCH}}",
+        "   description HWPROBE-TIMER"
+      ],
+      "allowCommit": true,
+      "commitWithRevertTimer": "00:02:00"
     },
     {
       "name": "scratch-restore",

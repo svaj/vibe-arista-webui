@@ -194,6 +194,15 @@ so the SPEC keeps one question per batch to keep the recordings granular (`docs/
 rev 3). A transport or state-machine failure still kills the run: half-captured switch evidence is
 worse than none.
 
+**A committed session's NAME is taken (DR-136).** The box keeps **one** completed session
+(`maxSavedSessions: 1`, hardware-verified) and the name of the last commit sits in it. Re-opening that exact
+name is refused — run 5 saw `Error [1000] … 'configure session hw-probe-scratch-description description
+"…"' failed: could not run command` for a name run 2 had committed. The lane handles it: it tries the
+canonical `hw-probe-<name>` first, prints and records the refusal (that IS §3 evidence about name reuse), and
+retries the same batch under `hw-probe-<name>-<run tag>`; one batch still produces exactly one recording. On
+the console, both shapes are covered by the §2.5 `hw-probe-*` grep, so a leftover from a retry is as visible
+as a leftover from the canonical attempt.
+
 **Post-batch reads never control the run (DR-135).** The scratch read-back after a commit and the
 `show configuration sessions` post-state read refuse-and-log; they cannot cancel a committed batch's
 recording and cannot stop the loop. The read-back command itself comes from `hwScratchReadBackCommand`
