@@ -2337,9 +2337,9 @@ Not a loosening of any write gate: the commit fence, the scratch-only parser rul
 *read* can no longer strand a committed *write* without its record or its restore.
 
 ### DR-136 — the third switch hour: a saved session name is a one-slot resource, a `lost` handle may not be aborted, and the box answered five grammar questions
-Runs 3-4 (2026-11-08, after PR #112 merged at `276fffb`) completed eleven probe batches and failed on the
-twelfth -- `scratch-description`, the first COMMIT batch the lane reached. Two harness rules and five device
-answers came out of it.
+Runs 3-4 (2026-11-08, after PR #112 merged at `276fffb` — run 3 on a stale local main at 21:21, run 4 on the
+merged tree at 21:32) took the lane to its first COMMIT batch: run 4 completed eleven batches and died on the
+twelfth, `scratch-description`. Two harness rules and five device answers came out of it.
 
 The run numbering this entry and STATUS.md §3 use for the probe lane: **run 1** = the first attempt, aborted
 mid-`switchport-modes` (DR-134); **run 2** = 20:57, which recorded seven batches and DID commit

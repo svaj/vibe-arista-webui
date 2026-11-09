@@ -361,7 +361,7 @@ describe('the committed draft probe spec is itself machine-checked (review-befor
     // behind, including a revert that never fires (run 2 left `description HW-CAPTURE-PROBE` on the port
     // because a crash skipped it).
     expect(spec.batches.at(-1)?.name).toBe('scratch-restore')
-    // Dr-136 follow-up: the timed batch has to run BEFORE the restore (the lane waits its deadline out,
+    // DR-136 follow-up: the timed batch has to run BEFORE the restore (the lane waits its deadline out,
     // and the restore then clears whatever the box left applied), and the spec timer must be short enough
     // that the lane actually waits it — otherwise the config lock would still be held when the next batch
     // opened.
