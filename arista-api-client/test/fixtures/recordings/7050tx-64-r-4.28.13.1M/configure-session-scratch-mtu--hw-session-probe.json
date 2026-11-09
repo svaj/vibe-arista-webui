@@ -12,7 +12,7 @@
   },
   "captures": [
     {
-      "requestId": "0c99da65e7d5-1",
+      "requestId": "5b3e1d91a85d-1",
       "commands": [
         "enable",
         "show interfaces Ethernet22 status"
@@ -42,7 +42,7 @@
       ]
     },
     {
-      "requestId": "0c99da65e7d5-2",
+      "requestId": "5b3e1d91a85d-2",
       "commands": [
         "enable",
         "configure session hw-probe-scratch-mtu description \"does the SKU accept mtu 9214 on a front-panel port and e\"",
@@ -58,7 +58,7 @@
       ]
     },
     {
-      "requestId": "0c99da65e7d5-3",
+      "requestId": "5b3e1d91a85d-3",
       "commands": [
         "enable",
         "configure session hw-probe-scratch-mtu description \"does the SKU accept mtu 9214 on a front-panel port and e\"",
@@ -73,12 +73,12 @@
           "output": ""
         },
         {
-          "output": "--- system:/running-config\n+++ session:/hw-probe-scratch-mtu-session-config\n@@ -84,6 +84,7 @@\n !\n interface Ethernet22\n    description HW-CAPTURE-PROBE\n+   mtu 9214\n !\n interface Ethernet23\n !\n"
+          "output": ""
         }
       ]
     },
     {
-      "requestId": "0c99da65e7d5-4",
+      "requestId": "5b3e1d91a85d-4",
       "commands": [
         "enable",
         "configure session hw-probe-scratch-mtu description \"does the SKU accept mtu 9214 on a front-panel port and e\"",
@@ -92,7 +92,7 @@
       ]
     },
     {
-      "requestId": "0c99da65e7d5-5",
+      "requestId": "5b3e1d91a85d-5",
       "commands": [
         "enable",
         "show running-config interfaces Ethernet22"
@@ -108,7 +108,7 @@
       ]
     },
     {
-      "requestId": "0c99da65e7d5-6",
+      "requestId": "5b3e1d91a85d-6",
       "commands": [
         "enable",
         "show configuration sessions"
@@ -124,7 +124,7 @@
       ]
     },
     {
-      "requestId": "0c99da65e7d5-7",
+      "requestId": "5b3e1d91a85d-7",
       "commands": [
         "enable",
         "show configuration sessions detail"
@@ -141,7 +141,7 @@
               "state": "completed",
               "commitUser": "svaj",
               "description": "\"does the SKU accept mtu 9214 on a front-panel port and e\"",
-              "completedTime": 1794195744.2240794
+              "completedTime": 1794235691.1405187
             }
           }
         }

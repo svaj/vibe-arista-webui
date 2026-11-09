@@ -2493,6 +2493,21 @@ the empty pre-probe stanza run 1's inventory captured. Expect ~4 minutes inside 
 sits its own deadline now that the box proved the revert fires), and expect that run to park a committed
 name in the slot afterwards — displacement is rotation, not residue.
 
+**Run 6 executed that card (2026-11-09 09:48, main at `548f594`, rev 5): the first CLEAN pass.** 17/17
+batches, 5 commits, 0 opener refusals, honest prints agreeing with the captures for the first time, and the
+net-zero guarantee finally met on the box: post-restore Ethernet22 reads a bare `interface Ethernet22`
+(recording-verified — the session diff removed exactly the two owed lines). One extra answer the planned
+re-play produced: a **0-line-diff (no-op) commit is ACCEPTED** — the three scratch batches whose port values
+run 5 had already left in place diffed empty and committed anyway, parking their names like any commit
+(the `configure-session-scratch-description--hw-session-probe.json` capture embeds both the empty diff and
+the `state: completed` entry). Rotation reconfirmed the same way those no-opens were possible: each fresh
+commit displaces the previous saved entry, so only the newest canonically-blocked name is
+`hw-probe-scratch-restore` (the last plain commit of the run). `commit-timer` reproduced run 5 end-to-end,
+including uptime-clock continuity on `commitBy` (704038 → 743985 ≈ the 11 h between the runs' wall clocks).
+After run 6 this DR's card is DONE: §3's remaining device lines are the deliberately-deferred families
+(second-`commit`-confirm, name-shape boundary, quote depth, `no-commit`, bare `show session-config`), not
+missing rev-5 batches — see STATUS.md §3 for the current switch-state note.
+
 ## Open items (need the device)
 
 Use cEOS first for software behavior and schema exploration, recording its model/version;
@@ -2553,7 +2568,10 @@ config session and are **not read-only**:
    (the lane's `-block-check` probe — REV 4 expected a refusal, the box answered otherwise); its marker reaches
    running-config but never `show startup-config` (the captured startup mtime predates every probe run); and
    past the deadline the revert fires unattended, restores exactly that session's own diff, after which the
-   entry is GONE from both listing forms — a reverted commit never parks its name in DR-136's slot. Half of
+   entry is GONE from both listing forms — a reverted commit never parks its name in DR-136's slot. **Run 6
+   (2026-11-09, same rev) reproduced every one of these facts cleanly and added the no-op answer: a commit whose
+   session diff is 0 lines is ACCEPTED, names park the same way**, and `commitBy` continuity between the two runs
+   (743985 vs 704038, ~11 h apart like their wall clocks) confirms the value is box uptime, not epoch. Half of
    the original sentence stays open on purpose: whether a second `commit` before the deadline confirms or
    resets the revert — the `commit <intf> verify` / `revert <intf>` confirm-and-cancel arm is
    deliberately still unasked: the repo has never composed that pair for a device, and DR-135 is exactly what

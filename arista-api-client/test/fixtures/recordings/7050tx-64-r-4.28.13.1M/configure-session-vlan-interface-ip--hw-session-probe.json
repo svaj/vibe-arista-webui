@@ -12,7 +12,7 @@
   },
   "captures": [
     {
-      "requestId": "5874c2acb621-1",
+      "requestId": "7fd1b700272f-1",
       "commands": [
         "enable",
         "configure session hw-probe-vlan-interface-ip description \"SVI on the box: `interface Vlan4090` + an indented addre\"",
@@ -28,7 +28,7 @@
       ]
     },
     {
-      "requestId": "5874c2acb621-2",
+      "requestId": "7fd1b700272f-2",
       "commands": [
         "enable",
         "configure session hw-probe-vlan-interface-ip description \"SVI on the box: `interface Vlan4090` + an indented addre\"",
@@ -43,12 +43,12 @@
           "output": ""
         },
         {
-          "output": "--- system:/running-config\n+++ session:/hw-probe-vlan-interface-ip-session-config\n@@ -176,6 +176,9 @@\n interface Management1\n    ip address <hw-redacted>/24\n !\n+interface Vlan4090\n+   ip address 169.254.90.1/29\n+!\n no ip routing\n !\n monitor session 1 source Ethernet37\n"
+          "output": "--- system:/running-config\n+++ session:/hw-probe-vlan-interface-ip-session-config\n@@ -177,6 +177,9 @@\n interface Management1\n    ip address <hw-redacted>/24\n !\n+interface Vlan4090\n+   ip address 169.254.90.1/29\n+!\n no ip routing\n !\n monitor session 1 source Ethernet37\n"
         }
       ]
     },
     {
-      "requestId": "5874c2acb621-3",
+      "requestId": "7fd1b700272f-3",
       "commands": [
         "enable",
         "configure session hw-probe-vlan-interface-ip description \"SVI on the box: `interface Vlan4090` + an indented addre\"",
@@ -62,7 +62,7 @@
       ]
     },
     {
-      "requestId": "5874c2acb621-4",
+      "requestId": "7fd1b700272f-4",
       "commands": [
         "enable",
         "show configuration sessions"
@@ -78,7 +78,7 @@
       ]
     },
     {
-      "requestId": "5874c2acb621-5",
+      "requestId": "7fd1b700272f-5",
       "commands": [
         "enable",
         "show configuration sessions detail"
@@ -89,15 +89,7 @@
         {
           "maxSavedSessions": 1,
           "maxOpenSessions": 5,
-          "sessions": {
-            "hw-probe-scratch-description": {
-              "instances": {},
-              "state": "completed",
-              "commitUser": "svaj",
-              "description": "\"commit round-trip on the designated scratch port: descri\"",
-              "completedTime": 1794189394.6353114
-            }
-          }
+          "sessions": {}
         }
       ]
     }

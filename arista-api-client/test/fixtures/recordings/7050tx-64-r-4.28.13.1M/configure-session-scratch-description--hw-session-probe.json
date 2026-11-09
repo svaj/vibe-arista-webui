@@ -12,7 +12,7 @@
   },
   "captures": [
     {
-      "requestId": "04cfa9158961-1",
+      "requestId": "a2cc68b7688d-1",
       "commands": [
         "enable",
         "show interfaces Ethernet22 status"
@@ -42,32 +42,10 @@
       ]
     },
     {
-      "requestId": "04cfa9158961-2",
+      "requestId": "a2cc68b7688d-2",
       "commands": [
         "enable",
         "configure session hw-probe-scratch-description description \"commit round-trip on the designated scratch port: descri\"",
-        "interface Ethernet22",
-        "   description HW-CAPTURE-PROBE"
-      ],
-      "format": "json",
-      "error": {
-        "data": [
-          {},
-          {
-            "errors": [
-              "Cannot enter session hw-probe-scratch-description (already completed)"
-            ]
-          }
-        ],
-        "message": "CLI command 2 of 4 'configure session hw-probe-scratch-description description \"commit round-trip on the designated scratch port: descri\"' failed: could not run command",
-        "code": 1000
-      }
-    },
-    {
-      "requestId": "04cfa9158961-3",
-      "commands": [
-        "enable",
-        "configure session hw-probe-scratch-description-mw8pujyw description \"commit round-trip on the designated scratch port: descri\"",
         "interface Ethernet22",
         "   description HW-CAPTURE-PROBE"
       ],
@@ -80,10 +58,10 @@
       ]
     },
     {
-      "requestId": "04cfa9158961-4",
+      "requestId": "a2cc68b7688d-3",
       "commands": [
         "enable",
-        "configure session hw-probe-scratch-description-mw8pujyw description \"commit round-trip on the designated scratch port: descri\"",
+        "configure session hw-probe-scratch-description description \"commit round-trip on the designated scratch port: descri\"",
         "show session-config diffs"
       ],
       "format": "text",
@@ -100,10 +78,10 @@
       ]
     },
     {
-      "requestId": "04cfa9158961-5",
+      "requestId": "a2cc68b7688d-4",
       "commands": [
         "enable",
-        "configure session hw-probe-scratch-description-mw8pujyw description \"commit round-trip on the designated scratch port: descri\"",
+        "configure session hw-probe-scratch-description description \"commit round-trip on the designated scratch port: descri\"",
         "commit"
       ],
       "format": "json",
@@ -114,7 +92,7 @@
       ]
     },
     {
-      "requestId": "04cfa9158961-6",
+      "requestId": "a2cc68b7688d-5",
       "commands": [
         "enable",
         "show running-config interfaces Ethernet22"
@@ -125,12 +103,12 @@
           "output": ""
         },
         {
-          "output": "interface Ethernet22\n   description HW-CAPTURE-PROBE\n"
+          "output": "interface Ethernet22\n   description HW-CAPTURE-PROBE\n   mtu 9214\n"
         }
       ]
     },
     {
-      "requestId": "04cfa9158961-7",
+      "requestId": "a2cc68b7688d-6",
       "commands": [
         "enable",
         "show configuration sessions"
@@ -146,7 +124,7 @@
       ]
     },
     {
-      "requestId": "04cfa9158961-8",
+      "requestId": "a2cc68b7688d-7",
       "commands": [
         "enable",
         "show configuration sessions detail"
@@ -158,12 +136,12 @@
           "maxSavedSessions": 1,
           "maxOpenSessions": 5,
           "sessions": {
-            "hw-probe-scratch-description-mw8pujyw": {
+            "hw-probe-scratch-description": {
               "instances": {},
               "state": "completed",
               "commitUser": "svaj",
               "description": "\"commit round-trip on the designated scratch port: descri\"",
-              "completedTime": 1794195740.8008525
+              "completedTime": 1794235687.7705054
             }
           }
         }

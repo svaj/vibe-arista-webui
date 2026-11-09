@@ -223,11 +223,13 @@ mutation, the batch's recording was lost, and the restore set never ran (first p
 reviewed spec) runs just those batches, in the spec's order. Use it when a run died mid-commit-set or
 when the port already carries an earlier probe's line — replaying everything would then re-answer
 questions against a dirty port. An unknown name is a hard refusal, never a silent skip. Before the
-first resumed run, read the `STATE ON THE SWITCH RIGHT NOW` note in the spec's `$comment` — as of rev 5
-it reads: Ethernet22 carries `description HW-CAPTURE-PROBE` + `mtu 9214`, the completed-session slot is
-EMPTY (the auto-revert freed it), so the next supervised day runs the **full spec**: every canonical
-opener is free, and the rev-5 restore runs last and returns the port net-zero (`show running-config`, default-filtered, had no
-Ethernet22 stanza at all in the run-1 inventory).
+first resumed run, read the `STATE ON THE SWITCH RIGHT NOW` note in the spec's `$comment` — as of run 6
+(the 2026-11-09 09:48 pass, spec rev 5, all 17 batches green) it reads: Ethernet22's stanza is **empty**
+(the rev-5 restore ran and the net-zero debt from run 2 is paid — recording-verified), `no ip routing`
+remains the saved state, no pending sessions, and the one completed-session slot holds
+`hw-probe-scratch-restore`. Re-running the full spec is allowed any time (only that one opener should
+refuse-and-retry), but it is not required: §3's remaining device lines are the deliberately-deferred
+families listed in STATUS.md §3, not more rev-5 batches.
 
 ```sh
 # read the switch's own view of what is pending/committed BEFORE resuming (console, §2.5):
