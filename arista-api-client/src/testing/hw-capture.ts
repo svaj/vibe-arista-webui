@@ -562,9 +562,10 @@ export function hwProbeTimerWaitMs(timer: string, maxWaitedSeconds = 300): numbe
  * lane, and the runbook's §2.5 check stays the backstop.
  *
  * Still deliberately unasked: "does a second `commit` before the deadline confirm or reset the
- * revert?" and `commit <intf> verify` / `revert <intf>` — this repo models that pair but has never sent
- * it to a device, and composing a CLI line from an unread signature is how DR-135 happened, so it stays
- * a named follow-up (STATUS §3, open item 5) rather than a guess.
+ * revert?" and `commit <intf> verify` / `revert <intf>` — this repo has NEVER composed or sent that pair
+ * (the only confirm-side verb it models is `ConfigSession#confirmRevertTimer`, a second session commit,
+ * and its hardware effect is still unknown), and composing a CLI line from an unread signature is how
+ * DR-135 happened, so it stays a named follow-up (STATUS §3, open item 5) rather than a guess.
  */
 export function hwProbePendingRevertSessions(sessions: readonly { name: string; state: string }[]): readonly { name: string; state: string }[] {
   return sessions.map(({ name, state }) => ({ name, state }))
