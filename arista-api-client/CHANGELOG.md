@@ -9,6 +9,22 @@ surprise here — this file records what shipped, the migration map records what
 
 ## [Unreleased]
 
+### Fixed — the hardware scrubber missed key-position secrets in the batch-1 captures (2026-11-08; DR-133 + §5 row 233)
+- `sanitizeHwRecording`/`redactHwValue` (`src/testing/hw-capture.ts`) now scrub object **keys** with the
+  same rule chain as values (collision-safe renaming) and the identity envelope's free-text fields
+  (`endpoint`/`topology`/`image`; the `targetSlug`/`modelName`/version match fields stay verbatim).
+  EOS answers `show running-config` in JSON as an object keyed by the config line, so the first executed
+  hardware capture — 44 recordings from the `-R` unit, 9 device negatives — carried a live
+  `username … secret sha512 $6$…` hash in the two running-config files and the management IP in all 44
+  envelopes. The 44 files are regenerated from the original device bytes through the fixed code; the
+  pre-fix copies were never committed and live only on the session host.
+- New committed-tree guard (`recorder-node.test.ts`): every recording under `test/fixtures/recordings/`
+  is now text-scanned for crypt(3) hashes, un-redacted `secret`/`enable password` payloads, and
+  private-key armour — placeholders pass, real material fails `npm test`. Guard mutation-checked.
+- `live-client`'s startup-config memo assertion, previously pinned to the container's
+  "no startup-config → two wire asks", now conditions on the device's answer (a real switch has one:
+  memoised, one ask). The client rule it pins is unchanged.
+
 ### Changed — the hardware capture lane, from the first supervised 7050TX-64 sessions (2026-11-08; DR-131/DR-132 + §5 row 232)
 - `live-guard.ts` `HARDWARE_MODEL_NAMES` is now the **exact set** `DCS-7050TX-64` / `DCS-7050TX-64-R`:
   the unit in front of the first session answered `show version` with the `-R` spelling, so a fully

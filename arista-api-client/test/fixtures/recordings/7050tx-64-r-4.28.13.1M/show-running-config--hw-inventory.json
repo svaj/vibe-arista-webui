@@ -1,0 +1,362 @@
+{
+  "format": "arista-eapi-recording/v1",
+  "identity": {
+    "targetSlug": "7050tx-64-r-4.28.13.1M",
+    "targetClass": "hardware",
+    "modelName": "DCS-7050TX-64-R",
+    "aristaVersion": "4.28.13.1M",
+    "versionNumber": "4.28.13.1",
+    "provenance": "captured",
+    "endpoint": "https://<hw-redacted>:443/command-api",
+    "topology": "supervised 7050TX-64 session; single device; recorder per case"
+  },
+  "captures": [
+    {
+      "requestId": "0d4282cbc385-1",
+      "commands": [
+        "enable",
+        "show running-config"
+      ],
+      "format": "json",
+      "result": [
+        {},
+        {
+          "header": [
+            "! device: localhost (DCS-7050TX-64, EOS-4.28.13.1M)\n!\n"
+          ],
+          "comments": [],
+          "cmds": {
+            "interface Ethernet37": {
+              "comments": [],
+              "cmds": {
+                "description wan_from_gfiber_ont": null
+              }
+            },
+            "interface Ethernet36": {
+              "comments": [],
+              "cmds": {}
+            },
+            "interface Ethernet35": {
+              "comments": [],
+              "cmds": {}
+            },
+            "interface Ethernet34": {
+              "comments": [],
+              "cmds": {}
+            },
+            "interface Ethernet33": {
+              "comments": [],
+              "cmds": {
+                "description synology_nas": null
+              }
+            },
+            "interface Ethernet32": {
+              "comments": [],
+              "cmds": {}
+            },
+            "interface Ethernet31": {
+              "comments": [],
+              "cmds": {}
+            },
+            "interface Ethernet30": {
+              "comments": [],
+              "cmds": {}
+            },
+            "transceiver qsfp default-mode 4x10G": null,
+            "interface Ethernet43": {
+              "comments": [],
+              "cmds": {}
+            },
+            "interface Ethernet49/1": {
+              "comments": [],
+              "cmds": {}
+            },
+            "interface Ethernet49/2": {
+              "comments": [],
+              "cmds": {}
+            },
+            "interface Ethernet49/3": {
+              "comments": [],
+              "cmds": {}
+            },
+            "ip name-server vrf default <hw-redacted>": null,
+            "interface Ethernet38": {
+              "comments": [],
+              "cmds": {
+                "description to_gfiber_router_AP": null
+              }
+            },
+            "interface Ethernet50/2": {
+              "comments": [],
+              "cmds": {}
+            },
+            "interface Ethernet50/3": {
+              "comments": [],
+              "cmds": {}
+            },
+            "ip name-server vrf default 8.8.8.8": null,
+            "interface Ethernet15": {
+              "comments": [],
+              "cmds": {}
+            },
+            "ip dhcp snooping": null,
+            "no ip routing": null,
+            "interface Ethernet17": {
+              "comments": [],
+              "cmds": {
+                "description SVAJTOWER_LAN_1": null
+              }
+            },
+            "interface Ethernet52/1": {
+              "comments": [],
+              "cmds": {}
+            },
+            "interface Ethernet51/4": {
+              "comments": [],
+              "cmds": {}
+            },
+            "ip route 0.0.0.0/0 <hw-redacted>": null,
+            "interface Ethernet51/3": {
+              "comments": [],
+              "cmds": {}
+            },
+            "interface Ethernet51/2": {
+              "comments": [],
+              "cmds": {}
+            },
+            "interface Ethernet46": {
+              "comments": [],
+              "cmds": {}
+            },
+            "interface Ethernet47": {
+              "comments": [],
+              "cmds": {}
+            },
+            "interface Ethernet44": {
+              "comments": [],
+              "cmds": {}
+            },
+            "interface Ethernet45": {
+              "comments": [],
+              "cmds": {}
+            },
+            "interface Ethernet42": {
+              "comments": [],
+              "cmds": {}
+            },
+            "interface Ethernet13": {
+              "comments": [],
+              "cmds": {}
+            },
+            "interface Ethernet40": {
+              "comments": [],
+              "cmds": {}
+            },
+            "interface Ethernet41": {
+              "comments": [],
+              "cmds": {}
+            },
+            "spanning-tree mode mstp": null,
+            "interface Ethernet48": {
+              "comments": [],
+              "cmds": {
+                "description prox1_management": null
+              }
+            },
+            "interface Port-Channel10": {
+              "comments": [],
+              "cmds": {
+                "description Bond_To_Proxmox_LAN": null,
+                "switchport mode trunk": null
+              }
+            },
+            "management api http-commands": {
+              "comments": [],
+              "cmds": {
+                "no shutdown": null
+              }
+            },
+            "interface Ethernet50/4": {
+              "comments": [],
+              "cmds": {}
+            },
+            "monitor session 2 destination Ethernet7": null,
+            "interface Ethernet19": {
+              "comments": [],
+              "cmds": {}
+            },
+            "interface Ethernet18": {
+              "comments": [],
+              "cmds": {
+                "description SVAJTOWER_LAN_2": null
+              }
+            },
+            "interface Ethernet50/1": {
+              "comments": [],
+              "cmds": {}
+            },
+            "monitor session 1 destination Ethernet3": null,
+            "interface Ethernet14": {
+              "comments": [],
+              "cmds": {}
+            },
+            "username svaj privilege 15 role ops secret sha512 <hw-redacted-secret>": null,
+            "interface Ethernet16": {
+              "comments": [],
+              "cmds": {}
+            },
+            "interface Ethernet11": {
+              "comments": [],
+              "cmds": {}
+            },
+            "interface Ethernet10": {
+              "comments": [],
+              "cmds": {}
+            },
+            "interface Ethernet51/1": {
+              "comments": [],
+              "cmds": {}
+            },
+            "interface Ethernet12": {
+              "comments": [],
+              "cmds": {}
+            },
+            "ip name-server vrf default 1.1.1.1": null,
+            "! boot system flash:/EOS-4.28.13.1M.swi": null,
+            "monitor session 1 source Ethernet37": null,
+            "interface Management1": {
+              "comments": [],
+              "cmds": {
+                "ip address <hw-redacted>/24": null
+              }
+            },
+            "interface Ethernet1": {
+              "comments": [],
+              "cmds": {
+                "description to_10g_multigig_switch": null
+              }
+            },
+            "interface Ethernet3": {
+              "comments": [],
+              "cmds": {
+                "description prox1_wan_gfiber_mirror": null
+              }
+            },
+            "interface Ethernet2": {
+              "comments": [],
+              "cmds": {}
+            },
+            "interface Ethernet5": {
+              "comments": [],
+              "cmds": {
+                "description Proxmox_LAN_2": null,
+                "channel-group 10 mode active": null
+              }
+            },
+            "interface Ethernet4": {
+              "comments": [],
+              "cmds": {
+                "description Proxmox_LAN_1": null,
+                "channel-group 10 mode active": null
+              }
+            },
+            "interface Ethernet7": {
+              "comments": [],
+              "cmds": {
+                "description s2_wan_gfiber_mirror": null
+              }
+            },
+            "interface Ethernet6": {
+              "comments": [],
+              "cmds": {}
+            },
+            "interface Ethernet9": {
+              "comments": [],
+              "cmds": {}
+            },
+            "interface Ethernet8": {
+              "comments": [],
+              "cmds": {}
+            },
+            "interface Port-Channel20": {
+              "comments": [],
+              "cmds": {}
+            },
+            "interface Ethernet49/4": {
+              "comments": [],
+              "cmds": {}
+            },
+            "interface Ethernet24": {
+              "comments": [],
+              "cmds": {}
+            },
+            "interface Ethernet25": {
+              "comments": [],
+              "cmds": {}
+            },
+            "interface Ethernet26": {
+              "comments": [],
+              "cmds": {}
+            },
+            "interface Ethernet27": {
+              "comments": [],
+              "cmds": {}
+            },
+            "interface Ethernet20": {
+              "comments": [],
+              "cmds": {}
+            },
+            "interface Ethernet21": {
+              "comments": [],
+              "cmds": {}
+            },
+            "interface Ethernet22": {
+              "comments": [],
+              "cmds": {}
+            },
+            "interface Ethernet23": {
+              "comments": [],
+              "cmds": {}
+            },
+            "interface Ethernet28": {
+              "comments": [],
+              "cmds": {}
+            },
+            "interface Ethernet52/2": {
+              "comments": [],
+              "cmds": {}
+            },
+            "interface Ethernet52/3": {
+              "comments": [],
+              "cmds": {}
+            },
+            "interface Ethernet52/4": {
+              "comments": [],
+              "cmds": {}
+            },
+            "interface Ethernet29": {
+              "comments": [],
+              "cmds": {}
+            },
+            "role ops": {
+              "comments": [],
+              "cmds": {
+                "10 permit command .*": null
+              }
+            },
+            "environment fan-speed override 30": null,
+            "service routing protocols model ribd": null,
+            "monitor session 2 source Ethernet37": null,
+            "aaa authorization commands all default local": null,
+            "interface Ethernet39": {
+              "comments": [],
+              "cmds": {}
+            },
+            "no aaa root": null
+          }
+        }
+      ]
+    }
+  ],
+  "incomplete": []
+}

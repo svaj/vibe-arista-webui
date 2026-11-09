@@ -1,0 +1,516 @@
+{
+  "format": "arista-eapi-recording/v1",
+  "identity": {
+    "targetSlug": "7050tx-64-r-4.28.13.1M",
+    "targetClass": "hardware",
+    "modelName": "DCS-7050TX-64-R",
+    "aristaVersion": "4.28.13.1M",
+    "versionNumber": "4.28.13.1",
+    "provenance": "captured",
+    "endpoint": "https://<hw-redacted>:443/command-api",
+    "topology": "supervised 7050TX-64 session; single device; recorder per case"
+  },
+  "captures": [
+    {
+      "requestId": "cf7a396e5dce-1",
+      "commands": [
+        "enable",
+        "show spanning-tree detail"
+      ],
+      "format": "json",
+      "result": [
+        {},
+        {
+          "spanningTreeInstances": {
+            "MST0": {
+              "bridge": {
+                "priority": 32768,
+                "macAddress": "00:00:00:00:00:00",
+                "systemIdExtension": 0,
+                "detail": {
+                  "transmitHoldCount": 6
+                },
+                "forwardDelay": 15,
+                "helloTime": 2,
+                "maxAge": 20
+              },
+              "protocol": "mstp",
+              "rootBridge": {
+                "priority": 28672,
+                "macAddress": "00:00:00:00:00:00",
+                "systemIdExtension": 4095,
+                "forwardDelay": 2,
+                "helloTime": 2,
+                "maxAge": 20
+              },
+              "rootPort": {
+                "portNumber": 13,
+                "interface": "Ethernet13",
+                "cost": {
+                  "internalCost": 0,
+                  "externalCost": 2000
+                }
+              },
+              "interfaces": {
+                "Ethernet35": {
+                  "priority": 128,
+                  "linkType": "p2p",
+                  "state": "forwarding",
+                  "cost": 20000,
+                  "role": "designated",
+                  "inconsistentFeatures": {
+                    "loopGuard": false,
+                    "rootGuard": false,
+                    "mstPvstBorder": false,
+                    "bridgeAssurance": false
+                  },
+                  "portNumber": 35,
+                  "isEdgePort": true,
+                  "detail": {
+                    "messageAge": 1,
+                    "designatedBridgePriority": 32768,
+                    "rateLimitInterval": 10,
+                    "features": {
+                      "linkType": {
+                        "default": true,
+                        "value": "p2p"
+                      },
+                      "bpduGuard": {
+                        "default": false,
+                        "value": "disabled"
+                      },
+                      "bpduFilter": {
+                        "default": false,
+                        "value": "disabled"
+                      }
+                    },
+                    "designatedBridgeAddress": "00:00:00:00:00:00",
+                    "forwardDelay": 2,
+                    "maxAge": 20,
+                    "designatedRootAddress": "00:00:00:00:00:00",
+                    "rateLimitMaxCount": 400,
+                    "rateLimitEnabled": true,
+                    "transitionsToForwarding": 1,
+                    "designatedRootPriority": 32767,
+                    "designatedPortNumber": 35,
+                    "designatedPortPriority": 128,
+                    "designatedPathCost": {
+                      "internalCost": 0,
+                      "externalCost": 2000
+                    },
+                    "counters": {
+                      "bpduRateLimitCount": 0,
+                      "bpduOtherError": 0,
+                      "bpduReceived": 0,
+                      "bpduTaggedError": 0,
+                      "bpduSent": 252654
+                    }
+                  },
+                  "boundaryType": "none"
+                },
+                "Port-Channel10": {
+                  "priority": 128,
+                  "linkType": "p2p",
+                  "state": "forwarding",
+                  "cost": 1999,
+                  "role": "designated",
+                  "inconsistentFeatures": {
+                    "loopGuard": false,
+                    "rootGuard": false,
+                    "mstPvstBorder": false,
+                    "bridgeAssurance": false
+                  },
+                  "portNumber": 100,
+                  "isEdgePort": true,
+                  "detail": {
+                    "messageAge": 1,
+                    "designatedBridgePriority": 32768,
+                    "rateLimitInterval": 10,
+                    "features": {
+                      "linkType": {
+                        "default": true,
+                        "value": "p2p"
+                      },
+                      "bpduGuard": {
+                        "default": false,
+                        "value": "disabled"
+                      },
+                      "bpduFilter": {
+                        "default": false,
+                        "value": "disabled"
+                      }
+                    },
+                    "designatedBridgeAddress": "00:00:00:00:00:00",
+                    "forwardDelay": 2,
+                    "maxAge": 20,
+                    "designatedRootAddress": "00:00:00:00:00:00",
+                    "rateLimitMaxCount": 400,
+                    "rateLimitEnabled": true,
+                    "transitionsToForwarding": 1,
+                    "designatedRootPriority": 32767,
+                    "designatedPortNumber": 100,
+                    "designatedPortPriority": 128,
+                    "designatedPathCost": {
+                      "internalCost": 0,
+                      "externalCost": 2000
+                    },
+                    "counters": {
+                      "bpduRateLimitCount": 0,
+                      "bpduOtherError": 0,
+                      "bpduReceived": 0,
+                      "bpduTaggedError": 0,
+                      "bpduSent": 251934
+                    }
+                  },
+                  "boundaryType": "none"
+                },
+                "Ethernet17": {
+                  "priority": 128,
+                  "linkType": "p2p",
+                  "state": "forwarding",
+                  "cost": 2000,
+                  "role": "designated",
+                  "inconsistentFeatures": {
+                    "loopGuard": false,
+                    "rootGuard": false,
+                    "mstPvstBorder": false,
+                    "bridgeAssurance": false
+                  },
+                  "portNumber": 17,
+                  "isEdgePort": true,
+                  "detail": {
+                    "messageAge": 1,
+                    "designatedBridgePriority": 32768,
+                    "rateLimitInterval": 10,
+                    "features": {
+                      "linkType": {
+                        "default": true,
+                        "value": "p2p"
+                      },
+                      "bpduGuard": {
+                        "default": false,
+                        "value": "disabled"
+                      },
+                      "bpduFilter": {
+                        "default": false,
+                        "value": "disabled"
+                      }
+                    },
+                    "designatedBridgeAddress": "00:00:00:00:00:00",
+                    "forwardDelay": 2,
+                    "maxAge": 20,
+                    "designatedRootAddress": "00:00:00:00:00:00",
+                    "rateLimitMaxCount": 400,
+                    "rateLimitEnabled": true,
+                    "transitionsToForwarding": 1,
+                    "designatedRootPriority": 32767,
+                    "designatedPortNumber": 17,
+                    "designatedPortPriority": 128,
+                    "designatedPathCost": {
+                      "internalCost": 0,
+                      "externalCost": 2000
+                    },
+                    "counters": {
+                      "bpduRateLimitCount": 0,
+                      "bpduOtherError": 0,
+                      "bpduReceived": 0,
+                      "bpduTaggedError": 0,
+                      "bpduSent": 90784
+                    }
+                  },
+                  "boundaryType": "none"
+                },
+                "Ethernet18": {
+                  "priority": 128,
+                  "linkType": "p2p",
+                  "state": "forwarding",
+                  "cost": 2000,
+                  "role": "designated",
+                  "inconsistentFeatures": {
+                    "loopGuard": false,
+                    "rootGuard": false,
+                    "mstPvstBorder": false,
+                    "bridgeAssurance": false
+                  },
+                  "portNumber": 18,
+                  "isEdgePort": true,
+                  "detail": {
+                    "messageAge": 1,
+                    "designatedBridgePriority": 32768,
+                    "rateLimitInterval": 10,
+                    "features": {
+                      "linkType": {
+                        "default": true,
+                        "value": "p2p"
+                      },
+                      "bpduGuard": {
+                        "default": false,
+                        "value": "disabled"
+                      },
+                      "bpduFilter": {
+                        "default": false,
+                        "value": "disabled"
+                      }
+                    },
+                    "designatedBridgeAddress": "00:00:00:00:00:00",
+                    "forwardDelay": 2,
+                    "maxAge": 20,
+                    "designatedRootAddress": "00:00:00:00:00:00",
+                    "rateLimitMaxCount": 400,
+                    "rateLimitEnabled": true,
+                    "transitionsToForwarding": 1,
+                    "designatedRootPriority": 32767,
+                    "designatedPortNumber": 18,
+                    "designatedPortPriority": 128,
+                    "designatedPathCost": {
+                      "internalCost": 0,
+                      "externalCost": 2000
+                    },
+                    "counters": {
+                      "bpduRateLimitCount": 0,
+                      "bpduOtherError": 0,
+                      "bpduReceived": 0,
+                      "bpduTaggedError": 0,
+                      "bpduSent": 90784
+                    }
+                  },
+                  "boundaryType": "none"
+                },
+                "Ethernet48": {
+                  "priority": 128,
+                  "linkType": "p2p",
+                  "state": "forwarding",
+                  "cost": 20000,
+                  "role": "designated",
+                  "inconsistentFeatures": {
+                    "loopGuard": false,
+                    "rootGuard": false,
+                    "mstPvstBorder": false,
+                    "bridgeAssurance": false
+                  },
+                  "portNumber": 48,
+                  "isEdgePort": true,
+                  "detail": {
+                    "messageAge": 1,
+                    "designatedBridgePriority": 32768,
+                    "rateLimitInterval": 10,
+                    "features": {
+                      "linkType": {
+                        "default": true,
+                        "value": "p2p"
+                      },
+                      "bpduGuard": {
+                        "default": false,
+                        "value": "disabled"
+                      },
+                      "bpduFilter": {
+                        "default": false,
+                        "value": "disabled"
+                      }
+                    },
+                    "designatedBridgeAddress": "00:00:00:00:00:00",
+                    "forwardDelay": 2,
+                    "maxAge": 20,
+                    "designatedRootAddress": "00:00:00:00:00:00",
+                    "rateLimitMaxCount": 400,
+                    "rateLimitEnabled": true,
+                    "transitionsToForwarding": 1,
+                    "designatedRootPriority": 32767,
+                    "designatedPortNumber": 48,
+                    "designatedPortPriority": 128,
+                    "designatedPathCost": {
+                      "internalCost": 0,
+                      "externalCost": 2000
+                    },
+                    "counters": {
+                      "bpduRateLimitCount": 0,
+                      "bpduOtherError": 0,
+                      "bpduReceived": 0,
+                      "bpduTaggedError": 0,
+                      "bpduSent": 268183
+                    }
+                  },
+                  "boundaryType": "none"
+                },
+                "Ethernet1": {
+                  "priority": 128,
+                  "linkType": "p2p",
+                  "state": "forwarding",
+                  "cost": 2000,
+                  "role": "designated",
+                  "inconsistentFeatures": {
+                    "loopGuard": false,
+                    "rootGuard": false,
+                    "mstPvstBorder": false,
+                    "bridgeAssurance": false
+                  },
+                  "portNumber": 1,
+                  "isEdgePort": true,
+                  "detail": {
+                    "messageAge": 1,
+                    "designatedBridgePriority": 32768,
+                    "rateLimitInterval": 10,
+                    "features": {
+                      "linkType": {
+                        "default": true,
+                        "value": "p2p"
+                      },
+                      "bpduGuard": {
+                        "default": false,
+                        "value": "disabled"
+                      },
+                      "bpduFilter": {
+                        "default": false,
+                        "value": "disabled"
+                      }
+                    },
+                    "designatedBridgeAddress": "00:00:00:00:00:00",
+                    "forwardDelay": 2,
+                    "maxAge": 20,
+                    "designatedRootAddress": "00:00:00:00:00:00",
+                    "rateLimitMaxCount": 400,
+                    "rateLimitEnabled": true,
+                    "transitionsToForwarding": 1,
+                    "designatedRootPriority": 32767,
+                    "designatedPortNumber": 1,
+                    "designatedPortPriority": 128,
+                    "designatedPathCost": {
+                      "internalCost": 0,
+                      "externalCost": 2000
+                    },
+                    "counters": {
+                      "bpduRateLimitCount": 0,
+                      "bpduOtherError": 0,
+                      "bpduReceived": 0,
+                      "bpduTaggedError": 0,
+                      "bpduSent": 334100
+                    }
+                  },
+                  "boundaryType": "none"
+                },
+                "Ethernet38": {
+                  "priority": 128,
+                  "linkType": "p2p",
+                  "state": "forwarding",
+                  "cost": 2000,
+                  "role": "designated",
+                  "inconsistentFeatures": {
+                    "loopGuard": false,
+                    "rootGuard": false,
+                    "mstPvstBorder": false,
+                    "bridgeAssurance": false
+                  },
+                  "portNumber": 38,
+                  "isEdgePort": true,
+                  "detail": {
+                    "messageAge": 1,
+                    "designatedBridgePriority": 32768,
+                    "rateLimitInterval": 10,
+                    "features": {
+                      "linkType": {
+                        "default": true,
+                        "value": "p2p"
+                      },
+                      "bpduGuard": {
+                        "default": false,
+                        "value": "disabled"
+                      },
+                      "bpduFilter": {
+                        "default": false,
+                        "value": "disabled"
+                      }
+                    },
+                    "designatedBridgeAddress": "00:00:00:00:00:00",
+                    "forwardDelay": 2,
+                    "maxAge": 20,
+                    "designatedRootAddress": "00:00:00:00:00:00",
+                    "rateLimitMaxCount": 400,
+                    "rateLimitEnabled": true,
+                    "transitionsToForwarding": 1,
+                    "designatedRootPriority": 32767,
+                    "designatedPortNumber": 38,
+                    "designatedPortPriority": 128,
+                    "designatedPathCost": {
+                      "internalCost": 0,
+                      "externalCost": 2000
+                    },
+                    "counters": {
+                      "bpduRateLimitCount": 0,
+                      "bpduOtherError": 0,
+                      "bpduReceived": 0,
+                      "bpduTaggedError": 0,
+                      "bpduSent": 100486
+                    }
+                  },
+                  "boundaryType": "none"
+                },
+                "Ethernet13": {
+                  "priority": 128,
+                  "linkType": "p2p",
+                  "state": "forwarding",
+                  "cost": 2000,
+                  "role": "root",
+                  "inconsistentFeatures": {
+                    "loopGuard": false,
+                    "rootGuard": false,
+                    "mstPvstBorder": false,
+                    "bridgeAssurance": false
+                  },
+                  "portNumber": 13,
+                  "isEdgePort": false,
+                  "detail": {
+                    "messageAge": 0,
+                    "designatedBridgePriority": 32767,
+                    "rateLimitInterval": 10,
+                    "features": {
+                      "linkType": {
+                        "default": true,
+                        "value": "p2p"
+                      },
+                      "bpduGuard": {
+                        "default": false,
+                        "value": "disabled"
+                      },
+                      "bpduFilter": {
+                        "default": false,
+                        "value": "disabled"
+                      }
+                    },
+                    "designatedBridgeAddress": "00:00:00:00:00:00",
+                    "forwardDelay": 2,
+                    "maxAge": 20,
+                    "designatedRootAddress": "00:00:00:00:00:00",
+                    "rateLimitMaxCount": 400,
+                    "rateLimitEnabled": true,
+                    "transitionsToForwarding": 2,
+                    "designatedRootPriority": 32767,
+                    "designatedPortNumber": 9,
+                    "designatedPortPriority": 128,
+                    "designatedPathCost": {
+                      "internalCost": 0,
+                      "externalCost": 0
+                    },
+                    "counters": {
+                      "bpduRateLimitCount": 2,
+                      "bpduOtherError": 0,
+                      "bpduReceived": 258401,
+                      "bpduTaggedError": 0,
+                      "bpduSent": 4
+                    }
+                  },
+                  "boundaryType": "stp"
+                }
+              },
+              "detail": {
+                "lastTopologyChangePort": "Ethernet13",
+                "topologyChanges": 160,
+                "lastTopologyChangeTime": 514865
+              }
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "incomplete": []
+}

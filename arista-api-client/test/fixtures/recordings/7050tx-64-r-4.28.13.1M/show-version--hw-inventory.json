@@ -1,0 +1,47 @@
+{
+  "format": "arista-eapi-recording/v1",
+  "identity": {
+    "targetSlug": "7050tx-64-r-4.28.13.1M",
+    "targetClass": "hardware",
+    "modelName": "DCS-7050TX-64-R",
+    "aristaVersion": "4.28.13.1M",
+    "versionNumber": "4.28.13.1",
+    "provenance": "captured",
+    "endpoint": "https://<hw-redacted>:443/command-api",
+    "topology": "supervised 7050TX-64 session; single device; recorder per case"
+  },
+  "captures": [
+    {
+      "requestId": "a8050f42b4a7-1",
+      "commands": [
+        "enable",
+        "show version"
+      ],
+      "format": "json",
+      "result": [
+        {},
+        {
+          "imageFormatVersion": "3.0",
+          "uptime": 692705.77,
+          "modelName": "DCS-7050TX-64-R",
+          "internalVersion": "4.28.13.1M-41622611.428131M",
+          "memTotal": 3982512,
+          "mfgName": "Arista",
+          "serialNumber": "<hw-redacted-serial>",
+          "systemMacAddress": "00:00:00:00:00:00",
+          "bootupTimestamp": 1793491834.371714,
+          "memFree": 2556644,
+          "version": "4.28.13.1M",
+          "configMacAddress": "00:00:00:00:00:00",
+          "isIntlVersion": false,
+          "imageOptimization": "Strata-4GB",
+          "internalBuildId": "79df91a6-df08-40bc-b28b-185dc1d05e55",
+          "hardwareRevision": "11.12",
+          "hwMacAddress": "00:00:00:00:00:00",
+          "architecture": "i686"
+        }
+      ]
+    }
+  ],
+  "incomplete": []
+}

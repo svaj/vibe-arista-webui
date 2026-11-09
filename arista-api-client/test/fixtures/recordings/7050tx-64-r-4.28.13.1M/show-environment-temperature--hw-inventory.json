@@ -1,0 +1,36 @@
+{
+  "format": "arista-eapi-recording/v1",
+  "identity": {
+    "targetSlug": "7050tx-64-r-4.28.13.1M",
+    "targetClass": "hardware",
+    "modelName": "DCS-7050TX-64-R",
+    "aristaVersion": "4.28.13.1M",
+    "versionNumber": "4.28.13.1",
+    "provenance": "captured",
+    "endpoint": "https://<hw-redacted>:443/command-api",
+    "topology": "supervised 7050TX-64 session; single device; recorder per case"
+  },
+  "captures": [
+    {
+      "requestId": "b4ac2bfda11d-1",
+      "commands": [
+        "enable",
+        "show environment temperature"
+      ],
+      "format": "json",
+      "error": {
+        "data": [
+          {},
+          {
+            "errors": [
+              "Unavailable command (This command is deprecated by 'show system environment temperature') (at token 2: 'temperature')"
+            ]
+          }
+        ],
+        "message": "CLI command 2 of 2 'show environment temperature' failed: invalid command",
+        "code": 1002
+      }
+    }
+  ],
+  "incomplete": []
+}

@@ -22,7 +22,10 @@
  * lane scrubs strictly:
  *  - every MAC-shaped **value** (whole-value zero or in-string replace), not just MAC-named keys;
  *  - every key containing `serial` (and `serialNum`-shaped values are not re-introduced);
- *  - `secret sha512 …` / `secret md5 …` material and PEM blocks (same rules as the lab lane);
+ *  - `secret sha512 …` / `secret md5 …` material and PEM blocks (same rules as the lab lane), applied
+ *    to object **keys** as well as values — the running-config JSON keys each config LINE, and the
+ *    first executed capture leaked a live hash that way (DR-133) — and to the envelope's free-text
+ *    identity fields (the endpoint carries the switch's real management address);
  *  - caller-supplied strings (`extraSecrets`: hostname, mgmt IP, lab domain…) — replaced wherever found;
  *  - the recorder's own enable-input rule stays (`findUnredactedEnableInput` gates every write through
  *    `recordingText`/`parseRecording`).
@@ -202,52 +205,62 @@ const REPLACEMENTS: Readonly<Record<HwRedactionLogEntry['rule'], string>> = {
 }
 
 /**
+ * The rule chain applied to ONE string, shared by the value walk and the **key** walk (DR-133).
+ * `keyHint` gates the serial rule; `path` is what lands in the log, and callers must keep the log
+ * itself secret-free — a raw device-config line can BE a key, so a value path is built from the
+ * already-scrubbed key, never the raw one.
+ */
+function redactHwString(value: string, opts: HwRedactOptions, keyHint: string | undefined, path: string, sink: HwRedactionLogEntry[]): string {
+  const extras = (opts.extraSecrets ?? []).filter((entry) => entry !== '')
+  let out = value
+  const isSerialContext = keyHint !== undefined && SERIAL_KEY_HINT.test(keyHint)
+  if (isSerialContext && out !== '' && SERIAL_VALUE.test(out)) {
+    sink.push({ path, rule: 'serial' })
+    out = REPLACEMENTS.serial
+  }
+  if (SECRET_MATERIAL.test(out)) {
+    SECRET_MATERIAL.lastIndex = 0
+    sink.push({ path, rule: 'secret' })
+    out = out.replace(SECRET_MATERIAL, (match) => match.replace(/\s+\S+$/u, ` ${REPLACEMENTS.secret}`))
+  }
+  if (PEM_BLOCK.test(out)) {
+    PEM_BLOCK.lastIndex = 0
+    sink.push({ path, rule: 'pem' })
+    out = out.replace(PEM_BLOCK, REPLACEMENTS.pem)
+  }
+  PEM_BLOCK.lastIndex = 0
+  if (MAC_EXACT.test(out)) {
+    sink.push({ path, rule: 'mac' })
+    out = HW_ZEROED_MAC
+  } else if (MAC_EMBEDDED.test(out)) {
+    MAC_EMBEDDED.lastIndex = 0
+    sink.push({ path, rule: 'mac' })
+    out = out.replace(MAC_EMBEDDED, HW_ZEROED_MAC)
+  }
+  MAC_EMBEDDED.lastIndex = 0
+  for (const secret of extras) {
+    if (out.includes(secret)) {
+      sink.push({ path, rule: 'extra' })
+      out = out.split(secret).join(REPLACEMENTS.extra)
+    }
+  }
+  return out
+}
+
+/**
  * Walk a parsed device reply (or the text half) and rewrite anything a real switch leaks but a
- * container does not. Key-hints matter: MACs zero only for values the *value itself* is MAC-shaped
- * (whole or embedded), serials only under serial-named keys (or exact values that are 9-17 alphanumerics
- * with a serial key sibling — deliberately narrow, so route targets and interfaces are never touched).
- *
- * Order per string: serial (key-gated) → secret material → PEM → MAC → extra secrets. Each rule names
- * itself in the log; the secret text itself never appears in the log.
+ * container does not — **strings in value position and object keys alike** (DR-133: the JSON
+ * `show running-config` carries each config line as a key, and the first executed hardware capture
+ * leaked a live `secret sha512` hash that way). Key-hints matter: MACs zero wherever the *value
+ * itself* is MAC-shaped (whole or embedded), serials only under serial-named keys (or exact values
+ * that are 9-17 alphanumerics with a serial key sibling — deliberately narrow, so route targets and
+ * interfaces are never touched). Each rule names itself in the log; the secret text never does.
  */
 export function redactHwValue(value: unknown, opts: HwRedactOptions, path = '$', keyHint?: string, log?: HwRedactionLogEntry[]): HwRedactionResult {
   const sink = log ?? []
-  const extras = (opts.extraSecrets ?? []).filter((entry) => entry !== '')
 
   if (typeof value === 'string') {
-    let out = value
-    const isSerialContext = keyHint !== undefined && SERIAL_KEY_HINT.test(keyHint)
-    if (isSerialContext && out !== '' && SERIAL_VALUE.test(out)) {
-      sink.push({ path, rule: 'serial' })
-      out = REPLACEMENTS.serial
-    }
-    if (SECRET_MATERIAL.test(out)) {
-      SECRET_MATERIAL.lastIndex = 0
-      sink.push({ path, rule: 'secret' })
-      out = out.replace(SECRET_MATERIAL, (match) => match.replace(/\s+\S+$/u, ` ${REPLACEMENTS.secret}`))
-    }
-    if (PEM_BLOCK.test(out)) {
-      PEM_BLOCK.lastIndex = 0
-      sink.push({ path, rule: 'pem' })
-      out = out.replace(PEM_BLOCK, REPLACEMENTS.pem)
-    }
-    PEM_BLOCK.lastIndex = 0
-    if (MAC_EXACT.test(out)) {
-      sink.push({ path, rule: 'mac' })
-      out = HW_ZEROED_MAC
-    } else if (MAC_EMBEDDED.test(out)) {
-      MAC_EMBEDDED.lastIndex = 0
-      sink.push({ path, rule: 'mac' })
-      out = out.replace(MAC_EMBEDDED, HW_ZEROED_MAC)
-    }
-    MAC_EMBEDDED.lastIndex = 0
-    for (const secret of extras) {
-      if (out.includes(secret)) {
-        sink.push({ path, rule: 'extra' })
-        out = out.split(secret).join(REPLACEMENTS.extra)
-      }
-    }
-    return { value: out, log: sink }
+    return { value: redactHwString(value, opts, keyHint, path, sink), log: sink }
   }
 
   if (Array.isArray(value)) {
@@ -257,8 +270,25 @@ export function redactHwValue(value: unknown, opts: HwRedactOptions, path = '$',
 
   if (value !== null && typeof value === 'object') {
     const out: Record<string, unknown> = {}
+    // DR-133: KEYS go through the same chain. `show running-config`/`… all` in JSON form answer a
+    // `cmds` object keyed by the config LINE itself — first executed hardware capture (2026-11-08)
+    // proved a live `username … secret sha512 $6$…` hash surviving as a key while the identical rule
+    // fired on the text-form capture. The serial rule still gates on the (scrubbed) key name.
+    const used = new Set<string>()
     for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
-      out[key] = redactHwValue(entry, opts, `${path}.${key}`, key, sink).value
+      const safeKey = key === '' ? key : redactHwString(key, opts, key, `${path}.[key]`, sink)
+      let unique = safeKey
+      if (used.has(unique)) {
+        // A scrub can collide two lines onto one key (the device's own map was unique); collision may
+        // never cost an entry — keep both, visibly (the lab lane's rule, adopted here).
+        let n = 1
+        while (used.has(`${unique} #${String(n)}`)) n += 1
+        unique = `${unique} #${String(n)}`
+      }
+      used.add(unique)
+      // The VALUE path rides the scrubbed key: the log stays secret-free even when the raw key was
+      // the secret-bearing line.
+      out[unique] = redactHwValue(entry, opts, `${path}.${unique}`, key, sink).value
     }
     return { value: out, log: sink }
   }
@@ -271,9 +301,19 @@ export interface SanitizedRecording {
   readonly log: readonly HwRedactionLogEntry[]
 }
 
+/** Identity fields that must stay verbatim: envelope↔directory agreement and replay matching read them. */
+const IDENTITY_MATCH_FIELDS: readonly string[] = ['targetSlug', 'modelName', 'aristaVersion', 'versionNumber', 'targetClass', 'provenance']
+
 /**
  * Apply {@link redactHwValue} to every replayable part of a built recording (parsed replies, command
- * text, raw bodies), preserving the recorder's own guarantees (`format`, `requestId`, arrival order).
+ * text, raw bodies — **keys and values**, DR-133), preserving the recorder's own guarantees (`format`,
+ * `requestId`, arrival order). The identity envelope's free-text fields (`endpoint`, `topology`,
+ * `image`) get the same string chain: on the hardware lane the endpoint carries the switch's real
+ * management address, and a literal configured in `EAPI_HW_SCRUB` scrubbing inside captures but not in
+ * every file's envelope is the same leak class as the key-position secret (TESTING.md:131: redact
+ * identifying data as well as credentials). The matching fields ({@link IDENTITY_MATCH_FIELDS}) stay
+ * verbatim — they are the device's honest words, and `assertFixtureIdentity`/`loadRecordingFor` read
+ * them.
  *
  * `commands[].input` is deliberately **not** rewritten beyond the base redactor's reach: an enable input
  * that is not already `REDACTED` fails the write at `recordingText` (`findUnredactedEnableInput`), which
@@ -295,7 +335,12 @@ export function sanitizeHwRecording(fixture: RecordingFixture, opts: HwRedactOpt
     const error = capture.error === undefined ? undefined : ({ ...capture.error, message: redactHwValue(capture.error.message, opts, `${base}.error.message`, undefined, log).value as string })
     return { ...capture, commands, ...(result === undefined ? {} : { result }), ...(raw === undefined ? {} : { raw }), ...(error === undefined ? {} : { error }) }
   })
-  return { fixture: { ...fixture, captures }, log }
+  const identity: Record<string, unknown> = { ...fixture.identity }
+  for (const [key, entry] of Object.entries(identity)) {
+    if (IDENTITY_MATCH_FIELDS.includes(key)) continue
+    if (typeof entry === 'string') identity[key] = redactHwString(entry, opts, key, `$.identity.${key}`, log)
+  }
+  return { fixture: { ...fixture, identity: identity as unknown as RecordingFixture['identity'], captures }, log }
 }
 
 // --- session-probe policy -------------------------------------------------------------------------------

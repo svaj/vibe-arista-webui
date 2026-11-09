@@ -215,11 +215,36 @@ describe('the committed recording tree is guarded on every npm test', () => {
   })
 
   it('contains only the version/model-separated directories the docs name', () => {
-    // docs/CEOS.md:143-144 and docs/TESTING.md:130-131 name exactly two; a third lane arriving without
-    // changing those docs is a decision, not an accident, so this pins the pair.
-    const documented = ['ceos-4.28.14M', '7050tx-64-4.28.13.1M']
+    // docs/CEOS.md:143-144 and docs/TESTING.md:130-131 name the pair; a third lane arriving without
+    // changing those docs is a decision, not an accident, so this pins the set — widened to the -R
+    // hardware slug by DR-131 (TESTING.md now names `7050tx-64-r-4.28.13.1M/` beside the base one).
+    const documented = ['ceos-4.28.14M', '7050tx-64-4.28.13.1M', '7050tx-64-r-4.28.13.1M']
     for (const slug of targets) expect(documented, slug).toContain(slug)
     expect(targets).toContain('ceos-4.28.14M')
+  })
+
+  it('contains no live credential material anywhere — keys included (DR-133)', () => {
+    // The DR-133 leak: EOS answers `show running-config` (json) `cmds`-keyed by the config LINE, so a
+    // value-only scrubber could walk a whole tree of live `secret sha512 $6$…` hashes and count the run
+    // clean. This scan reads each recording as TEXT, so it bites keys, values and raw bodies alike —
+    // it is the guard that would have caught the first executed hardware capture before commit.
+    // Placeholders are allowed by construction: every pattern requires a non-`<` payload after the
+    // known prefix, and `<hw-redacted-secret>`/`<redacted-lab-secret>` start with one.
+    const liveSecretPatterns: readonly { re: RegExp; why: string }[] = [
+      { re: /\$[156]\$[A-Za-z0-9./]{6,}\$[A-Za-z0-9./]+/u, why: 'crypt(3) password hash' },
+      { re: /\bsecret\s+(?:sha512|sha256|md5|plain)\s+(?!<)\S/u, why: 'un-redacted EOS `secret …` material' },
+      { re: /-----BEGIN (?:RSA |EC )?(?:PRIVATE KEY|ENCRYPTED)/u, why: 'private key material' },
+      { re: /\benable\s+(?:algorithm\s+\S+\s+)?password\s+(?!<)[\x21-\x7e]{6,}/u, why: 'un-redacted enable password' },
+    ]
+    for (const slug of targets) {
+      for (const file of listRecordingCases(slug)) {
+        const path = recordingPath({ slug, caseName: file.replace(/\.json$/u, '') })
+        const text = readFileSync(path, 'utf8')
+        for (const { re, why } of liveSecretPatterns) {
+          expect(text, `${path}: ${why}`).not.toMatch(re)
+        }
+      }
+    }
   })
 
   it('every fixture parses, is marked with a provenance, and agrees with its own directory', () => {

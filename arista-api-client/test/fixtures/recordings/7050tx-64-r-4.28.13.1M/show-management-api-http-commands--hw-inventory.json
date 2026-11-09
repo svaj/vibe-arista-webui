@@ -1,0 +1,81 @@
+{
+  "format": "arista-eapi-recording/v1",
+  "identity": {
+    "targetSlug": "7050tx-64-r-4.28.13.1M",
+    "targetClass": "hardware",
+    "modelName": "DCS-7050TX-64-R",
+    "aristaVersion": "4.28.13.1M",
+    "versionNumber": "4.28.13.1",
+    "provenance": "captured",
+    "endpoint": "https://<hw-redacted>:443/command-api",
+    "topology": "supervised 7050TX-64 session; single device; recorder per case"
+  },
+  "captures": [
+    {
+      "requestId": "d4b369dec57c-1",
+      "commands": [
+        "enable",
+        "show management api http-commands"
+      ],
+      "format": "json",
+      "result": [
+        {},
+        {
+          "httpServer": {
+            "running": false,
+            "configured": false,
+            "port": 80
+          },
+          "users": {
+            "svaj": {
+              "requestCount": 66,
+              "bytesOut": 11620105,
+              "lastHitTime": 1794184543.754978,
+              "bytesIn": 12169
+            }
+          },
+          "bytesOut": 11620105,
+          "logLevel": "none",
+          "dscpValue": 0,
+          "corsOrigins": [],
+          "hitCount": 75,
+          "vrf": "default",
+          "lastHitTime": 1794184543.7545743,
+          "tlsProtocol": [
+            "1.0",
+            "1.1",
+            "1.2"
+          ],
+          "localHttpServer": {
+            "running": false,
+            "configured": false,
+            "port": 8080
+          },
+          "executionTime": 68.98355392968551,
+          "enabled": true,
+          "fipsEnabled": false,
+          "httpsServer": {
+            "running": true,
+            "configured": true,
+            "port": 443
+          },
+          "requestCount": 66,
+          "vrfs": [
+            "default"
+          ],
+          "urls": [
+            "Management1 : https://<hw-redacted>:443"
+          ],
+          "unixSocketServer": {
+            "running": false,
+            "configured": false
+          },
+          "bytesIn": 12169,
+          "commandCount": 172,
+          "iframeAncestors": []
+        }
+      ]
+    }
+  ],
+  "incomplete": []
+}

@@ -1,0 +1,188 @@
+{
+  "format": "arista-eapi-recording/v1",
+  "identity": {
+    "targetSlug": "7050tx-64-r-4.28.13.1M",
+    "targetClass": "hardware",
+    "modelName": "DCS-7050TX-64-R",
+    "aristaVersion": "4.28.13.1M",
+    "versionNumber": "4.28.13.1",
+    "provenance": "captured",
+    "endpoint": "https://<hw-redacted>:443/command-api",
+    "topology": "supervised 7050TX-64 session; single device; recorder per case"
+  },
+  "captures": [
+    {
+      "requestId": "6a6e5b84f63e-1",
+      "commands": [
+        "enable",
+        "show spanning-tree"
+      ],
+      "format": "json",
+      "result": [
+        {},
+        {
+          "spanningTreeInstances": {
+            "MST0": {
+              "bridge": {
+                "priority": 32768,
+                "macAddress": "00:00:00:00:00:00",
+                "systemIdExtension": 0,
+                "forwardDelay": 15,
+                "helloTime": 2,
+                "maxAge": 20
+              },
+              "protocol": "mstp",
+              "rootBridge": {
+                "priority": 28672,
+                "macAddress": "00:00:00:00:00:00",
+                "systemIdExtension": 4095,
+                "forwardDelay": 2,
+                "helloTime": 2,
+                "maxAge": 20
+              },
+              "rootPort": {
+                "portNumber": 13,
+                "interface": "Ethernet13",
+                "cost": {
+                  "internalCost": 0,
+                  "externalCost": 2000
+                }
+              },
+              "interfaces": {
+                "Ethernet35": {
+                  "priority": 128,
+                  "linkType": "p2p",
+                  "state": "forwarding",
+                  "cost": 20000,
+                  "role": "designated",
+                  "inconsistentFeatures": {
+                    "loopGuard": false,
+                    "rootGuard": false,
+                    "mstPvstBorder": false,
+                    "bridgeAssurance": false
+                  },
+                  "portNumber": 35,
+                  "isEdgePort": true,
+                  "boundaryType": "none"
+                },
+                "Port-Channel10": {
+                  "priority": 128,
+                  "linkType": "p2p",
+                  "state": "forwarding",
+                  "cost": 1999,
+                  "role": "designated",
+                  "inconsistentFeatures": {
+                    "loopGuard": false,
+                    "rootGuard": false,
+                    "mstPvstBorder": false,
+                    "bridgeAssurance": false
+                  },
+                  "portNumber": 100,
+                  "isEdgePort": true,
+                  "boundaryType": "none"
+                },
+                "Ethernet17": {
+                  "priority": 128,
+                  "linkType": "p2p",
+                  "state": "forwarding",
+                  "cost": 2000,
+                  "role": "designated",
+                  "inconsistentFeatures": {
+                    "loopGuard": false,
+                    "rootGuard": false,
+                    "mstPvstBorder": false,
+                    "bridgeAssurance": false
+                  },
+                  "portNumber": 17,
+                  "isEdgePort": true,
+                  "boundaryType": "none"
+                },
+                "Ethernet18": {
+                  "priority": 128,
+                  "linkType": "p2p",
+                  "state": "forwarding",
+                  "cost": 2000,
+                  "role": "designated",
+                  "inconsistentFeatures": {
+                    "loopGuard": false,
+                    "rootGuard": false,
+                    "mstPvstBorder": false,
+                    "bridgeAssurance": false
+                  },
+                  "portNumber": 18,
+                  "isEdgePort": true,
+                  "boundaryType": "none"
+                },
+                "Ethernet48": {
+                  "priority": 128,
+                  "linkType": "p2p",
+                  "state": "forwarding",
+                  "cost": 20000,
+                  "role": "designated",
+                  "inconsistentFeatures": {
+                    "loopGuard": false,
+                    "rootGuard": false,
+                    "mstPvstBorder": false,
+                    "bridgeAssurance": false
+                  },
+                  "portNumber": 48,
+                  "isEdgePort": true,
+                  "boundaryType": "none"
+                },
+                "Ethernet1": {
+                  "priority": 128,
+                  "linkType": "p2p",
+                  "state": "forwarding",
+                  "cost": 2000,
+                  "role": "designated",
+                  "inconsistentFeatures": {
+                    "loopGuard": false,
+                    "rootGuard": false,
+                    "mstPvstBorder": false,
+                    "bridgeAssurance": false
+                  },
+                  "portNumber": 1,
+                  "isEdgePort": true,
+                  "boundaryType": "none"
+                },
+                "Ethernet38": {
+                  "priority": 128,
+                  "linkType": "p2p",
+                  "state": "forwarding",
+                  "cost": 2000,
+                  "role": "designated",
+                  "inconsistentFeatures": {
+                    "loopGuard": false,
+                    "rootGuard": false,
+                    "mstPvstBorder": false,
+                    "bridgeAssurance": false
+                  },
+                  "portNumber": 38,
+                  "isEdgePort": true,
+                  "boundaryType": "none"
+                },
+                "Ethernet13": {
+                  "priority": 128,
+                  "linkType": "p2p",
+                  "state": "forwarding",
+                  "cost": 2000,
+                  "role": "root",
+                  "inconsistentFeatures": {
+                    "loopGuard": false,
+                    "rootGuard": false,
+                    "mstPvstBorder": false,
+                    "bridgeAssurance": false
+                  },
+                  "portNumber": 13,
+                  "isEdgePort": false,
+                  "boundaryType": "stp"
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "incomplete": []
+}

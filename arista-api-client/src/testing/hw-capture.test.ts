@@ -143,6 +143,70 @@ describe('the hardware scrubber', () => {
     expect(log).toHaveLength(0)
   })
 
+  it('scrubs secret material in object KEYS — running-config JSON keys every config line (DR-133)', () => {
+    // The exact shape the first executed hardware capture produced: EOS answers `show
+    // running-config` (json) as `cmds: { "<line>": … }`, so the config LINE is a key and the
+    // value-only walk left a live `secret sha512 $6$…` hash sitting in the committed-ready file
+    // while the identical rule fired on the text-form capture of the same command.
+    const cmds = {
+      'username svaj privilege 15 role ops secret sha512 $6$hcWmOI0ESIx6ZamW$hVVtEa.SURVIVINGSAMPLEHASH': null,
+      'username max-length 255': null,
+      'interface Management1': { '  ip address 10.20.0.7/24': null },
+    }
+    const { value, log } = redactHwValue({ cmds }, opts)
+    const rendered = JSON.stringify(value)
+    expect(rendered).toContain('secret sha512 <hw-redacted-secret>')
+    expect(rendered).not.toContain('hcWmOI0ESIx6ZamW')
+    expect(rendered).not.toContain('SURVIVINGSAMPLEHASH')
+    // extras fire on keys too (the section child line carries an operator-scrubbed address).
+    expect(rendered).not.toContain('10.20.0.0')
+    // The log names the rule but never carries the raw key text (the KEY *is* the secret here).
+    const secretEntries = log.filter((entry) => entry.rule === 'secret')
+    expect(secretEntries.length).toBeGreaterThanOrEqual(1)
+    expect(JSON.stringify(log)).not.toContain('hcWmOI0ESIx6ZamW')
+  })
+
+  it('a scrubbed-key collision keeps both entries instead of silently dropping one (DR-133)', () => {
+    // Two usernames whose scrubbed forms would land on one JSON key: the device's own map was
+    // unique, so losing a neighbouring entry to our scrub is a corruption we must not cause.
+    const { value } = redactHwValue({
+      'aaa secret sha512 $6$firsthashfirsthashfirst': 1,
+      'aaa secret sha512 $6$secondhashsecondhashsecon': 2,
+    }, {})
+    const keys = Object.keys(value as Record<string, unknown>)
+    expect(keys).toHaveLength(2)
+    expect(new Set(keys).size).toBe(2)
+    expect(Object.values(value as Record<string, unknown>)).toEqual([1, 2])
+  })
+
+  it('scrubs the identity envelope free-text (endpoint mgmt address) but keeps match fields verbatim', () => {
+    // The physical switch's management address appears in EVERY file's identity.endpoint; an extras
+    // literal that scrubbed inside captures had to scrub there too (TESTING.md:131). The fields
+    // assertFixtureIdentity/loadRecordingFor compare must stay byte-identical.
+    const fixture = {
+      format: 'arista-eapi-recording/v1' as const,
+      identity: {
+        targetSlug: '7050tx-64-r-4.28.13.1M',
+        targetClass: 'hardware' as const,
+        modelName: 'DCS-7050TX-64-R',
+        aristaVersion: '4.28.13.1M',
+        versionNumber: '4.28.13.1',
+        provenance: 'captured' as const,
+        endpoint: 'https://10.20.0.0:443/command-api',
+        topology: 'supervised sw-lab-1 session; single device',
+      },
+      captures: [{ requestId: 'r-1', commands: ['show version'], result: [{}], format: 'json' as const }],
+      incomplete: [],
+    }
+    const out = sanitizeHwRecording(fixture, opts)
+    expect(out.fixture.identity.endpoint).toBe('https://<hw-redacted>:443/command-api')
+    expect(out.fixture.identity.topology).toBe('supervised <hw-redacted> session; single device')
+    expect(out.fixture.identity.modelName).toBe('DCS-7050TX-64-R')
+    expect(out.fixture.identity.aristaVersion).toBe('4.28.13.1M')
+    expect(out.fixture.identity.targetSlug).toBe('7050tx-64-r-4.28.13.1M')
+    expect(out.log.some((entry) => entry.path === '$.identity.endpoint' && entry.rule === 'extra')).toBe(true)
+  })
+
   it('sanitizes a built recording end-to-end and keeps replayable structure + enable gating', () => {
     const fixture = {
       format: 'arista-eapi-recording/v1' as const,

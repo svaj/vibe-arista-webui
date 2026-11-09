@@ -1,0 +1,416 @@
+{
+  "format": "arista-eapi-recording/v1",
+  "identity": {
+    "targetSlug": "7050tx-64-r-4.28.13.1M",
+    "targetClass": "hardware",
+    "modelName": "DCS-7050TX-64-R",
+    "aristaVersion": "4.28.13.1M",
+    "versionNumber": "4.28.13.1",
+    "provenance": "captured",
+    "endpoint": "https://<hw-redacted>:443/command-api",
+    "topology": "supervised 7050TX-64 session; single device; recorder per case"
+  },
+  "captures": [
+    {
+      "requestId": "1c4e331a1f56-1",
+      "commands": [
+        "enable",
+        "show inventory"
+      ],
+      "format": "json",
+      "result": [
+        {},
+        {
+          "cpuPortCount": 0,
+          "fpgas": {},
+          "mgmtXcvrSlots": {},
+          "xcvrSlots": {
+            "1": {
+              "modelName": "DCS-7050TX-64",
+              "serialNum": "",
+              "mfgName": "Arista Networks",
+              "hardwareRev": ""
+            },
+            "2": {
+              "modelName": "DCS-7050TX-64",
+              "serialNum": "",
+              "mfgName": "Arista Networks",
+              "hardwareRev": ""
+            },
+            "3": {
+              "modelName": "DCS-7050TX-64",
+              "serialNum": "",
+              "mfgName": "Arista Networks",
+              "hardwareRev": ""
+            },
+            "4": {
+              "modelName": "DCS-7050TX-64",
+              "serialNum": "",
+              "mfgName": "Arista Networks",
+              "hardwareRev": ""
+            },
+            "5": {
+              "modelName": "DCS-7050TX-64",
+              "serialNum": "",
+              "mfgName": "Arista Networks",
+              "hardwareRev": ""
+            },
+            "6": {
+              "modelName": "DCS-7050TX-64",
+              "serialNum": "",
+              "mfgName": "Arista Networks",
+              "hardwareRev": ""
+            },
+            "7": {
+              "modelName": "DCS-7050TX-64",
+              "serialNum": "",
+              "mfgName": "Arista Networks",
+              "hardwareRev": ""
+            },
+            "8": {
+              "modelName": "DCS-7050TX-64",
+              "serialNum": "",
+              "mfgName": "Arista Networks",
+              "hardwareRev": ""
+            },
+            "9": {
+              "modelName": "DCS-7050TX-64",
+              "serialNum": "",
+              "mfgName": "Arista Networks",
+              "hardwareRev": ""
+            },
+            "10": {
+              "modelName": "DCS-7050TX-64",
+              "serialNum": "",
+              "mfgName": "Arista Networks",
+              "hardwareRev": ""
+            },
+            "11": {
+              "modelName": "DCS-7050TX-64",
+              "serialNum": "",
+              "mfgName": "Arista Networks",
+              "hardwareRev": ""
+            },
+            "12": {
+              "modelName": "DCS-7050TX-64",
+              "serialNum": "",
+              "mfgName": "Arista Networks",
+              "hardwareRev": ""
+            },
+            "13": {
+              "modelName": "DCS-7050TX-64",
+              "serialNum": "",
+              "mfgName": "Arista Networks",
+              "hardwareRev": ""
+            },
+            "14": {
+              "modelName": "DCS-7050TX-64",
+              "serialNum": "",
+              "mfgName": "Arista Networks",
+              "hardwareRev": ""
+            },
+            "15": {
+              "modelName": "DCS-7050TX-64",
+              "serialNum": "",
+              "mfgName": "Arista Networks",
+              "hardwareRev": ""
+            },
+            "16": {
+              "modelName": "DCS-7050TX-64",
+              "serialNum": "",
+              "mfgName": "Arista Networks",
+              "hardwareRev": ""
+            },
+            "17": {
+              "modelName": "DCS-7050TX-64",
+              "serialNum": "",
+              "mfgName": "Arista Networks",
+              "hardwareRev": ""
+            },
+            "18": {
+              "modelName": "DCS-7050TX-64",
+              "serialNum": "",
+              "mfgName": "Arista Networks",
+              "hardwareRev": ""
+            },
+            "19": {
+              "modelName": "DCS-7050TX-64",
+              "serialNum": "",
+              "mfgName": "Arista Networks",
+              "hardwareRev": ""
+            },
+            "20": {
+              "modelName": "DCS-7050TX-64",
+              "serialNum": "",
+              "mfgName": "Arista Networks",
+              "hardwareRev": ""
+            },
+            "21": {
+              "modelName": "DCS-7050TX-64",
+              "serialNum": "",
+              "mfgName": "Arista Networks",
+              "hardwareRev": ""
+            },
+            "22": {
+              "modelName": "DCS-7050TX-64",
+              "serialNum": "",
+              "mfgName": "Arista Networks",
+              "hardwareRev": ""
+            },
+            "23": {
+              "modelName": "DCS-7050TX-64",
+              "serialNum": "",
+              "mfgName": "Arista Networks",
+              "hardwareRev": ""
+            },
+            "24": {
+              "modelName": "DCS-7050TX-64",
+              "serialNum": "",
+              "mfgName": "Arista Networks",
+              "hardwareRev": ""
+            },
+            "25": {
+              "modelName": "DCS-7050TX-64",
+              "serialNum": "",
+              "mfgName": "Arista Networks",
+              "hardwareRev": ""
+            },
+            "26": {
+              "modelName": "DCS-7050TX-64",
+              "serialNum": "",
+              "mfgName": "Arista Networks",
+              "hardwareRev": ""
+            },
+            "27": {
+              "modelName": "DCS-7050TX-64",
+              "serialNum": "",
+              "mfgName": "Arista Networks",
+              "hardwareRev": ""
+            },
+            "28": {
+              "modelName": "DCS-7050TX-64",
+              "serialNum": "",
+              "mfgName": "Arista Networks",
+              "hardwareRev": ""
+            },
+            "29": {
+              "modelName": "DCS-7050TX-64",
+              "serialNum": "",
+              "mfgName": "Arista Networks",
+              "hardwareRev": ""
+            },
+            "30": {
+              "modelName": "DCS-7050TX-64",
+              "serialNum": "",
+              "mfgName": "Arista Networks",
+              "hardwareRev": ""
+            },
+            "31": {
+              "modelName": "DCS-7050TX-64",
+              "serialNum": "",
+              "mfgName": "Arista Networks",
+              "hardwareRev": ""
+            },
+            "32": {
+              "modelName": "DCS-7050TX-64",
+              "serialNum": "",
+              "mfgName": "Arista Networks",
+              "hardwareRev": ""
+            },
+            "33": {
+              "modelName": "DCS-7050TX-64",
+              "serialNum": "",
+              "mfgName": "Arista Networks",
+              "hardwareRev": ""
+            },
+            "34": {
+              "modelName": "DCS-7050TX-64",
+              "serialNum": "",
+              "mfgName": "Arista Networks",
+              "hardwareRev": ""
+            },
+            "35": {
+              "modelName": "DCS-7050TX-64",
+              "serialNum": "",
+              "mfgName": "Arista Networks",
+              "hardwareRev": ""
+            },
+            "36": {
+              "modelName": "DCS-7050TX-64",
+              "serialNum": "",
+              "mfgName": "Arista Networks",
+              "hardwareRev": ""
+            },
+            "37": {
+              "modelName": "DCS-7050TX-64",
+              "serialNum": "",
+              "mfgName": "Arista Networks",
+              "hardwareRev": ""
+            },
+            "38": {
+              "modelName": "DCS-7050TX-64",
+              "serialNum": "",
+              "mfgName": "Arista Networks",
+              "hardwareRev": ""
+            },
+            "39": {
+              "modelName": "DCS-7050TX-64",
+              "serialNum": "",
+              "mfgName": "Arista Networks",
+              "hardwareRev": ""
+            },
+            "40": {
+              "modelName": "DCS-7050TX-64",
+              "serialNum": "",
+              "mfgName": "Arista Networks",
+              "hardwareRev": ""
+            },
+            "41": {
+              "modelName": "DCS-7050TX-64",
+              "serialNum": "",
+              "mfgName": "Arista Networks",
+              "hardwareRev": ""
+            },
+            "42": {
+              "modelName": "DCS-7050TX-64",
+              "serialNum": "",
+              "mfgName": "Arista Networks",
+              "hardwareRev": ""
+            },
+            "43": {
+              "modelName": "DCS-7050TX-64",
+              "serialNum": "",
+              "mfgName": "Arista Networks",
+              "hardwareRev": ""
+            },
+            "44": {
+              "modelName": "DCS-7050TX-64",
+              "serialNum": "",
+              "mfgName": "Arista Networks",
+              "hardwareRev": ""
+            },
+            "45": {
+              "modelName": "DCS-7050TX-64",
+              "serialNum": "",
+              "mfgName": "Arista Networks",
+              "hardwareRev": ""
+            },
+            "46": {
+              "modelName": "DCS-7050TX-64",
+              "serialNum": "",
+              "mfgName": "Arista Networks",
+              "hardwareRev": ""
+            },
+            "47": {
+              "modelName": "DCS-7050TX-64",
+              "serialNum": "",
+              "mfgName": "Arista Networks",
+              "hardwareRev": ""
+            },
+            "48": {
+              "modelName": "DCS-7050TX-64",
+              "serialNum": "",
+              "mfgName": "Arista Networks",
+              "hardwareRev": ""
+            },
+            "49": {
+              "modelName": "",
+              "serialNum": "",
+              "mfgName": "Not Present",
+              "hardwareRev": ""
+            },
+            "50": {
+              "modelName": "",
+              "serialNum": "",
+              "mfgName": "Not Present",
+              "hardwareRev": ""
+            },
+            "51": {
+              "modelName": "",
+              "serialNum": "",
+              "mfgName": "Not Present",
+              "hardwareRev": ""
+            },
+            "52": {
+              "modelName": "",
+              "serialNum": "",
+              "mfgName": "Not Present",
+              "hardwareRev": ""
+            }
+          },
+          "auxiliaryXcvrSlots": {},
+          "portCount": 77,
+          "switchedBootstrapPortCount": 2,
+          "managementPortCount": 1,
+          "dataLinkPortCount": 0,
+          "subcompSerNums": {},
+          "emmcFlashDevices": {},
+          "cardSlots": {},
+          "internalPortCount": 0,
+          "powerSupplySlots": {
+            "1": {
+              "name": "PWR-500AC-R",
+              "serialNum": "<hw-redacted-serial>"
+            },
+            "2": {
+              "name": "PWR-500AC-R",
+              "serialNum": "<hw-redacted-serial>"
+            }
+          },
+          "fanTraySlots": {
+            "1": {
+              "numFans": 1,
+              "serialNum": "N/A",
+              "secondarySerialNum": "",
+              "secondaryFans": {},
+              "name": "FAN-7000-R"
+            },
+            "2": {
+              "numFans": 1,
+              "serialNum": "N/A",
+              "secondarySerialNum": "",
+              "secondaryFans": {},
+              "name": "FAN-7000-R"
+            },
+            "3": {
+              "numFans": 1,
+              "serialNum": "N/A",
+              "secondarySerialNum": "",
+              "secondaryFans": {},
+              "name": "FAN-7000-R"
+            },
+            "4": {
+              "numFans": 1,
+              "serialNum": "N/A",
+              "secondarySerialNum": "",
+              "secondaryFans": {},
+              "name": "FAN-7000-R"
+            }
+          },
+          "systemInformation": {
+            "name": "DCS-7050TX-64",
+            "description": "48 10GbE-T + 4 QSFP+ 1RU",
+            "mfgDate": "2017-05-15",
+            "hardwareRev": "11.12",
+            "hwEpoch": "01.00",
+            "serialNum": "<hw-redacted-serial>"
+          },
+          "storageDevices": {
+            "SMART_EUSB": {
+              "firmwareRev": "1171",
+              "serialNum": "<hw-redacted-serial>",
+              "storageType": "eUSB",
+              "mount": "/mnt/flash",
+              "storageSize": 4,
+              "model": "SMART_EUSB"
+            }
+          },
+          "unconnectedPortCount": 12,
+          "switchedPortCount": 62,
+          "switchedFortyGOnlyPortCount": 0
+        }
+      ]
+    }
+  ],
+  "incomplete": []
+}
