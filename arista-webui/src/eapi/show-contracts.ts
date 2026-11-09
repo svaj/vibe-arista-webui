@@ -196,13 +196,19 @@ export interface ShowMlagReply {
 
 /**
  * The five literals M13 names, augmented onto the client's map (consumer spelling, USAGE.md §4).
- * **`lag` is deliberately NOT augmented yet**: no capture of `show lag` exists in either fixture
- * corpus, cEOS-lab never ran it, and `show lag resources` is an open 7050TX-64 hardware-sweep
- * item (STATUS.md §3), so publishing a field list for it would be invented shape — the very
- * failure mode DR-011/DR-043's evidence discipline refuses. Until the sweep captures it,
- * `node.show('lag')` stays `unknown` and a LAG screen must narrow honestly or read the
- * `port-channel` captures instead; the capture path is `scripts/ceos-lab.mjs` (cEOS) plus the
- * STATUS §3 batch (hardware).
+ * **`lag` stays deliberately NOT augmented — permanently, as a recorded refusal**: the #14 §3
+ * hardware sweep is DONE 2026-11-09 (probe runs 1-6) with the cEOS catalog regenerated the same day
+ * (`lab-1637825-9bbb4b`), and both targets answered the `show lag` family with negatives: cEOS-lab
+ * `% Incomplete` (probe-note transcripts, never files) and the 7050TX-64 `invalid command` for
+ * `show lag resources` and `show port-channel detail` (committed *negative captures*
+ * `show-lag-resources--hw-inventory.json`, `show-port-channel-detail--hw-inventory.json`). No
+ * positive reply exists on either target, so publishing a field list would be exactly the invented
+ * shape DR-011/DR-043's evidence discipline refuses — `node.show('lag')` stays `unknown` by design,
+ * and the LAG screen (#75) reads the real evidence instead: `show port-channel dense` is a
+ * committed positive on cEOS (`show-port-channel-dense.json`) and answered on the box
+ * (`show-port-channel-dense--hw-inventory.json`), with the channel-group relation as the config-side
+ * source (the Port-Channel field group in `resources/interfaces.ts`, M10c/DR-075). This is closed
+ * territory, not a pending capture.
  */
 declare module '@devhax-heavy-industries/arista-eapi' {
   interface ShowContracts {
