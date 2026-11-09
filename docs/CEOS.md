@@ -190,6 +190,58 @@ lab, `fixtures` may now collect the same catalog through `docker exec <container
 re-run first). The live test lane never takes that shortcut: readiness for LIVE suites still
 means an authenticated POST, here included.
 
+## Host-route reconciliation
+
+The harness pins the lab's management NIC to `192.168.255.0/24` precisely because published-port
+forwarding is untrusted for multi-NIC containers (the 2026-11-04/07 ECONNRESET family) — a direct
+host→container-mgmt connection over a route the harness owns. On **this** machine that pin does not
+hold: WSL2 mirrored-mode networking (with the Windows HNS/NAT stack) owns the `/24` itself, so the
+bridge reports a live connected route and the container is up, yet the host connect dies
+`EHOSTUNREACH 192.168.255.10:443` with bridge RX/TX that shows the container side answered nothing
+(ARP `FAILED`, veth present). `probe` now names that root cause — refusal reason
+`mgmt-path-owned-by-host-nat` — and prints the bridge/ARP/veth/container-route evidence that proves it,
+instead of a bare socket complaint.
+
+Practical consequences, in the order they should be tried:
+
+1. Run the lab on a **native Linux** runner (the CI `ceos-live` lane's shape) — then the eAPI probe
+   path works and every capture is eAPI-collected.
+2. Move the whole lab band (or switch the WSL distro to NAT-mode `.wslconfig`, which hands the range
+   back) — then this host can dial the management IP directly.
+3. On this host **as configured today**, fixture refreshes land through the DR-123 `auto` fallback:
+   the eAPI probe refuses with the named reason, and the catalog is collected via
+   `docker exec <run-owned container> Cli -p 15` inside the same container, with the identity guards
+   re-run from the container's own `show version` and the refusal reason recorded per-file
+   (`cliCaptureReason: mgmt-path-owned-by-host-nat`). That is how both committed capture batches —
+   `lab-1899774-8d6173` (2026-11-08) and `lab-1637825-9bbb4b` (2026-11-09) — arrived; treat the
+   envelope's `transport` field as the provenance, never as an alarm.
+
+What remains true either way: the live lane (`lab:run`, `*.live.test.ts`, the CI job) never takes the
+CLI shortcut, and container output never settles a hardware sentence (DR-043).
+
+## Latest refresh cards
+
+- `lab-1637825-9bbb4b` (2026-11-09 15:15Z, `npm run fixtures:refresh -- --yes`, docker 29.9.3):
+  **All 30 committed capture files rewritten in place** — 24 command answers as JSON plus 6 of
+  those reads also captured in text form; no additions, removals or renames against the
+  `lab-1899774-8d6173` batch, `+276/−276` lines total: identity-envelope rotation (`runId`,
+  `capturedAt`, per-boot `tlsPinFingerprint256`, the `mgmt-path-owned-by-host-nat` refusal reason)
+  plus live counters (uptime/memory/acl counters). Six catalog commands answered invalid and stay
+  recorded as probe-note negatives, never as empty files (`show interfaces switching`, `show
+  platform overview`, `show agents`, `show lag`, `show port-channel summary`, `show access-lists` —
+  the §5 row 237 both-transports family, plus `platform overview`). A
+  shape audit of every claim the docs pin to these files re-passed: `Port-Channel1` still answers
+  `staticTrunkGroups: ["LABGRP"]` (the row-225/DR-122 group claim), the seeded static route and both
+  SVI connected routes still populate `show ip route`, and the `show configuration sessions[ detail]`
+  pair still shows the deliberately-open `lab-pending-capture` entry with
+  `maxOpenSessions: 5 / maxSavedSessions: 1`. cEOS still refuses `ip routing` at provisioning in
+  both shapes — consistent with the 2026-11-07 cEOS verdicts and UNLIKE the hardware fact DR-136
+  recorded (`ip routing` stages on the 7050TX); cite any cEOS platform verdict only with its run id,
+  and never borrow it for the box (DR-041/DR-043).
+- `lab-1899774-8d6173` (2026-11-08, #62): first full configured-container batch, 14 new command
+  families (row 225, DR-122) — its runId stays cited in those rows as **history of first capture**,
+  which is still accurate even though the bytes on disk are now `9bbb4b`'s.
+
 ## Planned harness contract and safety
 
 Use the API client's existing opt-in live lane

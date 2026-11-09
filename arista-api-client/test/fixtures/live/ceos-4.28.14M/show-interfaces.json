@@ -13,15 +13,15 @@
     "modelName": "cEOSLab",
     "hardwareEvidence": "none — cEOS-lab container capture; not DCS-7050TX-64 / 4.28.13.1M evidence (DR-043)",
     "cliCapture": true,
-    "cliCaptureReason": "read ECONNRESET",
+    "cliCaptureReason": "mgmt-path-owned-by-host-nat",
     "cliCaptureNote": "bytes collected with `docker exec <run-owned container> Cli -p 15 … | json` because the published eAPI port was unavailable for this run on this Docker daemon; same EOS agent/parser answers both transports, and the container identity pins (model regex + base version) were re-checked from this CLI reply before any file was written",
-    "runId": "lab-1899774-8d6173",
-    "capturedAt": "2026-11-08T00:47:52.303Z",
+    "runId": "lab-1637825-9bbb4b",
+    "capturedAt": "2026-11-09T15:15:51.605Z",
     "capturedBy": "scripts/ceos-lab.mjs",
-    "endpoint": "127.0.0.1:46553",
-    "transport": "docker exec Cli -p 15 (enable-mode) inside the run-owned container ceos-lab-lab-1899774-8d6173; eAPI refusal: read ECONNRESET",
-    "tlsPinFingerprint256": "17E2044A56A91478D27FEA76F4015487036EA363D52A9F0ED8BD177E6268653C",
-    "bootupTimestamp": 1794098803.4049635,
+    "endpoint": "127.0.0.1:45121",
+    "transport": "docker exec Cli -p 15 (enable-mode) inside the run-owned container ceos-lab-lab-1637825-9bbb4b; eAPI refusal: mgmt-path-owned-by-host-nat",
+    "tlsPinFingerprint256": "8409DB215BBDB08FB0F3F31095E1F3BA42A5FD8BB9D4EAD41B73AA3F61DBB216",
+    "bootupTimestamp": 1794237292.719755,
     "redactionApplied": [
       "username/secret and enable/passphrase text replaced with <redacted-lab-secret>, including the encryption-type form (`secret sha512 <hash>`, `enable algorithm <algo> password <hash>`) and **object keys**, because `show running-config` in `json` format keys its `cmds` map by the whole command line — the lab `username … secret sha512 $6$…` line is a key there, not a value (observed 2026-11-06)",
       "this run's random lab username replaced with <redacted-lab-user> (API user-stats otherwise leak it)",
@@ -35,13 +35,13 @@
   "result": {
     "interfaces": {
       "Ethernet2": {
-        "lastStatusChangeTimestamp": 1794098830.6319005,
+        "lastStatusChangeTimestamp": 1794237320.451103,
         "lanes": 0,
         "name": "Ethernet2",
         "interfaceStatus": "connected",
         "autoNegotiate": "unknown",
         "loopbackMode": "loopbackNone",
-        "burnedInAddress": "0e:5f:dc:9a:dc:2c",
+        "burnedInAddress": "12:20:a4:fd:50:fa",
         "l2Mru": 0,
         "interfaceStatistics": {
           "inBitsRate": 0,
@@ -63,19 +63,19 @@
           "outUcastPkts": 0,
           "totalOutErrors": 0,
           "inMulticastPkts": 0,
-          "counterRefreshTime": 1794098867.67208,
-          "inBroadcastPkts": 0,
+          "counterRefreshTime": 1794237348.723029,
+          "inBroadcastPkts": 12,
           "outputErrorsDetail": {
             "deferredTransmissions": 0,
             "txPause": 0,
             "collisions": 0,
             "lateCollisions": 0
           },
-          "inOctets": 0,
+          "inOctets": 552,
           "outDiscards": 0,
           "outOctets": 0,
           "inUcastPkts": 0,
-          "inTotalPkts": 0,
+          "inTotalPkts": 12,
           "inputErrorsDetail": {
             "runtFrames": 0,
             "rxPause": 0,
@@ -91,14 +91,14 @@
         },
         "interfaceMembership": "Member of Port-Channel1",
         "interfaceAddress": [],
-        "physicalAddress": "0e:5f:dc:9a:dc:2c",
+        "physicalAddress": "12:20:a4:fd:50:fa",
         "description": ""
       },
       "Vlan100": {
-        "lastStatusChangeTimestamp": 1794098835.1518984,
+        "lastStatusChangeTimestamp": 1794237322.0401113,
         "name": "Vlan100",
         "interfaceStatus": "connected",
-        "burnedInAddress": "0e:5f:dc:78:83:f8",
+        "burnedInAddress": "12:20:a4:9e:da:2c",
         "l2Mru": 0,
         "mtu": 1500,
         "hardware": "vlan",
@@ -124,14 +124,14 @@
             }
           }
         ],
-        "physicalAddress": "0e:5f:dc:78:83:f8",
+        "physicalAddress": "12:20:a4:9e:da:2c",
         "description": ""
       },
       "Vlan110": {
-        "lastStatusChangeTimestamp": 1794098835.1158137,
+        "lastStatusChangeTimestamp": 1794237321.964273,
         "name": "Vlan110",
         "interfaceStatus": "notconnect",
-        "burnedInAddress": "0e:5f:dc:78:83:f8",
+        "burnedInAddress": "12:20:a4:9e:da:2c",
         "l2Mru": 0,
         "mtu": 1500,
         "hardware": "vlan",
@@ -157,11 +157,11 @@
             }
           }
         ],
-        "physicalAddress": "0e:5f:dc:78:83:f8",
+        "physicalAddress": "12:20:a4:9e:da:2c",
         "description": ""
       },
       "Port-Channel1": {
-        "lastStatusChangeTimestamp": 1794098835.1155183,
+        "lastStatusChangeTimestamp": 1794237321.9639904,
         "name": "Port-Channel1",
         "interfaceStatus": "notconnect",
         "memberInterfaces": {},
@@ -186,7 +186,7 @@
           "outUcastPkts": 0,
           "totalOutErrors": 0,
           "inMulticastPkts": 0,
-          "counterRefreshTime": 1794098867.676897,
+          "counterRefreshTime": 1794237348.72475,
           "inBroadcastPkts": 0,
           "inOctets": 0,
           "outDiscards": 0,
@@ -200,17 +200,17 @@
         },
         "fallbackEnabledType": "fallbackNone",
         "interfaceAddress": [],
-        "physicalAddress": "0e:5f:dc:9a:dc:2c",
+        "physicalAddress": "12:20:a4:fd:50:fa",
         "description": "LAB-LACP"
       },
       "Ethernet1": {
-        "lastStatusChangeTimestamp": 1794098830.64294,
+        "lastStatusChangeTimestamp": 1794237320.4778168,
         "lanes": 0,
         "name": "Ethernet1",
         "interfaceStatus": "connected",
         "autoNegotiate": "unknown",
         "loopbackMode": "loopbackNone",
-        "burnedInAddress": "a6:10:41:76:08:8f",
+        "burnedInAddress": "be:22:c4:36:55:37",
         "l2Mru": 0,
         "interfaceStatistics": {
           "inBitsRate": 0,
@@ -227,24 +227,24 @@
         "lineProtocolStatus": "up",
         "l3MtuConfigured": false,
         "interfaceCounters": {
-          "outBroadcastPkts": 11,
-          "outTotalPkts": 11,
+          "outBroadcastPkts": 8,
+          "outTotalPkts": 8,
           "outUcastPkts": 0,
           "totalOutErrors": 0,
           "inMulticastPkts": 0,
-          "counterRefreshTime": 1794098867.674291,
-          "inBroadcastPkts": 12,
+          "counterRefreshTime": 1794237348.723751,
+          "inBroadcastPkts": 0,
           "outputErrorsDetail": {
             "deferredTransmissions": 0,
             "txPause": 0,
             "collisions": 0,
             "lateCollisions": 0
           },
-          "inOctets": 552,
+          "inOctets": 0,
           "outDiscards": 0,
-          "outOctets": 704,
+          "outOctets": 512,
           "inUcastPkts": 0,
-          "inTotalPkts": 12,
+          "inTotalPkts": 0,
           "inputErrorsDetail": {
             "runtFrames": 0,
             "rxPause": 0,
@@ -259,7 +259,7 @@
           "inDiscards": 0
         },
         "interfaceAddress": [],
-        "physicalAddress": "a6:10:41:76:08:8f",
+        "physicalAddress": "be:22:c4:36:55:37",
         "description": ""
       }
     }
