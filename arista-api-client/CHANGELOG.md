@@ -9,6 +9,22 @@ surprise here — this file records what shipped, the migration map records what
 
 ## [Unreleased]
 
+### Evidence — the cEOS 4.28.14M capture catalog refreshed in place; the wave-1 fixtures contract closes from both ends (2026-11-09; §5 row 239, DR-138)
+- `npm run fixtures:refresh -- --yes` (run `lab-1637825-9bbb4b`) rewrote all 30 files under
+  `test/fixtures/live/ceos-4.28.14M/` — 24 JSON answers + 6 text-form mates, no name changes,
+  `+276/−276`: bootstrap rotation (`runId`/`capturedAt`/per-boot TLS fingerprint) plus live counters. Six
+  commands answered invalid and stay probe-note negatives (the row-237 both-transports family plus
+  `show platform overview`) — never empty files.
+- Transport: the eAPI probe refused with the named root cause `mgmt-path-owned-by-host-nat` (WSL2
+  mirrored-mode networking owns the pinned `192.168.255.0/24` on this machine), so the DR-123 `auto`
+  fallback collected via `docker exec <run-owned container> Cli -p 15` with identity guards re-applied
+  per file. `docs/CEOS.md` gained the §Host-route reconciliation section the shipped script text already
+  points at (that pointer was dangling — fixed), plus refresh cards naming both batches.
+- Shape audit re-derived from the captures, not the console: the LABGRP trunk-group claim (row 225), the
+  provisioned routes in `show ip route`, and the `lab-pending-capture` sessions listing all still hold.
+  cEOS's `ip routing` verdict stays refused in container shapes — noted against the hardware fact (DR-136)
+  so neither is ever quoted for the other target (DR-043).
+
 ### Evidence — probe run 6: the first CLEAN full pass, and the scratch port is finally net-zero (2026-11-09 09:48; DR-137 close + §5 row 238)
 - 17/17 batches with #114's code and spec rev 5: 0 opener refusals, 5 commits, 0 harness faults, `DONE` printed,
   suite green — all 17 probe recordings refreshed under `recordings/7050tx-64-r-4.28.13.1M/`.
