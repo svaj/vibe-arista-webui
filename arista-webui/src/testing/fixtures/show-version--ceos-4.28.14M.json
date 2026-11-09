@@ -1,0 +1,28 @@
+{
+  "_fixture": {
+    "purpose": "F8 (#70) contract (b): the committed-fixture convention for this app. Screen tests keep device payloads in `src/**/fixtures/*.json` (loaded with Vite's `?raw`, never imported as a module) so `src/testing/redaction-guard.test.ts` can scan every one of them. This file is the clean example the guard is checked against.",
+    "source": "arista-api-client/test/fixtures/live/ceos-4.28.14M/show-version.json -> the `result` member, copied verbatim",
+    "redaction": "already-redacted vendor capture: every MAC under a *mac*-named key reads 00:00:00:00:00:00 and `serialNumber` is the empty string on this image (both kept as captured, DR-011)",
+    "hardwareEvidence": "none — cEOS-lab container capture, not DCS-7050TX-64 / 4.28.13.1M evidence (DR-043)"
+  },
+  "imageFormatVersion": "1.0",
+  "cEosToolsVersion": "1.1",
+  "uptime": 53.486425161361694,
+  "modelName": "cEOSLab",
+  "kernelVersion": "6.18.33.2-microsoft-standard-WSL2",
+  "internalVersion": "4.28.14M-50015774.42814M",
+  "memTotal": 65799852,
+  "mfgName": "Arista",
+  "serialNumber": "",
+  "systemMacAddress": "00:00:00:00:00:00",
+  "bootupTimestamp": 1794237292.719755,
+  "memFree": 51233256,
+  "version": "4.28.14M-50015774.42814M (engineering build)",
+  "configMacAddress": "00:00:00:00:00:00",
+  "isIntlVersion": false,
+  "imageOptimization": "None",
+  "internalBuildId": "9ce2494c-255b-4104-b282-676994531323",
+  "hardwareRevision": "",
+  "hwMacAddress": "00:00:00:00:00:00",
+  "architecture": "i686"
+}

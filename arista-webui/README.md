@@ -25,6 +25,31 @@ not the browser bundle. See the [eAPI connectivity guide](../arista-api-client/d
 With all three variables absent, the UI renders its unconfigured state and makes no
 eAPI requests. Partial configuration is rejected; there is no default switch target.
 
+## Credentials and test artifacts (F8, issue #70)
+
+The browser never sees a credential: Vite injects `Authorization: Basic …` server-side and the app
+only reads the build-time `__EAPI_PROXY_CONFIGURED__` flag. Tests and artifacts are the leak surface,
+so the contract is:
+
+- **(a) Offline tests never carry a target.** `npm test -w arista-webui` runs with no `EAPI_*` env and
+  contacts nothing. Template: `proxyConfigured={false}` + "zero read calls" in
+  `src/features/vlans/VlanAssignment.test.tsx`.
+- **(b) Fixtures use already-redacted capture values only** — `systemMacAddress: '00:00:00:00:00:00'`,
+  `serialNumber: '0000000000'` (or `''`) — as in `src/eapi/show-contracts.test.ts`. Device payloads
+  belong in a `fixtures` directory next to the screen that reads them (loaded with Vite `?raw`), not
+  in prose.
+- **(c) Never assert or dump cleartext from `transport.sent()` / `transport.bodies()`** — both are
+  un-redacted and carry the `enable` `input` (the client's `node-session-journal` allow-list rule,
+  DR-011). Assert the detector instead: `findUnredactedEnableInput` / `scanValue`.
+- **(d) `.env.local` stays gitignored; #91 artifacts** (trace/video/HAR/coverage) must scrub host,
+  user, serial and MAC before upload. See the [cEOS runbook](../docs/CEOS.md).
+
+[`src/testing/redaction-guard.test.ts`](src/testing/redaction-guard.test.ts) enforces (b) and (c):
+it scans every committed fixture payload and test source for an un-redacted enable secret, a MAC with
+a non-zero device half, a spelled-out serial, or a credential outside the placeholder list
+(`never-sent`, `replace-with-a-lab-only-password`). It reports clean today and fails the moment one
+lands; exemptions are marker-based and pinned to an empty allow-list.
+
 ## Typed show contracts (M13)
 
 The client ships an **empty** `ShowContracts` map on purpose (ARCHITECTURE.md §9.1); this app
