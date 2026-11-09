@@ -191,8 +191,32 @@ as `configure-session-<name>--hw-session-probe`.
 diffs read) with a typed `EapiError`, the batch records the refusal, prints it, skips any commit for
 that batch, and the loop continues to the next batch — EOS stops a staged batch at the refused line,
 so the SPEC keeps one question per batch to keep the recordings granular (`docs/hw-session-probes.draft.json`
-rev 2). A transport or state-machine failure still kills the run: half-captured switch evidence is
+rev 3). A transport or state-machine failure still kills the run: half-captured switch evidence is
 worse than none.
+
+**Post-batch reads never control the run (DR-135).** The scratch read-back after a commit and the
+`show configuration sessions` post-state read refuse-and-log; they cannot cancel a committed batch's
+recording and cannot stop the loop. The read-back command itself comes from `hwScratchReadBackCommand`
+(`show running-config **interfaces** <intf>`, plural) because that is the only spelling this box takes:
+the singular form answered `1002 % Incomplete token (at token 2: 'interface')` — and when the harness
+still used it, that refusal landed one statement **after** a successful commit, so the port kept the
+mutation, the batch's recording was lost, and the restore set never ran (run 2, 2026-11-08:
+`description HW-CAPTURE-PROBE` stayed on the scratch port).
+
+**Resuming a stopped day:** `EAPI_HW_PROBE_ONLY=scratch-restore` (comma-separated batch names from the
+reviewed spec) runs just those batches, in the spec's order. Use it when a run died mid-commit-set or
+when the port already carries an earlier probe's line — replaying everything would then re-answer
+questions against a dirty port. An unknown name is a hard refusal, never a silent skip. Before the
+first resumed run, read the `STATE ON THE SWITCH RIGHT NOW` note in the spec's `$comment`.
+
+```sh
+# read the switch's own view of what is pending/committed BEFORE resuming (console, §2.5):
+#   show configuration sessions detail
+# then spend one abort-only batch doing the same read over eAPI:
+EAPI_HW_PROBE_ONLY=session-lifecycle npx vitest run -w arista-api-client --project live src/hw-session-probe.live.test.ts
+# then the batches still owed:
+EAPI_HW_PROBE_ONLY=scratch-restore npx vitest run -w arista-api-client --project live src/hw-session-probe.live.test.ts
+```
 
 ## 5. After the session
 

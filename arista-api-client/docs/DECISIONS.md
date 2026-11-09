@@ -2288,6 +2288,54 @@ Decision (both layers):
 Not a widening of anything: refused batches still abort, commit batches still fence to the scratch
 interface, and a refusal still never commits.
 
+### DR-135 — the second switch day: post-batch reads may never control the probe loop, and `show running-config` needs the PLURAL keyword
+Run 2 (2026-11-08, PR #111 merged) executed 8 of 11 reviewed batches and stopped in the middle of the
+**commit set**. Two distinct lessons, one about the box and one about the harness.
+
+**Device evidence (now recorded in `recordings/7050tx-64-r-4.28.13.1M/configure-session-*.json`).**
+Staged clean and visible in `show session-config diffs` on the `-R` unit: `switchport` +
+`switchport mode trunk`; `no switchport` + `ip address 172.31.255.5/31` (so L2→routed conversion
+inside a named session is fine on this SKU); `switchport trunk group HWGRP` — **open item 4's verb
+half is answered: trunk groups exist here** (cEOS said yes under DR-122, the box now agrees);
+`channel-group 999 mode active` with an implicit `interface Port-Channel999` appearing in the same
+diff (the running-config already carries an `interface Port-Channel20` block). Refused, recorded as
+the answer: `switchport trunk allowed vlan **only** 10,20` → `Invalid input (at token 4: 'only')`
+while the bare spelling commits, and `vlan 4090 **name** HWPROBE-…` → `Invalid input (at token 2:
+'name')`, i.e. the inline `vlan <id> name <name>` one-liner is not this box's grammar — the block
+form (`vlan 4090` + indented `name`) is the question still owed, and so are the SVI/VRRP/ip-routing
+lines that batch's refusal masked. That masking is DR-134's own rule being violated by the one batch
+rev 2 left unsplit, so rev 3 splits it into five one-question batches.
+
+**Harness defect (the one that cost the day).** After `scratch-description` **committed successfully**,
+the runner read back the port with `show running-config interface Ethernet22` — singular. The device
+answered `Error [1002] … "% Incomplete token (at token 2: 'interface')"`, the exception propagated out
+of the batch loop, and the run died **one statement after a successful write**: that batch's recording
+was never written (evidence lost), the remaining batches — including `scratch-restore` — never ran,
+and the switch kept `description HW-CAPTURE-PROBE` on Ethernet22. The command was simply the wrong
+spelling: Arista's own system suite always writes the plural (`pyeapi/test/system/test_api_interfaces.py:202,:239,:283`,
+`test_api_ipinterfaces.py:78`, `test_api_switchports.py:77`), and this client's `live-interfaces`/
+`live-vrfs` port notes already name that spelling.
+
+Decision:
+1. **A read that happens after its batch has closed is evidence gathering, never control flow.**
+   `hw-session-probe.live.test.ts` routes the post-commit scratch read-back and the
+   `show configuration sessions[ detail]` post-state read through one `tolerateRead` helper: a typed
+   `EapiError` is logged/collected (printed as a refusal list at the end of the run) and the loop
+   continues; a committed batch always reaches its `writeRecording`. Non-`EapiError` faults still
+   kill the run (DR-134's half-capture rule unchanged), and if the *write* itself fails after a
+   commit the harness prints the restore batch to run next — losing the record of a live mutation is
+   an operational problem, not just a test failure.
+2. **The read-back spelling lives in code, not in a run card:** `hwScratchReadBackCommand()` in
+   `src/testing/hw-capture.ts` returns `show running-config interfaces <intf>` and is pinned by a unit
+   test naming the device refusal, so the singular form cannot be reintroduced by hand.
+3. **A switch day must be resumable:** `EAPI_HW_PROBE_ONLY=<batch names>` (`selectHwProbeBatches`) runs
+   only the batches still owed, in the spec's order, and refuses an unknown name instead of silently
+   skipping the batch someone meant to run. Replaying a whole spec after a partial run re-answers
+   questions against a mutated port — exactly the state run 2 left.
+Not a loosening of any write gate: the commit fence, the scratch-only parser rule,
+`assertScratchStillUnused`, and the `finally` abort are all untouched; what changed is that a refused
+*read* can no longer strand a committed *write* without its record or its restore.
+
 ## Open items (need the device)
 
 Use cEOS first for software behavior and schema exploration, recording its model/version;
@@ -2325,6 +2373,14 @@ config session and are **not read-only**:
    port has a configured group, so absence proves nothing about support). The remaining half — does the
    `switchport trunk group` VERB exist on this SKU — is precisely what the §4 probe batch's
    `switchport trunk group lab0` staging answers; §3's session-probe half stays with #14.)**
+   **(ANSWERED 2026-11-08 on the `-R` unit by the §4 probe batch `trunk-groups`:** `switchport mode trunk`
+   + `switchport trunk group HWGRP` staged inside `configure session hw-probe-trunk-groups` and the group
+   line appears as a `+` line in `show session-config diffs`
+   (`configure-session-trunk-groups--hw-session-probe.json`, DR-135) — the VERB exists on this SKU, and it
+   is the `only` keyword of `switchport trunk allowed vlan only …` that the same session refused
+   (`Invalid input (at token 4: 'only')`) while the bare spelling commits. Still owed before any READ-shape
+   claim: a committed group surfacing in `show interfaces switchport` JSON, which today returns only
+   `{enabled, switchportInfo}` because nothing on the box is configured with a group.**)**
 5. `configure session <name> commit timer <hh:mm:ss>`: semantics of the confirming second `commit`
    (python layer verified, native `ConfigAgent`/`libCliSession` not inspected — DR-022).
 6. `features.md` is titled "Supported Features — Arista **7050X**" and carries FlexProfile footnotes,

@@ -448,3 +448,47 @@ export function resolveHwScratchToken(commands: readonly string[], scratchInterf
 export function hwProbeCaseName(batchName: string): string {
   return `configure-session-${batchName}--${HW_SESSION_SCENARIO}`
 }
+
+/**
+ * The command the probe harness uses to read back the scratch interface after a COMMIT batch.
+ *
+ * The keyword is **plural** — `interfaces` — and that is device-verified, not a style choice. The
+ * 2026-11-08 supervised run wrote a committed `description` on the scratch port and then died on the
+ * singular spelling: the SKU answers `show running-config interface Ethernet22` with
+ * `% Incomplete token (at token 2: 'interface')` (1002). Arista's own system suite uses the plural
+ * form throughout (`pyeapi/test/system/test_api_interfaces.py:202,:239,:283`,
+ * `test_api_ipinterfaces.py:78`, `test_api_switchports.py:77`), and this client already models the
+ * plural keyword elsewhere (`live-interfaces.live.test.ts` maps upstream's text reads to it).
+ * Keeping the spelling next to the parser that reviews the spec means a future run card cannot
+ * re-introduce the singular form by hand.
+ */
+export function hwScratchReadBackCommand(scratchInterface: string): string {
+  if (scratchInterface === '') throw new Error('hwScratchReadBackCommand needs a non-empty interface name')
+  return `show running-config interfaces ${scratchInterface}`
+}
+
+/**
+ * Resumability filter for a partially completed switch day (`EAPI_HW_PROBE_ONLY`).
+ *
+ * A probe run mutates: once a commit batch has committed, replaying the whole spec from the top
+ * re-answers questions with a now-dirty port (and after the DR-135 crash the run had *already
+ * committed* `scratch-description` four batches before the loop died). So the operator must be able
+ * to name the remaining batches instead. An unknown name is a refusal, never a silent no-op —
+ * skipping the batch you meant to run, on a physical switch, is how a half-restored port happens.
+ */
+export function selectHwProbeBatches(batches: readonly HwProbeBatch[], filter: string | undefined): readonly HwProbeBatch[] {
+  if (filter === undefined || filter.trim() === '') return batches
+  const wanted = filter
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter((entry) => entry !== '')
+  if (wanted.length === 0) return batches
+  const known = new Set(batches.map((batch) => batch.name))
+  const unknown = wanted.filter((name) => !known.has(name))
+  if (unknown.length > 0) {
+    throw new Error(`hw-session-probe: EAPI_HW_PROBE_ONLY names batch(es) the reviewed spec does not have: ${unknown.join(', ')} — known batches: ${[...known].join(', ')}`)
+  }
+  const selected = batches.filter((batch) => wanted.includes(batch.name))
+  // Keep the spec's order (restore-last discipline) regardless of how the filter was typed.
+  return selected
+}

@@ -1,0 +1,116 @@
+{
+  "format": "arista-eapi-recording/v1",
+  "identity": {
+    "targetSlug": "7050tx-64-r-4.28.13.1M",
+    "targetClass": "hardware",
+    "modelName": "DCS-7050TX-64-R",
+    "aristaVersion": "4.28.13.1M",
+    "versionNumber": "4.28.13.1",
+    "provenance": "captured",
+    "endpoint": "https://<hw-redacted>:443/command-api",
+    "topology": "supervised session; scratch=Ethernet22"
+  },
+  "captures": [
+    {
+      "requestId": "d11065f64783-1",
+      "commands": [
+        "enable",
+        "configure session hw-probe-trunk-allowed-only description \"the line that killed run 1: does the SKU CLI know the `o\"",
+        "interface Ethernet22",
+        "   switchport mode trunk",
+        "   switchport trunk allowed vlan only 10,20"
+      ],
+      "format": "json",
+      "error": {
+        "data": [
+          {},
+          {},
+          {},
+          {},
+          {
+            "errors": [
+              "Invalid input (at token 4: 'only')"
+            ]
+          }
+        ],
+        "message": "CLI command 5 of 5 '   switchport trunk allowed vlan only 10,20' failed: invalid command",
+        "code": 1002
+      }
+    },
+    {
+      "requestId": "d11065f64783-2",
+      "commands": [
+        "enable",
+        "configure session hw-probe-trunk-allowed-only description \"the line that killed run 1: does the SKU CLI know the `o\"",
+        "show session-config diffs"
+      ],
+      "format": "text",
+      "result": [
+        {
+          "output": ""
+        },
+        {
+          "output": ""
+        },
+        {
+          "output": "--- system:/running-config\n+++ session:/hw-probe-trunk-allowed-only-session-config\n@@ -83,6 +83,7 @@\n interface Ethernet21\n !\n interface Ethernet22\n+   switchport mode trunk\n !\n interface Ethernet23\n !\n"
+        }
+      ]
+    },
+    {
+      "requestId": "d11065f64783-3",
+      "commands": [
+        "enable",
+        "configure session hw-probe-trunk-allowed-only description \"the line that killed run 1: does the SKU CLI know the `o\"",
+        "abort"
+      ],
+      "format": "json",
+      "result": [
+        {},
+        {},
+        {}
+      ]
+    },
+    {
+      "requestId": "d11065f64783-4",
+      "commands": [
+        "enable",
+        "show configuration sessions"
+      ],
+      "format": "json",
+      "result": [
+        {},
+        {
+          "maxSavedSessions": 1,
+          "maxOpenSessions": 5,
+          "sessions": {}
+        }
+      ]
+    },
+    {
+      "requestId": "d11065f64783-5",
+      "commands": [
+        "enable",
+        "show configuration sessions detail"
+      ],
+      "format": "json",
+      "result": [
+        {},
+        {
+          "maxSavedSessions": 1,
+          "maxOpenSessions": 5,
+          "sessions": {
+            "m12a-intf-clear-Ethernet22": {
+              "instances": {},
+              "state": "completed",
+              "commitUser": "svaj",
+              "description": "",
+              "completedTime": 1794182736.3879662
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "incomplete": []
+}

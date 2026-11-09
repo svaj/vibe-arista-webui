@@ -16,7 +16,21 @@
     "questions. So that batch is now three one-question batches, and the harness likewise records a",
     "refusal and continues instead of throwing. (b) scratch-restore drops `no switchport`: the port's",
     "pre-session state is L2-by-default (mode access after the default it carries since run 1), so a",
-    "committed `no switchport` would strand the port routed instead of net-zero."
+    "committed `no switchport` would strand the port routed instead of net-zero.",
+    "REV 3 (2026-11-08, after run 2, DR-135): run 2 answered switchport-l2-baseline (accepted),",
+    "trunk-allowed-only (REFUSED — the SKU does not know the `only` keyword), routed-conversion",
+    "(accepted), trunk-groups (ACCEPTED: `switchport trunk group HWGRP` reached the session diff),",
+    "lacp-abort (accepted; implicit `interface Port-Channel999` appears in the diff), and",
+    "vlans-vrrp-iprouting DIED AT ITS FIRST LINE (`vlan 4090 name …` → 1002 at token 'name'), which",
+    "is DR-134's masking failure again in a batch this rev had left unsplit: the VLAN, SVI, VRRP and",
+    "ip-routing questions were never asked. That batch is now five one-question batches. The run then",
+    "crashed one statement AFTER committing scratch-description (a harness bug, fixed in the runner:",
+    "the scratch read-back used the singular `show running-config interface`, which this SKU refuses).",
+    "STATE ON THE SWITCH RIGHT NOW: Ethernet22 carries a committed `description HW-CAPTURE-PROBE`",
+    "(run 2, never restored — the restore set never ran). If the operator wants scratch-description to",
+    "show a real diff, run the restore batch ALONE first (EAPI_HW_PROBE_ONLY=scratch-restore), then the",
+    "full spec; otherwise scratch-description re-commits a no-op and the trailing restore still nets",
+    "the port clean."
   ],
   "batches": [
     {
@@ -69,13 +83,45 @@
       "allowCommit": false
     },
     {
-      "name": "vlans-vrrp-iprouting",
-      "question": "target-sensitive set: ip routing acceptance, Vlan-interface + VRRP virtual IP on the SKU (cEOS acceptance proved shape-dependent, DR-122 - never claim container == box)",
+      "name": "vlan-inline-name",
+      "question": "run-2 answer, now its own batch: is the one-line `vlan <id> name <name>` form SKU grammar? (it is NOT — 1002 Invalid input at token 'name', staged nothing)",
       "commands": [
-        "vlan 4090 name HWPROBE-MAY-FEATURE-ABORT",
+        "vlan 4090 name HWPROBE-INLINE"
+      ],
+      "allowCommit": false
+    },
+    {
+      "name": "vlan-block-form",
+      "question": "the spelling this client's vlan resource composes: `vlan 4090` then an indented `name` child — does the block form stage on the 7050TX-64",
+      "commands": [
+        "vlan 4090",
+        "   name HWPROBE-BLOCK"
+      ],
+      "allowCommit": false
+    },
+    {
+      "name": "vlan-interface-ip",
+      "question": "SVI on the box: `interface Vlan4090` + an indented address — accepted while the VLAN is only session-staged (EOS may refuse a dangling SVI inside a session)",
+      "commands": [
         "interface Vlan4090",
-        "   ip address 169.254.90.1/29",
+        "   ip address 169.254.90.1/29"
+      ],
+      "allowCommit": false
+    },
+    {
+      "name": "vlan-interface-vrrp",
+      "question": "the question actually owed since run 1: VRRP (v2 form `vrrp <group> ip <addr>`) on an SVI on the SKU. The interface line above is the already-accepted context, per DR-134 one NEW line per batch",
+      "commands": [
+        "interface Vlan4090",
         "   vrrp 1 ip 169.254.90.7"
+      ],
+      "allowCommit": false
+    },
+    {
+      "name": "ip-routing",
+      "question": "global `ip routing` acceptance inside a named session (abort-only — it is not scratch-scoped so parseHwProbeSpec would refuse it committed; the diff answers whether the SKU even stages it)",
+      "commands": [
+        "ip routing"
       ],
       "allowCommit": false
     },

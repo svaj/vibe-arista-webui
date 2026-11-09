@@ -28,6 +28,15 @@
  *    **skips the commit** — the batch aborts and records. Only typed `EapiError`s are tolerated;
  *    transport or state-machine failures still kill the run (half-captured switch evidence is
  *    worse than none).
+ * 4c. A read that happens AFTER a batch has closed (scratch read-back, `show configuration sessions`
+ *    post-state) can never control the loop and never cancels a committed batch's recording (DR-135,
+ *    found live 2026-11-08): the harness read `show running-config interface <scratch>` — singular —
+ *    and the SKU answered 1002 `% Incomplete token (at token 2: 'interface')`, which killed the loop
+ *    one statement after a SUCCESSFUL commit, losing that batch's recording and skipping the whole
+ *    restore set while the mutation sat on the switch. The read spelling now comes from
+ *    `hwScratchReadBackCommand` (plural `interfaces`, as Arista's own system suite writes it),
+ *    refusals are logged as answers, and `EAPI_HW_PROBE_ONLY` (see `selectHwProbeBatches`) lets a
+ *    stopped day resume with only the batches still owed.
  * 5. Each batch is one recording case (`configure-session-<name>--hw-session-probe`), sanitized with
  *    the full hardware scrubber before the write.
  *
@@ -46,7 +55,7 @@ import { EapiError } from './errors'
 import { buildRecording, createRecorder } from './testing/recording'
 import { writeRecording } from './testing/recorder-node'
 import { describeLiveTarget, liveTransportOptions, matchesDeviceIdentity, requireScratchInterface, resolveLiveEnv, unwrapLiveTarget, type LiveTarget } from './testing/live-guard'
-import { hwDeviceIdentity, hwProbeCaseName, parseHwProbeSpec, resolveHwScratchToken, sanitizeHwRecording, type HwProbeBatch } from './testing/hw-capture'
+import { hwDeviceIdentity, hwProbeCaseName, hwScratchReadBackCommand, parseHwProbeSpec, resolveHwScratchToken, sanitizeHwRecording, selectHwProbeBatches, type HwProbeBatch } from './testing/hw-capture'
 import type { VersionProperties } from './command-layer'
 
 const resolution = resolveLiveEnv(process.env)
@@ -85,7 +94,11 @@ describe.skipIf(!runnable)('hardware session probes: named config sessions on th
     if (specPath === undefined || specPath.trim() === '') {
       throw new Error('hw-session-probe: EAPI_HW_PROBE_SPEC must name the reviewed spec file (default review draft: arista-api-client/docs/hw-session-probes.draft.json — copying it there does NOT mean it is approved for THIS switch day; the operator re-reads it live)')
     }
-    batches = parseHwProbeSpec(readFileSync(specPath.trim(), 'utf8')).batches
+    const spec = parseHwProbeSpec(readFileSync(specPath.trim(), 'utf8'))
+    // A switch day can stop halfway (a crash, a console interruption, an operator pause). Every batch
+    // BEFORE the stop may already have committed, so replaying the whole spec is not automatically
+    // safe — EAPI_HW_PROBE_ONLY names the batches still owed. Unknown names refuse instead of no-op.
+    batches = selectHwProbeBatches(spec.batches, process.env['EAPI_HW_PROBE_ONLY'])
     if (resolution.ok && resolution.targetClass === 'hardware') {
       const needScratch = batches.some((batch) => batch.commands.some((cmd) => cmd.includes('{{SCRATCH}}')))
       if (needScratch) {
@@ -110,6 +123,7 @@ describe.skipIf(!runnable)('hardware session probes: named config sessions on th
     const enablePassword = process.env['EAPI_ENABLE_PASS']
     let committedBatches = 0
     let negatives = 0
+    const postReadRefusals: string[] = []
 
     for (const batch of batches) {
       const commands = resolveHwScratchTokenFor(batch)
@@ -154,7 +168,17 @@ describe.skipIf(!runnable)('hardware session probes: named config sessions on th
           await session.commit()
           committed = true
           committedBatches += 1
-          await node.exec([`show running-config interface ${scratch ?? '<unset>'}`], { format: 'text' })
+          // Read-backs AFTER a commit are evidence gathering, never control flow (DR-135): the run of
+          // 2026-11-08 wrote a committed `description` on the scratch port, then the singular
+          // `show running-config interface …` read threw 1002 and killed the loop — the batch's
+          // recording was lost and every later batch (the restore set included) never ran, with the
+          // mutation already sitting on the switch. Reads now go through the verified PLURAL form
+          // (hwScratchReadBackCommand) and a refusal is logged, not fatal.
+          if (scratch !== undefined) {
+            const [readBack] = await tolerateRead(node, batch, [hwScratchReadBackCommand(scratch)], 'text', postReadRefusals)
+            const echoed = ((readBack as { output?: string } | undefined)?.output ?? '').split(/\r?\n/u).filter((line) => line.trim() !== '').length
+            console.log(`hw-session-probe: ${batch.name}: committed — scratch read-back ${String(echoed)} line(s)`)
+          }
         } else {
           if (batch.allowCommit) {
             console.warn(`hw-session-probe: ${batch.name}: allowCommit batch came back with a refusal — commit SKIPPED, session aborted (a half-refused batch never commits, DR-134)`)
@@ -163,18 +187,49 @@ describe.skipIf(!runnable)('hardware session probes: named config sessions on th
           await session.abort()
         }
         // Post-state baseline for the §3 orphan question: what sessions exist after ours closed.
-        await node.exec(['show configuration sessions', 'show configuration sessions detail'], { format: 'json' })
+        await tolerateRead(node, batch, ['show configuration sessions', 'show configuration sessions detail'], 'json', postReadRefusals)
       } finally {
         if (!committed && session.isOpen) await session.abort()
       }
       if (recorder.incomplete().length > 0) throw new Error(`hw-session-probe: incomplete exchanges in batch ${JSON.stringify(batch.name)} — refusing to write a half-recorded probe`)
       const built = buildRecording(recorder, identity)
       const sanitized = sanitizeHwRecording(built, { extraSecrets: scrub })
-      const out = writeRecording(sanitized.fixture, { caseName: hwProbeCaseName(batch.name), overwrite: true })
+      let out: { created: boolean; bytes: number }
+      try {
+        out = writeRecording(sanitized.fixture, { caseName: hwProbeCaseName(batch.name), overwrite: true })
+      } catch (rawErr) {
+        // DR-135: after a commit the switch has ALREADY changed, so a lost write is an operational
+        // problem, not just a test failure — name the outstanding restore batch in the loudest place.
+        if (committed) {
+          console.error(`hw-session-probe: ${batch.name}: COMMITTED on ${scratch ?? '<scratch>'} but the recording could not be written — restore before anything else: EAPI_HW_PROBE_ONLY=<spec's restore batch> (cause: ${(rawErr as Error).message})`)
+        }
+        throw rawErr
+      }
       console.log(`hw-session-probe: ${hwProbeCaseName(batch.name)}: ${out.created ? 'created' : 'refreshed'} (${String(out.bytes)} B, ${String(sanitized.log.length)} scrub(s), ${refusal !== undefined ? 'negative recorded' : committed ? 'committed' : 'aborted'})`)
+    }
+    if (postReadRefusals.length > 0) {
+      console.warn(`hw-session-probe: ${String(postReadRefusals.length)} evidence READ(s) refused after their batch closed (recorded as answers, they never changed control flow):\n${postReadRefusals.map((line) => `  - ${line}`).join('\n')}`)
     }
     console.log(`hw-session-probe: DONE — ${String(batches.length)} batch(es), ${String(committedBatches)} committed (scratch-scoped only), ${String(negatives)} answered by a device refusal (DR-134)`)
   })
+
+  /**
+   * A post-batch read only REPORTS switch state; it must never decide whether the loop continues or
+   * whether a committed batch gets its recording. Typed `EapiError`s are appended to `refusals` and
+   * swallowed; anything else is a harness bug and still kills the run (DR-134's rule).
+   */
+  async function tolerateRead(node: ReturnType<typeof createNode>, batch: HwProbeBatch, commands: readonly string[], format: 'json' | 'text', refusals: string[]): Promise<readonly unknown[]> {
+    if (commands.length === 0) return []
+    try {
+      return await node.exec([...commands], { format })
+    } catch (rawErr) {
+      if (!(rawErr instanceof EapiError)) throw rawErr
+      const first = rawErr.message.split(/\r?\n/u)[0]?.slice(0, 200) ?? String(rawErr)
+      refusals.push(`${batch.name} [${commands.join('; ')}]: ${first}`)
+      console.warn(`hw-session-probe: ${batch.name}: post-batch read refused (kept as evidence, the batch itself already closed): ${first}`)
+      return []
+    }
+  }
 
   function resolveHwScratchTokenFor(batch: HwProbeBatch): readonly string[] {
     if (!batch.commands.some((cmd) => cmd.includes('{{SCRATCH}}'))) return batch.commands

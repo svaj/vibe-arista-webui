@@ -1,0 +1,106 @@
+{
+  "format": "arista-eapi-recording/v1",
+  "identity": {
+    "targetSlug": "7050tx-64-r-4.28.13.1M",
+    "targetClass": "hardware",
+    "modelName": "DCS-7050TX-64-R",
+    "aristaVersion": "4.28.13.1M",
+    "versionNumber": "4.28.13.1",
+    "provenance": "captured",
+    "endpoint": "https://<hw-redacted>:443/command-api",
+    "topology": "supervised session; scratch=Ethernet22"
+  },
+  "captures": [
+    {
+      "requestId": "7b8086aa87c3-1",
+      "commands": [
+        "enable",
+        "configure session hw-probe-session-lifecycle description \"named session + description + a no-op stage line: open/d\"",
+        "interface Ethernet22",
+        "   no shutdown"
+      ],
+      "format": "json",
+      "result": [
+        {},
+        {},
+        {},
+        {}
+      ]
+    },
+    {
+      "requestId": "7b8086aa87c3-2",
+      "commands": [
+        "enable",
+        "configure session hw-probe-session-lifecycle description \"named session + description + a no-op stage line: open/d\"",
+        "show session-config diffs"
+      ],
+      "format": "text",
+      "result": [
+        {
+          "output": ""
+        },
+        {
+          "output": ""
+        },
+        {
+          "output": ""
+        }
+      ]
+    },
+    {
+      "requestId": "7b8086aa87c3-3",
+      "commands": [
+        "enable",
+        "configure session hw-probe-session-lifecycle description \"named session + description + a no-op stage line: open/d\"",
+        "abort"
+      ],
+      "format": "json",
+      "result": [
+        {},
+        {},
+        {}
+      ]
+    },
+    {
+      "requestId": "7b8086aa87c3-4",
+      "commands": [
+        "enable",
+        "show configuration sessions"
+      ],
+      "format": "json",
+      "result": [
+        {},
+        {
+          "maxSavedSessions": 1,
+          "maxOpenSessions": 5,
+          "sessions": {}
+        }
+      ]
+    },
+    {
+      "requestId": "7b8086aa87c3-5",
+      "commands": [
+        "enable",
+        "show configuration sessions detail"
+      ],
+      "format": "json",
+      "result": [
+        {},
+        {
+          "maxSavedSessions": 1,
+          "maxOpenSessions": 5,
+          "sessions": {
+            "m12a-intf-clear-Ethernet22": {
+              "instances": {},
+              "state": "completed",
+              "commitUser": "svaj",
+              "description": "",
+              "completedTime": 1794182736.3879662
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "incomplete": []
+}
