@@ -30,11 +30,12 @@ export default defineConfig({
       //   browser E2E lane).
       // #70 (F8) added the redaction guard (175 tests) and measured 93.38/84.67/96.1/96.82, leaving
       // the floors untouched so the ratchet would land with the screen wave.
-      // #71 (S1, this branch) measured 198 tests, all files 93.53/87.1/97.02/97.45
+      // #71 (S1, this branch) measured 199 tests, all files 93.59/87.06/97.05/97.47
       // (stmts/branch/funcs/lines), with per-directory aggregates recomputed from
       // `coverage/coverage-final.json` rather than read off the truncated text table:
-      //   src/features 89.02 stmts (255) / 86.81 branch (364) · src/features/interfaces
-      //   94.01/91.3/100/99.29 · src/features/vlans unchanged 79.54/79.1/82.75/90 ·
+      //   src/features 89.27 stmts (261) / 86.76 branch (370) · src/features/interfaces
+      //   94.21/91.1/100/99.31 (its one uncovered line is `stageLines`' object-spec throw, which no
+      //   all-strings stage can reach) · src/features/vlans unchanged 79.54/79.1/82.75/90 ·
       //   src/testing 100/88 (65 stmts) · src/shared 96.94 stmts / 86.40 branch / 99.43 lines.
       // Floors below are set ~2-4 points under those figures (ratchet up, never down). Two notes for
       // the coverage-lane owner (#69): (1) `src/shared/` branch coverage is 86.40 while that entry

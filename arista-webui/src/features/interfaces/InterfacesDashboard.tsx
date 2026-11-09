@@ -181,6 +181,18 @@ const BAND_LABEL: Record<BandPath, string> = {
 
 const ADMIN_LABEL = (iface: Interface): string => (iface.shutdown === undefined ? 'Not reported' : iface.shutdown ? 'down' : 'up')
 
+/**
+ * A control character would end or corrupt the config line this client reads back — the same rule the
+ * client applies inside its own description verb. Written as a code-point scan rather than a regex
+ * character class on purpose: the linter's `no-control-regex` rule would otherwise need a disable
+ * comment here, and this repo carries none.
+ */
+const hasControlCharacter = (value: string): boolean =>
+  [...value].some((character) => {
+    const point = character.codePointAt(0) ?? 0
+    return point <= 0x1f || point === 0x7f
+  })
+
 export interface InterfacesDashboardProps {
   readonly node: InterfacesClient | undefined
   readonly proxyConfigured?: boolean
@@ -294,7 +306,8 @@ function InterfacesWorkspace({ node, proxyConfigured = true }: InterfacesDashboa
     if (action === 'set-description') {
       if (description.trim() === '') return 'A description needs a value. Clear the field with the "Clear description" action instead of sending an empty value (the client refuses it the same way: an empty description is `no description`, not `description `).'
       if (description.includes('"')) return 'This client cannot read a description containing a double quote back: its reader unquotes a balanced pair (resources/interfaces.ts, assertInterfaceDescription — MIGRATION.md §5 row 49). Whether EOS accepts one is unverified on hardware, so the app stages nothing rather than writing something the next read cannot see.'
-      if (/[\u0000-\u001f\u007f]/u.test(description)) return 'A description may not contain a control character or a line break — one command line per command (command-builder.ts, DR-015).'
+      if (/[\r\n\u0085\u2028\u2029]/u.test(description)) return 'A description may not contain a line break or line separator — one command line per command (command-builder.ts, DR-015).'
+      if (hasControlCharacter(description)) return 'A description may not contain a control character — it would break the config line this client reads back (the same rule the client applies to its own description verb).'
     }
     if (action === 'set-mtu') {
       const value = Number(mtu)

@@ -12,7 +12,7 @@
  * illustrative test scenario data — the hardware capture redacts it — because what the test pins is
  * that the device's own `urls` answer, not an invented rule, decides the Management-path column.
  */
-import { render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createFakeNode } from '@devhax-heavy-industries/arista-eapi/testing'
@@ -394,6 +394,21 @@ describe('InterfacesDashboard — staged writes', () => {
 
     const alert = await screen.findByRole('alert')
     expect(alert).toHaveTextContent(/cannot read a description containing a double quote/u)
+    expect(node.configSession).not.toHaveBeenCalled()
+  })
+
+  it('refuses a description that cannot be one config line, again without opening a session', async () => {
+    const user = userEvent.setup()
+    const { node } = makeClient()
+    await ready(node)
+
+    // Set directly rather than typing: a newline through `user.type` is a key press, not text. And the
+    // value is U+2028 rather than `\n`, because an `<input>`'s value sanitization strips CR/LF — this
+    // is the character class the client's own line-boundary guard (row 74 / DR-015) refuses.
+    fireEvent.change(screen.getByLabelText('Description'), { target: { value: 'uplink\u2028to-dist' } })
+    await user.click(screen.getByRole('button', { name: 'Preview change' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/may not contain a line break or line separator/u)
     expect(node.configSession).not.toHaveBeenCalled()
   })
 
