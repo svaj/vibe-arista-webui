@@ -1,0 +1,114 @@
+{
+  "format": "arista-eapi-recording/v1",
+  "identity": {
+    "targetSlug": "7050tx-64-r-4.28.13.1M",
+    "targetClass": "hardware",
+    "modelName": "DCS-7050TX-64-R",
+    "aristaVersion": "4.28.13.1M",
+    "versionNumber": "4.28.13.1",
+    "provenance": "captured",
+    "endpoint": "https://<hw-redacted>:443/command-api",
+    "topology": "supervised session; scratch=Ethernet22"
+  },
+  "captures": [
+    {
+      "requestId": "a719c47b89c6-1",
+      "commands": [
+        "enable",
+        "configure session hw-probe-vlan-interface-vrrp description \"the question actually owed since run 1: VRRP (v2 form `v\"",
+        "interface Vlan4090",
+        "   vrrp 1 ip 169.254.90.7"
+      ],
+      "format": "json",
+      "error": {
+        "data": [
+          {},
+          {},
+          {},
+          {
+            "errors": [
+              "Unavailable command (This command is deprecated by 'vrrp ipv4') (at token 2: 'ip')"
+            ]
+          }
+        ],
+        "message": "CLI command 4 of 4 '   vrrp 1 ip 169.254.90.7' failed: invalid command",
+        "code": 1002
+      }
+    },
+    {
+      "requestId": "a719c47b89c6-2",
+      "commands": [
+        "enable",
+        "configure session hw-probe-vlan-interface-vrrp description \"the question actually owed since run 1: VRRP (v2 form `v\"",
+        "show session-config diffs"
+      ],
+      "format": "text",
+      "result": [
+        {
+          "output": ""
+        },
+        {
+          "output": ""
+        },
+        {
+          "output": "--- system:/running-config\n+++ session:/hw-probe-vlan-interface-vrrp-session-config\n@@ -176,6 +176,8 @@\n interface Management1\n    ip address <hw-redacted>/24\n !\n+interface Vlan4090\n+!\n no ip routing\n !\n monitor session 1 source Ethernet37\n"
+        }
+      ]
+    },
+    {
+      "requestId": "a719c47b89c6-3",
+      "commands": [
+        "enable",
+        "configure session hw-probe-vlan-interface-vrrp description \"the question actually owed since run 1: VRRP (v2 form `v\"",
+        "abort"
+      ],
+      "format": "json",
+      "result": [
+        {},
+        {},
+        {}
+      ]
+    },
+    {
+      "requestId": "a719c47b89c6-4",
+      "commands": [
+        "enable",
+        "show configuration sessions"
+      ],
+      "format": "json",
+      "result": [
+        {},
+        {
+          "maxSavedSessions": 1,
+          "maxOpenSessions": 5,
+          "sessions": {}
+        }
+      ]
+    },
+    {
+      "requestId": "a719c47b89c6-5",
+      "commands": [
+        "enable",
+        "show configuration sessions detail"
+      ],
+      "format": "json",
+      "result": [
+        {},
+        {
+          "maxSavedSessions": 1,
+          "maxOpenSessions": 5,
+          "sessions": {
+            "hw-probe-scratch-description": {
+              "instances": {},
+              "state": "completed",
+              "commitUser": "svaj",
+              "description": "\"commit round-trip on the designated scratch port: descri\"",
+              "completedTime": 1794189394.6353111
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "incomplete": []
+}
