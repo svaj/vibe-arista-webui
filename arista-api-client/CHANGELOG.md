@@ -9,6 +9,47 @@ surprise here — this file records what shipped, the migration map records what
 
 ## [Unreleased]
 
+### Changed — probe run 4's two failures, and five more grammar answers from the box (2026-11-08; DR-136 + §5 row 236)
+- `src/testing/hw-capture.ts`: a config-session **name is a one-slot device resource**. The box keeps ONE
+  completed session (`maxSavedSessions: 1`) and run 2's commit parked `hw-probe-scratch-description`
+  there, so run 4's attempt to re-open that exact name was refused (`Error [1000] … could not run command`) — a
+  committed probe batch would otherwise be unprobeable for the life of that saved entry. New
+  `hwProbeSessionName()` / `hwProbeRetrySessionName(name, runTag)` / `hwProbeRunTag()`: the harness tries the
+  canonical name first, records the refusal as §3 evidence, and retries the batch under
+  `hw-probe-<name>-<tag>` (same prefix, still inside `assertSessionName`'s charset and the 64-character
+  cap). Case names stay batch-keyed, so one batch is still exactly one recording.
+- `src/hw-session-probe.live.test.ts`: `closeHandle()` replaces the bare `abort()` — a handle this client has
+  marked `lost` has no session behind it, and `abort()` on it throws this package's own DR-023
+  `SessionError`. Uncaught, that killed run 4 **after** the device had answered, discarding
+  `scratch-description`'s captured refusals and skipping the restore set for the second time
+  (`description HW-CAPTURE-PROBE` is still committed on the scratch port). Refused aborts are recorded with a
+  pointer to the runbook's console check; non-`EapiError` faults still kill the run. Both names' refusals now
+  accumulate instead of overwriting, and refusal text keeps 500 characters — the old 160/200 caps cut the
+  run-5 answer mid-token (`[errors: ['Cannot`) and forced the cause to be inferred from the session table.
+- `parseHwProbeSpec` refuses a staged **session-exec verb** (`commit …` / `revert …` / `abort` / `copy …`) in
+  a spec's `commands`, in commit and abort batches alike: those act on the session immediately, and per
+  DECISIONS DR-081 the `<intf>` form implicitly saves to startup-config — a write no spec line is reviewable
+  for. Commit lifecycle is `allowCommit` and the new `commitWithRevertTimer: "HH:MM:SS"` field (validated
+  against this client's own timer grammar; `00:00:00` refused, since EOS answers
+  `Time value cannot be zero.`). Fence and timer rules mutation-checked: removing the verb rule fails only its
+  own test; removing the timer block also breaks the spec-vs-parser coupling pin.
+- STATUS.md §3's `commit timer` line (open item 5) moves into this lane with the `commit-timer` batch: the
+  lane arms it through `ConfigSession#commitWithRevertTimer` (`config-session.ts:856`), reads the session
+  table, asks whether an armed timer blocks another `configure session`, reads `show startup-config` for
+  staged marker, then — for a timer of five minutes or less — sits out the deadline and re-reads the scratch
+  interface, so the recording answers whether the revert fires by itself. The
+  `commit <intf> verify` / `revert <intf>` confirm-and-cancel arm is deliberately unasked: this repo has
+  never composed that pair for a device and DR-135 is what an invented spelling cost. Test budget for the file
+  is now 15 min (override with `EAPI_HW_PROBE_TEST_TIMEOUT_MS`).
+- Evidence: 11 probe recordings refreshed/added on `DCS-7050TX-64-R` / `4.28.13.1M` (and the `vlans-vrrp-iprouting`
+  recording that rev 3 superseded was removed). Newly answered on the box: the `vlan <id>` **block** form stages
+  where the one-line `vlan <id> name` does not; a **dangling SVI** stages (`interface Vlan4090` + address while
+  the VLAN existed only in the same staged set); `ip routing` stages, and the diff showed the switch running
+  `no ip routing` today; and `vrrp <n> ip <addr>` is refused with `Unavailable command (This command is
+  deprecated by 'vrrp ipv4')` — the device naming the modern arm this client composes on >= 4.21.3, hence the
+  new `vlan-interface-vrrp-ipv4` batch. `configure session <name> description "…"` round-trips verbatim
+  including the quotes.
+
 ### Changed — the second supervised switch day: what the box answered, and the read that stranded a commit (2026-11-08; DR-135 + §5 row 235)
 - `src/hw-session-probe.live.test.ts`: reads that happen **after** a batch has closed (the scratch
   read-back following a `commit`, and the `show configuration sessions[ detail]` post-state read) can no

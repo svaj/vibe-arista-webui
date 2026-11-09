@@ -2336,6 +2336,82 @@ Not a loosening of any write gate: the commit fence, the scratch-only parser rul
 `assertScratchStillUnused`, and the `finally` abort are all untouched; what changed is that a refused
 *read* can no longer strand a committed *write* without its record or its restore.
 
+### DR-136 — the third switch hour: a saved session name is a one-slot resource, a `lost` handle may not be aborted, and the box answered five grammar questions
+Runs 3-4 (2026-11-08, after PR #112 merged at `276fffb` — run 3 on a stale local main at 21:21, run 4 on the
+merged tree at 21:32) took the lane to its first COMMIT batch: run 4 completed eleven batches and died on the
+twelfth, `scratch-description`. Two harness rules and five device answers came out of it.
+
+The run numbering this entry and STATUS.md §3 use for the probe lane: **run 1** = the first attempt, aborted
+mid-`switchport-modes` (DR-134); **run 2** = 20:57, which recorded seven batches and DID commit
+`scratch-description` before the singular read-back killed it (DR-135) -- that is the commit whose session
+name still owns the box's single completed-session slot, and the `description HW-CAPTURE-PROBE` still sitting
+on Ethernet22; **run 3** = 21:21 on a stale local main (spec rev 2, so it re-asked the unsplit VLAN batch);
+**run 4** = 21:32, PR #112's code with spec rev 3, which is where the two failures below show up and where
+the five new recordings come from.
+
+**The device answers, all inside `configure session hw-probe-<name>` on the `-R` unit and recorded as
+`configure-session-<name>--hw-session-probe.json`:**
+
+| Question | Answer on `DCS-7050TX-64-R` / `4.28.13.1M` |
+|---|---|
+| `vlan 4090 name X` (one line) | **refused**: `Invalid input (at token 2: 'name')` |
+| `vlan 4090` + indented `name X` | **accepted** — the block form is this box's grammar |
+| `interface Vlan4090` + `ip address 169.254.90.1/29` | **accepted**, and it stages a **dangling SVI**: VLAN 4090 existed only in that same session's staged set, and the box still wrote the `interface Vlan4090` block |
+| `vrrp 1 ip 169.254.90.7` | **refused**: `Unavailable command (This command is deprecated by 'vrrp ipv4') (at token 2: 'ip')` — and the answer named its replacement |
+| `ip routing` | **accepted**, and the diff exposed the box's current state: `-no ip routing` → `+ip routing`, i.e. routing is OFF on this switch today (aborted, so it stayed off) |
+| `configure session <name> description "…"` | round-trips: the completed entry in `show configuration sessions detail` carried `"commit round-trip on the designated scratch port: descri"` — quotes included, i.e. the device stores the CLI token as sent (this replaces the more cautious sentence written earlier the same day) |
+
+The VRRP answer is a **client** fact, not trivia: `src/resources/vrrp.ts:618/665/688` already composes the
+modern arm `vrrp <n> ipv4 …` / `ipv4 version` on `>= 4.21.3` (upstream's own split, and §5 row 218's
+family table), and 4.28.13.1 is on the modern side of that cut. So the modern spelling is what this client
+sends to this box — which is the answer §3 owed, and it is why the spec gained the
+`vlan-interface-vrrp-ipv4` batch (rev 4) instead of borrowing the cEOS corpus's word (DR-043). The legacy
+`ip` arm stays legal in the resource because it must read configs that still spell it; that half is
+already pinned offline and needs no hardware claim.
+
+**Harness rule 1 — a config-session name is a one-slot resource on the box.** Run 4 reached
+`scratch-description`, whose canonical name `hw-probe-scratch-description` had been **committed** by run 2,
+and the device refused the *opener*: `Error [1000] … 'configure session hw-probe-scratch-description
+description "…"' failed: could not run command`. The reason is visible in the same files:
+`show configuration sessions detail` still lists that name with `state: completed`, and `maxSavedSessions`
+is **1**. Deterministic names are worth having (they make an interrupted run greppable on the console), but
+a batch that has EVER committed is otherwise unprobeable for the life of that saved slot. So
+`hwProbeSessionName()` / `hwProbeRetrySessionName(name, runTag)` split the two jobs: the canonical name
+first (its refusal recorded as §3 evidence), then a run-scoped `hw-probe-<name>-<tag>` which keeps the
+same prefix, stays inside `assertSessionName`'s rules and the 64-character cap, and carries the batch's real
+answer. The case name never changes, so one batch is still one recording.
+
+**Harness rule 2 — never `abort()` a handle the model has marked `lost`.** After that opener refusal the
+harness fell into its DR-134 refusal path, which called `session.abort()`; `assertLive`
+(`config-session.ts:628`) correctly threw this client's own `SessionError` — there is no session to abort —
+and nothing caught it, so the loop died **after** the device had answered and the refused exchanges were
+already in the recorder: `scratch-description`'s file never landed, and the whole restore set was skipped
+again (`description HW-CAPTURE-PROBE` is still on Ethernet22 as a result). Same family as DR-135: a
+client-state error is not a device answer, and a lane that writes must not let either end its control flow.
+`closeHandle()` now aborts only while `isOpen`, and a refused abort is recorded with a pointer to the §2.5
+console check rather than thrown. Related: the retry loop accumulates the refusals from BOTH names instead
+of overwriting, and `errorText()` keeps 500 characters of the device's first line — the old 160/200-char
+caps cut that 1000 mid-token (`[errors: ['Cannot`) and were the reason the cause had to be inferred from
+the session table instead of read from the answer.
+
+**Spec/parser consequence (rev 4):** `parseHwProbeSpec` now refuses a staged **session-exec verb**
+(`commit …` / `revert …` / `abort` / `copy …`) inside `commands` at parse time. Those are not staged config
+— they act on the session immediately — and DR-081's recorded hardware behaviour for `commit <intf>` is an
+**implicit save into startup-config**, a write no spec line could plausibly be reviewed for. Commit
+lifecycle is expressed by `allowCommit` and the new `commitWithRevertTimer: "HH:MM:SS"` field instead, which
+is fenced to the scratch interface like every other commit and validated against this client's own
+`assertTimerString` grammar (with `00:00:00` refused, since EOS answers `Time value cannot be zero.`).
+§3's `commit timer` line moves out of the "later follow-up family" note and into this lane for that reason:
+a revert timer can only be armed by a commit, and the lane's own timed-commit verb
+(`ConfigSession#commitWithRevertTimer`, `config-session.ts:856`) is the only spelling this repo has actually
+composed — the `commit <intf> verify` / `revert <intf>` confirm-and-cancel arm stays unasked on hardware,
+because writing that pair from an unread signature is precisely the DR-135 mistake. The batch holds the
+config lock for its own timer window (2:00 in the reviewed draft), which is why it runs last-but-one and
+`hwProbeTimerWaitMs` refuses to sit a test through a longer wait than 5 minutes.
+**Fence-mutation-checked:** deleting the staged-verb rule fails only its own test, deleting the
+`commitWithRevertTimer` block additionally fails the spec-vs-parser coupling pin (the committed draft's
+timer field would be silently dropped) — both restored, suite green at 2,324 tests.
+
 ## Open items (need the device)
 
 Use cEOS first for software behavior and schema exploration, recording its model/version;
@@ -2383,6 +2459,16 @@ config session and are **not read-only**:
    `{enabled, switchportInfo}` because nothing on the box is configured with a group.**)**
 5. `configure session <name> commit timer <hh:mm:ss>`: semantics of the confirming second `commit`
    (python layer verified, native `ConfigAgent`/`libCliSession` not inspected — DR-022).
+   **(Moved into the hardware probe lane 2026-11-08 (DR-136): the question can only be armed by a COMMIT,
+   so it belongs to the lane that may commit the scratch port, not to the deferred follow-up family. The
+   reviewed spec gained a `commit-timer` batch whose `commitWithRevertTimer` field drives this client's own
+   `ConfigSession#commitWithRevertTimer` (`config-session.ts:856`); the lane then reads the session table,
+   asks whether an armed timer blocks a second session, reads `show startup-config` for the staged marker
+   (the persistence question DR-035(c) refuses to assume), sits out the 2:00 deadline and re-reads the port.
+   NO device answer yet — that is run 5's job, including the case where the box refuses a timed commit
+   outright, which is also an answer. The `commit <intf> verify` / `revert <intf>` confirm-and-cancel arm is
+   deliberately still unasked: the repo has never composed that pair for a device, and DR-135 is exactly what
+   an invented spelling on a switch costs.)**
 6. `features.md` is titled "Supported Features — Arista **7050X**" and carries FlexProfile footnotes,
    while the hardware is **DCS-7050TX-64** and this build exposes ALE `hardware tcam` /
    `system profile` instead. The feature matrix needs re-deriving from the correct SKU page — affects
@@ -2412,6 +2498,15 @@ config session and are **not read-only**:
    `cmds[0]`; they are not a captured device limit, and `CliPlugin/SessionCli.py` is not present anywhere
    in this workspace to read the parser from. Decide by capturing `show configuration sessions` after
    attempts at the boundary, not by reading our own constant back as evidence.
+   **(One device limit DID arrive on 2026-11-08, and it is about name REUSE rather than shape (DR-136):** the
+   box keeps one COMPLETED session (`maxSavedSessions: 1`), and re-opening the exact name that committed into
+   that slot was refused with `Error [1000] … 'configure session hw-probe-scratch-description description
+   "…"' failed: could not run command` — while a fresh name worked in the same minute. So a name is a
+   one-slot resource for as long as the saved session sits there, which is why the probe lane retries under
+   `hw-probe-<name>-<run tag>` instead of stalling. The length/charset boundary is still uncaptured; the
+   probe lane refuses to test it because the test would have to commit, and committing an adversarially-named
+   session is not what "one designated scratch interface" licenses — that family stays with the
+   session-grammar follow-up in STATUS.md §3.)**
 8. **Sessions grammar and which verbs answer `1002` where** (DR-050): `configure session <name>
    description <d>` — how deep the quoting goes, and what an embedded `"` does to the one-token rule this
    port's `quoteDescription` assumes; `configure session <name> no-commit` — accepted, or refused with
@@ -2426,6 +2521,15 @@ config session and are **not read-only**:
    listed pending session's entry carries `instances/state/commitUser/description` with no start-time
    key — `show-configuration-sessions[.detail].json`, run `lab-1899774-8d6173`, DR-122. The boundary and
    `no-commit`/rollback-verb attempts still need the authorized scratch session on both targets.)**
+   **(Hardware half of the field-set question answered 2026-11-08 on the `-R` unit: `maxOpenSessions: 5` /
+   `maxSavedSessions: 1`, no start-time key — the box agrees with the container, and the plain form's
+   `sessions: {}` does NOT list completed sessions while the `detail` form does
+   (`configure-session-session-lifecycle--hw-session-probe.json` and every probe batch's post-state read).
+   `configure session <name> description "…"` also round-trips on the box: the completed entry came back as
+   `"commit round-trip on the designated scratch port: descri"`, quotes and all, so the device stores the CLI
+   token as sent rather than unwrapping it — the entry came from run 2's commit, read back in the `detail` post-state of
+   run 4's batches (`configure-session-session-lifecycle--hw-session-probe.json`, DR-136). Still open: the
+   embedded-quote depth, `no-commit` acceptance, and `show session-config` without `diffs`.)**
 
 MLAG (`mlag` module, 21 upstream system tests): investigate supported control-plane
 behavior in an isolated two-node cEOS topology. Physical 7050TX-64 MLAG/forwarding

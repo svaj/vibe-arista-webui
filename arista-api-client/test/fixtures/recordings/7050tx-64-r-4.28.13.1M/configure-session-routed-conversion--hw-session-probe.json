@@ -12,7 +12,7 @@
   },
   "captures": [
     {
-      "requestId": "473c9c1faeca-1",
+      "requestId": "c85dd0a8face-1",
       "commands": [
         "enable",
         "configure session hw-probe-routed-conversion description \"L2 to Routed conversion inside a session on the SKU: no \"",
@@ -30,7 +30,7 @@
       ]
     },
     {
-      "requestId": "473c9c1faeca-2",
+      "requestId": "c85dd0a8face-2",
       "commands": [
         "enable",
         "configure session hw-probe-routed-conversion description \"L2 to Routed conversion inside a session on the SKU: no \"",
@@ -45,12 +45,12 @@
           "output": ""
         },
         {
-          "output": "--- system:/running-config\n+++ session:/hw-probe-routed-conversion-session-config\n@@ -83,6 +83,8 @@\n interface Ethernet21\n !\n interface Ethernet22\n+   no switchport\n+   ip address 172.31.255.5/31\n !\n interface Ethernet23\n !\n"
+          "output": "--- system:/running-config\n+++ session:/hw-probe-routed-conversion-session-config\n@@ -84,6 +84,8 @@\n !\n interface Ethernet22\n    description HW-CAPTURE-PROBE\n+   no switchport\n+   ip address 172.31.255.5/31\n !\n interface Ethernet23\n !\n"
         }
       ]
     },
     {
-      "requestId": "473c9c1faeca-3",
+      "requestId": "c85dd0a8face-3",
       "commands": [
         "enable",
         "configure session hw-probe-routed-conversion description \"L2 to Routed conversion inside a session on the SKU: no \"",
@@ -64,7 +64,7 @@
       ]
     },
     {
-      "requestId": "473c9c1faeca-4",
+      "requestId": "c85dd0a8face-4",
       "commands": [
         "enable",
         "show configuration sessions"
@@ -80,7 +80,7 @@
       ]
     },
     {
-      "requestId": "473c9c1faeca-5",
+      "requestId": "c85dd0a8face-5",
       "commands": [
         "enable",
         "show configuration sessions detail"
@@ -92,12 +92,12 @@
           "maxSavedSessions": 1,
           "maxOpenSessions": 5,
           "sessions": {
-            "m12a-intf-clear-Ethernet22": {
+            "hw-probe-scratch-description": {
               "instances": {},
               "state": "completed",
               "commitUser": "svaj",
-              "description": "",
-              "completedTime": 1794182736.3879669
+              "description": "\"commit round-trip on the designated scratch port: descri\"",
+              "completedTime": 1794189394.6353106
             }
           }
         }

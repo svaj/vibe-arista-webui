@@ -254,6 +254,33 @@ source (pyeapi 1.0.4-rc0).
 > resumable. No box below flips from run 2 alone: the commit set and the session-grammar family
 > (items 5/7/8) still have to complete on the box.
 
+> **2026-11-08, run 4 (PR #112 code, spec rev 3, DR-136).** Eleven batches answered; this commit carries
+> **11 probe recordings** (six refreshed from the earlier probe run plus five new single-question batches:
+> `vlan-inline-name`, `vlan-block-form`, `vlan-interface-ip`, `vlan-interface-vrrp`, `ip-routing`) and removes
+> the run-2 `vlans-vrrp-iprouting` file, whose batch the split replaced — its one useful answer (`vlan 4090
+> name X` refused at token `name`) survives as `vlan-inline-name`, so no evidence is lost by the rename. Device
+> answers: the `vlan 4090` **block** form with an indented `name` stages (the one-line `vlan 4090 name X`
+> does not); a **dangling SVI** stages inside a session (`interface Vlan4090` + `ip address` while
+> VLAN 4090 existed only in that same staged set); `ip routing` stages, and its diff showed `+ip routing`
+> replacing **`no ip routing`**, i.e. routing is OFF on this switch today; `switchport trunk group HWGRP`
+> staged again; and `vrrp 1 ip <addr>` was refused with the answer this client cares about most:
+> `Unavailable command (This command is deprecated by 'vrrp ipv4') (at token 2: 'ip')` — the box names the
+> modern arm that `src/resources/vrrp.ts:618` already composes on `>= 4.21.3`, so the hardware sentence for
+> §3's VRRP line is "modern spelling or nothing", and rev 4 asks that spelling in
+> `vlan-interface-vrrp-ipv4`. The run then stopped at `scratch-description` for a **new** reason: the box
+> refused to re-open that name, because run 2's commit parked it in the single completed-session slot
+> (`maxSavedSessions: 1`, and `show configuration sessions detail` still showed it `state: completed`) — a
+> config-session name is a one-slot resource for the name's owner, not a free identifier. The harness made
+> it worse: the refusal path called `abort()` on the handle the model had marked `lost`, this client's own
+> DR-023 `SessionError` escaped, and the restore set was skipped a second time (so **Ethernet22 still
+> carries `description HW-CAPTURE-PROBE`**). Fixed in DR-136: `hwProbeSessionName`/`hwProbeRetrySessionName`
+> (canonical name refused → recorded as evidence → batch retried under a run-scoped name, one recording per
+> batch either way), `closeHandle()` aborts only a live handle and never lets a refused abort end the run,
+> and refusal text is no longer truncated mid-token. §3's `commit timer` question moved into this lane with
+> the `commit-timer` batch (`commitWithRevertTimer`), armed through the client's own timed-commit verb and
+> fenced to the scratch port; the `commit <intf> verify`/`revert <intf>` arm stays unasked until that
+> first answer lands, because composing it from an unread signature is what DR-135 cost a day over.
+
 Run the software/schema subset against cEOS first and store captures under
 `test/fixtures/recordings/ceos-4.28.14M/`; repeat target-sensitive checks on the
 7050TX-64 under `recordings/7050tx-64-4.28.13.1M/`. Keep exact version/model metadata,
@@ -329,34 +356,62 @@ which needs explicit authorization on hardware and unconditional cleanup.
 - [ ] `configure session <name>` boundaries: the longest accepted name and the character set (our
       `MAX_SESSION_NAME_LENGTH` and refusals are **this port's** bounds, not a captured device limit)
       → open item 7
+      **(new device limit 2026-11-08, and it is about REUSE not shape: the box keeps ONE completed session
+      (`maxSavedSessions: 1`) and re-opening the exact name that committed into it was refused
+      (`Error [1000] … could not run command`) while a fresh name was accepted seconds later — so a session
+      name is a one-slot resource for as long as its completed entry lives (DR-136; the probe lane retries
+      under `hw-probe-<name>-<run tag>` because of it). Longest-accepted-name and charset boundaries are still
+      uncaptured on purpose: answering them means committing an adversarially-named session, which one
+      designated scratch interface does not license.)**
 - [ ] `configure session <name> description "…"` quoting depth (embedded `"`, `#`, `;`, backslash), and
       whether `no-commit` is accepted or answered `1002` on the 7050TX-64 → open item 8
-      **(partial 2026-11-08: the plain form `configure session hw-probe-<name> description "<free text
-      with / + : and spaces>"` was accepted by the box on all eight batches that opened a session. What
-      it does NOT prove: that the text round-trips — the read at the end of a batch showed
-      `sessions: {}` (the non-`detail` form hides completed sessions) and the only entry in the
-      `detail` form was the earlier lab session with `description: ""`, because our probe sessions were
-      aborted/committed out of the open set. The depth questions (embedded quotes, `#`, `;`, backslash),
-      a description read-back while a session is OPEN, and `no-commit` all still need the follow-up
-      grammar family, which deliberately does not live in this spec)**
+      **(half answered 2026-11-08, and the earlier cautious sentence here was wrong: the plain form DOES
+      round-trip. Every batch opened `configure session hw-probe-<name> description "<free text with / + :
+      spaces>"`, and the completed entry read back from `show configuration sessions detail` as
+      `"commit round-trip on the designated scratch port: descri"` — quotes preserved, i.e. the device stores
+      the CLI token as `quoteDescription` sent it, which is the behavior that family of tests assumes.
+      Still owed: an embedded `"`/`#`/`;`/backslash inside the description, and `no-commit`. Neither is
+      probed by the scratch-session spec: probing quote depth means committing a session whose name or
+      description is adversarial, which "one designated scratch interface" does not license.)**
 - [ ] which of `copy running-config startup-config`, `rollback clean-config [ { groups } ]`,
       `rollback <name>` and `configure replace <url>` answer `1002`/`1004` per platform (cEOS first, then
       target — the class of gap DR-042 warns about)
 - [ ] `commit timer` behaviour: does a held timer block a later session, and does a second `commit` before
       the deadline confirm or reset the revert? (the handler is native below the image's Python; never
       inspected here) → open item 5
-- [ ] `show configuration sessions` / `show configuration sessions detail` captured verbatim: confirm the
+      **(moved into the probe lane 2026-11-08, DR-136: a timer is armed only by a COMMIT, so the question
+      belongs to the lane that may commit the scratch port. The reviewed spec's `commit-timer` batch arms it
+      through this client's own `ConfigSession#commitWithRevertTimer` (`config-session.ts:856`) and then reads
+      the session table, asks whether the armed timer blocks a second `configure session`, reads
+      `show startup-config` for the staged marker (DR-035(c)'s persistence question, asked rather than
+      assumed) and sits out the deadline to re-read the port. NO device answer yet — the next run (run 5) asks it, including
+      the answer "this SKU refuses a timed commit". The `commit <intf> verify` / `revert <intf>`
+      confirm-and-cancel pair is deliberately unasked: this repo has never composed that pair for a device,
+      and DR-135 is what an invented spelling on this box costs.)**
+- [x] `show configuration sessions` / `show configuration sessions detail` captured verbatim: confirm the
       field set `ConfigSessionSummary` models, whether `maxOpenSessions`/`maxSavedSessions` are present, and
       whether any start-time field exists (`recoverOrphans({ olderThan })` depends on the journal until it
-      does) → §5 row 70
+      does) → §5 row 70 — **captured on the box 2026-11-08** (`show-configuration-sessions--hw-inventory.json`,
+      `show-configuration-sessions-detail--hw-inventory.json`, and the post-state read of every probe batch):
+      `maxOpenSessions: 5` / `maxSavedSessions: 1`, entries carry
+      `instances/state/commitUser/description/completedTime` and **no start-time key** — so `olderThan` keeps
+      depending on the journal here too — and the two forms differ in a way the model must respect:
+      the plain form answers `sessions: {}` while a completed session is still listed by `detail`.
+      The field set itself matches the cEOS answer (DR-122), which is a comparison, not a container settling
+      it: the caps happen to agree at 5/1 on this unit.
 - [ ] `show session-config` and `show session-config diffs` as **recorded fixtures**: neither has one today
       — `diff()` is pinned only by the mock pair in `config-session.test.ts`, and
       `test/fixtures/show/show-configuration-sessions--pending-orphans.json` is hand-authored until M12 (#14)
       replaces it
-      **(progress 2026-11-08, DR-134: every `hw-session-probe` case file embeds the replayable
-      `show session-config diffs` exchange for its batch — session-lifecycle's 0-line diff for a staged
-      no-op is the baseline captured on the box; the bare `show session-config` form and the
-      commit-timer behaviour still wait for the rest of the probe set + the follow-up grammar family)**
+      **(progress 2026-11-08, DR-134/DR-136: every `hw-session-probe` case file embeds the replayable
+      `show session-config diffs` exchange for its batch, and on the box the diffs are no longer only the
+      0-line no-op baseline — `switchport mode trunk`, `no switchport` + `ip address …/31`,
+      `switchport trunk group HWGRP`, `channel-group 999 mode active` (with the implicit
+      `interface Port-Channel999` block), `vlan 4090` + indented `name`, a dangling `interface Vlan4090` +
+      address, and `ip routing` (whose hunk shows `-no ip routing`, i.e. routing is off on this switch today)
+      all produced real staged diffs that were then aborted. Refused lines appear in NO diff, which is how the
+      `only`-keyword and inline-`vlan name` refusals were proven to have staged nothing. Still missing: the
+      bare `show session-config` (no `diffs`) form, and the commit-timer behaviour now queued in this lane.)**
 
 Suggested first command batch (no writes):
 

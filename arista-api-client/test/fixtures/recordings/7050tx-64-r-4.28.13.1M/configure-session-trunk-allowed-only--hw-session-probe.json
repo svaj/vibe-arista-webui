@@ -12,7 +12,7 @@
   },
   "captures": [
     {
-      "requestId": "d11065f64783-1",
+      "requestId": "5c731fb4366c-1",
       "commands": [
         "enable",
         "configure session hw-probe-trunk-allowed-only description \"the line that killed run 1: does the SKU CLI know the `o\"",
@@ -38,7 +38,7 @@
       }
     },
     {
-      "requestId": "d11065f64783-2",
+      "requestId": "5c731fb4366c-2",
       "commands": [
         "enable",
         "configure session hw-probe-trunk-allowed-only description \"the line that killed run 1: does the SKU CLI know the `o\"",
@@ -53,12 +53,12 @@
           "output": ""
         },
         {
-          "output": "--- system:/running-config\n+++ session:/hw-probe-trunk-allowed-only-session-config\n@@ -83,6 +83,7 @@\n interface Ethernet21\n !\n interface Ethernet22\n+   switchport mode trunk\n !\n interface Ethernet23\n !\n"
+          "output": "--- system:/running-config\n+++ session:/hw-probe-trunk-allowed-only-session-config\n@@ -84,6 +84,7 @@\n !\n interface Ethernet22\n    description HW-CAPTURE-PROBE\n+   switchport mode trunk\n !\n interface Ethernet23\n !\n"
         }
       ]
     },
     {
-      "requestId": "d11065f64783-3",
+      "requestId": "5c731fb4366c-3",
       "commands": [
         "enable",
         "configure session hw-probe-trunk-allowed-only description \"the line that killed run 1: does the SKU CLI know the `o\"",
@@ -72,7 +72,7 @@
       ]
     },
     {
-      "requestId": "d11065f64783-4",
+      "requestId": "5c731fb4366c-4",
       "commands": [
         "enable",
         "show configuration sessions"
@@ -88,7 +88,7 @@
       ]
     },
     {
-      "requestId": "d11065f64783-5",
+      "requestId": "5c731fb4366c-5",
       "commands": [
         "enable",
         "show configuration sessions detail"
@@ -100,12 +100,12 @@
           "maxSavedSessions": 1,
           "maxOpenSessions": 5,
           "sessions": {
-            "m12a-intf-clear-Ethernet22": {
+            "hw-probe-scratch-description": {
               "instances": {},
               "state": "completed",
               "commitUser": "svaj",
-              "description": "",
-              "completedTime": 1794182736.3879662
+              "description": "\"commit round-trip on the designated scratch port: descri\"",
+              "completedTime": 1794189394.6353111
             }
           }
         }

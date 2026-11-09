@@ -48,6 +48,7 @@
 
 import { assertNoPersistenceCommand } from './live-guard'
 import { targetSlug, type DeviceIdentity, type RecordingCapture, type RecordingFixture } from './recording'
+import { MAX_SESSION_NAME_LENGTH } from '../config-session'
 import type { CommandSpec } from '../types/eapi'
 
 /** The scenario half of every batch-1 case name (docs/TESTING.md:113-114: `<command>--<scenario>`). */
@@ -361,6 +362,25 @@ export interface HwProbeBatch {
    * diffs`; `true` ⇒ only legal when **every** command names the scratch interface (below, enforced).
    */
   readonly allowCommit: boolean
+  /**
+   * Optional `HH:MM:SS`: commit this batch through the client's own revert-timer verb
+   * (`ConfigSession#commitWithRevertTimer`, `config-session.ts:856`) instead of a plain `commit()`. This
+   * is how STATUS.md §3's `commit timer` line gets answered ON THE BOX: a revert timer can only be armed
+   * by a COMMIT, and a commit is what this lane is allowed to do — to the one scratch interface, under the
+   * same fence (`allowCommit: true` stays mandatory here, so every committed line is still an indented
+   * child of `interface {{SCRATCH}}`).
+   *
+   * What the harness does with it, in order: timed commit → `listSessions()` read (does the box show a
+   * pending-revert session, and with which fields?) → if the timer is ≤ `hwProbeTimerWaitMs`'s window, sit
+   * out the deadline and read the scratch port back to see whether the revert fired → leave. The
+   * `commit <intf> verify` / `revert <intf>` confirm-and-cancel arm is deliberately NOT attempted here:
+   * no composition of those lines exists in this repo, and an invented spelling on a switch would produce
+   * this harness's bug as the "answer" rather than the box's (the DR-135 lesson). The cEOS half of the
+   * question is already captured (`configure-session-revert-timer--session-timer.json`,
+   * `configure session <name> commit timer 10:00:00`), which is what this field's wire shape is modelled
+   * on — container output never settles the hardware sentence (DR-043).
+   */
+  readonly commitWithRevertTimer?: string | undefined
 }
 
 export interface HwProbeSpec {
@@ -381,6 +401,10 @@ const HW_PROBE_FORBIDDEN: readonly { re: RegExp; why: string }[] = [
   { re: /\bztp\b/iu, why: 'ZTP state belongs to §2 bootstrap, not to a probe' },
   { re: /\brollback\b/iu, why: 'rollback semantics are sweep questions to be OBSERVED (STATUS.md §3), never induced on somebody\'s running switch' },
   { re: /\bconfigure\s+replace\b/iu, why: 'whole-config replace is a whole-box blast radius' },
+  {
+    re: /^\s*(?:configure\s+session\s+\S+\s+)?(?:commit|revert|abort|copy)\b/iu,
+    why: 'a commit-session EXEC verb (commit / revert / abort / copy) never belongs in `commands`: this lane stages config lines and lets the harness end the session one reviewed way or the other, and a staged verb like `commit <intf>` also implicitly SAVES a scratch-port line into startup-config (DR-081) — a side effect no spec line can be reviewed for. The commit lifecycle a probe batch may drive is expressed with `allowCommit` / `commitWithRevertTimer`, not with staged text',
+  },
 ]
 
 /** Parse + validate a probe spec's JSON text. Every refusal names the batch and command at fault. */
@@ -403,15 +427,21 @@ export function parseHwProbeSpec(text: string): HwProbeSpec {
     }
     if (typeof batch.question !== 'string' || batch.question.trim() === '') throw new Error(`${where}.question is required — an unexplained write on a physical switch cannot be reviewed`)
     if (!Array.isArray(batch.commands) || batch.commands.length === 0) throw new Error(`${where}.commands must be a non-empty list of staging lines`)
-    const cmds = batch.commands.map((cmd, cmdIndex) => {
+    const typed = batch.commands.map((cmd, cmdIndex) => {
       if (typeof cmd !== 'string' || cmd.trim() === '') throw new Error(`${where}.commands[${String(cmdIndex)}] must be a non-empty string`)
+      return cmd
+    })
+    // Persistence is checked BEFORE the verb fence so its dedicated refusal — the one `live-session.test.ts`
+    // and DR-035(c) pin, and the wording an operator is told to look for — stays the message they see for a
+    // `copy running-config startup-config` line, instead of the broader staged-verb refusal below.
+    const persistence = assertNoPersistenceCommand(typed)
+    if (persistence !== undefined) throw new Error(`${where}.commands contains a persistence line — ${persistence.reason}`)
+    const cmds = typed.map((cmd, cmdIndex) => {
       for (const rule of HW_PROBE_FORBIDDEN) {
         if (rule.re.test(cmd)) throw new Error(`${where}.commands[${String(cmdIndex)}] is refused on the hardware probe lane (${rule.why}): the line is not echoed beyond its first word`)
       }
       return cmd
     })
-    const persistence = assertNoPersistenceCommand(cmds)
-    if (persistence !== undefined) throw new Error(`${where}.commands contains a persistence line — ${persistence.reason}`)
     const allowCommit = batch.allowCommit === true
     if (allowCommit) {
       // The mechanical scope fence for a committed hardware write (locked decision: the ONE designated
@@ -430,8 +460,16 @@ export function parseHwProbeSpec(text: string): HwProbeSpec {
         }
       }
     }
-    if (!allowCommit) return { name: batch.name, question: batch.question, commands: cmds, allowCommit: false }
-    return { name: batch.name, question: batch.question, commands: cmds, allowCommit: true }
+    const timer = batch.commitWithRevertTimer
+    if (timer !== undefined) {
+      if (typeof timer !== 'string' || !HW_PROBE_TIMER_GRAMMAR.test(timer)) {
+        throw new Error(`${where}.commitWithRevertTimer must be an HH:MM:SS timer (${HW_PROBE_TIMER_GRAMMAR.source}), got ${JSON.stringify(timer)} — this client refuses anything else with assertTimerString, so a spec that cannot reach the wire cannot be reviewed`)
+      }
+      if (timer === '00:00:00') throw new Error(`${where}.commitWithRevertTimer is 00:00:00 — EOS answers \`Time value cannot be zero.\` (§3 evidence already says so), so this is a question that cannot be answered, not a probe`)
+      if (!allowCommit) throw new Error(`${where}.commitWithRevertTimer needs allowCommit: true — a revert timer is only armed by a COMMIT, and the commit fence is what bounds it to ${SCRATCH_TOKEN} (DR-035(b) made physical)`)
+    }
+    if (!allowCommit) return { name: batch.name, question: batch.question, commands: cmds, allowCommit: false, ...(timer === undefined ? {} : { commitWithRevertTimer: timer }) }
+    return { name: batch.name, question: batch.question, commands: cmds, allowCommit: true, ...(timer === undefined ? {} : { commitWithRevertTimer: timer }) }
   })
   const names = new Set(batches.map((batch) => batch.name))
   if (names.size !== batches.length) throw new Error('hw probe spec has duplicate batch names — case names would collide in the recordings tree')
@@ -447,6 +485,101 @@ export function resolveHwScratchToken(commands: readonly string[], scratchInterf
 /** The case name for one probe batch (its staged commands and captures live in this recording). */
 export function hwProbeCaseName(batchName: string): string {
   return `configure-session-${batchName}--${HW_SESSION_SCENARIO}`
+}
+
+/** The config-session name prefix every probe batch opens with — greppable in `show configuration sessions`. */
+export const HW_PROBE_SESSION_PREFIX = 'hw-probe-'
+
+/**
+ * The canonical config-session name for one batch. Deterministic on purpose: an operator cleaning up a
+ * crashed run greps for `hw-probe-*`, and the batch name says exactly which question was mid-flight.
+ * That determinism also has a device-side cost, named by `hwProbeRetrySessionName`.
+ */
+export function hwProbeSessionName(batchName: string): string {
+  if (!/^[a-z0-9][a-z0-9-]{0,39}$/u.test(batchName)) throw new Error(`hwProbeSessionName needs a spec batch name matching /^[a-z0-9][a-z0-9-]{0,39}$/u, got ${JSON.stringify(batchName)}`)
+  return `${HW_PROBE_SESSION_PREFIX}${batchName}`
+}
+
+/** A short, per-run tag for retry names (base36 of the run clock — collides only within the same second). */
+export function hwProbeRunTag(when: number = Date.now()): string {
+  if (!Number.isFinite(when) || when <= 0) throw new Error('hwProbeRunTag needs a positive epoch millisecond value')
+  return Math.floor(when).toString(36)
+}
+
+/**
+ * The timer grammar this client accepts for a session (`assertTimerString`, `config-session.ts`), and the
+ * form the §3 question is asked in. `00:00:00` is grammar-legal but EOS refuses a zero timer (`Time value
+ * cannot be zero.`), so the parser below refuses it too rather than staging a known-refused line.
+ */
+export const HW_PROBE_TIMER_GRAMMAR = /^(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d$/u
+
+/**
+ * How long the harness will sit and watch a revert timer fire. A pending-revert session holds the config
+ * lock and blocks every other CLI (`1006`), so the lane only waits out timers it can wait out quickly;
+ * longer ones are reported instead, and the spec's restore batch is what makes an un-waited change net
+ * zero. Returns `undefined` when the timer is outside the waited window.
+ */
+export function hwProbeTimerWaitMs(timer: string, maxWaitedSeconds = 300): number | undefined {
+  if (!HW_PROBE_TIMER_GRAMMAR.test(timer)) throw new Error(`hwProbeTimerWaitMs needs an HH:MM:SS timer, got ${JSON.stringify(timer)}`)
+  const [hh = '0', mm = '0', ss = '0'] = timer.split(':')
+  const seconds = Number(hh) * 3600 + Number(mm) * 60 + Number(ss)
+  if (seconds === 0 || seconds > maxWaitedSeconds) return undefined
+  return (seconds + 15) * 1000
+}
+
+/**
+ * The revert-timer steps the live lane runs, in order, for a batch carrying `commitWithRevertTimer`.
+ * Every one of them is a verb this client really exposes — nothing here composes a CLI line the package
+ * has never sent, which is the DR-135 lesson (`show running-config interface …` invented a spelling and
+ * the switch's `% Incomplete token` answer killed a run over our own typo):
+ *  1. **arm** — `ConfigSession#commitWithRevertTimer(timer)` (`config-session.ts:856`): the box's answer to
+ *     "does a revertable commit with a deadline exist on this SKU". Open item 5 asks it of the COMMIT
+ *     path; DR-048 already covers the staged-line spelling and refuses a zero timer at every level.
+ *  2. **list** — `node.listSessions()`: does a pending session appear, with which fields? The field set has
+ *     a cEOS answer; §3 wants the box's (DR-043). This client turns the device's `sessions` **map** into a
+ *     model array whose entries carry `name`/`state` (plus `commitBy` when the box sets a deadline, which
+ *     is the pending-revert signal — the cEOS capture's `sessions: {}` on the plain form is why the read
+ *     goes through the model, not at the label in §3's line). Normalised by `hwProbePendingRevertSessions`.
+ *  3. **two reads** — the scratch block (`hwScratchReadBackCommand`) and `show startup-config` searched for
+ *     the marker this batch staged: whether a timed commit persisted on its own is precisely the question
+ *     DR-035(c) refuses to assume away.
+ *  4. **wait, then read again** — when `hwProbeTimerWaitMs` returns a wait, sleep past the deadline and
+ *     re-read the scratch block: that pair of reads is the device's answer to "does the revert fire on its
+ *     own?" A no-wait timer prints instead, because a pending revert holds the config lock and this lane
+ *     must not sit on somebody's switch for an hour.
+ *
+ * The rest of §3's sentence — "does a second `commit` before the deadline confirm or reset the revert?" —
+ * is deliberately NOT asked here. Answering it needs `commit <intf> verify` / `revert <intf>`, which this
+ * repo models in `commit-session.ts` but has never sent to a device: composing them from an unread
+ * signature is how DR-135 happened, so it stays a named follow-up (STATUS §3) rather than a guess.
+ */
+export function hwProbePendingRevertSessions(sessions: readonly { name: string; state: string }[]): readonly { name: string; state: string }[] {
+  return sessions.map(({ name, state }) => ({ name, state }))
+}
+
+/**
+ * A DIFFERENT session name for the retry that an OPENER refusal forces (DR-136, found live 2026-11-08).
+ *
+ * The box keeps ONE completed session (`maxSavedSessions: 1`, verified on hardware), and a COMMITTED
+ * probe session parks its own name there — an earlier `configure session hw-probe-scratch-description`
+ * commit left that exact name in the completed list, and a later run's attempt to open it was refused
+ * (`Error [1000] … 'configure session hw-probe-scratch-description description "…"' failed: could not
+ * run command`). Since the canonical names are deterministic, a batch that has EVER committed could
+ * never be probed again while the switch remembers it — a lane blocker, not a device limit. So the
+ * harness keeps the refused opener as the evidence it is and retries the batch under this name.
+ *
+ * The name stays inside this client's own session-name rules: `assertSessionName` refuses whitespace,
+ * quotes, backslash, backtick, `#`, `;`, control characters and more than `MAX_SESSION_NAME_LENGTH`
+ * characters — prefix (9) + batch name (≤40) + `-` + tag (≤8) fits with room to spare.
+ */
+export function hwProbeRetrySessionName(batchName: string, runTag: string): string {
+  const tag = runTag.toLowerCase().replace(/[^a-z0-9]/gu, '').slice(0, 8)
+  if (tag === '') throw new Error('hwProbeRetrySessionName needs a non-empty alphanumeric run tag (got ' + JSON.stringify(runTag) + ')')
+  const name = `${hwProbeSessionName(batchName)}-${tag}`
+  if (name.length > MAX_SESSION_NAME_LENGTH) {
+    throw new Error(`hwProbeRetrySessionName would build a ${String(name.length)}-character session name — this client caps config-session names at ${String(MAX_SESSION_NAME_LENGTH)} (assertSessionName), so shorten the batch name or the run tag`)
+  }
+  return name
 }
 
 /**

@@ -12,35 +12,26 @@
   },
   "captures": [
     {
-      "requestId": "647dfee60d7a-1",
+      "requestId": "f4195eb6ac38-1",
       "commands": [
         "enable",
-        "configure session hw-probe-vlans-vrrp-iprouting description \"target-sensitive set: ip routing acceptance, Vlan-interf\"",
-        "vlan 4090 name HWPROBE-MAY-FEATURE-ABORT",
-        "interface Vlan4090",
-        "   ip address 169.254.90.1/29",
-        "   vrrp 1 ip 169.254.90.7"
+        "configure session hw-probe-vlan-block-form description \"the spelling this client's vlan resource composes: `vlan\"",
+        "vlan 4090",
+        "   name HWPROBE-BLOCK"
       ],
       "format": "json",
-      "error": {
-        "data": [
-          {},
-          {},
-          {
-            "errors": [
-              "Invalid input (at token 2: 'name')"
-            ]
-          }
-        ],
-        "message": "CLI command 3 of 6 'vlan 4090 name HWPROBE-MAY-FEATURE-ABORT' failed: invalid command",
-        "code": 1002
-      }
+      "result": [
+        {},
+        {},
+        {},
+        {}
+      ]
     },
     {
-      "requestId": "647dfee60d7a-2",
+      "requestId": "f4195eb6ac38-2",
       "commands": [
         "enable",
-        "configure session hw-probe-vlans-vrrp-iprouting description \"target-sensitive set: ip routing acceptance, Vlan-interf\"",
+        "configure session hw-probe-vlan-block-form description \"the spelling this client's vlan resource composes: `vlan\"",
         "show session-config diffs"
       ],
       "format": "text",
@@ -52,15 +43,15 @@
           "output": ""
         },
         {
-          "output": ""
+          "output": "--- system:/running-config\n+++ session:/hw-probe-vlan-block-form-session-config\n@@ -20,6 +20,9 @@\n !\n environment fan-speed override 30\n !\n+vlan 4090\n+   name HWPROBE-BLOCK\n+!\n management api http-commands\n    no shutdown\n !\n"
         }
       ]
     },
     {
-      "requestId": "647dfee60d7a-3",
+      "requestId": "f4195eb6ac38-3",
       "commands": [
         "enable",
-        "configure session hw-probe-vlans-vrrp-iprouting description \"target-sensitive set: ip routing acceptance, Vlan-interf\"",
+        "configure session hw-probe-vlan-block-form description \"the spelling this client's vlan resource composes: `vlan\"",
         "abort"
       ],
       "format": "json",
@@ -71,7 +62,7 @@
       ]
     },
     {
-      "requestId": "647dfee60d7a-4",
+      "requestId": "f4195eb6ac38-4",
       "commands": [
         "enable",
         "show configuration sessions"
@@ -87,7 +78,7 @@
       ]
     },
     {
-      "requestId": "647dfee60d7a-5",
+      "requestId": "f4195eb6ac38-5",
       "commands": [
         "enable",
         "show configuration sessions detail"
@@ -99,12 +90,12 @@
           "maxSavedSessions": 1,
           "maxOpenSessions": 5,
           "sessions": {
-            "m12a-intf-clear-Ethernet22": {
+            "hw-probe-scratch-description": {
               "instances": {},
               "state": "completed",
               "commitUser": "svaj",
-              "description": "",
-              "completedTime": 1794182736.3879662
+              "description": "\"commit round-trip on the designated scratch port: descri\"",
+              "completedTime": 1794189394.6353104
             }
           }
         }

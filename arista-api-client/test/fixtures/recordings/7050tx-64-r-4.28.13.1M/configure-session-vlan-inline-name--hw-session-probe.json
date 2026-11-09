@@ -1,0 +1,112 @@
+{
+  "format": "arista-eapi-recording/v1",
+  "identity": {
+    "targetSlug": "7050tx-64-r-4.28.13.1M",
+    "targetClass": "hardware",
+    "modelName": "DCS-7050TX-64-R",
+    "aristaVersion": "4.28.13.1M",
+    "versionNumber": "4.28.13.1",
+    "provenance": "captured",
+    "endpoint": "https://<hw-redacted>:443/command-api",
+    "topology": "supervised session; scratch=Ethernet22"
+  },
+  "captures": [
+    {
+      "requestId": "35dbb716afc0-1",
+      "commands": [
+        "enable",
+        "configure session hw-probe-vlan-inline-name description \"run-2 answer, now its own batch: is the one-line `vlan <\"",
+        "vlan 4090 name HWPROBE-INLINE"
+      ],
+      "format": "json",
+      "error": {
+        "data": [
+          {},
+          {},
+          {
+            "errors": [
+              "Invalid input (at token 2: 'name')"
+            ]
+          }
+        ],
+        "message": "CLI command 3 of 3 'vlan 4090 name HWPROBE-INLINE' failed: invalid command",
+        "code": 1002
+      }
+    },
+    {
+      "requestId": "35dbb716afc0-2",
+      "commands": [
+        "enable",
+        "configure session hw-probe-vlan-inline-name description \"run-2 answer, now its own batch: is the one-line `vlan <\"",
+        "show session-config diffs"
+      ],
+      "format": "text",
+      "result": [
+        {
+          "output": ""
+        },
+        {
+          "output": ""
+        },
+        {
+          "output": ""
+        }
+      ]
+    },
+    {
+      "requestId": "35dbb716afc0-3",
+      "commands": [
+        "enable",
+        "configure session hw-probe-vlan-inline-name description \"run-2 answer, now its own batch: is the one-line `vlan <\"",
+        "abort"
+      ],
+      "format": "json",
+      "result": [
+        {},
+        {},
+        {}
+      ]
+    },
+    {
+      "requestId": "35dbb716afc0-4",
+      "commands": [
+        "enable",
+        "show configuration sessions"
+      ],
+      "format": "json",
+      "result": [
+        {},
+        {
+          "maxSavedSessions": 1,
+          "maxOpenSessions": 5,
+          "sessions": {}
+        }
+      ]
+    },
+    {
+      "requestId": "35dbb716afc0-5",
+      "commands": [
+        "enable",
+        "show configuration sessions detail"
+      ],
+      "format": "json",
+      "result": [
+        {},
+        {
+          "maxSavedSessions": 1,
+          "maxOpenSessions": 5,
+          "sessions": {
+            "hw-probe-scratch-description": {
+              "instances": {},
+              "state": "completed",
+              "commitUser": "svaj",
+              "description": "\"commit round-trip on the designated scratch port: descri\"",
+              "completedTime": 1794189394.635311
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "incomplete": []
+}
