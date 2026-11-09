@@ -1,0 +1,156 @@
+{
+  "format": "arista-eapi-recording/v1",
+  "identity": {
+    "targetSlug": "7050tx-64-r-4.28.13.1M",
+    "targetClass": "hardware",
+    "modelName": "DCS-7050TX-64-R",
+    "aristaVersion": "4.28.13.1M",
+    "versionNumber": "4.28.13.1",
+    "provenance": "captured",
+    "endpoint": "https://<hw-redacted>:443/command-api",
+    "topology": "supervised session; scratch=Ethernet22"
+  },
+  "captures": [
+    {
+      "requestId": "c295fbd90786-1",
+      "commands": [
+        "enable",
+        "show interfaces Ethernet22 status"
+      ],
+      "format": "json",
+      "result": [
+        {},
+        {
+          "interfaceStatuses": {
+            "Ethernet22": {
+              "vlanInformation": {
+                "interfaceMode": "bridged",
+                "vlanId": 1,
+                "interfaceForwardingModel": "bridged"
+              },
+              "bandwidth": 0,
+              "interfaceType": "10GBASE-T",
+              "description": "HW-CAPTURE-PROBE",
+              "autoNegotiateActive": true,
+              "duplex": "duplexUnknown",
+              "autoNegotigateActive": true,
+              "linkStatus": "notconnect",
+              "lineProtocolStatus": "down"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "requestId": "c295fbd90786-2",
+      "commands": [
+        "enable",
+        "configure session hw-probe-scratch-switchport-restore-order description \"L2 mode + access vlan commit cycle on the scratch port (\"",
+        "interface Ethernet22",
+        "   switchport",
+        "   switchport mode access",
+        "   switchport access vlan 1"
+      ],
+      "format": "json",
+      "result": [
+        {},
+        {},
+        {},
+        {},
+        {},
+        {}
+      ]
+    },
+    {
+      "requestId": "c295fbd90786-3",
+      "commands": [
+        "enable",
+        "configure session hw-probe-scratch-switchport-restore-order description \"L2 mode + access vlan commit cycle on the scratch port (\"",
+        "show session-config diffs"
+      ],
+      "format": "text",
+      "result": [
+        {
+          "output": ""
+        },
+        {
+          "output": ""
+        },
+        {
+          "output": ""
+        }
+      ]
+    },
+    {
+      "requestId": "c295fbd90786-4",
+      "commands": [
+        "enable",
+        "configure session hw-probe-scratch-switchport-restore-order description \"L2 mode + access vlan commit cycle on the scratch port (\"",
+        "commit"
+      ],
+      "format": "json",
+      "result": [
+        {},
+        {},
+        {}
+      ]
+    },
+    {
+      "requestId": "c295fbd90786-5",
+      "commands": [
+        "enable",
+        "show running-config interfaces Ethernet22"
+      ],
+      "format": "text",
+      "result": [
+        {
+          "output": ""
+        },
+        {
+          "output": "interface Ethernet22\n   description HW-CAPTURE-PROBE\n   mtu 9214\n"
+        }
+      ]
+    },
+    {
+      "requestId": "c295fbd90786-6",
+      "commands": [
+        "enable",
+        "show configuration sessions"
+      ],
+      "format": "json",
+      "result": [
+        {},
+        {
+          "maxSavedSessions": 1,
+          "maxOpenSessions": 5,
+          "sessions": {}
+        }
+      ]
+    },
+    {
+      "requestId": "c295fbd90786-7",
+      "commands": [
+        "enable",
+        "show configuration sessions detail"
+      ],
+      "format": "json",
+      "result": [
+        {},
+        {
+          "maxSavedSessions": 1,
+          "maxOpenSessions": 5,
+          "sessions": {
+            "hw-probe-scratch-switchport-restore-order": {
+              "instances": {},
+              "state": "completed",
+              "commitUser": "svaj",
+              "description": "\"L2 mode + access vlan commit cycle on the scratch port (\"",
+              "completedTime": 1794195748.438057
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "incomplete": []
+}

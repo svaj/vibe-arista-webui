@@ -49,7 +49,11 @@
  *    `commitWithRevertTimer: "HH:MM:SS"` — the commit goes through this client's own timed-commit verb,
  *    and a REFUSED timed commit is recorded as the answer rather than ending the run. The steps and the
  *    reasons (why no `commit <intf> verify`, why the lane only waits short timers) are on
- *    `hwProbePendingRevertSessions`; the batch holds the config lock for the length of its own timer.
+ *    `hwProbePendingRevertSessions`. Run 5 (2026-11-08) walked all of it and the BOX answered every
+ *    step: `commit timer 00:02:00` ACCEPTED → `state: "pendingCommitTimer"` + `commitBy` (uptime clock)
+ *    on the plain listing → the second (block-check) session opened normally via eAPI while armed →
+ *    no startup-config persistence → the revert fired unattended, and the reverted session then
+ *    vanished from BOTH session forms (its name frees DR-136's slot: parking is for plain commits).
  * 5. Each batch is one recording case (`configure-session-<name>--hw-session-probe`), sanitized with
  *    the full hardware scrubber before the write.
  *
@@ -72,7 +76,7 @@ import type { ConfigSession } from './config-session'
 import { buildRecording, createRecorder } from './testing/recording'
 import { writeRecording } from './testing/recorder-node'
 import { describeLiveTarget, liveTransportOptions, matchesDeviceIdentity, requireScratchInterface, resolveLiveEnv, unwrapLiveTarget, type LiveTarget } from './testing/live-guard'
-import { hwDeviceIdentity, hwProbeCaseName, hwProbePendingRevertSessions, hwProbeRetrySessionName, hwProbeRunTag, hwProbeSessionName, hwProbeTimerWaitMs, hwScratchReadBackCommand, parseHwProbeSpec, resolveHwScratchToken, sanitizeHwRecording, selectHwProbeBatches, type HwProbeBatch } from './testing/hw-capture'
+import { hwDeviceIdentity, hwProbeCaseName, hwProbePendingRevertSessions, hwProbeRetrySessionName, hwProbeRunTag, hwProbeSessionName, hwProbeTimerWaitMs, hwReadBackOutput, hwScratchReadBackCommand, parseHwProbeSpec, resolveHwScratchToken, sanitizeHwRecording, selectHwProbeBatches, type HwProbeBatch } from './testing/hw-capture'
 import type { VersionProperties } from './command-layer'
 
 const resolution = resolveLiveEnv(process.env)
@@ -240,8 +244,13 @@ describe.skipIf(!runnable)('hardware session probes: named config sessions on th
               if (listed !== undefined) {
                 const seen = hwProbePendingRevertSessions(listed.sessions)
                 console.log(`hw-session-probe: ${batch.name}: session table now — ${seen.length === 0 ? 'nothing listed' : seen.map((entry) => `${entry.name}=${entry.state}`).join(', ')}`)
-                if (seen.every((entry) => entry.state !== 'pending-revert')) {
-                  console.warn(`hw-session-probe: ${batch.name}: no entry reported state pending-revert — read the recording: the box may keep that state in the entry's FIELDS instead of the label, and §3's field-set line is exactly about that`)
+                if (seen.every((entry) => !/pending/iu.test(entry.state))) {
+                  // Run 5 (2026-11-08): the armed session read `state: "pendingCommitTimer"` with the
+                  // deadline in `commitBy` — this SKU has no label literally spelled `pending-revert`,
+                  // so the predicate matches the stem. And run 5 also showed a FIRED revert removes the
+                  // entry from both session forms entirely, so "nothing listed" AFTER the deadline is
+                  // itself an answer — read the recording, do not hunt for a swallowed refusal.
+                  console.warn(`hw-session-probe: ${batch.name}: no entry reported a pending state — run 5's box labels an armed session pendingCommitTimer, and a revert that already fired clears the entry from both listing forms: read the recording`)
                 }
               }
               // §3's other half of the same sentence: does a held timer BLOCK a later session? Asked while
@@ -340,8 +349,13 @@ describe.skipIf(!runnable)('hardware session probes: named config sessions on th
     if (postReadRefusals.length > 0) {
       console.warn(`hw-session-probe: ${String(postReadRefusals.length)} evidence READ(s) refused after their batch closed (recorded as answers, they never changed control flow):\n${postReadRefusals.map((line) => `  - ${line}`).join('\n')}`)
     }
+    // Run 5 (2026-11-08 22:43) died in THIS block's first version — after all 17 batches had recorded:
+    // the summary interpolated a retry-name EXAMPLE by calling hwProbeRetrySessionName('<batch>', runTag)
+    // with the doc placeholder, and the validating builder threw. A summary print must never call a
+    // builder it cannot pass; the pattern stays literal text and the refusal lines below already carry
+    // the real attempted names.
     if (openerRefusals.length > 0) {
-      console.warn(`hw-session-probe: ${String(openerRefusals.length)} batch(es) could not OPEN under the canonical session name (DR-136: the box parks a committed session's name in its ONE completed-session slot, maxSavedSessions=1). Each refusal is recorded in that batch's file and the batch was retried as ${JSON.stringify(hwProbeRetrySessionName('<batch>', runTag))}:\n${openerRefusals.map((line) => `  - ${line}`).join('\n')}`)
+      console.warn(`hw-session-probe: ${String(openerRefusals.length)} batch(es) could not OPEN under the canonical session name (DR-136: the box parks a committed session's name in its ONE completed-session slot, maxSavedSessions=1 — run 5 recorded the reason verbatim: Cannot enter session <name> (already completed)). Each refusal is recorded in that batch's file and the batch was retried as hw-probe-<batch>-${runTag}:\n${openerRefusals.map((line) => `  - ${line}`).join('\n')}`)
     }
     console.log(`hw-session-probe: DONE — ${String(batches.length)} batch(es), ${String(committedBatches)} committed (scratch-scoped only), ${String(negatives)} answered by a device refusal (DR-134), ${String(openerRefusals.length)} opener refusal(s) retried under a run-scoped name (DR-136)`)
   }, runBudgetMs)
@@ -410,8 +424,11 @@ describe.skipIf(!runnable)('hardware session probes: named config sessions on th
   }
 
   function textOf(result: unknown): string {
-    const output = (result as { output?: string; text?: string } | undefined)?.output ?? (result as { text?: string } | undefined)?.text ?? ''
-    return output
+    // Run 5 read `.output` at the exec-item level, got '' for EVERY post-commit read-back (the item is
+    // a wrapper, and the composed `enable` gets its own slot), and printed "scratch block 0 line(s);
+    // markers … none" over recordings that clearly showed the markers on the port. On a switch day the
+    // console line is what the operator trusts first — the lie cost credibility, not just a log.
+    return hwReadBackOutput(result)
   }
 
   function countLines(text: string): number {

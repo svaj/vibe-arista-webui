@@ -1,0 +1,141 @@
+{
+  "format": "arista-eapi-recording/v1",
+  "identity": {
+    "targetSlug": "7050tx-64-r-4.28.13.1M",
+    "targetClass": "hardware",
+    "modelName": "DCS-7050TX-64-R",
+    "aristaVersion": "4.28.13.1M",
+    "versionNumber": "4.28.13.1",
+    "provenance": "captured",
+    "endpoint": "https://<hw-redacted>:443/command-api",
+    "topology": "supervised session; scratch=Ethernet22"
+  },
+  "captures": [
+    {
+      "requestId": "288db9a7cdab-1",
+      "commands": [
+        "enable",
+        "show interfaces Ethernet22 status"
+      ],
+      "format": "json",
+      "result": [
+        {},
+        {
+          "interfaceStatuses": {
+            "Ethernet22": {
+              "vlanInformation": {
+                "interfaceMode": "bridged",
+                "vlanId": 1,
+                "interfaceForwardingModel": "bridged"
+              },
+              "bandwidth": 0,
+              "interfaceType": "10GBASE-T",
+              "description": "HW-CAPTURE-PROBE",
+              "autoNegotiateActive": true,
+              "duplex": "duplexUnknown",
+              "autoNegotigateActive": true,
+              "linkStatus": "notconnect",
+              "lineProtocolStatus": "down"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "requestId": "288db9a7cdab-2",
+      "commands": [
+        "enable",
+        "configure session hw-probe-scratch-restore description \"cleanup toward the declared pre-session L2-default state\"",
+        "interface Ethernet22",
+        "   no description",
+        "   no mtu",
+        "   switchport mode auto",
+        "   switchport access vlan 1"
+      ],
+      "format": "json",
+      "error": {
+        "data": [
+          {},
+          {},
+          {},
+          {},
+          {},
+          {
+            "errors": [
+              "Invalid input (at token 2: 'auto')"
+            ]
+          }
+        ],
+        "message": "CLI command 6 of 7 '   switchport mode auto' failed: invalid command",
+        "code": 1002
+      }
+    },
+    {
+      "requestId": "288db9a7cdab-3",
+      "commands": [
+        "enable",
+        "configure session hw-probe-scratch-restore description \"cleanup toward the declared pre-session L2-default state\"",
+        "show session-config diffs"
+      ],
+      "format": "text",
+      "result": [
+        {
+          "output": ""
+        },
+        {
+          "output": ""
+        },
+        {
+          "output": "--- system:/running-config\n+++ session:/hw-probe-scratch-restore-session-config\n@@ -83,8 +83,6 @@\n interface Ethernet21\n !\n interface Ethernet22\n-   description HW-CAPTURE-PROBE\n-   mtu 9214\n !\n interface Ethernet23\n !\n"
+        }
+      ]
+    },
+    {
+      "requestId": "288db9a7cdab-4",
+      "commands": [
+        "enable",
+        "configure session hw-probe-scratch-restore description \"cleanup toward the declared pre-session L2-default state\"",
+        "abort"
+      ],
+      "format": "json",
+      "result": [
+        {},
+        {},
+        {}
+      ]
+    },
+    {
+      "requestId": "288db9a7cdab-5",
+      "commands": [
+        "enable",
+        "show configuration sessions"
+      ],
+      "format": "json",
+      "result": [
+        {},
+        {
+          "maxSavedSessions": 1,
+          "maxOpenSessions": 5,
+          "sessions": {}
+        }
+      ]
+    },
+    {
+      "requestId": "288db9a7cdab-6",
+      "commands": [
+        "enable",
+        "show configuration sessions detail"
+      ],
+      "format": "json",
+      "result": [
+        {},
+        {
+          "maxSavedSessions": 1,
+          "maxOpenSessions": 5,
+          "sessions": {}
+        }
+      ]
+    }
+  ],
+  "incomplete": []
+}

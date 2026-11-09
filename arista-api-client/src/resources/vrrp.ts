@@ -50,9 +50,14 @@
  * (at token 2: 'ip')` and stages nothing (`configure-session-vlan-interface-vrrp--hw-session-probe.json`,
  * 2026-11-08). Since 4.28.13.1 is on the modern side of upstream's own `>= 4.21.3` cut, that is the arm the
  * setters pick here (`:618`/`:665`/`:688`), so this module sends the spelling the box takes; the legacy arms
- * stay in the READER because configs (and upstream's pinned fakes) still spell them. Do not read that as
- * VRRP being unsupported on the SKU — the modern spelling's own answer is the `vlan-interface-vrrp-ipv4`
- * batch, asked in the same session day, and only that pair settles §3's VRRP line for the box (DR-043).
+ * stay in the READER because configs (and upstream's pinned fakes) still spell them. VRRP is supported on
+ * the SKU, and run 5 (2026-11-08, DR-137) closed the pair: the `vlan-interface-vrrp-ipv4` batch staged
+ * `interface Vlan4090` + `vrrp 1 ipv4 169.254.90.7` and produced a real `show session-config diffs`
+ * before the batch aborted (`configure-session-vlan-interface-vrrp-ipv4--hw-session-probe.json`) — the
+ * modern arm this module composes is the grammar the box takes (a dangling SVI staging is DR-136's
+ * already-recorded half). The commit of that spelling was deliberately NOT asked: the probe contract for
+ * a grammar question is stage + diff (DR-043), and §3's VRRP line now reads "legacy refused, modern
+ * accepted" on this target.
  *
  * ## Divergences this file owns
  *

@@ -26,10 +26,9 @@
     "ip-routing questions were never asked. That batch is now five one-question batches. The run then",
     "crashed one statement AFTER committing scratch-description (a harness bug, fixed in the runner:",
     "the scratch read-back used the singular `show running-config interface`, which this SKU refuses).",
-    "STATE ON THE SWITCH RIGHT NOW: Ethernet22 carries a committed `description HW-CAPTURE-PROBE`",
-    "(from run 2, never restored — the restore set never ran). If the operator wants scratch-description to",
-    "show a real diff, run the restore batch ALONE first (EAPI_HW_PROBE_ONLY=scratch-restore), then the",
-    "full spec; otherwise scratch-description re-commits a no-op and the trailing restore still nets",
+    "SUPERSEDED by REV 5 below: run 5 re-committed that description (retry name) AND a",
+    "committed mtu 9214 before its own restore batch died on an invented line. The current",
+    "state is in the REV 5 STATE note at the end of this comment.",
     "the port clean.",
     "REV 4 (2026-11-08, after run 4, DR-136): run 4 answered five more questions on the box -- the",
     "`vlan <id>` BLOCK form stages (`vlan 4090` + indented `name`), a **dangling** `interface Vlan4090`",
@@ -46,7 +45,34 @@
     "spec used to defer: it can only be armed by a commit, and it is fenced to the scratch port like",
     "every other commit batch -- but it holds the config lock for its own 2-minute window, so run it",
     "after the abort-only set and before `scratch-restore`, and expect the next session opened during",
-    "that window to be refused (the harness asks that question inside the batch on purpose)."
+    "that window to be refused (the harness asks that question inside the batch on purpose).",
+    "REV 5 (2026-11-08 22:43, after run 5, DR-137): run 5 was the FIRST full pass of this spec -- all 17",
+    "batches reached the switch, and every open §3 question it asks now has a recording. Answers:",
+    "the parked-name opener refusal reads verbatim `Cannot enter session hw-probe-scratch-description",
+    "(already completed)` (1000) and the run-tagged retry opened and committed; `commit timer 00:02:00`",
+    "is ACCEPTED and the armed session lists on the PLAIN `show configuration sessions` as",
+    "`state: \"pendingCommitTimer\"` with `commitBy` on the box uptime clock; the second session the lane",
+    "opens during that window (block-check) was NOT refused via eAPI (REV 4 expected a refusal -- the box",
+    "answered otherwise); the timed commit reached running-config but never `show startup-config`; past",
+    "the deadline the revert fired on its own, and the reverted session then disappeared from BOTH",
+    "session forms -- an auto-revert frees the completed-NAME slot, parking is for plain commits;",
+    "`vrrp 1 ipv4 169.254.90.7` on `interface Vlan4090` STAGED AND DIFFED (aborted before commit: the",
+    "grammar answer, not a persistence run); and `switchport mode auto` was REFUSED (1002, token 2:",
+    "'auto') -- a token the restore draft invented, which made the FINAL restore batch refuse, so its",
+    "commit was skipped (DR-134 worked: session aborted, nothing half-applied). The restore batch now",
+    "carries ONLY the two no-lines the box itself staged cleanly in that very session,",
+    "`no description` + `no mtu`: no probe run ever COMMITTED a switchport-mode change (every",
+    "mode-changing batch aborted, and the restore-order batch staged the defaults and diffed empty), so",
+    "a switchport line in a restore is unverified AND unnecessary. Two harness bugs run 5 exposed are",
+    "fixed in the runner, not here: the summary print crashed the whole run on a doc placeholder, and",
+    "the read-back prints lied (exec-wrapper unwrap) -- see DR-137. STATE ON THE SWITCH RIGHT NOW (end",
+    "of run 5): Ethernet22 carries committed `description HW-CAPTURE-PROBE` + `mtu 9214` (the restore",
+    "never ran); `show ip route vrf all` still says routing is off (`no ip routing` is the saved state);",
+    "the completed-session slot is EMPTY (the timed session auto-reverted), so every canonical opener is",
+    "currently free -- the first committing batch of run 6 will park a name again. RUN 6 CARD: run the",
+    "FULL spec at $PWD; the rev-5 restore finally runs end-to-end and returns the port to its pre-probe",
+    "stanza (run 1 inventory: empty). Expect ~4 minutes in the commit-timer batch; console config is NOT",
+    "expected to lock on this SKU (run 5 eAPI answer), but keep the §2.5 check as the backstop."
   ],
   "batches": [
     {
@@ -204,9 +230,7 @@
       "commands": [
         "interface {{SCRATCH}}",
         "   no description",
-        "   no mtu",
-        "   switchport mode auto",
-        "   switchport access vlan 1"
+        "   no mtu"
       ],
       "allowCommit": true
     }

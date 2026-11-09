@@ -183,8 +183,11 @@ Each batch opens `configure session hw-probe-<name>`, stages, records `session.d
 `show configuration sessions[ detail]`, and **aborts** unless the batch is `allowCommit` — which
 the parse fence only grants to scratch-only batches, and which additionally refuses at run time if
 the scratch port is `connected`/`errdisabled`. Commits are never persisted (`copy run start` is
-mechanically refused, DR-035(c)), and the draft's final `scratch-restore` batch returns the port to
-its declared pre-session defaults, so the committed set is net-zero. One recording per batch lands
+mechanically refused, DR-035(c)), and the draft's final `scratch-restore` batch — rev 5: exactly
+`no description` + `no mtu`, every line device-verified — returns the port to its declared pre-session
+defaults, so the committed set is net-zero. (Earlier revs carried an invented `switchport mode auto`, the
+SKU refused it, and DR-134's skip-commit rule left the port dirty three days running: a restore line may
+only ever contain exact inverses of what the run actually commits.) One recording per batch lands
 as `configure-session-<name>--hw-session-probe`.
 
 **Batch refusals are answers, not crashes (DR-134):** if the device refuses a staged line (or the
@@ -197,11 +200,15 @@ worse than none.
 **A committed session's NAME is taken (DR-136).** The box keeps **one** completed session
 (`maxSavedSessions: 1`, hardware-verified) and the name of the last commit sits in it. Re-opening that exact
 name is refused — run 4 saw `Error [1000] … 'configure session hw-probe-scratch-description description
-"…"' failed: could not run command` for a name run 2 had committed. The lane handles it: it tries the
+"…"' failed: could not run command` for a name run 2 had committed; run 5 recorded the reason verbatim —
+`Cannot enter session hw-probe-scratch-description (already completed)`. The lane handles it: it tries the
 canonical `hw-probe-<name>` first, prints and records the refusal (that IS §3 evidence about name reuse), and
 retries the same batch under `hw-probe-<name>-<run tag>`; one batch still produces exactly one recording. On
 the console, both shapes are covered by the §2.5 `hw-probe-*` grep, so a leftover from a retry is as visible
-as a leftover from the canonical attempt.
+as a leftover from the canonical attempt. The store is a **rotating** one-slot window (run 5): each new
+commit displaces the previous completed entry — so only the LATEST committed name is parked — and a
+`commit timer` session that auto-reverts deletes itself and frees its name. Parking is plain-commits-only;
+never conclude from one refused opener that the other canonical names are taken.
 
 **Post-batch reads never control the run (DR-135).** The scratch read-back after a commit and the
 `show configuration sessions` post-state read refuse-and-log; they cannot cancel a committed batch's
@@ -216,7 +223,11 @@ mutation, the batch's recording was lost, and the restore set never ran (first p
 reviewed spec) runs just those batches, in the spec's order. Use it when a run died mid-commit-set or
 when the port already carries an earlier probe's line — replaying everything would then re-answer
 questions against a dirty port. An unknown name is a hard refusal, never a silent skip. Before the
-first resumed run, read the `STATE ON THE SWITCH RIGHT NOW` note in the spec's `$comment`.
+first resumed run, read the `STATE ON THE SWITCH RIGHT NOW` note in the spec's `$comment` — as of rev 5
+it reads: Ethernet22 carries `description HW-CAPTURE-PROBE` + `mtu 9214`, the completed-session slot is
+EMPTY (the auto-revert freed it), so the next supervised day runs the **full spec**: every canonical
+opener is free, and the rev-5 restore runs last and returns the port net-zero (`show running-config`, default-filtered, had no
+Ethernet22 stanza at all in the run-1 inventory).
 
 ```sh
 # read the switch's own view of what is pending/committed BEFORE resuming (console, §2.5):

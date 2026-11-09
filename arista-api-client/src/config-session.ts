@@ -852,6 +852,20 @@ export class ConfigSession {
    * `CliSession.commitSession`, below this Python — so DECISIONS.md open item 5 and the STATUS.md §3
    * sweep line stay open, and this client exposes `confirmRevertTimer()` as the *intended* call while
    * claiming nothing about what it does on hardware (DR-050, MIGRATION.md §5 row 67).
+   *
+   * **Answered on the box (run 5, 2026-11-08, recording
+   * `configure-session-commit-timer--hw-session-probe.json`, DR-137):** `commit timer 00:02:00` was
+   * ACCEPTED and the session then listed on the **plain** `show configuration sessions` form as
+   * `state: "pendingCommitTimer"` carrying `commitBy` — the deadline on the box's **uptime clock**
+   * (`704038.27` there, NOT an epoch) — plus a `completedTime` epoch stamp. The change went live in
+   * running-config and never into `show startup-config`; a concurrent second `configure session` opened
+   * and aborted normally over eAPI while the timer ran; and past the deadline the revert fired
+   * unattended, rolling back exactly that session's own diff (another session's earlier commit stays
+   * put — this is a session-scoped revert, not a file rollback) and then removing the saved entry from
+   * BOTH listing forms, which frees the completed-session name slot. The confirming half — does a
+   * second `commit` cancel the revert — is still unobserved on hardware: `confirmRevertTimer` below
+   * keeps its intent-named contract, and the `commit <intf> verify` / `revert <intf>` pair remains
+   * uncomposed (open item 5 stays half-open on purpose, not by omission).
    */
   async commitWithRevertTimer(timer: string, options: SessionRequestOptions = {}): Promise<readonly CommandResult[]> {
     this.assertLive('commit with a revert timer')

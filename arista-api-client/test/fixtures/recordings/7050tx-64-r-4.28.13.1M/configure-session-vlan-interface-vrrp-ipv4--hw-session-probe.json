@@ -1,0 +1,106 @@
+{
+  "format": "arista-eapi-recording/v1",
+  "identity": {
+    "targetSlug": "7050tx-64-r-4.28.13.1M",
+    "targetClass": "hardware",
+    "modelName": "DCS-7050TX-64-R",
+    "aristaVersion": "4.28.13.1M",
+    "versionNumber": "4.28.13.1",
+    "provenance": "captured",
+    "endpoint": "https://<hw-redacted>:443/command-api",
+    "topology": "supervised session; scratch=Ethernet22"
+  },
+  "captures": [
+    {
+      "requestId": "db428e48bfda-1",
+      "commands": [
+        "enable",
+        "configure session hw-probe-vlan-interface-vrrp-ipv4 description \"REV 4, the follow-up run 4 forced: does the SKU take the\"",
+        "interface Vlan4090",
+        "   vrrp 1 ipv4 169.254.90.7"
+      ],
+      "format": "json",
+      "result": [
+        {},
+        {},
+        {},
+        {}
+      ]
+    },
+    {
+      "requestId": "db428e48bfda-2",
+      "commands": [
+        "enable",
+        "configure session hw-probe-vlan-interface-vrrp-ipv4 description \"REV 4, the follow-up run 4 forced: does the SKU take the\"",
+        "show session-config diffs"
+      ],
+      "format": "text",
+      "result": [
+        {
+          "output": ""
+        },
+        {
+          "output": ""
+        },
+        {
+          "output": "--- system:/running-config\n+++ session:/hw-probe-vlan-interface-vrrp-ipv4-session-config\n@@ -176,6 +176,9 @@\n interface Management1\n    ip address <hw-redacted>/24\n !\n+interface Vlan4090\n+   vrrp 1 ipv4 169.254.90.7\n+!\n no ip routing\n !\n monitor session 1 source Ethernet37\n"
+        }
+      ]
+    },
+    {
+      "requestId": "db428e48bfda-3",
+      "commands": [
+        "enable",
+        "configure session hw-probe-vlan-interface-vrrp-ipv4 description \"REV 4, the follow-up run 4 forced: does the SKU take the\"",
+        "abort"
+      ],
+      "format": "json",
+      "result": [
+        {},
+        {},
+        {}
+      ]
+    },
+    {
+      "requestId": "db428e48bfda-4",
+      "commands": [
+        "enable",
+        "show configuration sessions"
+      ],
+      "format": "json",
+      "result": [
+        {},
+        {
+          "maxSavedSessions": 1,
+          "maxOpenSessions": 5,
+          "sessions": {}
+        }
+      ]
+    },
+    {
+      "requestId": "db428e48bfda-5",
+      "commands": [
+        "enable",
+        "show configuration sessions detail"
+      ],
+      "format": "json",
+      "result": [
+        {},
+        {
+          "maxSavedSessions": 1,
+          "maxOpenSessions": 5,
+          "sessions": {
+            "hw-probe-scratch-description": {
+              "instances": {},
+              "state": "completed",
+              "commitUser": "svaj",
+              "description": "\"commit round-trip on the designated scratch port: descri\"",
+              "completedTime": 1794189394.6353111
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "incomplete": []
+}
