@@ -12,10 +12,10 @@
   },
   "captures": [
     {
-      "requestId": "a719c47b89c6-1",
+      "requestId": "6ba61e898e52-1",
       "commands": [
         "enable",
-        "configure session hw-probe-vlan-interface-vrrp description \"the question actually owed since run 1: VRRP (v2 form `v\"",
+        "configure session hw-probe-vlan-interface-vrrp description \"run-5 answer, now its own recording: the v2 spelling `vr\"",
         "interface Vlan4090",
         "   vrrp 1 ip 169.254.90.7"
       ],
@@ -36,10 +36,10 @@
       }
     },
     {
-      "requestId": "a719c47b89c6-2",
+      "requestId": "6ba61e898e52-2",
       "commands": [
         "enable",
-        "configure session hw-probe-vlan-interface-vrrp description \"the question actually owed since run 1: VRRP (v2 form `v\"",
+        "configure session hw-probe-vlan-interface-vrrp description \"run-5 answer, now its own recording: the v2 spelling `vr\"",
         "show session-config diffs"
       ],
       "format": "text",
@@ -56,10 +56,10 @@
       ]
     },
     {
-      "requestId": "a719c47b89c6-3",
+      "requestId": "6ba61e898e52-3",
       "commands": [
         "enable",
-        "configure session hw-probe-vlan-interface-vrrp description \"the question actually owed since run 1: VRRP (v2 form `v\"",
+        "configure session hw-probe-vlan-interface-vrrp description \"run-5 answer, now its own recording: the v2 spelling `vr\"",
         "abort"
       ],
       "format": "json",
@@ -70,7 +70,7 @@
       ]
     },
     {
-      "requestId": "a719c47b89c6-4",
+      "requestId": "6ba61e898e52-4",
       "commands": [
         "enable",
         "show configuration sessions"
@@ -86,7 +86,7 @@
       ]
     },
     {
-      "requestId": "a719c47b89c6-5",
+      "requestId": "6ba61e898e52-5",
       "commands": [
         "enable",
         "show configuration sessions detail"
@@ -103,7 +103,7 @@
               "state": "completed",
               "commitUser": "svaj",
               "description": "\"commit round-trip on the designated scratch port: descri\"",
-              "completedTime": 1794189394.6353111
+              "completedTime": 1794189394.6353102
             }
           }
         }

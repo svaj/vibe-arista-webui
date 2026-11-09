@@ -31,6 +31,7 @@ import {
   hwProbeRunTag,
   hwProbeSessionName,
   hwProbeTimerWaitMs,
+  hwReadBackOutput,
   hwScratchReadBackCommand,
   parseHwProbeSpec,
   redactHwValue,
@@ -357,6 +358,22 @@ describe('the committed draft probe spec is itself machine-checked (review-befor
     // HW-CAPTURE-PROBE` on Ethernet22 exactly this way).
     const restore = spec.batches.find((batch) => batch.name === 'scratch-restore')
     expect(restore?.commands.map((cmd) => cmd.trim())).toContain('no description')
+    // REV 5 (run 5, DR-137): the restore is now EXACTLY the two no-lines the box staged cleanly inside
+    // the refused session — `no description` + `no mtu` are both device-verified (the 1002 came on the
+    // NEXT token). The old `switchport mode auto` line was this repo's invention, and its refusal
+    // (1002, token 2: 'auto') skipped the restore commit for the third run in a row: no probe run has
+    // ever COMMITTED a switchport-mode change (the mode-changing batches all aborted, and the
+    // restore-order batch staged the defaults and diffed 0 lines), so the restore never carries one.
+    expect(restore?.commands).toEqual(['interface {{SCRATCH}}', '   no description', '   no mtu'])
+    expect(spec.batches.flatMap((batch) => batch.commands).some((cmd) => /switchport mode auto/iu.test(cmd))).toBe(false)
+    // REV 5 (run 5, DR-137): the restore is now EXACTLY the two no-lines the box staged cleanly inside
+    // the refused session — `no description` + `no mtu` are both device-verified (the 1002 came on the
+    // NEXT token). The old `switchport mode auto` line was this repo's invention, and its refusal
+    // (1002, token 2: 'auto') skipped the restore commit for the third run in a row: no probe run has
+    // ever COMMITTED a switchport-mode change (the mode-changing batches all aborted, and the
+    // restore-order batch staged the defaults and diffed 0 lines), so the restore never carries one.
+    expect(restore?.commands).toEqual(['interface {{SCRATCH}}', '   no description', '   no mtu'])
+    expect(spec.batches.flatMap((batch) => batch.commands).some((cmd) => /switchport mode auto/iu.test(cmd))).toBe(false)
     // The restore batch must be LAST: it is the net-zero guarantee for everything the commit set leaves
     // behind, including a revert that never fires (run 2 left `description HW-CAPTURE-PROBE` on the port
     // because a crash skipped it).
@@ -421,6 +438,54 @@ describe('the post-commit scratch read-back (hardware-verified command spelling)
 
   it('never emits a bare `show running-config …` for an empty interface name', () => {
     expect(() => hwScratchReadBackCommand('')).toThrow(/non-empty interface/u)
+  })
+})
+
+describe('hwReadBackOutput — the exec-item unwrap run 5 proved necessary (DR-137)', () => {
+  // Run 5's console prints claimed "scratch block 0 line(s); markers … none" after successful commits,
+  // while the batch recordings held the exact lines quoted below. The harness had been reading
+  // `.output` on the WRONG level: node.exec answers one item per command (the composed `enable` gets
+  // one too) and each device reply is wrapped in `result`. These shapes are copied from the run 5
+  // captures, because the old prints would have passed no fixture but the truth is in the recording.
+  const block = 'interface Ethernet22\n   description HWPROBE-TIMER\n   mtu 9214'
+
+  it('unwraps the exec item shape { result: { output } }', () => {
+    expect(hwReadBackOutput({ result: { output: block } })).toBe(block)
+  })
+
+  it('also answers for bare wire/fixture shapes and the text key', () => {
+    expect(hwReadBackOutput({ output: block })).toBe(block)
+    expect(hwReadBackOutput({ result: { text: block } })).toBe(block)
+  })
+
+  it('the enable echo and missing replies read as empty, honestly', () => {
+    expect(hwReadBackOutput({})).toBe('')
+    expect(hwReadBackOutput({ result: {} })).toBe('')
+    expect(hwReadBackOutput(undefined)).toBe('')
+  })
+})
+
+describe('hwReadBackOutput — the exec-item unwrap run 5 proved necessary (DR-137)', () => {
+  // Run 5's console prints claimed "scratch block 0 line(s); markers … none" after successful commits,
+  // while the batch recordings held the exact lines quoted below. The harness had been reading
+  // `.output` on the WRONG level: node.exec answers one item per command (the composed `enable` gets
+  // one too) and each device reply is wrapped in `result`. These shapes are copied from the run 5
+  // captures, because the old prints would have passed no fixture but the truth is in the recording.
+  const block = 'interface Ethernet22\n   description HWPROBE-TIMER\n   mtu 9214'
+
+  it('unwraps the exec item shape { result: { output } }', () => {
+    expect(hwReadBackOutput({ result: { output: block } })).toBe(block)
+  })
+
+  it('also answers for bare wire/fixture shapes and the text key', () => {
+    expect(hwReadBackOutput({ output: block })).toBe(block)
+    expect(hwReadBackOutput({ result: { text: block } })).toBe(block)
+  })
+
+  it('the enable echo and missing replies read as empty, honestly', () => {
+    expect(hwReadBackOutput({})).toBe('')
+    expect(hwReadBackOutput({ result: {} })).toBe('')
+    expect(hwReadBackOutput(undefined)).toBe('')
   })
 })
 

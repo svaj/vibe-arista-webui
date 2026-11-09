@@ -281,6 +281,32 @@ source (pyeapi 1.0.4-rc0).
 > fenced to the scratch port; the `commit <intf> verify`/`revert <intf>` arm stays unasked until that
 > first answer lands, because composing it from an unread signature is what DR-135 cost a day over.
 
+> **2026-11-08, run 5 (PR #113 merged as `4b8b5ca`, spec rev 4, DR-137).** The first pass where **all 17
+> batches reached the switch**: every batch produced a recorded answer, four committed, and DR-136's retry
+> proved itself — `hw-probe-scratch-description` refused its opener with the reason now on record verbatim
+> (`Cannot enter session hw-probe-scratch-description (already completed)`, inside `Error [1000]`), and the
+> batch committed seconds later as `hw-probe-scratch-description-mw8pujyw`. The revert timer answered
+> end-to-end (`configure-session-commit-timer--hw-session-probe.json`): `commit timer 00:02:00` ACCEPTED;
+> the armed session lists on the **plain** table as `state: "pendingCommitTimer"` with its deadline in
+> `commitBy` (uptime clock) + `completedTime` (epoch); a second `configure session` OPENED normally while
+> the timer armed (eAPI — REV 4 expected a refusal, the box corrected us); the staged marker never reached
+> `show startup-config`; and past the deadline the revert fired on its own, restoring exactly that
+> session's own diff — after which the entry was gone from BOTH listing forms, i.e. a revert frees the
+> one completed-name slot (parking is plain-commits-only, and the store rotates on each new commit — run 5's
+> later canonical openers all opened cleanly). `vrrp 1 ipv4 <addr>` was ACCEPTED (staged + diffed on a
+> dangling SVI, then aborted — §3's VRRP line closes as legacy-refused / modern-accepted, matching
+> `resources/vrrp.ts`). My rev 3/4 restore batch's `switchport mode auto` line WAS refused (1002 token 2:
+> `auto`) — invented tokens again — so the restore skipped its commit a third day and **the scratch port
+> still carries `description HW-CAPTURE-PROBE` + `mtu 9214`**. Spec rev 5 makes the restore exactly
+> `no description` + `no mtu` (the two lines the box itself staged cleanly in that refused session, and the
+> exact inverse of everything actually committed), with pins so invented-restore lines can never return. Two
+> harness bugs surfaced because THE RECORDINGS CONTRADICTED THE PRINTS: the summary crashed an otherwise
+> complete 17/17 run by interpolating a placeholder into `hwProbeRetrySessionName('<batch>', …)`, and every
+> post-commit read-back print lied (`node.exec` items wrap replies under `result`, and the composed
+> `enable` gets its own item) — now `hwReadBackOutput`, exported and pinned. **Run 6: the FULL spec**
+> (completed-session slot empty, every canonical opener free; the rev-5 restore runs last and returns the
+> port to the empty pre-probe stanza the run-1 inventory captured; expect ~4 min inside `commit-timer`).
+
 Run the software/schema subset against cEOS first and store captures under
 `test/fixtures/recordings/ceos-4.28.14M/`; repeat target-sensitive checks on the
 7050TX-64 under `recordings/7050tx-64-4.28.13.1M/`. Keep exact version/model metadata,
@@ -351,15 +377,21 @@ which needs explicit authorization on hardware and unconditional cleanup.
       replayable `show session-config diffs` exchange — a staged no-op answers a 0-line diff, and the
       accepted lines show up as `+` lines including the implicit `interface Port-Channel999` block that
       `channel-group 999 mode active` creates; refused lines appear in NO diff, which is how the `only`
-      and inline-`vlan name` refusals were proven to have staged nothing. `commit timer` remains
-      unasked — that batch family has not run on hardware yet.)**
+      and inline-`vlan name` refusals were proven to have staged nothing. `commit timer` was ANSWERED by
+      run 5's `commit-timer` recording (DR-137): armed state `pendingCommitTimer` with `commitBy` on the
+      box's uptime clock, no eAPI block on a second session, no `startup-config` persistence, and a
+      session-scoped revert that fires unattended. Only the second-`commit`-confirms-or-resets half stays
+      unasked by design.)**
 - [ ] `configure session <name>` boundaries: the longest accepted name and the character set (our
       `MAX_SESSION_NAME_LENGTH` and refusals are **this port's** bounds, not a captured device limit)
       → open item 7
       **(new device limit 2026-11-08, and it is about REUSE not shape: the box keeps ONE completed session
-      (`maxSavedSessions: 1`) and re-opening the exact name that committed into it was refused
-      (`Error [1000] … could not run command`) while a fresh name was accepted seconds later — so a session
-      name is a one-slot resource for as long as its completed entry lives (DR-136; the probe lane retries
+      (`maxSavedSessions: 1`) and re-opening the exact name that committed into it was refused — run 5 put
+      the reason verbatim on record (`Cannot enter session hw-probe-scratch-description (already
+      completed)`, inside `Error [1000] … could not run command`) while a fresh (run-tagged) name was
+      accepted seconds later. The store is a ROTATING one-slot window: a later commit displaces the prior
+      completed entry (run 5's other canonical openers all opened cleanly for that reason), and a
+      revert-auto-fired entry removes itself and frees its name (DR-136 + DR-137; the probe lane retries
       under `hw-probe-<name>-<run tag>` because of it). Longest-accepted-name and charset boundaries are still
       uncaptured on purpose: answering them means committing an adversarially-named session, which one
       designated scratch interface does not license.)**
@@ -384,8 +416,13 @@ which needs explicit authorization on hardware and unconditional cleanup.
       through this client's own `ConfigSession#commitWithRevertTimer` (`config-session.ts:856`) and then reads
       the session table, asks whether the armed timer blocks a second `configure session`, reads
       `show startup-config` for the staged marker (DR-035(c)'s persistence question, asked rather than
-      assumed) and sits out the deadline to re-read the port. NO device answer yet — the next run (run 5) asks it, including
-      the answer "this SKU refuses a timed commit". The `commit <intf> verify` / `revert <intf>`
+      assumed) and sits out the deadline to re-read the port. **ANSWERED by run 5**
+      (`configure-session-commit-timer--hw-session-probe.json`, DR-137): the SKU arms the timer
+      (`state: "pendingCommitTimer"`, deadline `commitBy` on an uptime clock), a second `configure session`
+      is NOT refused over eAPI while it runs, the change lives in running-config but never in
+      `show startup-config`, and the revert fires unattended — the entry then disappears from both session
+      listings, freeing its name slot. Still unasked on purpose: whether a second `commit` before the
+      deadline confirms or resets the revert. The `commit <intf> verify` / `revert <intf>`
       confirm-and-cancel pair is deliberately unasked: this repo has never composed that pair for a device,
       and DR-135 is what an invented spelling on this box costs.)**
 - [x] `show configuration sessions` / `show configuration sessions detail` captured verbatim: confirm the

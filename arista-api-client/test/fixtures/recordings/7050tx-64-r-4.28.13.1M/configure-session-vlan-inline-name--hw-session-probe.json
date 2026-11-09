@@ -12,7 +12,7 @@
   },
   "captures": [
     {
-      "requestId": "35dbb716afc0-1",
+      "requestId": "1ae57cbfbf23-1",
       "commands": [
         "enable",
         "configure session hw-probe-vlan-inline-name description \"run-2 answer, now its own batch: is the one-line `vlan <\"",
@@ -34,7 +34,7 @@
       }
     },
     {
-      "requestId": "35dbb716afc0-2",
+      "requestId": "1ae57cbfbf23-2",
       "commands": [
         "enable",
         "configure session hw-probe-vlan-inline-name description \"run-2 answer, now its own batch: is the one-line `vlan <\"",
@@ -54,7 +54,7 @@
       ]
     },
     {
-      "requestId": "35dbb716afc0-3",
+      "requestId": "1ae57cbfbf23-3",
       "commands": [
         "enable",
         "configure session hw-probe-vlan-inline-name description \"run-2 answer, now its own batch: is the one-line `vlan <\"",
@@ -68,7 +68,7 @@
       ]
     },
     {
-      "requestId": "35dbb716afc0-4",
+      "requestId": "1ae57cbfbf23-4",
       "commands": [
         "enable",
         "show configuration sessions"
@@ -84,7 +84,7 @@
       ]
     },
     {
-      "requestId": "35dbb716afc0-5",
+      "requestId": "1ae57cbfbf23-5",
       "commands": [
         "enable",
         "show configuration sessions detail"

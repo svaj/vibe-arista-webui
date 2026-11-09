@@ -2412,6 +2412,87 @@ config lock for its own timer window (2:00 in the reviewed draft), which is why 
 `commitWithRevertTimer` block additionally fails the spec-vs-parser coupling pin (the committed draft's
 timer field would be silently dropped) — both restored, suite green at 2,324 tests.
 
+### DR-137 — run 5's first full pass: the box answered the revert timer end-to-end, a reverted saved entry frees itself, and my last invented token died in the restore
+
+Run 5 (2026-11-08 22:43 — main at `4b8b5ca`, so #113's code with spec rev 4) was the first supervised pass
+to walk **all 17 batches**: every batch produced a recorded answer, 4 batches committed (one of them
+`scratch-description` **via the run-tagged retry** — DR-136 proven on hardware seconds after its own
+refusal), and the test still exited 1 — on my SUMMARY PRINT, after all of the recordings had landed. The
+device had finished; the lane's own tail crashed. Everything below was re-derived from the run 5
+captures, NOT from the lane's console lines, because BOTH of run 5's harness bugs broke exactly those
+lines — and one of the print-based claims in the run 5 log ("HWPROBE-TIMER=absent") was true only by
+accident of a broken string.
+
+**Device answers (recordings under `configure-session-<batch>--hw-session-probe.json`, batch names verbatim):**
+
+1. **The parked-name refusal, reason verbatim:** `Cannot enter session hw-probe-scratch-description
+   (already completed)` (wrapped by `Error [1000] … could not run command`) — the §3 evidence DR-136 had
+   to infer from the session table is now a recorded answer, and the retry opened under the run-scoped
+   name in the same minute.
+2. **The one saved-session slot ROTATES.** `scratch-mtu` and `scratch-switchport-restore-order` opened
+   their canonical names fine later in the SAME run: each new commit displaced the previous entry from
+   the `maxSavedSessions: 1` store. And the auto-revert in step 7 **removed the entry from both listing
+   forms** — an auto-reverted timer commit never parks its own name (DR-136's parking is plain-commit-only).
+3. **Timed commits are real on this SKU.** `ConfigSession#commitWithRevertTimer`'s wire line
+   `commit timer 00:02:00` was ACCEPTED (the capture repeats DR-048's staged-line spelling), and the
+   change was live in running-config immediately.
+4. **The armed session's shape** — §3's field-set question, box answer: the PLAIN form of
+   `show configuration sessions` does list it: `state: "pendingCommitTimer"`, the deadline in `commitBy`
+   on the box's **uptime clock** (`704038.27` there — NOT an epoch), `completedTime` epoch. No label is
+   spelled `pending-revert` anywhere on this box, so the lane's predicate matches `/pending/i` and the
+   warning now names the real label instead of speculating.
+5. **The block question, answered for the path this lane can drive:** while the timer was armed, the
+   harness's second `-block-check` session OPENED, staged and ABORTED normally over eAPI. REV 4's spec
+   expectation ("expect the next session opened during that window to be refused") is superseded by the
+   box — this lane makes no CONSOLE claim, and §2.5 of the runbook stays the backstop for it.
+6. **Not persisted** (DR-035(c)'s question, asked of the box rather than assumed): the staged marker
+   never reached `show startup-config`, and the capture's own startup mtime (Nov 3) predates every probe
+   run — a timed commit never implies a save.
+7. **The revert fires unattended, and it is SESSION-scoped:** past the deadline + 15 s,
+   `description HWPROBE-TIMER` had become `description HW-CAPTURE-PROBE` again (the value from before
+   that session), while the `mtu 9214` that a DIFFERENT session had committed earlier in the same run
+   stayed. Revert ≠ rollback-to-file.
+8. **Modern VRRP spelling accepted:** `interface Vlan4090` + `vrrp 1 ipv4 169.254.90.7` staged with a
+   real 12-line diff, batch aborted (grammar contract, not persistence). §3's VRRP line now reads
+   fully-closeable on this target: legacy refused (it names the replacement), modern accepted — which is
+   the arm `resources/vrrp.ts` composes on `>= 4.21.3`.
+9. **`switchport mode auto` REFUSED** (`1002 Invalid input (at token 2: 'auto')`) — a genuine fact for
+   the switchport-mode family, but the token was MY invention in the rev-3/4 *restore* batch, and no
+   probe run has ever had a switchport-mode change COMMITTED on this port (the mode-changing batches
+   all aborted; the restore-order batch staged the defaults and diffed 0 lines). An invented spelling
+   broke DR-135 and now broke the net-zero guarantee three days running — rule: **a spec line must be
+   either previously accepted on this box or cEOS-captured-and-flagged; the restore set may only contain
+   exact inverses of what the run actually committed.**
+
+**Spec rev 5:** `scratch-restore` = exactly `interface {{SCRATCH}}` + `no description` + `no mtu` — the
+two lines the box itself staged cleanly inside that very refused session, and the exact inverse of
+everything run 5 committed on the port. Pinned: command-array equality for the restore batch, and a
+tree-wide assertion that no batch carries `switchport mode auto`.
+
+**Harness defects (both mine; both only caught because the recordings contradicted the prints):**
+
+- The opener-refusals SUMMARY interpolated a retry-name EXAMPLE by CALLING
+  `hwProbeRetrySessionName('<batch>', runTag)` — the doc placeholder reached the real validating builder,
+  which threw in the last print of an otherwise-complete 17/17 run. A summary line may print a pattern,
+  never call a builder it cannot pass. New mutation-proof habit: grep log paths for fenced helpers fed
+  with example data.
+- `hwReadBackOutput` (exported, pinned): `node.exec` answers one item PER command (the composed `enable`
+  owns one) and wraps each device reply under `result`. The old `textOf` read `.output` at the wrapper
+  level, so EVERY post-commit read-back print lied all through run 5 — "scratch block 0 line(s); markers
+  none" printed over recordings holding three-line stanzas — and the "startup HWPROBE-TIMER=absent"
+  line was an empty-string artifact (the real answer happened to be `absent`, proven from the captured
+  startup mtime). The two conclusions that survived re-derivation could just as easily not have: **on
+  switch evidence, the console output is a claim until the recording says otherwise.**
+
+**Switch state after run 5 — run 6's card:** Ethernet22 still carries `description HW-CAPTURE-PROBE` +
+`mtu 9214` (run 5's restore died on the invented token before its commit — DR-134's skip-commit rule
+correctly applied nothing half-refused). `no ip routing` remains the saved state (routing only ever
+touched inside aborted sessions). The completed-session slot is EMPTY (the auto-revert freed it), so run
+6 = the FULL spec: every canonical opener is currently free, and the rev-5 restore returns the port to
+the empty pre-probe stanza run 1's inventory captured. Expect ~4 minutes inside `commit-timer` (the lane
+sits its own deadline now that the box proved the revert fires), and expect that run to park a committed
+name in the slot afterwards — displacement is rotation, not residue.
+
 ## Open items (need the device)
 
 Use cEOS first for software behavior and schema exploration, recording its model/version;
@@ -2465,8 +2546,16 @@ config session and are **not read-only**:
    `ConfigSession#commitWithRevertTimer` (`config-session.ts:856`); the lane then reads the session table,
    asks whether an armed timer blocks a second session, reads `show startup-config` for the staged marker
    (the persistence question DR-035(c) refuses to assume), sits out the 2:00 deadline and re-reads the port.
-   NO device answer yet — that is run 5's job, including the case where the box refuses a timed commit
-   outright, which is also an answer. The `commit <intf> verify` / `revert <intf>` confirm-and-cancel arm is
+   **ANSWERED ON THE BOX BY RUN 5** (2026-11-08 22:43, `configure-session-commit-timer--hw-session-probe.json`,
+   DR-137): the timed commit is ACCEPTED (`commit timer 00:02:00` on the wire); the armed session lists on the
+   PLAIN form as `state: "pendingCommitTimer"` with the deadline in `commitBy` (an **uptime clock**, not an
+   epoch) and a `completedTime` epoch; a second `configure session` opens normally over eAPI while it is armed
+   (the lane's `-block-check` probe — REV 4 expected a refusal, the box answered otherwise); its marker reaches
+   running-config but never `show startup-config` (the captured startup mtime predates every probe run); and
+   past the deadline the revert fires unattended, restores exactly that session's own diff, after which the
+   entry is GONE from both listing forms — a reverted commit never parks its name in DR-136's slot. Half of
+   the original sentence stays open on purpose: whether a second `commit` before the deadline confirms or
+   resets the revert — the `commit <intf> verify` / `revert <intf>` confirm-and-cancel arm is
    deliberately still unasked: the repo has never composed that pair for a device, and DR-135 is exactly what
    an invented spelling on a switch costs.)**
 6. `features.md` is titled "Supported Features — Arista **7050X**" and carries FlexProfile footnotes,
@@ -2500,9 +2589,13 @@ config session and are **not read-only**:
    attempts at the boundary, not by reading our own constant back as evidence.
    **(One device limit DID arrive on 2026-11-08, and it is about name REUSE rather than shape (DR-136):** the
    box keeps one COMPLETED session (`maxSavedSessions: 1`), and re-opening the exact name that committed into
-   that slot was refused with `Error [1000] … 'configure session hw-probe-scratch-description description
-   "…"' failed: could not run command` — while a fresh name worked in the same minute. So a name is a
-   one-slot resource for as long as the saved session sits there, which is why the probe lane retries under
+   that slot was refused — run 4 saw only the wrapper (`Error [1000] … could not run command`); run 5 recorded
+   the reason verbatim: `Cannot enter session hw-probe-scratch-description (already completed)` — while a
+   fresh (run-tagged) name worked in the same minute. So a name is a
+   one-slot resource for as long as the saved session sits there — and that store is a ROTATING one-slot
+   window: run 5's later commits displaced the earlier completed entry (which is why every other canonical
+   opener of that run opened cleanly), and an auto-reverted timer session displaced its OWN entry, freeing
+   its name (DR-137). This is why the probe lane retries under
    `hw-probe-<name>-<run tag>` instead of stalling. The length/charset boundary is still uncaptured; the
    probe lane refuses to test it because the test would have to commit, and committing an adversarially-named
    session is not what "one designated scratch interface" licenses — that family stays with the

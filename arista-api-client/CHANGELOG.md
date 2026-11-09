@@ -9,6 +9,37 @@ surprise here — this file records what shipped, the migration map records what
 
 ## [Unreleased]
 
+### Fixed — probe run 5, the first full pass: two lane-print defects that contradicted the recordings, and one invented restore token (2026-11-08; DR-137 + §5 row 237)
+- `docs/hw-session-probes.draft.json` (rev 5): `scratch-restore` is now exactly `no description` + `no mtu` —
+  the two lines the box itself staged cleanly inside the very session that refused the next token, and the
+  exact inverse of everything run 5 actually committed. The rev-3/4 line `switchport mode auto` was this
+  repo invention; the SKU answered `1002 Invalid input (at token 2: 'auto')`, DR-134 skip-commit rule
+  correctly left the batch uncommitted — and for the third run in a row the scratch port stayed dirty
+  (`description HW-CAPTURE-PROBE` + `mtu 9214` today). Pins: the restore batch command array is asserted
+  equal, and no batch anywhere may contain a `switchport mode auto` line.
+- `src/testing/hw-capture.ts`: new `hwReadBackOutput(item)` — `node.exec` answers one item PER command
+  (the composed `enable` owns one) and wraps each reply under `result`; the lane `textOf` read `.output`
+  at the wrapper level, so EVERY post-commit read-back print lied through run 5 ("scratch block
+  0 line(s); markers … none" over recordings holding three-line stanzas, and the honest-looking
+  `startup HWPROBE-TIMER=absent` was an empty-string artifact). Pinned with shapes copied from the run 5
+  captures; the two conclusions that happened to survive (revert fired; no persistence) were re-derived
+  from the recordings, which is the only reason they were kept.
+- `src/hw-session-probe.live.test.ts`: the opener-refusals summary no longer builds an example retry name
+  by CALLING `hwProbeRetrySessionName('<batch>', runTag)` — the doc placeholder reached the validating
+  builder and threw in the final print of an otherwise-complete 17/17 run (all 17 recordings had already
+  been written; the exit code 1 was our tail, not the switch). The pending-state warning now matches the
+  label this box actually uses (`pendingCommitTimer`, deadline in `commitBy` on an uptime clock), not the
+  §3 prose spelling `pending-revert`.
+- Timed-commit behaviour on the box — recorded, this time correctly: `commit timer 00:02:00` ACCEPTED; the
+  armed session lists on the PLAIN `show configuration sessions`; a second session opened normally over
+  eAPI while armed (the earlier "expect a refusal" note in the spec comment is superseded by the capture);
+  startup-config never saw the marker; the revert fired unattended, restoring exactly the session own
+  diff; and afterwards BOTH session listings report `sessions: {}` — an auto-reverted commit frees the
+  one completed-NAME slot (DR-136 parking applies to plain commits; the slot rotates per commit).
+- `resources/vrrp.ts`: the modern arm is now hardware-answered in both directions — legacy `vrrp <id> ip`
+  refused at the write AND modern `vrrp 1 ipv4 169.254.90.7` staged-and-diffed in `vlan-interface-vrrp-ipv4`
+  (aborted per the grammar contract, DR-043).
+
 ### Changed — probe run 4's two failures, and five more grammar answers from the box (2026-11-08; DR-136 + §5 row 236)
 - `src/testing/hw-capture.ts`: a config-session **name is a one-slot device resource**. The box keeps ONE
   completed session (`maxSavedSessions: 1`) and run 2's commit parked `hw-probe-scratch-description`

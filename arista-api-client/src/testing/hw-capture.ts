@@ -370,9 +370,12 @@ export interface HwProbeBatch {
    * same fence (`allowCommit: true` stays mandatory here, so every committed line is still an indented
    * child of `interface {{SCRATCH}}`).
    *
-   * What the harness does with it, in order: timed commit → `listSessions()` read (does the box show a
-   * pending-revert session, and with which fields?) → if the timer is ≤ `hwProbeTimerWaitMs`'s window, sit
-   * out the deadline and read the scratch port back to see whether the revert fired → leave. The
+   * What the harness does with it, in order: timed commit → `listSessions()` read (run 5 answered: the
+   * plain form DOES list the armed session, labelled `state: "pendingCommitTimer"` with `commitBy` on the
+   * uptime clock + `completedTime` epoch — no label spelled `pending-revert`) → if the timer is ≤
+   * `hwProbeTimerWaitMs`'s window, sit out the deadline and read the scratch port back to see whether
+   * the revert fired (it does, unattended, and afterwards the entry is gone from BOTH session forms) →
+   * leave. The
    * `commit <intf> verify` / `revert <intf>` confirm-and-cancel arm is deliberately NOT attempted here:
    * no composition of those lines exists in this repo, and an invented spelling on a switch would produce
    * this harness's bug as the "answer" rather than the box's (the DR-135 lesson). The cEOS half of the
@@ -514,10 +517,12 @@ export function hwProbeRunTag(when: number = Date.now()): string {
 export const HW_PROBE_TIMER_GRAMMAR = /^(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d$/u
 
 /**
- * How long the harness will sit and watch a revert timer fire. A pending-revert session holds the config
- * lock and blocks every other CLI (`1006`), so the lane only waits out timers it can wait out quickly;
- * longer ones are reported instead, and the spec's restore batch is what makes an un-waited change net
- * zero. Returns `undefined` when the timer is outside the waited window.
+ * How long the harness will sit and watch a revert timer fire. Run 5's block-check says an ARMED
+ * revert-timer session does NOT refuse new eAPI sessions — the `-block-check` session opened, staged and
+ * aborted while one was pending (`configure-session-commit-timer--hw-session-probe.json`) — but the lane
+ * still keeps the wait bounded: an un-waited change would have to be made net zero by the spec's restore
+ * batch, and a fired-but-unwatched timer leaves the lane guessing the box's clock. Returns `undefined`
+ * when the timer is outside the waited window.
  */
 export function hwProbeTimerWaitMs(timer: string, maxWaitedSeconds = 300): number | undefined {
   if (!HW_PROBE_TIMER_GRAMMAR.test(timer)) throw new Error(`hwProbeTimerWaitMs needs an HH:MM:SS timer, got ${JSON.stringify(timer)}`)
@@ -529,29 +534,38 @@ export function hwProbeTimerWaitMs(timer: string, maxWaitedSeconds = 300): numbe
 
 /**
  * The revert-timer steps the live lane runs, in order, for a batch carrying `commitWithRevertTimer`.
- * Every one of them is a verb this client really exposes — nothing here composes a CLI line the package
- * has never sent, which is the DR-135 lesson (`show running-config interface …` invented a spelling and
- * the switch's `% Incomplete token` answer killed a run over our own typo):
- *  1. **arm** — `ConfigSession#commitWithRevertTimer(timer)` (`config-session.ts:856`): the box's answer to
- *     "does a revertable commit with a deadline exist on this SKU". Open item 5 asks it of the COMMIT
- *     path; DR-048 already covers the staged-line spelling and refuses a zero timer at every level.
- *  2. **list** — `node.listSessions()`: does a pending session appear, with which fields? The field set has
- *     a cEOS answer; §3 wants the box's (DR-043). This client turns the device's `sessions` **map** into a
- *     model array whose entries carry `name`/`state` (plus `commitBy` when the box sets a deadline, which
- *     is the pending-revert signal — the cEOS capture's `sessions: {}` on the plain form is why the read
- *     goes through the model, not at the label in §3's line). Normalised by `hwProbePendingRevertSessions`.
- *  3. **two reads** — the scratch block (`hwScratchReadBackCommand`) and `show startup-config` searched for
- *     the marker this batch staged: whether a timed commit persisted on its own is precisely the question
- *     DR-035(c) refuses to assume away.
- *  4. **wait, then read again** — when `hwProbeTimerWaitMs` returns a wait, sleep past the deadline and
- *     re-read the scratch block: that pair of reads is the device's answer to "does the revert fire on its
- *     own?" A no-wait timer prints instead, because a pending revert holds the config lock and this lane
- *     must not sit on somebody's switch for an hour.
+ * Run 5 (2026-11-08 22:43, the box, recording `configure-session-commit-timer--hw-session-probe.json`)
+ * walked all four steps and every one of them now has a recorded device answer:
+ *  1. **arm** — `ConfigSession#commitWithRevertTimer(timer)` (`config-session.ts:856`) put
+ *     `commit timer 00:02:00` on the wire and the box ACCEPTED it: the change landed in running-config
+ *     immediately and the session entered its timer-pending state (open item 5's first half: YES on
+ *     4.28.13.1M). DR-048's timed-commit spelling is exactly what the capture repeats.
+ *  2. **list** — the PLAIN form of `show configuration sessions` does list the armed session (unlike
+ *     COMPLETED ones, which only the `detail` form shows — see DR-136). Its `state` reads
+ *     `pendingCommitTimer`: there is no entry on this SKU literally spelled `pending-revert`, so match
+ *     `/pending/i`, never the §3 prose spelling; the entry carries `commitBy` on the box's **uptime
+ *     clock** (`704038.27` there, not an epoch) alongside a `completedTime` epoch stamp. §3's session
+ *     field-set line, answered.
+ *  3. **two reads** — the scratch block (`hwScratchReadBackCommand`, read through `hwReadBackOutput:` the
+ *     raw exec item is a wrapper, and reading `.output` at the wrong level returned '' for the whole of
+ *     run 5 — see that helper) showed the staged marker right after the timed commit, and
+ *     `show startup-config` did NOT contain it: a timed commit never persists (DR-035(c)'s question,
+ *     asked and answered; the capture also shows the box's startup mtime predating every probe run).
+ *  4. **wait, then read again** — after `hwProbeTimerWaitMs`'s slack the staged marker was gone: the
+ *     revert fires unattended — and BOTH session listings then answered `sessions: {}`, i.e. an
+ *     auto-reverted session leaves no completed entry, which FREES DR-136's one name slot for the next
+ *     run (the parking applies to plain commits only).
  *
- * The rest of §3's sentence — "does a second `commit` before the deadline confirm or reset the revert?" —
- * is deliberately NOT asked here. Answering it needs `commit <intf> verify` / `revert <intf>`, which this
- * repo models in `commit-session.ts` but has never sent to a device: composing them from an unread
- * signature is how DR-135 happened, so it stays a named follow-up (STATUS §3) rather than a guess.
+ * The same batch asks the block question — does an armed timer refuse a second `configure session`? —
+ * and run 5 answered for the eAPI path: the harness's `-block-check` session opened, staged and aborted
+ * normally while the timer ran. The console lock story belongs to the operator's terminal, not to this
+ * lane, and the runbook's §2.5 check stays the backstop.
+ *
+ * Still deliberately unasked: "does a second `commit` before the deadline confirm or reset the
+ * revert?" and `commit <intf> verify` / `revert <intf>` — this repo has NEVER composed or sent that pair
+ * (the only confirm-side verb it models is `ConfigSession#confirmRevertTimer`, a second session commit,
+ * and its hardware effect is still unknown), and composing a CLI line from an unread signature is how
+ * DR-135 happened, so it stays a named follow-up (STATUS §3, open item 5) rather than a guess.
  */
 export function hwProbePendingRevertSessions(sessions: readonly { name: string; state: string }[]): readonly { name: string; state: string }[] {
   return sessions.map(({ name, state }) => ({ name, state }))
@@ -598,6 +612,25 @@ export function hwProbeRetrySessionName(batchName: string, runTag: string): stri
 export function hwScratchReadBackCommand(scratchInterface: string): string {
   if (scratchInterface === '') throw new Error('hwScratchReadBackCommand needs a non-empty interface name')
   return `show running-config interfaces ${scratchInterface}`
+}
+
+/**
+ * The text behind ONE `node.exec(...)` result item — with the wrapper unwrapped.
+ *
+ * Run 5 (2026-11-08) is why this exists: the lane printed "scratch block 0 line(s); markers … none"
+ * after a SUCCESSFUL commit while the batch's own recording held a three-line
+ * `interface Ethernet22 / description HWPROBE-TIMER / mtu 9214` block. `node.exec` answers one item
+ * PER requested command (the composed `enable` line gets one too) and wraps each device reply under
+ * `result`; reading `output` at the wrong level returns `''`, and every read-back CONSOLE line then
+ * silently lies — while on a switch day the console line is what the operator acts on first, and the
+ * recording (correct all along) is only re-read afterwards. Accepts the exec shape
+ * `{ result: { output | text } }`, the wire/fixture shape `{ output | text }`, and answers `''` when
+ * the reply is missing, so callers print "nothing listed" honestly rather than crashing on a probe.
+ */
+export function hwReadBackOutput(item: unknown): string {
+  const unwrapped = (item as { result?: unknown } | undefined)?.result ?? item
+  const found = (unwrapped as { output?: unknown; text?: unknown } | undefined)?.output ?? (unwrapped as { text?: unknown } | undefined)?.text
+  return typeof found === 'string' ? found : ''
 }
 
 /**
