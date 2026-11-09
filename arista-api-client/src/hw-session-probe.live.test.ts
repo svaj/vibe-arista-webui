@@ -19,6 +19,15 @@
  *    either `abort()` (the default) or `commit()` (only `allowCommit` batches; never `{persist:true}`,
  *    DR-024/DR-035(c)). A `finally` aborts anything still open — a dead session on somebody's switch
  *    holds the config lock (`1006` blast radius), the same reasoning as on a container.
+ * 4b. A DEVICE REFUSAL (1002/1004) inside staging or inside the diff read is **recorded as the
+ *    batch's answer and the loop continues** (DR-134 — the rule `hw-inventory` already ships: which
+ *    commands the SKU accepts IS §3 evidence). It must also continue mechanically: EOS stops a
+ *    staged batch at the refused line, so a throwing harness silently made every later batch
+ *    unreachable (found live 2026-11-08: `switchport trunk allowed vlan only 10,20` → 1002 killed
+ *    the run before batches 3-9 could answer anything). On an `allowCommit` batch a refusal
+ *    **skips the commit** — the batch aborts and records. Only typed `EapiError`s are tolerated;
+ *    transport or state-machine failures still kill the run (half-captured switch evidence is
+ *    worse than none).
  * 5. Each batch is one recording case (`configure-session-<name>--hw-session-probe`), sanitized with
  *    the full hardware scrubber before the write.
  *
@@ -33,6 +42,7 @@ import { readFileSync } from 'node:fs'
 import { beforeAll, describe, expect, it } from 'vitest'
 
 import { createNode } from './node'
+import { EapiError } from './errors'
 import { buildRecording, createRecorder } from './testing/recording'
 import { writeRecording } from './testing/recorder-node'
 import { describeLiveTarget, liveTransportOptions, matchesDeviceIdentity, requireScratchInterface, resolveLiveEnv, unwrapLiveTarget, type LiveTarget } from './testing/live-guard'
@@ -99,6 +109,7 @@ describe.skipIf(!runnable)('hardware session probes: named config sessions on th
     const scrub = extraSecrets()
     const enablePassword = process.env['EAPI_ENABLE_PASS']
     let committedBatches = 0
+    let negatives = 0
 
     for (const batch of batches) {
       const commands = resolveHwScratchTokenFor(batch)
@@ -118,16 +129,37 @@ describe.skipIf(!runnable)('hardware session probes: named config sessions on th
         description: batch.question.slice(0, 56),
       })
       let committed = false
+      let refusal: string | undefined
       try {
-        await session.run(commands)
-        const diffText = await session.diff()
-        console.log(`hw-session-probe: ${batch.name}: diff captured (${String(diffText.split(/\r?\n/u).filter((line) => line.trim() !== '').length)} line(s))`)
-        if (batch.allowCommit) {
+        try {
+          await session.run(commands)
+        } catch (rawErr) {
+          // DR-134: the device's refusal is the ANSWER, not a crash — record it and reach the next
+          // batch (which a throw used to make unreachable; EOS stops the staged batch at the refused
+          // line regardless). Anything NOT an EapiError is the harness's/this client's bug: rethrow.
+          if (!(rawErr instanceof EapiError)) throw rawErr
+          refusal = rawErr.message.split(/\r?\n/u)[0]?.slice(0, 200) ?? String(rawErr)
+        }
+        let diffLines = -1
+        try {
+          const diffText = await session.diff()
+          diffLines = diffText.split(/\r?\n/u).filter((line) => line.trim() !== '').length
+        } catch (rawErr) {
+          if (!(rawErr instanceof EapiError)) throw rawErr
+          // A refused `show session-config diffs` is itself a §3 answer (open item 8's family).
+          refusal = `${refusal ?? 'staged cleanly;'} diff read refused: ${rawErr.message.split(/\r?\n/u)[0]?.slice(0, 160) ?? ''}`
+        }
+        console.log(`hw-session-probe: ${batch.name}: ${diffLines >= 0 ? `diff captured (${String(diffLines)} line(s))` : 'diff not readable'}${refusal === undefined ? '' : ` — REFUSED recorded as the device's answer: ${refusal}`}`)
+        if (batch.allowCommit && refusal === undefined) {
           await session.commit()
           committed = true
           committedBatches += 1
           await node.exec([`show running-config interface ${scratch ?? '<unset>'}`], { format: 'text' })
         } else {
+          if (batch.allowCommit) {
+            console.warn(`hw-session-probe: ${batch.name}: allowCommit batch came back with a refusal — commit SKIPPED, session aborted (a half-refused batch never commits, DR-134)`)
+          }
+          if (refusal !== undefined) negatives += 1
           await session.abort()
         }
         // Post-state baseline for the §3 orphan question: what sessions exist after ours closed.
@@ -139,9 +171,9 @@ describe.skipIf(!runnable)('hardware session probes: named config sessions on th
       const built = buildRecording(recorder, identity)
       const sanitized = sanitizeHwRecording(built, { extraSecrets: scrub })
       const out = writeRecording(sanitized.fixture, { caseName: hwProbeCaseName(batch.name), overwrite: true })
-      console.log(`hw-session-probe: ${hwProbeCaseName(batch.name)}: ${out.created ? 'created' : 'refreshed'} (${String(out.bytes)} B, ${String(sanitized.log.length)} scrub(s), ${batch.allowCommit ? 'committed' : 'aborted'})`)
+      console.log(`hw-session-probe: ${hwProbeCaseName(batch.name)}: ${out.created ? 'created' : 'refreshed'} (${String(out.bytes)} B, ${String(sanitized.log.length)} scrub(s), ${refusal !== undefined ? 'negative recorded' : committed ? 'committed' : 'aborted'})`)
     }
-    console.log(`hw-session-probe: DONE — ${String(batches.length)} batch(es), ${String(committedBatches)} committed (scratch-scoped only)`)
+    console.log(`hw-session-probe: DONE — ${String(batches.length)} batch(es), ${String(committedBatches)} committed (scratch-scoped only), ${String(negatives)} answered by a device refusal (DR-134)`)
   })
 
   function resolveHwScratchTokenFor(batch: HwProbeBatch): readonly string[] {

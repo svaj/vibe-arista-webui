@@ -9,6 +9,21 @@ surprise here — this file records what shipped, the migration map records what
 
 ## [Unreleased]
 
+### Changed — hw-session-probe records device refusals instead of dying on them (2026-11-08; DR-134 + §5 row 234)
+- `src/hw-session-probe.live.test.ts`: a batch-level `1002`/`1004` from staging (or from the
+  `show session-config diffs` read) is now recorded as that batch's answer and the batch loop
+  continues — matching what `hw-inventory` always did — instead of throwing and making every later
+  batch unreachable. The first executed probe run proved the cost: the SKU's `1002` for
+  `switchport trunk allowed vlan only 10,20` (real finding: the `only` keyword does not exist on this
+  box's CLI, while the bare spelling committed fine the same day through the lab corpus) silently
+  killed trunk-group, routed-conversion, VRRP and the whole commit set. Non-`EapiError` faults still
+  kill the run; an `allowCommit` batch that came back with a refusal never commits — it aborts and
+  records.
+- `docs/hw-session-probes.draft.json` rev 2: one question per batch (the switchport-modes batch
+  became `switchport-l2-baseline` / `trunk-allowed-only` / `routed-conversion`), and the committed
+  `scratch-restore` batch drops `no switchport` — it would have stranded the scratch port routed
+  instead of net-zero L2. Both rules are now pinned by the spec's machine-check test.
+
 ### Fixed — the hardware scrubber missed key-position secrets in the batch-1 captures (2026-11-08; DR-133 + §5 row 233)
 - `sanitizeHwRecording`/`redactHwValue` (`src/testing/hw-capture.ts`) now scrub object **keys** with the
   same rule chain as values (collision-safe renaming) and the identity envelope's free-text fields

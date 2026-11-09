@@ -187,6 +187,13 @@ mechanically refused, DR-035(c)), and the draft's final `scratch-restore` batch 
 its declared pre-session defaults, so the committed set is net-zero. One recording per batch lands
 as `configure-session-<name>--hw-session-probe`.
 
+**Batch refusals are answers, not crashes (DR-134):** if the device refuses a staged line (or the
+diffs read) with a typed `EapiError`, the batch records the refusal, prints it, skips any commit for
+that batch, and the loop continues to the next batch — EOS stops a staged batch at the refused line,
+so the SPEC keeps one question per batch to keep the recordings granular (`docs/hw-session-probes.draft.json`
+rev 2). A transport or state-machine failure still kills the run: half-captured switch evidence is
+worse than none.
+
 ## 5. After the session
 
 - The §3 checklist boxes in `docs/STATUS.md` get checked **only** against recorded files, each
