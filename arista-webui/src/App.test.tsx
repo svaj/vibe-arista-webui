@@ -78,6 +78,20 @@ describe('App composition (F6 chrome)', () => {
     expect(screen.getByRole('button', { name: 'Preview and read the diff' })).toBeDisabled()
   })
 
+  it('puts the S8 (#78) system settings screen in the nav on #/system', () => {
+    render(<App />)
+
+    const system = screen.getByRole('link', { name: 'System settings' })
+    expect(system).toHaveAttribute('href', '#/system')
+    expect(system).not.toHaveAttribute('aria-current', 'page')
+    // Unconfigured: the route registers, the screen prompts, and no read is attempted — visiting
+    // `#/system` must not open a session or fire a show.
+    fireEvent.click(system)
+    expect(screen.getByRole('heading', { level: 2, name: 'System settings' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Update hostname' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Disable ip routing' })).toBeDisabled()
+  })
+
   it('puts the S7 (#77) capability probe panel in the nav on #/capabilities', () => {
     render(<App />)
 

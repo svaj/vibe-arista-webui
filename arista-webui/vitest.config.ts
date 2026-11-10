@@ -88,7 +88,19 @@ export default defineConfig({
       //   records), the `typeof navigator` half of the clipboard guard, and `??` default arms the
       //   fakes always fill. The #123 hook additions (probeTrigger, lastOutcome/cacheNote pass-
       //   through) ride the existing 15-spec `use-capabilities.test.tsx` arms plus 4 new ones.
-      //   No new threshold entry (same #124 advisory posture as above).      // Floors below are set ~2-4 points under those figures (ratchet up, never down). Two notes for
+      //   No new threshold entry (same #124 advisory posture as above).
+      // #78 (S8 system settings, stacked on the #123+#77 branches) measured the whole webui
+      //   suite at 527 tests / 33 files: all files 94.02/89.19/96.86/98.23 (stmts/branch/funcs/
+      //   lines — all four global legs pass), src/features/system at 88.88/88.75/87.23/96.32
+      //   (system-rules.ts is 100 % statements — the mirrored guards are fully pinned; the
+      //   container's misses are the DOM-unreachable guard arms again: the loader's
+      //   `node === undefined` throw (the read is gated `enabled` in exactly that state), the
+      //   preview/begin/commit/abort `busy || !canAct || draft` short-circuits (controls are
+      //   disabled then, pinned disabled in the tests), and the `?? ''`/identity default arms
+      //   the fakes always fill). `stageDisplay`'s open branch is the non-EOF-terminated
+      //   object-spec fallback no current verb produces.
+      //   No new threshold entry (same #124 advisory posture as above).
+      // Floors below are set ~2-4 points under those figures (ratchet up, never down). Two notes for
       // the coverage-lane owner (#69): (1) `src/shared/` branch coverage is 86.40 while that entry
       // asks for 87, and the leg still exits 0 — the per-glob `branches` figure does not appear to be
       // enforced the way `lines` is, so treat per-dir branch floors as advisory until #69 re-checks;
