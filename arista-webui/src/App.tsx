@@ -4,6 +4,7 @@ import './App.css'
 import { AppShell } from './components/AppShell'
 import { InterfacesDashboard } from './features/interfaces/InterfacesDashboard'
 import { TrunkEditor } from './features/interfaces/TrunkEditor'
+import { CommandConsole } from './features/console/CommandConsole'
 import { VlanManagement } from './features/vlans/VlanManagement'
 import { VlanAssignment } from './features/vlans/VlanAssignment'
 import type { RouteRegistry } from './router'
@@ -37,6 +38,12 @@ function App() {
     '/vlans/manage': {
       title: 'VLAN management',
       element: <VlanManagement node={node} proxyConfigured={__EAPI_PROXY_CONFIGURED__} />,
+    },
+    // S4 (#74) owns `#/console`: the read-only command console. It contacts nothing at mount — the route
+    // is registered so the nav can offer it, not so the app can warm anything up.
+    '/console': {
+      title: 'Command console',
+      element: <CommandConsole node={node} proxyConfigured={__EAPI_PROXY_CONFIGURED__} />,
     },
     [HOME_PATH]: {
       title: 'VLAN assignment',
