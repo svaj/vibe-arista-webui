@@ -100,6 +100,13 @@ export default defineConfig({
       //   the fakes always fill). `stageDisplay`'s open branch is the non-EOF-terminated
       //   object-spec fallback no current verb produces.
       //   No new threshold entry (same #124 advisory posture as above).
+      // #79 (S9 transaction center, stacked on the S8 branch) measured the webui suite at
+      //   550 tests / 35 files: all files 93.87/89.12/96.82/98.12, src/features/sessions at
+      //   91.66/87.68/96.42/96.37 (session-rules.ts again 100 % statements). The container's
+      //   open arms are the same DOM-unreachable guard family (#74-#78 records): the
+      //   `busy || draft !== undefined` short-circuits behind enabled/disabled buttons, the
+      //   journal-unreadable recovery refusal (jsdom localStorage does not throw), and the
+      //   verify `missingAnswer` pill arm. No new threshold entry (#124 posture).
       // Floors below are set ~2-4 points under those figures (ratchet up, never down). Two notes for
       // the coverage-lane owner (#69): (1) `src/shared/` branch coverage is 86.40 while that entry
       // asks for 87, and the leg still exits 0 — the per-glob `branches` figure does not appear to be
