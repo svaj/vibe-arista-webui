@@ -56,7 +56,7 @@
  * Returns the reason, or `undefined` when the name is writable.
  */
 export function trunkGroupNameRefusal(value: string): string | undefined {
-  if (value.trim() === '') return 'needed (assertTrunkGroupName): an empty group name is refused — clearing groups is done with the negated line, not a blank token (switchports.ts:359)'
+  if (value.trim() === '') return 'is empty (assertTrunkGroupName): an empty group name is refused — clearing groups is done with the negated form, not a blank token (the client’s guard in resources/switchports.ts)'
   // The client's order, mirrored: control characters first (`assertTrunkGroupName` checks
   // `hasControlCharacter` before the whitespace rule), then the single-token rule.
   if (hasControlOrLineBoundary(value)) return 'cannot contain a control character, line break or line separator — one config line per command (command-builder.ts LINE_BOUNDARY, DR-015; the client refuses it the same way in assertTrunkGroupName)'

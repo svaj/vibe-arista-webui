@@ -66,6 +66,10 @@ export const TRUNK_ACTIONS: readonly TrunkAction[] = [
   'allowed-add',
   'allowed-remove',
   'no-allowed',
+  // The group intents sit last: an operator picks a VLAN or mode edit before a probe-gated group
+  // write, and declaration order is the `<select>` order (#73).
+  'add-trunk-group',
+  'remove-trunk-group',
 ]
 
 export const TRUNK_ACTION_LABELS: Readonly<Record<TrunkAction, string>> = {
@@ -215,6 +219,9 @@ export interface TrunkEditorViewProps {
   readonly onAbortDraft: () => void
   readonly onReload: () => void
   readonly onAbortPending: (session: TrunkSessionRow) => void
+  /** The groups the selected port carries, from the container's row translation — running-config text,
+   *  echoed next to the group field so the operator sees what is already on the port. */
+  readonly currentGroups: readonly string[]
   /** The container's F5 answer for trunk groups, translated to plain fields (issue #67's gate). */
   readonly capability: TrunkCapabilityView
   readonly onProbe: () => void
@@ -230,6 +237,9 @@ export interface TrunkCapabilityView {
   readonly configLocked: boolean
   readonly probePendingSessions: readonly TrunkSessionRow[]
   readonly probeFailure: string
+  /** True when the device-session list below already carries these rows; the probe-cleanup section
+   *  then stands down, so one pending session never gets two equally-named abort controls. */
+  readonly pendingSessionsRendered?: boolean
   readonly suppressedCount: number
   readonly canProbe: boolean
   readonly probeBusy: boolean
@@ -267,6 +277,17 @@ function PortTable({ rows }: { readonly rows: readonly TrunkPortRow[] }) {
           {/* The device spelling is only repeated when it is not the collapsed form already shown. */}
           {(!row.allowedEnumerable || row.allowedDisplay !== row.allowedRaw) && <code className="read-error">{row.allowedRaw}</code>}
           {row.allowedNote !== undefined && <span className="cell-note">{row.allowedNote}</span>}
+        </>,
+    },
+    {
+      header: 'Trunk groups',
+      cell: (row) => row.trunkGroups.length === 0
+        // The read cannot tell an unconfigured port from an unsupported verb (DR-043: the client's
+        // `switchport-trunk.conf` fixture is hand-authored, no device-side trunk JSON capture).
+        ? <span className="cell-note">None read — either none configured, or support is absent and the CLI line was probed only, never committed. The probe above answers the presence question.</span>
+        : <>
+          <span className="group-list">{row.trunkGroups.join(', ')}</span>
+          <span className="cell-note">parsed running-config lines; the SKU&apos;s enforcement is unproven on this box (open item 4), and the probe above proves command presence only</span>
         </>,
     },
     {
@@ -334,6 +355,7 @@ export function TrunkEditorView({
   onAbortDraft,
   onReload,
   onAbortPending,
+  currentGroups,
   capability,
   onProbe,
   onAbortProbePending,
@@ -365,13 +387,13 @@ export function TrunkEditorView({
       </div>
 
       <p className="field-note">Every value on this screen is a <strong>parsed <code>show running-config</code> line</strong>: the client has no device-side trunk JSON capture of this command (its
-        <code>switchport-trunk.conf</code> fixture is hand-authored), so nothing here is model-backed trunk state, and a write is checked by the device diff below. Trunk-group editing is out of
-        scope for this screen — group support is unproven on this box (no hardware pin), and it would have to sit behind the same capability probe the VLAN screen uses.</p>
+        <code>switchport-trunk.conf</code> fixture is hand-authored), so nothing here is model-backed trunk state, and a write is checked by the device diff below. Trunk-group editing sits behind the capability probe below (#67): an `available` answer is command
+        presence only — never how many groups the SKU accepts, and never capacity (epic open item 6). This screen picks the port from its own list; the per-port link from the interfaces dashboard (#71) that #73 also names is not wired yet.</p>
 
       {load.kind === 'loading' && <p className="notice" role="status" aria-busy="true">Reading interfaces, switchport config, VLANs, IP addresses, configuration sessions, and the management path…</p>}
       {load.kind === 'error' && <div className="notice notice-error" role="alert"><strong>Device state could not be read.</strong><p>{load.message}</p>{canWrite && <button type="button" onClick={onReload}>Retry read</button>}</div>}
 
-      {data !== undefined && <>
+      {load.kind === 'ready' && data !== undefined && <>
         {data.managementError !== undefined && <p className="notice notice-warning" role="status">The management-API read failed: <code className="read-error">{data.managementError}</code> No port is flagged as carrying the eAPI VLAN, which is not a promise that none does — the confirm below still runs either way.</p>}
         <div className="inventory-strip" aria-label="Trunk editing inventory">
           <div><span className="metric-label">L2 ports</span><strong>{rows.length}</strong></div>
@@ -382,10 +404,13 @@ export function TrunkEditorView({
 
         <section className="panel" aria-labelledby="capability-title">
           <div className="panel-heading"><div><p className="eyebrow">CAPABILITY</p><h3 id="capability-title">Trunk groups on this device</h3></div><span className="panel-index">01b</span></div>
-          <p className="notice" role="status" aria-live="polite">
-            Trunk-group probe: <strong>{capability.verdict}</strong>.
-            {capability.reason === undefined ? ' No probe result has been recorded for this question yet — the group actions below stay shut until one answers `available`.' : ` ${capability.reason}`}
-            {capability.fromCache ? ' This answer came from the capability cache — no config session was opened for it.' : ''}
+          <p className="notice notice-probe" role="status" aria-live="polite">
+            {/* The label is its own self-contained node, so `getByText('Trunk-group probe:')` names
+                exactly one element; the verdict rides the node after it. */}
+            <span className="probe-label">Trunk-group probe:</span>
+            <span className="probe-verdict"><strong>{capability.verdict}</strong></span>
+            {capability.reason === undefined ? <span>No probe result has been recorded for this question yet — the group actions below stay shut until one answers `available`.</span> : <span>{capability.reason}</span>}
+            {capability.fromCache ? <span>This answer came from the capability cache — no config session was opened for it.</span> : null}
           </p>
           <p className="field-note">Candidates this screen asks with: {capability.candidates.map((command) => <code key={command}>{command}</code>)} — the same `interface Ethernet22` + group block the 2026-11-06 sweep staged and aborted on the box. The probe runs them inside a `no-commit` session the client always aborts (DR-063): it proves command presence, never how many groups the SKU allows (epic open item 6), and a miss at token 1 on a box without Ethernet22 is a probe miss on the scratch resource, not platform news.</p>
           <div className="review-actions">
@@ -396,7 +421,12 @@ export function TrunkEditorView({
           {capability.suppressedCount > 0 && <p className="field-note" role="status">The last {String(capability.suppressedCount)} probe request(s) fell inside the rate-limit window, so no config session was opened for them. The verdict above is unchanged.</p>}
           {capability.verdict === 'available' && <p className="notice notice-success" role="status">The device accepted the probe candidates, so the trunk-group actions above are enabled.</p>}
           {capability.verdict !== 'available' && <p className="notice notice-warning" role="status">Trunk-group actions stay refused while the verdict is {capability.verdict}. An inconclusive probe is never treated as support.</p>}
-          {capability.probePendingSessions.length > 0 && <section className="session-list" aria-labelledby="probe-sessions-title"><div className="panel-heading"><div><p className="eyebrow">PROBE CLEANUP</p><h3 id="probe-sessions-title">Sessions the probe found pending</h3></div><span className="panel-index">{String(capability.probePendingSessions.length)}</span></div><ul>{capability.probePendingSessions.map((session) => <li key={session.name}><div><strong>{session.name}</strong><span><StatePill value={session.state} />{session.description === undefined ? '' : ` · ${session.description}`}</span></div><button className="danger-button" type="button" disabled={busy} onClick={() => onAbortProbePending(session)}>Abort pending session</button></li>)}</ul></section>}
+          {capability.probePendingSessions.length > 0 && (capability.pendingSessionsRendered === true
+            // One pending session, one control: the device-session list below already carries these exact
+            // rows and its abort button reaches the same `abortSession` call, so a second identical
+            // control here would only invite a double attempt on the same session (#73 review).
+            ? <p className="field-note" role="status">{String(capability.probePendingSessions.length)} pending session(s) the probe found ({capability.probePendingSessions.map((session) => session.name).join(', ')}) are listed under Configuration sessions below — abort them there; this screen does not offer a second control for the same session.</p>
+            : <section className="session-list" aria-labelledby="probe-sessions-title"><div className="panel-heading"><div><p className="eyebrow">PROBE CLEANUP</p><h3 id="probe-sessions-title">Sessions the probe found pending</h3></div><span className="panel-index">{String(capability.probePendingSessions.length)}</span></div><ul>{capability.probePendingSessions.map((session) => <li key={session.name}><div><strong>{session.name}</strong><span><StatePill value={session.state} />{session.description === undefined ? '' : ` · ${session.description}`}</span></div><button className="danger-button" type="button" disabled={busy} onClick={() => onAbortProbePending(session)}>Abort pending session</button></li>)}</ul></section>)}
         </section>
 
         <section className="panel" aria-labelledby="table-title">
@@ -428,7 +458,7 @@ export function TrunkEditorView({
               <span>Current access VLAN <strong>{selected.accessVlan ?? 'Not configured'}</strong></span>
               <span>Current native VLAN <strong>{selected.nativeVlan ?? 'Not configured'}</strong></span>
               <span>Current allowed VLANs <strong>{selected.allowedDisplay ?? selected.allowedRaw ?? 'Not configured'}</strong>{selected.allowedRaw !== undefined && !selected.allowedEnumerable && <em> (device spelling, not enumerable here)</em>}</span>
-              <span>Current trunk groups <strong>{selected.trunkGroups.length === 0 ? 'None read' : selected.trunkGroups.join(', ')}</strong>{selected.trunkGroups.length > 0 && <em> (parsed running-config lines; the SKU's enforcement is unproven on this box — open item 4)</em>}{selected.trunkGroups.length === 0 && <em> (either none configured, or support is absent and the CLI line was probed only, never committed — ask the probe below)</em>}</span>
+              <span>Current trunk groups <strong>{selected.trunkGroups.length === 0 ? 'None read' : selected.trunkGroups.join(', ')}</strong>{selected.trunkGroups.length > 0 && <em> (parsed running-config lines; the SKU's enforcement is unproven on this box — open item 4)</em>}{selected.trunkGroups.length === 0 && <em> (either none configured, or support is absent and the CLI line was probed only, never committed — ask the probe above)</em>}</span>
             </div>}
 
             {needsMode && <>
@@ -460,7 +490,10 @@ export function TrunkEditorView({
             {needsGroupField && <>
               <label htmlFor="trunk-group">Trunk group</label>
               <input id="trunk-group" value={fields.trunkGroup} onChange={(event) => onFieldChange('trunkGroup', event.target.value)} disabled={!groupWritable || busy} />
-              <p className="field-note">One token. <strong>probe-gated</strong>: the action is refused — and this field stays disabled — until the capability panel below answers <code>available</code> (#67). Support is unproven on the 7050TX-64 (DECISIONS open item 4).</p>
+              <p className="field-note">One token. <strong>probe-gated</strong>: the action is refused — and this field stays disabled — until the capability panel above answers <code>available</code> (#67). Support is unproven on the 7050TX-64 (DECISIONS open item 4).</p>
+              {/* What the port carries today is running-config text from the read; the probe panel above
+                  still decides whether a group write is offered at all (#73). */}
+              <p className="field-note">{currentGroups.length === 0 ? 'This port carries no `switchport trunk group` line in the running-config the screen read.' : `Carried today: ${currentGroups.join(', ')}`} Those lines are what the read parsed; the panel above decides whether the device accepts group writes at all.</p>
             </>}
 
             {(fields.action === 'no-native-vlan' || fields.action === 'no-allowed' || fields.action === 'no-mode') && <p className="field-note">This sends the negated form of one line. What the device then treats as the effective value (EOS defaults) is the device’s answer, not a claim this screen makes.</p>}

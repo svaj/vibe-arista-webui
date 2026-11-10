@@ -197,7 +197,10 @@ describe('trunkGroupNameRefusal — the client assertTrunkGroupName mirror, one 
     for (const value of ['', '   ']) {
       const refusal = trunkGroupNameRefusal(value)
       expect(refusal).toBeDefined()
-      expect(refusal).toContain('needed')
+      // Both screens compose `A trunk-group name ${refusal}.`, so this branch has to read as a predicate
+      // of that subject ('is empty …'), not as a bare 'needed …'.
+      expect(refusal).toContain('is empty')
+      expect(refusal).toContain('assertTrunkGroupName')
     }
   })
 

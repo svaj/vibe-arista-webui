@@ -127,7 +127,16 @@ type TrunkCapabilityClient = TrunkEditorClient & CapabilityClient
  *  (`interface Ethernet22` + `switchport trunk group HWGRP`, aborted in the 2026-11-06 sweep). A box
  *  without Ethernet22 answers at token 1, and the copy says so. */
 export const TRUNK_GROUP_PROBE: FeatureProbeCommands = {
-  switchportTrunkGroups: ['interface Ethernet22', 'switchport trunk group webui-probe'],
+  switchportTrunkGroups: [
+    // The candidates are the sweep's accepted block verbatim — one `interface` context line plus the
+    // group line — staged and aborted on the box (DR-063 sends this text through `validateChanges`).
+    // The client stamps `result.features` by matching the candidate against THIS list
+    // (capabilities.ts:479 `labels[command]`), so both entries must appear here exactly as sent or the
+    // row classifies `unknown` with 'No candidate command was probed' and the gate never opens
+    // (#72 hand-off: a bare map looked stuck at `unknown` with a passing probe on the wire).
+    'interface Ethernet22',
+    'switchport trunk group webui-probe',
+  ],
 }
 type Session = Pick<ConfigSession, 'name' | 'state' | 'run' | 'diff' | 'hasDiffBeenRead' | 'commit' | 'abort'>
 
@@ -228,6 +237,9 @@ function TrunkEditorWorkspace({ node, proxyConfigured = true }: TrunkEditorProps
     enabled: canAct,
   })
   const groupFeature = capabilities.view.features.find((feature) => feature.name === 'switchportTrunkGroups')
+  // `useCapabilities` auto-probes once per (node, candidate set) while `enabled` — which is this
+  // screen's `canAct` — so the question is already on the record by the time the first read lands.
+  // Selecting a group intent below forces a fresh answer; no mount-time probe call is needed here.
   const groupAvailable = groupFeature?.display === 'available'
 
   const read = useDeviceRead<TrunkData>(
@@ -275,6 +287,9 @@ function TrunkEditorWorkspace({ node, proxyConfigured = true }: TrunkEditorProps
         ...(identity === undefined ? {} : { identity }),
       }
     },
+    // `node` is the loader's only identity input: it closes over `node` plus pure helpers and derives
+    // its own allowed/rows maps from fresh reads. Listing the capability state here would re-arm the
+    // read on every capability write — the device would be read twice per mount.
     [node],
     { enabled: canAct, disabledMessage: PROXY_PROMPT },
   )
@@ -304,7 +319,19 @@ function TrunkEditorWorkspace({ node, proxyConfigured = true }: TrunkEditorProps
     }
     if (field === 'port') {
       const abandoned = port
-      setFields({ ...INITIAL_FIELDS, port: value, action: fields.action, mode: fields.mode, allowedRanges: fields.allowedRanges, trunkGroup: fields.trunkGroup })
+      // #123: a typed value must never follow the selection to a different port. Every VALUE field is
+      // blanked — the fields carry deltas and ids (`allowed-add` takes the ranges to add, not the port's
+      // whole list), so re-seeding them from the new port would silently change the meaning of what is
+      // typed next. The new port's own current values are what the table above already lists, and
+      // `currentGroups` echoes them for the group field, so nothing here has to carry them.
+      setFields((current) => ({
+        ...current,
+        port: value,
+        accessVlan: '',
+        nativeVlan: '',
+        allowedRanges: '',
+        trunkGroup: '',
+      }))
       setPortSwitchNotice(abandoned === value ? 'The same port is still selected; no edit was discarded.' : `Edits for ${abandoned} were cleared without being staged, so nothing reached the device. The form now edits ${value}.`)
       return
     }
@@ -515,12 +542,18 @@ function TrunkEditorWorkspace({ node, proxyConfigured = true }: TrunkEditorProps
 
   const capabilityView: TrunkCapabilityView = {
     verdict: groupFeature?.display ?? 'unknown',
+    // The shared classifier's reason already quotes the device's own numeric answer
+    // (`switchport trunk group webui-probe: 1002 COMMAND_INVALID`), so it is passed through unchanged —
+    // appending the code again would print the same number twice (#73).
     ...(groupFeature?.reason === undefined ? {} : { reason: groupFeature.reason }),
     status: capabilities.view.status,
     fromCache: capabilities.view.fromCache,
     configLocked: capabilities.view.configLocked,
     probePendingSessions: capabilities.view.pendingSessions.map(sessionRow),
     probeFailure: capabilities.view.failure ?? '',
+    // One pending session, one control: the device-session panel below lists what the read found, so the
+    // probe-cleanup section explains the same rows instead of offering a second identical write button.
+    pendingSessionsRendered: (data?.sessions ?? []).some((row) => capabilities.view.pendingSessions.some((session) => session.name === row.name)),
     candidates: candidateList(TRUNK_GROUP_PROBE),
     suppressedCount: capabilities.view.suppressedCount,
     canProbe: canAct,
@@ -559,6 +592,7 @@ function TrunkEditorWorkspace({ node, proxyConfigured = true }: TrunkEditorProps
     onAbortDraft={() => void abortDraft()}
     onReload={read.reload}
     onAbortPending={(session) => void abortPending(session)}
+    currentGroups={selectedRow?.trunkGroups ?? []}
     capability={capabilityView}
     onProbe={() => void capabilities.probe({ force: true })}
     onAbortProbePending={() => void capabilities.abortPendingSessions()}
