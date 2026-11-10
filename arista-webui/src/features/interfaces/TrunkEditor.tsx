@@ -92,7 +92,7 @@
  * inconclusive answer never reads as support. The read side shows each port's parsed `switchport trunk
  * group …` lines (running-config text, not model-backed), with a probe offered before any commit.
  */
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { commandBuilder, isInterfaceName, isSwitchportMode, submodeCommands, SWITCHPORT_MODES } from '@devhax-heavy-industries/arista-eapi'
 import type { ConfigSession, ConfigSessionSummary, FeatureProbeCommands, Interface, IpInterface, Node, Switchport, Vlan } from '@devhax-heavy-industries/arista-eapi'
@@ -109,7 +109,7 @@ import type { CapabilityClient } from '../../shared/use-capabilities'
 import { managementInterfaces } from './InterfacesDashboard'
 import { stageLines } from '../staged-batch'
 import { TrunkEditorView } from './TrunkEditorView'
-import type { TrunkAction, TrunkDraftView, TrunkFields, TrunkLoadState, TrunkMessage, TrunkPortRow, TrunkSessionRow, TrunkVlanOption } from './TrunkEditorView'
+import type { TrunkAction, TrunkCapabilityView, TrunkDraftView, TrunkFields, TrunkLoadState, TrunkMessage, TrunkPortRow, TrunkSessionRow, TrunkVlanOption } from './TrunkEditorView'
 import type { ShowManagementApiHttpCommandsReply } from '../../eapi/show-contracts'
 
 // The screen contracts ride this import (ARCHITECTURE §9.1 augmentation), so
@@ -138,8 +138,6 @@ const LOCAL_EDIT_NOTICE = 'These edits are local. Nothing has been staged or com
 const NO_SWITCHPORT_RECORD_NOTE = 'No switchport line was read for this section. The client skips a section whose block carries a bare `no switchport` (divergence 8 in resources/switchports.ts), so whether this port is routed or simply unconfigured is the device’s answer — unproven on this box (no hardware pin).'
 
 const TRUNK_GROUP_UNAVAILABLE = 'Trunk-group changes are probe-gated: the capability answer is not `available` (DECISIONS open item 4), so this screen sends nothing.'
-const TRUNK_GROUP_PROBE_NOTE = 'The probe question this screen asks mirrors the accepted hardware staging block exactly: `interface Ethernet22` + `switchport trunk group …` (2026-11-06 sweep, aborted). A box with no Ethernet22 answers at token 1 — that is a probe miss on the scratch resource, not evidence about the SKU. An inconclusive probe keeps these actions shut; a pass proves command presence only, never capacity (epic open item 6).'
-
 const DEVICE_ORDER = (left: string, right: string) => left.localeCompare(right, undefined, { numeric: true })
 
 /** The form's initial edit: a trunk mode write on whatever port the read put first. */
@@ -401,7 +399,7 @@ function TrunkEditorWorkspace({ node, proxyConfigured = true }: TrunkEditorProps
     if ((action === 'add-trunk-group' || action === 'remove-trunk-group') && groupFeature?.reason !== undefined) {
       out.push(`Capability answer for trunk groups: ${groupFeature.display}. ${groupFeature.reason}`)
     }
-    if (action === 'add-trunk-group' && row.groups.includes(fields.trunkGroup.trim())) out.push(`${row.name} already carries the group ${fields.trunkGroup.trim()} in the parsed running-config. A device-side duplicate reply for re-adding it is unproven on this box (no hardware pin) — the probe proves presence, not this.`)
+    if (action === 'add-trunk-group' && row.trunkGroups.includes(fields.trunkGroup.trim())) out.push(`${row.name} already carries the group ${fields.trunkGroup.trim()} in the parsed running-config. A device-side duplicate reply for re-adding it is unproven on this box (no hardware pin) — the probe proves presence, not this.`)
     return out
   }
 
@@ -520,7 +518,6 @@ function TrunkEditorWorkspace({ node, proxyConfigured = true }: TrunkEditorProps
     ...(groupFeature?.reason === undefined ? {} : { reason: groupFeature.reason }),
     status: capabilities.view.status,
     fromCache: capabilities.view.fromCache,
-    candidates: TRUNK_GROUP_PROBE.switchportTrunkGroups,
     configLocked: capabilities.view.configLocked,
     probePendingSessions: capabilities.view.pendingSessions.map(sessionRow),
     probeFailure: capabilities.view.failure ?? '',
@@ -564,7 +561,7 @@ function TrunkEditorWorkspace({ node, proxyConfigured = true }: TrunkEditorProps
     onAbortPending={(session) => void abortPending(session)}
     capability={capabilityView}
     onProbe={() => void capabilities.probe({ force: true })}
-    onAbortProbePending={(session) => void capabilities.abortPendingSessions([session.name])}
+    onAbortProbePending={() => void capabilities.abortPendingSessions()}
   />
 }
 
@@ -622,6 +619,12 @@ const sessionRow = (session: ConfigSessionSummary): TrunkSessionRow => ({ name: 
 /** Whether the current action's field holds a value the device has not been told about. */
 function hasLocalEdits(fields: TrunkFields, row: TrunkPortRow): boolean {
   switch (fields.action) {
+    case 'add-trunk-group':
+    case 'remove-trunk-group': {
+      const value = fields.trunkGroup.trim()
+      if (value === '') return false
+      return fields.action === 'add-trunk-group' ? !row.trunkGroups.includes(value) : row.trunkGroups.includes(value)
+    }
     case 'set-mode': return (row.mode ?? '') !== fields.mode
     case 'access-vlan': return fields.accessVlan.trim() !== '' && row.accessVlan !== Number(fields.accessVlan)
     case 'native-vlan': return fields.nativeVlan.trim() !== '' && row.nativeVlan !== Number(fields.nativeVlan)
