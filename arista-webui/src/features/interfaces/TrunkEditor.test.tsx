@@ -1149,7 +1149,9 @@ describe('TrunkEditorView — presentation only', () => {
     expect(screen.getByRole('button', { name: 'Working…' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Refresh state' })).toBeDisabled()
   })
-})test('stale edits are dropped when the selection changes', async () => {
+})
+
+  test('stale edits are dropped when the selection changes', async () => {
     // Crossing ports is where a half-typed edit becomes dangerous: the staged batch would otherwise
     // commit the previous port's edits to whatever port is now in the box.
     const fakes = makeFakes()
