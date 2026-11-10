@@ -8,6 +8,7 @@ import { CommandConsole } from './features/console/CommandConsole'
 import { LagManager } from './features/lags/LagManager'
 import { IpAddressing } from './features/addressing/IpAddressing'
 import { CapabilityPanel } from './features/capabilities/CapabilityPanel'
+import { SystemSettings } from './features/system/SystemSettings'
 import { VlanManagement } from './features/vlans/VlanManagement'
 import { VlanAssignment } from './features/vlans/VlanAssignment'
 import type { RouteRegistry } from './router'
@@ -50,6 +51,12 @@ function App() {
     '/addressing': {
       title: 'IP addressing',
       element: <IpAddressing node={node} proxyConfigured={__EAPI_PROXY_CONFIGURED__} />,
+    },
+    // S8 (#78) owns `#/system`: hostname, ip routing, EOF-terminated banners. Guards here mirror
+    // the client's assert* rules and are labelled as client policy — the device keeps authority.
+    '/system': {
+      title: 'System settings',
+      element: <SystemSettings node={node} proxyConfigured={__EAPI_PROXY_CONFIGURED__} />,
     },
     '/vlans/manage': {
       title: 'VLAN management',
