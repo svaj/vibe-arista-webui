@@ -64,6 +64,14 @@ export default defineConfig({
       //   moment of the FIRST click can never be covered by definition). Interfaces re-measured
       //   95.06/92.16/99.24 and vlans 89.44/84.80/90.80 for the same tree, shared rose to 98.18/90.86.
       //   No new floor written for console, and per #124 the per-directory keys stay advisory anyway.
+      // #75 (S5 Port-Channel manager, stacked on the console lane) measured 404 tests / 28 files:
+      //   all files 94.38/89.09/97.24/98.30 — the four GLOBAL legs still pass (94.38 ≥ 90 stmts,
+      //   89.09 ≥ 85 branch, 97.24 ≥ 95 funcs, 98.30 ≥ 95 lines). Per-directory from the JSON:
+      //   src/features/lags 91.38/86.30/96.08; its uncovered arms are the probe-session cleanup
+      //   handler (`abortProbeSessions`, whose confirm flow the S2/S3 lanes already pin) and the
+      //   create/description refusals behind the same gate. Still under `src/features/interfaces`'s
+      //   advisory 96-line key — which is exactly the #124 case: per-glob keys do not fire, so this
+      //   sits as a MEASUREMENT, not a floor, and no new threshold entry was written.
       // Floors below are set ~2-4 points under those figures (ratchet up, never down). Two notes for
       // the coverage-lane owner (#69): (1) `src/shared/` branch coverage is 86.40 while that entry
       // asks for 87, and the leg still exits 0 — the per-glob `branches` figure does not appear to be

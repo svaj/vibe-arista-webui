@@ -215,3 +215,13 @@ tbody tr:last-child td { border-bottom: 0; }
 .console-output { max-height: 420px; }
 .console-message { margin: 8px 0 0; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
 .console-transcript li > .field-note { margin-top: 6px; }
+
+/* S5 (#75) Port-Channel manager. The membership picker is a labelled checkbox grid: current members
+   read as the baseline (is-current), a port belonging to ANOTHER bundle is louder (is-foreign)
+   because joining it moves it, and every note states the device/config source, never a colour. */
+.lag-members { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 8px; margin: 10px 0 14px; }
+.lag-member { display: grid; grid-template-columns: auto auto 1fr; align-items: center; gap: 6px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 4px; background: var(--surface); font-size: 13px; }
+.lag-member .cell-note { grid-column: 2 / span 2; margin-left: 0; }
+.lag-member.is-current { background: var(--teal-soft); }
+/* Foreign membership is the one state worth flagging: joining here unbundles from the other LAG. */
+.lag-member.is-foreign { border-color: var(--warning); background: var(--warning-soft); }

@@ -58,6 +58,14 @@ describe('App composition (F6 chrome)', () => {
     expect(screen.getByRole('link', { name: 'VLAN assignment' })).toHaveAttribute('aria-current', 'page')
   })
 
+  it('puts the S5 (#75) Port-Channel manager in the nav on #/lags', () => {
+    render(<App />)
+
+    const lags = screen.getByRole('link', { name: 'Port-Channels' })
+    expect(lags).toHaveAttribute('href', '#/lags')
+    expect(lags).not.toHaveAttribute('aria-current', 'page')
+  })
+
   it('puts the S4 (#74) read-only command console in the nav on #/console', () => {
     render(<App />)
 
