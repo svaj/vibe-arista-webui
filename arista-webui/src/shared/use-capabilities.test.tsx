@@ -47,6 +47,11 @@ function Harness({ options }: { readonly options: UseCapabilitiesOptions }) {
       {view.features.map((feature) => <li key={feature.name}>{feature.name}: {feature.display} — {feature.reason}</li>)}
     </ul>
     <p>suppressed: {view.suppressedCount}</p>
+    <p>source: {view.lastProbeSource ?? 'none'}</p>
+    {/* The #77 pass-through: where the answer came from, what the store kept, and the session the
+        probe actually opened (name + whether the guaranteed abort landed). */}
+    <p>stored: {view.cacheRemainingMs !== undefined ? 'entry' : view.cacheNote ?? 'nothing yet'}</p>
+    <p>last session: {view.lastOutcome?.session.name ?? 'none'}/{view.lastOutcome?.session.state ?? '-'} aborted={String(view.lastOutcome?.session.aborted ?? false)} batches={view.lastOutcome?.batchCount ?? 0}</p>
     <p>pending: {view.pendingSessions.length === 0 ? 'none' : view.pendingSessions.map((session) => session.name).join(', ')}</p>
     <button type="button" onClick={() => void result.probe()}>Check again</button>
     <button type="button" onClick={() => void result.abortPendingSessions()} disabled={view.pendingSessions.length === 0}>Abort pending sessions</button>
@@ -214,6 +219,9 @@ describe('useCapabilities — verdict rendering through the ./testing seam (CAP-
       ['enable', OPEN, 'abort'],
     ])
     expect(chunkBatches(fake.transport.sent())).toBe(1)
+    // The #77 cache-transparency pass-through: the stored entry is reportable with time left on it.
+    expect(screen.getByText('source: cache')).toBeInTheDocument()
+    expect(screen.getByText('stored: entry')).toBeInTheDocument()
   })
 
   it('a probe that THROWS still shows the abort issued, surfaces pending sessions, and cleans them up on demand', async () => {
@@ -300,6 +308,87 @@ describe('useCapabilities — verdict rendering through the ./testing seam (CAP-
     rerender(<Harness options={options} />)
     await screen.findByText('probe: ready · from cache')
     expect(fake.transport.sent()).toHaveLength(2)
+  })
+})
+
+describe('probeTrigger (#123) — "ask, never volunteer" is a knob, not an enabled:false misunderstanding', () => {
+  it('manual: the mount opens NO config session, and the operator button then probes for real', async () => {
+    const candidates = ['vlan note']
+    const fake = createFakeNode({}, { transport: { address: ADDRESS } })
+    fake.transport.replies(probeKey(candidates), ack(3)).replies(ACK_ABORT, ack(3))
+    render(<Harness options={{
+      node: fake.node,
+      sessionName: NAME,
+      probeTrigger: 'manual',
+      featureProbeCommands: { vlanNotes: candidates },
+    }} />)
+
+    // Zero wire at mount — the whole point: an uncached probe costs a config session, so a manual
+    // screen must not charge it before the operator asks (#123, DR-063).
+    expect(screen.getByRole('status')).toHaveTextContent('probe: idle')
+    expect(fake.transport.sent()).toHaveLength(0)
+    expect(screen.getByText('source: none')).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Check again' }))
+    expect(await screen.findByText(/vlanNotes: available/u)).toBeInTheDocument()
+    expect(fake.transport.sent()).toEqual([
+      ['enable', OPEN, ...candidates],
+      ['enable', OPEN, 'abort'],
+    ])
+    expect(screen.getByText('source: network')).toBeInTheDocument()
+    expect(screen.getByText('stored: entry')).toBeInTheDocument()
+    // The outcome pass-through #77's verdict table needs: the session the probe opened, its state,
+    // that the guaranteed abort landed, and the batch count.
+    expect(screen.getByText(`last session: ${NAME}/aborted aborted=true batches=1`)).toBeInTheDocument()
+  })
+
+  it('manual keeps every other F5 behaviour: a second operator click is answered from the cache', async () => {
+    const candidates = ['vlan note']
+    const fake = createFakeNode({}, { transport: { address: ADDRESS } })
+    fake.transport.replies(probeKey(candidates), ack(3)).replies(ACK_ABORT, ack(3))
+    render(<Harness options={{ node: fake.node, sessionName: NAME, probeTrigger: 'manual', featureProbeCommands: { vlanNotes: candidates } }} />)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Check again' }))
+    await screen.findByText(/vlanNotes: available/u)
+    // Throttle window aside, the fresh cache short-circuit answers first — same rule as the auto arm.
+    await userEvent.click(screen.getByRole('button', { name: 'Check again' }))
+    expect(await screen.findByText('probe: ready · from cache')).toBeInTheDocument()
+    expect(chunkBatches(fake.transport.sent())).toBe(1)
+  })
+
+  it('enabled: false stays "never", NOT "not yet" — the #123 trap stays pinned so no screen re-invents it', async () => {
+    const candidates = ['vlan note']
+    const fake = createFakeNode({}, { transport: { address: ADDRESS } })
+    fake.transport.replies(probeKey(candidates), ack(3)).replies(ACK_ABORT, ack(3))
+    render(<Harness options={{ node: fake.node, sessionName: NAME, enabled: false, featureProbeCommands: { vlanNotes: candidates } }} />)
+
+    // Mount does nothing (that part is intended)…
+    expect(fake.transport.sent()).toHaveLength(0)
+    // …and neither does the operator button — `enabled: false` short-circuits `probe()` too, which
+    // is exactly why on-demand screens must use `probeTrigger: 'manual'` instead. Silent by design,
+    // pinned by the call-count assertions: `status` never leaves `idle`.
+    await userEvent.click(screen.getByRole('button', { name: 'Check again' }))
+    expect(screen.getByRole('status')).toHaveTextContent('probe: idle')
+    expect(fake.transport.sent()).toHaveLength(0)
+  })
+
+  it('a network run the cache refused to store says WHY (DR-063 copy reaches the view, #77 refresh text)', async () => {
+    const fake = createFakeNode({}, { transport: { address: ADDRESS } })
+    // Unmapped per-command + batch codes: every verdict `unknown`, which the cache never stores.
+    fake.transport
+      .rejects(probeKey(['vlan note']), {
+        code: EapiErrorCode.COMMAND_FAILED,
+        message: 'SYNTHETIC unmapped batch failure with an unmapped per-command code',
+        data: {
+          result: [{}, {}, {}],
+          errorDetail: [{ index: 2, code: EapiErrorCode.COMMAND_FAILED, message: 'SYNTHETIC unmapped per-command code', cmd: 'vlan note' }],
+        },
+      })
+      .replies(ACK_ABORT, ack(3))
+    render(<Harness options={{ node: fake.node, sessionName: NAME, throttleMs: 0, featureProbeCommands: { vlanNotes: ['vlan note'] } }} />)
+
+    expect(await screen.findByText(/vlanNotes: unknown/u)).toBeInTheDocument()
+    expect(await screen.findByText(/^stored: The run answered inconclusive/u)).toHaveTextContent('never stored (DR-063)')
   })
 })
 

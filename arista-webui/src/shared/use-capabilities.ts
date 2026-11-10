@@ -90,6 +90,26 @@ export interface CapabilitiesView {
   /** How many `probe()` calls the rate limiter refused since the last real probe. */
   readonly suppressedCount: number
   readonly probedAt?: number
+  /**
+   * The raw client outcome behind `features` (#77's verdict table needs what `features` collapses:
+   * the exact candidate text, each verdict's numeric code/`codeName`, the session report — name,
+   * state, whether the guaranteed abort landed — and the batch count/summary/timings). Present
+   * whenever a run settled, whether it came from the cache or the wire.
+   */
+  readonly lastOutcome?: ProbeCommandsOutcome
+  /** Which path answered the current view — a `peek` hit (`cache`) or a real probe batch (`network`). */
+  readonly lastProbeSource?: 'cache' | 'network'
+  /**
+   * Milliseconds left on the stored answer backing this view, from the cache's own `peek`. Absent
+   * when nothing is stored — either the run reported a never-storable inconclusive verdict
+   * (DR-063, see {@link CapabilitiesView.cacheNote}) or `ttlMs: 0` disabled caching.
+   */
+  readonly cacheRemainingMs?: number
+  /**
+   * Why no answer is stored behind this view — the refresh copy #77 asks for ("say why a prior run
+   * wasn't cached"). Absent when an answer IS stored.
+   */
+  readonly cacheNote?: string
 }
 
 export interface UseCapabilitiesOptions {
@@ -107,8 +127,23 @@ export interface UseCapabilitiesOptions {
   readonly throttleMs?: number
   /** Probe session name (default is the client's `ui-…` form, which `recoverOrphans` can find). */
   readonly sessionName?: string
-  /** Gate the auto-probe (a screen that only asks when a control is open). */
+  /**
+   * Gate the auto-probe (a screen that only asks when a control is open). `false` means **never**:
+   * it short-circuits `probe()` as well as the mount effect, so a button calling `probe()` behind
+   * `enabled: false` returns silently with `status` still `idle`. That is deliberate (an unconfigured
+   * screen must not probe), but it is NOT "probe on demand" — for that use
+   * {@link UseCapabilitiesOptions.probeTrigger} (`probeTrigger: 'manual'` with `enabled` left true).
+   * See issue #123, which this trap produced.
+   */
   readonly enabled?: boolean
+  /**
+   * When the mount auto-probe runs (#123). `'auto'` (the default) keeps F5's shipped behaviour: one
+   * probe per (node, candidate set) whenever `enabled`. `'manual'` skips **only** the mount effect —
+   * `probe()`, the cache, the throttle and the pending-session affordances all keep working — so a
+   * screen whose copy frames the probe as an operator-authorized config-session cost (S7, #77) can
+   * offer a real on-demand probe instead of volunteering a session at render.
+   */
+  readonly probeTrigger?: 'auto' | 'manual'
   /** Clock, injectable so a throttle/TTL test never sleeps. */
   readonly now?: () => number
 }
@@ -148,6 +183,21 @@ export function capabilityDisplay(results: readonly CommandProbeResult[]): { dis
   }
 }
 
+/**
+ * Why the client cache holds nothing after a network run — the honest refresh copy #77 asks for.
+ * Mirrors the client's own store rule (inconclusive runs are never cached, DR-063) rather than
+ * re-deciding it here; the `cache.probe` call above already refused to store, and `peek === undefined`
+ * is the observable fact this text explains.
+ */
+function neverStoredReason(options: UseCapabilitiesOptions, outcome: ProbeCommandsOutcome): string {
+  if (options.ttlMs === 0) return 'This screen disabled caching (ttlMs: 0), so every check reaches the device.'
+  if (outcome.results.length === 0) return 'No candidate verdict came back, so there was nothing to store.'
+  if (outcome.results.some((result) => isInconclusiveVerdict(result.verdict))) {
+    return 'The run answered inconclusive (config-locked or unknown), and inconclusive runs are never stored (DR-063). The next check re-probes.'
+  }
+  return 'The store holds no answer for this endpoint and candidate set, so the next check re-probes.'
+}
+
 /** Probe candidates in caller order, de-duplicated across features. Exported for the screens' tests. */
 export function candidateList(featureProbeCommands: FeatureProbeCommands): readonly string[] {
   const seen = new Set<string>()
@@ -171,7 +221,9 @@ function featureRows(featureProbeCommands: FeatureProbeCommands, outcome: ProbeC
 /**
  * Capability state for one screen. Probing stays **explicit** — every uncached run costs a config
  * session — so the hook auto-probes once per (node, candidate set) when `enabled`; refreshes go
- * through `probe()`.
+ * through `probe()`. A screen that should pay that cost only on operator authorization passes
+ * `probeTrigger: 'manual'` (#123): the mount probe is skipped and `probe()` stays fully armed.
+ * That is the on-demand knob — `enabled: false` remains "never", not "not yet" (the #123 trap).
  *
  * Render-safe by construction: the volatile inputs live in a ref refreshed each render (the
  * `useDeviceRead` loader-ref idiom), so `probe` keeps a stable identity and the auto-probe effect can
@@ -205,7 +257,11 @@ export function useCapabilities(options: UseCapabilitiesOptions): UseCapabilitie
   const commandsRef = useRef(commands)
   useEffect(() => { commandsRef.current = commands })
 
-  const applyOutcome = useCallback((outcome: ProbeCommandsOutcome, fromCache: boolean) => {
+  const applyOutcome = useCallback((
+    outcome: ProbeCommandsOutcome,
+    fromCache: boolean,
+    cache: { readonly remainingMs?: number; readonly note?: string },
+  ) => {
     const rows = featureRows(latest.current.featureProbeCommands, outcome)
     setView((current) => ({
       status: 'ready',
@@ -215,6 +271,10 @@ export function useCapabilities(options: UseCapabilitiesOptions): UseCapabilitie
       fromCache,
       suppressedCount: suppressed.current,
       probedAt: outcome.finishedAt,
+      lastOutcome: outcome,
+      lastProbeSource: fromCache ? 'cache' : 'network',
+      ...(cache.remainingMs === undefined ? {} : { cacheRemainingMs: cache.remainingMs }),
+      ...(cache.note === undefined ? {} : { cacheNote: cache.note }),
       // A failed batch on an otherwise-classified run rides into the alert slot: the operator sees
       // both the honest verdicts AND that the device answered with an error envelope.
       ...(outcome.error === undefined ? {} : { failure: outcome.error.message }),
@@ -228,7 +288,7 @@ export function useCapabilities(options: UseCapabilitiesOptions): UseCapabilitie
     const probeOptions = { featureProbeCommands, ...(batchSize === undefined ? {} : { batchSize }) }
     const cached = cache.peek(node, commandsRef.current, probeOptions)
     if (cached !== undefined && cached.fresh && !force) {
-      applyOutcome(cached.entry.outcome, true)
+      applyOutcome(cached.entry.outcome, true, { remainingMs: cached.remainingMs })
       return
     }
     if (inFlight.current !== undefined) { await inFlight.current; return }
@@ -247,7 +307,13 @@ export function useCapabilities(options: UseCapabilitiesOptions): UseCapabilitie
     }
     const task = cache.probe(node, commandsRef.current, probeOptions)
       .then((outcome) => {
-        applyOutcome(outcome, false)
+        // What did the cache actually keep? Inconclusive runs are never stored (DR-063) and
+        // `ttlMs: 0` disables the store, so re-peeking is what distinguishes "stored, and for how
+        // long" from "refused to store, and why" — the #77 panel prints exactly that distinction.
+        const stored = cache.peek(node, commandsRef.current, probeOptions)
+        applyOutcome(outcome, false, stored !== undefined
+          ? { remainingMs: stored.remainingMs }
+          : { note: neverStoredReason(latest.current, outcome) })
         // A probe that settled but reported the config lock has an actionable side answer: which
         // sessions are sitting `pending`. The screen's cleanup control needs that list even when the
         // verdict itself came back cleanly, so it is asked here rather than only on the throw path.
@@ -296,15 +362,18 @@ export function useCapabilities(options: UseCapabilitiesOptions): UseCapabilitie
 
   useEffect(() => { viewRef.current = view })
 
-  // Auto-probe once per (node, candidate set). The trigger is `commandsKey`, not the map's object
-  // identity — screens pass inline literals, and re-probing per render is what the throttle exists
-  // to refuse. `probe` is stable, so this cannot re-fire off its own state write.
+  // Auto-probe once per (node, candidate set) — but only for `'auto'` screens (#123). The trigger is
+  // `commandsKey`, not the map's object identity — screens pass inline literals, and re-probing per
+  // render is what the throttle exists to refuse. `probe` is stable, so this cannot re-fire off its
+  // own state write. `probeTrigger: 'manual'` skips ONLY this effect: the cache, throttle and
+  // pending-session affordances keep serving the operator-triggered `probe()`.
   const enabled = options.enabled ?? true
   const node = options.node
+  const probeTrigger = options.probeTrigger ?? 'auto'
   useEffect(() => {
-    if (!enabled || node === undefined) return
+    if (!enabled || node === undefined || probeTrigger === 'manual') return
     void probe()
-  }, [enabled, node, commandsKey, probe])
+  }, [enabled, node, commandsKey, probeTrigger, probe])
 
   return { view, probe, abortPendingSessions }
 }
