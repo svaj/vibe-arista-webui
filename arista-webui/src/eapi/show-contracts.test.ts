@@ -26,6 +26,7 @@ import type {
   ShowInterfacesStatusReply,
   ShowManagementApiHttpCommandsReply,
   ShowMlagReply,
+  ShowPortChannelDenseReply,
   ShowVersionReply,
   ShowVlanEntry,
   ShowVlanReply,
@@ -42,6 +43,9 @@ describe('the augmentation lands on every modelled M13 literal (ARCHITECTURE §9
     expectTypeOf<Exactly<ShowReply<'mlag'>, ShowMlagReply>>().toEqualTypeOf<true>()
     // S1 (#71) added the sixth literal; the spelling is the command with no `show ` prefix.
     expectTypeOf<Exactly<ShowReply<'management api http-commands'>, ShowManagementApiHttpCommandsReply>>().toEqualTypeOf<true>()
+    // S5 (#75) added the seventh literal — capture-backed on both targets (STATUS.md:143 names this
+    // command as the route the LAG screen takes instead of the never-captured `show lag`).
+    expectTypeOf<Exactly<ShowReply<'port-channel dense'>, ShowPortChannelDenseReply>>().toEqualTypeOf<true>()
   })
 
   it('`show lag` stays unmodelled until a capture exists — no invented LAG shape (STATUS §3)', () => {
@@ -261,5 +265,81 @@ describe('the contracts accept the recorded device replies verbatim (compiler-si
     expect(notARawColumn).toBeUndefined()
     expect(capStatusRowEthernet1.linkStatus).toBe('connected')
     expect(capStatusRowEthernet1.autoNegotigateActive).toBe(false)
+  })
+
+  // `arista-api-client/test/fixtures/live/ceos-4.28.14M/show-port-channel-dense.json` → `result`
+  // (CLI-format capture, `hardwareEvidence: none` — container evidence only, DR-043).
+  const capDenseCeos: ShowPortChannelDenseReply = {
+    numberOfAggregators: 0,
+    numberOfChannelsInUse: 0,
+    portChannels: {
+      'Port-Channel1': {
+        inactive: false,
+        protocol: 'lacp',
+        lacpMode: 'active',
+        linkState: 'down',
+        ports: {
+          Ethernet2: {
+            staticLag: false,
+            lacpState: { collecting: false, distributing: false, synchronization: false, defaulted: true, timeout: false, activity: true, expired: false, aggregation: true },
+            intf: 'Ethernet2',
+            suspended: false,
+            lagMember: false,
+            lacpMisconfig: { status: 'noAgg' },
+            exceedsMaxWeight: false,
+            linkDown: false,
+          },
+        },
+      },
+    },
+  }
+
+  // `arista-api-client/test/fixtures/recordings/7050tx-64-r-4.28.13.1M/show-port-channel-dense--hw-inventory.json`
+  // → the sweep's `captures[]` entry for `['enable','show port-channel dense']`, `result[1]` (the
+  // `result[0]` slot is that request's own `enable` ack).
+  const capDenseHw: ShowPortChannelDenseReply = {
+    numberOfAggregators: 1,
+    numberOfChannelsInUse: 1,
+    portChannels: {
+      'Port-Channel10': {
+        inactive: false,
+        protocol: 'lacp',
+        lacpMode: 'active',
+        linkState: 'up',
+        ports: {
+          Ethernet4: {
+            staticLag: false,
+            lacpState: { collecting: true, distributing: true, synchronization: true, defaulted: false, timeout: false, activity: true, expired: false, aggregation: true },
+            intf: 'Ethernet4',
+            suspended: false,
+            lagMember: true,
+            lacpMisconfig: { status: 'bundled' },
+            exceedsMaxWeight: false,
+            linkDown: false,
+          },
+          Ethernet5: {
+            staticLag: false,
+            lacpState: { collecting: true, distributing: true, synchronization: true, defaulted: false, timeout: false, activity: true, expired: false, aggregation: true },
+            intf: 'Ethernet5',
+            suspended: false,
+            lagMember: true,
+            lacpMisconfig: { status: 'bundled' },
+            exceedsMaxWeight: false,
+            linkDown: false,
+          },
+        },
+      },
+    },
+  }
+
+  it('both dense captures type verbatim, and its vocabularies stay device answers', () => {
+    expect(capDenseHw.numberOfChannelsInUse).toBe(1)
+    expect(capDenseCeos.numberOfChannelsInUse).toBe(0)
+    expect(capDenseHw.portChannels['Port-Channel10']?.ports['Ethernet4']?.lagMember).toBe(true)
+    expect(capDenseCeos.portChannels['Port-Channel1']?.ports['Ethernet2']?.lacpMisconfig.status).toBe('noAgg')
+    // @ts-expect-error - `lacpMode` is the device's string, not the client's `LacpMode` union: an
+    // answer like `fast` (rejected at the config-table read, DR-079) must still type here.
+    const coerced: 'active' | 'passive' | 'on' = capDenseHw.portChannels['Port-Channel10']!.lacpMode
+    expect(coerced).toBe('active')
   })
 })

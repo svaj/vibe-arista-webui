@@ -5,6 +5,7 @@ import { AppShell } from './components/AppShell'
 import { InterfacesDashboard } from './features/interfaces/InterfacesDashboard'
 import { TrunkEditor } from './features/interfaces/TrunkEditor'
 import { CommandConsole } from './features/console/CommandConsole'
+import { LagManager } from './features/lags/LagManager'
 import { VlanManagement } from './features/vlans/VlanManagement'
 import { VlanAssignment } from './features/vlans/VlanAssignment'
 import type { RouteRegistry } from './router'
@@ -34,6 +35,12 @@ function App() {
     '/switches/manage': {
       title: 'Switch ports',
       element: <TrunkEditor node={node} proxyConfigured={__EAPI_PROXY_CONFIGURED__} />,
+    },
+    // S5 (#75) owns `#/lags`: the Port-Channel / LAG manager. Membership reads the config relation
+    // (DR-075); the device-status columns come only from the capture-backed `show port-channel dense`.
+    '/lags': {
+      title: 'Port-Channels',
+      element: <LagManager node={node} proxyConfigured={__EAPI_PROXY_CONFIGURED__} />,
     },
     '/vlans/manage': {
       title: 'VLAN management',

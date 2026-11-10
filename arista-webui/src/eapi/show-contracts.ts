@@ -261,6 +261,72 @@ export interface ShowManagementApiHttpCommandsReply {
   readonly lastHitTime?: number
 }
 
+/**
+ * `show port-channel dense` — added for S5 (#75). `arista-api-client/docs/STATUS.md:143` routes the
+ * LAG screens here specifically (and keeps `show lag` a permanent recorded refusal — this file's
+ * `lag` note above). Two positive captures, both committed:
+ * - DCS-7050TX-64 / **4.28.13.1M** (inside the hw-inventory sweep envelope, `captures[]` entry with
+ *   commands `["enable","show port-channel dense"]`):
+ *   `arista-api-client/test/fixtures/recordings/7050tx-64-r-4.28.13.1M/show-port-channel-dense--hw-inventory.json`
+ *   → one aggregator `Port-Channel10`, members `Ethernet4`/`Ethernet5` with `lagMember: true`,
+ *   `lacpMisconfig.status: "bundled"`, `numberOfChannelsInUse: 1`.
+ * - cEOS-lab **4.28.14M** (CLI-format capture, `hardwareEvidence: "none"`, DR-043):
+ *   `arista-api-client/test/fixtures/live/ceos-4.28.14M/show-port-channel-dense.json`
+ *   → `Port-Channel1` with `linkState: "down"`, `Ethernet2` `lagMember: false`,
+ *   `lacpMisconfig.status: "noAgg"`, counts both `0`.
+ *
+ * Every key below appears with the same type in BOTH captures, so all are required; the value sets
+ * (`protocol`/`lacpMode`/`linkState`/`lacpMisconfig.status`) stay `string` — device vocabulary, never
+ * an app enum (DR-032). The two count members are rendered ONLY as device answers to this command —
+ * issue #75's capacity rule forbids the screen pairing them with any invented platform limit
+ * (DECISIONS open item 6: the 16-ports/64-members prose is wrong-SKU matrix text).
+ */
+export interface ShowPortChannelDenseLacpState {
+  readonly collecting: boolean
+  readonly distributing: boolean
+  readonly synchronization: boolean
+  readonly defaulted: boolean
+  readonly timeout: boolean
+  readonly activity: boolean
+  readonly expired: boolean
+  readonly aggregation: boolean
+}
+
+export interface ShowPortChannelDenseLacpMisconfig {
+  /** Captured values `"bundled"` and `"noAgg"`; the vocabulary is the device's. */
+  readonly status: string
+}
+
+export interface ShowPortChannelDensePort {
+  readonly staticLag: boolean
+  readonly lacpState: ShowPortChannelDenseLacpState
+  /** The physical port name as the device spells it in this reply. */
+  readonly intf: string
+  readonly suspended: boolean
+  /** The bundling answer this screen shows per member — this is "bundled?" as data, not inference. */
+  readonly lagMember: boolean
+  readonly lacpMisconfig: ShowPortChannelDenseLacpMisconfig
+  readonly exceedsMaxWeight: boolean
+  readonly linkDown: boolean
+}
+
+export interface ShowPortChannelDenseAggregator {
+  readonly inactive: boolean
+  /** Captured `"lacp"` in both; other spellings are possible device answers. */
+  readonly protocol: string
+  /** Captured `"active"` in both. */
+  readonly lacpMode: string
+  /** Captured `"up"` (hardware) and `"down"` (cEOS). */
+  readonly linkState: string
+  readonly ports: Readonly<Record<string, ShowPortChannelDensePort>>
+}
+
+export interface ShowPortChannelDenseReply {
+  readonly numberOfAggregators: number
+  readonly portChannels: Readonly<Record<string, ShowPortChannelDenseAggregator>>
+  readonly numberOfChannelsInUse: number
+}
+
 declare module '@devhax-heavy-industries/arista-eapi' {
   interface ShowContracts {
     version: ShowVersionReply
@@ -270,5 +336,8 @@ declare module '@devhax-heavy-industries/arista-eapi' {
     // S1 (#71): the in-band/management-path read. Positive captures on BOTH targets, so this is a
     // modelled command, not a `lag`-style recorded refusal.
     'management api http-commands': ShowManagementApiHttpCommandsReply
+    // S5 (#75): the LAG status read — positive on both targets (hw sweep + cEOS CLI capture), same
+    // evidence standing as the line above. `lag`/`lag resources` stay unmodelled recorded refusals.
+    'port-channel dense': ShowPortChannelDenseReply
   }
 }
