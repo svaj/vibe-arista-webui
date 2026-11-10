@@ -66,6 +66,18 @@ describe('App composition (F6 chrome)', () => {
     expect(lags).not.toHaveAttribute('aria-current', 'page')
   })
 
+  it('puts the S6 (#76) IP addressing screen in the nav on #/addressing', () => {
+    render(<App />)
+
+    const addressing = screen.getByRole('link', { name: 'IP addressing' })
+    expect(addressing).toHaveAttribute('href', '#/addressing')
+    expect(addressing).not.toHaveAttribute('aria-current', 'page')
+    // With no proxy the screen idles on the prompt: registering the route must not warm anything up.
+    fireEvent.click(addressing)
+    expect(screen.getByRole('heading', { level: 2, name: 'IP addressing' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Preview and read the diff' })).toBeDisabled()
+  })
+
   it('puts the S4 (#74) read-only command console in the nav on #/console', () => {
     render(<App />)
 

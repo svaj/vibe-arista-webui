@@ -24,6 +24,7 @@ import type { ShowReply } from '@devhax-heavy-industries/arista-eapi'
 import type {
   ShowInterfaceStatusRow,
   ShowInterfacesStatusReply,
+  ShowIpInterfaceBriefReply,
   ShowManagementApiHttpCommandsReply,
   ShowMlagReply,
   ShowPortChannelDenseReply,
@@ -46,6 +47,7 @@ describe('the augmentation lands on every modelled M13 literal (ARCHITECTURE §9
     // S5 (#75) added the seventh literal — capture-backed on both targets (STATUS.md:143 names this
     // command as the route the LAG screen takes instead of the never-captured `show lag`).
     expectTypeOf<Exactly<ShowReply<'port-channel dense'>, ShowPortChannelDenseReply>>().toEqualTypeOf<true>()
+    expectTypeOf<Exactly<ShowReply<'ip interface brief'>, ShowIpInterfaceBriefReply>>().toEqualTypeOf<true>()
   })
 
   it('`show lag` stays unmodelled until a capture exists — no invented LAG shape (STATUS §3)', () => {
@@ -341,5 +343,37 @@ describe('the contracts accept the recorded device replies verbatim (compiler-si
     // answer like `fast` (rejected at the config-table read, DR-079) must still type here.
     const coerced: 'active' | 'passive' | 'on' = capDenseHw.portChannels['Port-Channel10']!.lacpMode
     expect(coerced).toBe('active')
+  })
+})
+
+describe('show ip interface brief — modelled from the two committed positives (the #76 correction)', () => {
+  // `arista-api-client/test/fixtures/live/ceos-4.28.14M/show-ip-interface-brief.json` → `result`
+  // verbatim (CLI-capture path, run-owned container; identity pins travel with the file).
+  const capBriefCeos: ShowIpInterfaceBriefReply = {
+    interfaces: {
+      Vlan110: { name: 'Vlan110', interfaceStatus: 'notconnect', interfaceAddress: { ipAddr: { maskLen: 24, address: '10.0.110.1' } }, ipv4Routable240: false, lineProtocolStatus: 'lowerLayerDown', mtu: 1500 },
+      Vlan100: { name: 'Vlan100', interfaceStatus: 'connected', interfaceAddress: { ipAddr: { maskLen: 24, address: '10.0.100.1' } }, ipv4Routable240: false, lineProtocolStatus: 'up', mtu: 1500 },
+    },
+  }
+
+  // `recordings/7050tx-64-r-4.28.13.1M/show-ip-interface-brief--hw-inventory.json` → the sweep's
+  // `captures[]` entry for `['enable','show ip interface brief']`, `result[1]` (`result[0]` is the
+  // enable ack). The address VALUE is redacted in the fixture; the SHAPE is hardware evidence.
+  const capBriefHw: ShowIpInterfaceBriefReply = {
+    interfaces: {
+      Management1: { name: 'Management1', interfaceStatus: 'connected', interfaceAddress: { ipAddr: { maskLen: 24, address: '<hw-redacted>' } }, ipv4Routable240: false, lineProtocolStatus: 'up', mtu: 1500 },
+    },
+  }
+
+  it('both brief captures type verbatim, and the no-address spelling stays an unknown', () => {
+    expect(capBriefCeos.interfaces['Vlan110']?.lineProtocolStatus).toBe('lowerLayerDown')
+    expect(capBriefHw.interfaces['Management1']?.interfaceAddress.ipAddr?.maskLen).toBe(24)
+    // @ts-expect-error - `ipAddr` is optional because NO capture carries the no-address spelling of
+    // `interfaceAddress`; the screen must branch on its absence instead of assuming `{}` fields.
+    const assumed: number = capBriefCeos.interfaces['Vlan100']!.interfaceAddress.ipAddr.maskLen
+    expect(assumed).toBe(24)
+    // Device vocabulary stays the device's: status strings are open spellings, not unions.
+    const status: string = capBriefCeos.interfaces['Vlan110']?.interfaceStatus as string
+    expect(status).toBe('notconnect')
   })
 })
