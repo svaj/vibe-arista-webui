@@ -9,6 +9,7 @@ import { LagManager } from './features/lags/LagManager'
 import { IpAddressing } from './features/addressing/IpAddressing'
 import { CapabilityPanel } from './features/capabilities/CapabilityPanel'
 import { SystemSettings } from './features/system/SystemSettings'
+import { Ntp } from './features/ntp/Ntp'
 import { TransactionCenter } from './features/sessions/TransactionCenter'
 import { VlanManagement } from './features/vlans/VlanManagement'
 import { VlanAssignment } from './features/vlans/VlanAssignment'
@@ -58,6 +59,13 @@ function App() {
     '/system': {
       title: 'System settings',
       element: <SystemSettings node={node} proxyConfigured={__EAPI_PROXY_CONFIGURED__} />,
+    },
+    // S12 (#82) owns `#/ntp`: config-backed NTP servers/source, staged the standing named-session way.
+    // Command text mirrors the frozen `node.ntp` verbs; the sync-status half stays hidden as
+    // "not captured" until show ntp status/associations captures exist (#82's CAPTURES gate).
+    '/ntp': {
+      title: 'NTP',
+      element: <Ntp node={node} proxyConfigured={__EAPI_PROXY_CONFIGURED__} />,
     },
     // S9 (#79) owns `#/sessions`: the transaction center (view/abort/preview half; the durable
     // persistence/rollback half stays out of scope until #89's captures land).
