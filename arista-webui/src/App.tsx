@@ -7,6 +7,7 @@ import { TrunkEditor } from './features/interfaces/TrunkEditor'
 import { CommandConsole } from './features/console/CommandConsole'
 import { LagManager } from './features/lags/LagManager'
 import { IpAddressing } from './features/addressing/IpAddressing'
+import { CapabilityPanel } from './features/capabilities/CapabilityPanel'
 import { VlanManagement } from './features/vlans/VlanManagement'
 import { VlanAssignment } from './features/vlans/VlanAssignment'
 import type { RouteRegistry } from './router'
@@ -59,6 +60,12 @@ function App() {
     '/console': {
       title: 'Command console',
       element: <CommandConsole node={node} proxyConfigured={__EAPI_PROXY_CONFIGURED__} />,
+    },
+    // S7 (#77) owns `#/capabilities`: the operator-run capability probe panel. Mounting it opens no
+    // config session — `probeTrigger: 'manual'` (#123) makes the confirmed button the only trigger.
+    '/capabilities': {
+      title: 'Capabilities',
+      element: <CapabilityPanel node={node} proxyConfigured={__EAPI_PROXY_CONFIGURED__} />,
     },
     [HOME_PATH]: {
       title: 'VLAN assignment',

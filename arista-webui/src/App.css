@@ -225,3 +225,11 @@ tbody tr:last-child td { border-bottom: 0; }
 .lag-member.is-current { background: var(--teal-soft); }
 /* Foreign membership is the one state worth flagging: joining here unbundles from the other LAG. */
 .lag-member.is-foreign { border-color: var(--warning); background: var(--warning-soft); }
+
+/* S7 (#77) capability probe panel. The candidate textarea edits device-bound text, so it is mono and
+   wraps hard; each feature block names its fold, then the client's per-candidate verdict table under
+   it (text + colour via StatePill, never colour alone — WCAG 1.4.1). */
+.probe-commands { width: 100%; font-family: var(--mono); font-size: 12px; padding: 10px; border: 1px solid var(--line); border-radius: 4px; background: var(--surface); color: var(--ink); resize: vertical; overflow-wrap: anywhere; }
+.capability-feature { margin: 14px 0 18px; }
+.capability-feature-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 8px; }
+.capability-feature-head strong { font-family: var(--mono); font-size: 12px; overflow-wrap: anywhere; }
