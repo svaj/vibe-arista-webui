@@ -78,6 +78,20 @@ describe('App composition (F6 chrome)', () => {
     expect(screen.getByRole('button', { name: 'Preview and read the diff' })).toBeDisabled()
   })
 
+  it('puts the S7 (#77) capability probe panel in the nav on #/capabilities', () => {
+    render(<App />)
+
+    const caps = screen.getByRole('link', { name: 'Capabilities' })
+    expect(caps).toHaveAttribute('href', '#/capabilities')
+    expect(caps).not.toHaveAttribute('aria-current', 'page')
+    // Unconfigured: reachable, prompted, and — matching the #123 contract this screen is built on —
+    // mounting it opens no config session even if a node WERE present. With no proxy the buttons idle.
+    fireEvent.click(caps)
+    expect(screen.getByRole('heading', { level: 2, name: 'Capability probe panel' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Run capability probe' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Add question set' })).toBeDisabled()
+  })
+
   it('puts the S4 (#74) read-only command console in the nav on #/console', () => {
     render(<App />)
 

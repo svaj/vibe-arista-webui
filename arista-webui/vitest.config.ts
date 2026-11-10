@@ -80,8 +80,15 @@ export default defineConfig({
       //   endpoint URL (:206, the fakes always carry a real one), the writable-name-grammar
       //   refusal that never executes because the split-QSFP row fails the kind guard first
       //   (:370), the declined-abort-confirm path (:446), and the Reload click handler (:489).
-      //   No new threshold entry (same #124 advisory posture as above).
-      // Floors below are set ~2-4 points under those figures (ratchet up, never down). Two notes for
+      //   No new threshold entry (same #124 advisory posture as above).      // #77 (S7 capability probe panel, stacked on the #123 knob branch) measured the whole webui
+      //   suite at 499 tests / 31 files: all files 94.38/89.26/97.58/98.36 (stmts/branch/funcs/
+      //   lines — all four global legs pass), with src/features/capabilities at 96.57/89.24/100/
+      //   100. Statements' misses are all branch-HALVES: the `!canAct || busy` false-sides of the
+      //   four handlers (the controls are disabled in exactly those states, the same shape #74
+      //   records), the `typeof navigator` half of the clipboard guard, and `??` default arms the
+      //   fakes always fill. The #123 hook additions (probeTrigger, lastOutcome/cacheNote pass-
+      //   through) ride the existing 15-spec `use-capabilities.test.tsx` arms plus 4 new ones.
+      //   No new threshold entry (same #124 advisory posture as above).      // Floors below are set ~2-4 points under those figures (ratchet up, never down). Two notes for
       // the coverage-lane owner (#69): (1) `src/shared/` branch coverage is 86.40 while that entry
       // asks for 87, and the leg still exits 0 — the per-glob `branches` figure does not appear to be
       // enforced the way `lines` is, so treat per-dir branch floors as advisory until #69 re-checks;
