@@ -9,6 +9,7 @@ import { LagManager } from './features/lags/LagManager'
 import { IpAddressing } from './features/addressing/IpAddressing'
 import { CapabilityPanel } from './features/capabilities/CapabilityPanel'
 import { SystemSettings } from './features/system/SystemSettings'
+import { TransactionCenter } from './features/sessions/TransactionCenter'
 import { VlanManagement } from './features/vlans/VlanManagement'
 import { VlanAssignment } from './features/vlans/VlanAssignment'
 import type { RouteRegistry } from './router'
@@ -57,6 +58,12 @@ function App() {
     '/system': {
       title: 'System settings',
       element: <SystemSettings node={node} proxyConfigured={__EAPI_PROXY_CONFIGURED__} />,
+    },
+    // S9 (#79) owns `#/sessions`: the transaction center (view/abort/preview half; the durable
+    // persistence/rollback half stays out of scope until #89's captures land).
+    '/sessions': {
+      title: 'Sessions',
+      element: <TransactionCenter node={node} proxyConfigured={__EAPI_PROXY_CONFIGURED__} />,
     },
     '/vlans/manage': {
       title: 'VLAN management',
