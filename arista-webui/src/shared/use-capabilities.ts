@@ -70,7 +70,8 @@ export interface FeatureCapability {
   readonly display: CapabilityDisplay
   /** One verdict per candidate, in probe order — enough for a screen to print why. */
   readonly verdicts: readonly CapabilityVerdict[]
-  /** The device/client text behind `display`: a code name, or the reason a run proved nothing. */
+  /** The device/client text behind `display`: a code name, or the reason a run proved nothing. The
+   *  numeric code the device returned is part of that text (`1002 COMMAND_INVALID`). */
   readonly reason: string
 }
 
@@ -129,7 +130,11 @@ export function capabilityDisplay(results: readonly CommandProbeResult[]): { dis
   if (results.length === 0) return { display: 'unknown', reason: 'No candidate command was probed for this feature.' }
   const negative = results.find((result) => isUnavailableVerdict(result.verdict))
   if (negative !== undefined) {
-    return { display: 'unavailable', reason: `${negative.command}: ${negative.codeName ?? '1002 COMMAND_INVALID'}` }
+    // Both halves of the device's answer are printed: the numeric code EOS actually returned next to the
+    // symbolic name this package mapped, so a reader can tell `1002 COMMAND_INVALID` (grammar absent)
+    // from another refusal that classified as unavailable.
+    const code = negative.code === undefined ? '' : `${String(negative.code)} `
+    return { display: 'unavailable', reason: `${negative.command}: ${code}${negative.codeName ?? '1002 COMMAND_INVALID'}` }
   }
   if (results.every((result) => result.verdict === 'supported')) return { display: 'available', reason: 'Every candidate was accepted by the device.' }
   const inconclusive = results.find((result) => isInconclusiveVerdict(result.verdict))
@@ -155,6 +160,8 @@ export function candidateList(featureProbeCommands: FeatureProbeCommands): reado
 
 function featureRows(featureProbeCommands: FeatureProbeCommands, outcome: ProbeCommandsOutcome): readonly FeatureCapability[] {
   return Object.keys(featureProbeCommands).map((name) => {
+    // `probeCommands` attributes every row against the caller's own `featureProbeCommands` map (which
+    // the cache forwards), so grouping by `result.features` needs no local re-mapping here.
     const results = outcome.results.filter((result) => result.features.includes(name))
     const { display, reason } = capabilityDisplay(results)
     return { name, display, verdicts: results.map((result) => result.verdict), reason }
@@ -232,21 +239,30 @@ export function useCapabilities(options: UseCapabilitiesOptions): UseCapabilitie
     }
     lastStart.current = now()
     setView((current) => ({ ...current, status: 'probing' }))
+    const refreshPending = async (): Promise<void> => {
+      try {
+        const sessions = (await node.listSessions()).sessions.filter((session) => session.state === 'pending')
+        setView((current) => ({ ...current, pendingSessions: sessions }))
+      } catch { /* the lock question went unanswered; the verdict/failure text still stands */ }
+    }
     const task = cache.probe(node, commandsRef.current, probeOptions)
-      .then((outcome) => { applyOutcome(outcome, false); return outcome })
+      .then((outcome) => {
+        applyOutcome(outcome, false)
+        // A probe that settled but reported the config lock has an actionable side answer: which
+        // sessions are sitting `pending`. The screen's cleanup control needs that list even when the
+        // verdict itself came back cleanly, so it is asked here rather than only on the throw path.
+        if (outcome.configLocked) void refreshPending()
+        return outcome
+      })
       .catch(async (error: unknown) => {
         // The client owns the always-abort guarantee, so a throw means the live question is now "is
         // something sitting on the config lock?". Ask the device that (best effort) rather than leaving
         // the screen on a bare exception — the DR-062 `1006` affordance.
-        let sessions: readonly ConfigSessionSummary[] = []
-        try {
-          sessions = (await node.listSessions()).sessions.filter((session) => session.state === 'pending')
-        } catch { /* the lock question went unanswered too; the failure text below still stands */ }
+        await refreshPending()
         setView((current) => ({
           ...current,
           status: 'failed',
           failure: error instanceof Error ? error.message : String(error),
-          pendingSessions: sessions,
           fromCache: false,
           suppressedCount: suppressed.current,
         }))

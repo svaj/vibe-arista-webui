@@ -87,6 +87,7 @@ import { ConfirmProvider, useConfirm } from '../../shared/use-confirm'
 import { useCapabilities } from '../../shared/use-capabilities'
 import type { CapabilityClient } from '../../shared/use-capabilities'
 import { managementInterfaces } from '../interfaces/InterfacesDashboard'
+import { hasControlOrLineBoundary, trunkGroupNameRefusal } from '../../shared/allowed-vlans'
 import { stageLines } from '../staged-batch'
 import type { ShowManagementApiHttpCommandsReply } from '../../eapi/show-contracts'
 
@@ -164,20 +165,6 @@ function referencesFor(id: number, switchports: ReadonlyMap<string, Switchport>)
     }
   }
   return { lines, keywords }
-}
-
-/**
- * Mirrors the two client rules that keep a value on one config line: C0 controls plus DEL
- * (`hasControlCharacter`, `vlans.ts:275`) and any line boundary the composer refuses
- * (DR-015). Checked by code point rather than regex so the lint rule about control characters in
- * patterns stays honest, and scanned on the raw field so a trailing boundary cannot hide.
- */
-function hasControlOrLineBoundary(value: string): boolean {
-  for (const character of value) {
-    const point = character.codePointAt(0) ?? 0
-    if (point < 0x20 || point === 0x7f || point === 0x85 || point === 0x2028 || point === 0x2029) return true
-  }
-  return false
 }
 
 const vlanIdOf = (vlan: Vlan): number => Number(vlan.id)
@@ -311,8 +298,8 @@ function VlanManagementWorkspace({ node, proxyConfigured = true }: VlanManagemen
       // this screen sends nothing at all, so no command text is even examined (DECISIONS open item 4).
       if (!trunkAvailable) return 'Trunk-group changes are probe-gated: the capability answer is not `available` (DECISIONS open item 4), so this screen sends nothing.'
       const value = group.trim()
-      if (value === '') return 'A trunk-group name needs a value (assertTrunkGroupName).'
-      if (/\s/u.test(value)) return 'Trunk-group names must be a single token — the client enforces it because the upstream readers disagree on multi-word names (switchports.py:115 keeps token 1, vlans.py:60 the rest).'
+      const groupProblem = trunkGroupNameRefusal(value)
+      if (groupProblem !== undefined) return `A trunk-group name ${groupProblem}.`
     }
     if (action === 'set-state' && !VLAN_STATES.includes(state)) return `State must be one of ${VLAN_STATES.join(' / ')} — the client refuses anything else (assertVlanState, vlans.ts:315; pyeapi does not check).`
     return undefined

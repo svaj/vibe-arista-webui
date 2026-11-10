@@ -13,11 +13,11 @@
  */
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import { createFakeNode } from '@devhax-heavy-industries/arista-eapi/testing'
 import { ConnectError, createCapabilityCache, EapiErrorCode } from '@devhax-heavy-industries/arista-eapi'
-import type { CommandProbeResult } from '@devhax-heavy-industries/arista-eapi'
+import type { CapabilityCache, CommandProbeResult, ProbeCommandsOutcome } from '@devhax-heavy-industries/arista-eapi'
 
 import { capabilityDisplay, candidateList, useCapabilities } from './use-capabilities'
 import type { UseCapabilitiesOptions } from './use-capabilities'
@@ -160,6 +160,45 @@ describe('useCapabilities — verdict rendering through the ./testing seam (CAP-
     expect(screen.getByRole('status')).not.toHaveTextContent('from cache')
   })
 
+  it('a probe that SETTLES on the config lock still asks which sessions hold it (DR-062 affordance)', async () => {
+    // The 1006 the client treats as an ANSWER, not a failure: `configLocked` rides a ready outcome, so the
+    // throw path's pending-session question would otherwise never run for the common case (a locked config
+    // that is locked precisely because some session is sitting pending).
+    const listSessions = vi.fn(async () => ({ sessions: [{ name: 'stale-pending', state: 'pending' as const, description: 'holds the lock' }] }))
+    const node = { listSessions, activeConfigSession: undefined } as unknown as UseCapabilitiesOptions['node']
+    const locked: ProbeCommandsOutcome = {
+      results: [{
+        command: 'vlan note',
+        verdict: 'config-locked',
+        code: EapiErrorCode.COMMAND_CONFIG_LOCKED,
+        codeName: 'COMMAND_CONFIG_LOCKED',
+        message: 'SYNTHETIC 1006 the configuration is locked',
+        batchIndex: 0,
+        unavailable: false,
+        features: ['vlanNotes'],
+      }],
+      errorDetail: [],
+      batchCount: 1,
+      session: { name: NAME, state: 'aborted', aborted: true, noCommit: true, opener: 'ui-caps' },
+      configLocked: true,
+      probed: true,
+      startedAt: 0,
+      finishedAt: 1,
+      elapsedMs: 1,
+      summary: { supported: 0, 'not-rejected': 0, unsupported: 0, incompatible: 0, unauthorized: 0, 'config-locked': 1, unknown: 0 },
+    }
+    const cache = { peek: () => undefined, probe: async () => locked } as unknown as CapabilityCache
+
+    render(<Harness options={{ node, cache, featureProbeCommands: { vlanNotes: ['vlan note'] } }} />)
+
+    expect(await screen.findByText('probe: ready · config lock')).toBeInTheDocument()
+    expect(renderedRow('vlanNotes')).toContain('config-locked')
+    await screen.findByText('pending: stale-pending')
+    expect(listSessions).toHaveBeenCalledOnce()
+    // And the cleanup affordance the row feeds is wired to that answer.
+    expect(screen.getByRole('button', { name: 'Abort pending sessions' })).toBeEnabled()
+  })
+
   it('a fresh cache answers without ANY second round trip (the cached run issues no new batches)', async () => {
     const fake = createFakeNode({}, { transport: { address: ADDRESS } })
     fake.transport.replies(probeKey(['vlan note']), ack(3)).replies(ACK_ABORT, ack(3))
@@ -265,13 +304,14 @@ describe('useCapabilities — verdict rendering through the ./testing seam (CAP-
 })
 
 describe('capabilityDisplay — the three-way fold is honest about what each verdict means', () => {
-  const probeResult = (command: string, verdict: CommandProbeResult['verdict'], codeName?: string): CommandProbeResult => ({
+  const probeResult = (command: string, verdict: CommandProbeResult['verdict'], codeName?: string, code?: number): CommandProbeResult => ({
     command,
     verdict,
     batchIndex: 0,
     features: ['f'],
     unavailable: verdict === 'unsupported',
     ...(codeName === undefined ? {} : { codeName }),
+    ...(code === undefined ? {} : { code }),
   })
 
   it('nothing probed answers unknown', () => {
@@ -288,6 +328,10 @@ describe('capabilityDisplay — the three-way fold is honest about what each ver
       reason: 'b: COMMAND_INVALID',
     })
     expect(capabilityDisplay([probeResult('b', 'unsupported')]).reason).toBe('b: 1002 COMMAND_INVALID')
+    // When the client carries the device's numeric answer, the screen quotes it rather than only the
+    // name this package chose — an operator reads the code EOS sent (#73).
+    expect(capabilityDisplay([probeResult('b', 'unsupported', 'COMMAND_INVALID', 1002)]).reason).toBe('b: 1002 COMMAND_INVALID')
+    expect(capabilityDisplay([probeResult('b', 'unsupported', 'COMMAND_FAILED', 1005)]).reason).toBe('b: 1005 COMMAND_FAILED')
   })
 
   it('not-rejected and config-locked answer unknown — acceptance and accidents are not features', () => {

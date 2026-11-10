@@ -3,6 +3,7 @@ import { createNode } from '@devhax-heavy-industries/arista-eapi'
 import './App.css'
 import { AppShell } from './components/AppShell'
 import { InterfacesDashboard } from './features/interfaces/InterfacesDashboard'
+import { TrunkEditor } from './features/interfaces/TrunkEditor'
 import { VlanManagement } from './features/vlans/VlanManagement'
 import { VlanAssignment } from './features/vlans/VlanAssignment'
 import type { RouteRegistry } from './router'
@@ -26,6 +27,12 @@ function App() {
     '/interfaces': {
       title: 'Interfaces',
       element: <InterfacesDashboard node={node} proxyConfigured={__EAPI_PROXY_CONFIGURED__} />,
+    },
+    // S3 (#73) owns `#/switches/manage`: the trunk/switch port editor. The per-port link from S1's
+    // table that #73 also lists is NOT wired yet — see the WIP note in the branches and issue #73.
+    '/switches/manage': {
+      title: 'Switch ports',
+      element: <TrunkEditor node={node} proxyConfigured={__EAPI_PROXY_CONFIGURED__} />,
     },
     '/vlans/manage': {
       title: 'VLAN management',
