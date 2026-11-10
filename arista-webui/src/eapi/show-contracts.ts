@@ -327,6 +327,39 @@ export interface ShowPortChannelDenseReply {
   readonly numberOfChannelsInUse: number
 }
 
+/**
+ * One entry of `show ip interface brief`'s JSON `interfaces` map. Field set and value spellings come
+ * from the committed captures — the hardware inventory recording
+ * (`7050tx-64-r-4.28.13.1M/show-ip-interface-brief--hw-inventory.json`, Management1 only; its address
+ * VALUE is redacted in the fixture) and the cEOS live capture (`ceos-4.28.14M/show-ip-interface-brief.json`,
+ * Vlan100/Vlan110; its `--text.json` sibling is the paired text form). The **no-address** spelling of
+ * `interfaceAddress` is NOT in either capture, so `ipAddr` is modelled optional and the screen says
+ * "the answer carried no ipAddr" rather than inventing `{}` semantics.
+ */
+export interface ShowIpInterfaceBriefInterface {
+  readonly name: string
+  /** Captured `"connected"` / `"notconnect"`; other spellings are device answers. */
+  readonly interfaceStatus: string
+  /** Captured `"up"` / `"lowerLayerDown"`; other spellings are device answers. */
+  readonly lineProtocolStatus: string
+  readonly mtu: number
+  /** Captured `false` in every entry; an IPv4-class-D fact from the device, echoed not interpreted. */
+  readonly ipv4Routable240: boolean
+  readonly interfaceAddress: ShowIpInterfaceBriefAddress
+}
+
+export interface ShowIpInterfaceBriefAddress {
+  /** Present in every captured entry; its ABSENT spelling is uncaptured on this platform. */
+  readonly ipAddr?: {
+    readonly maskLen: number
+    readonly address: string
+  }
+}
+
+export interface ShowIpInterfaceBriefReply {
+  readonly interfaces: Readonly<Record<string, ShowIpInterfaceBriefInterface>>
+}
+
 declare module '@devhax-heavy-industries/arista-eapi' {
   interface ShowContracts {
     version: ShowVersionReply
@@ -339,5 +372,10 @@ declare module '@devhax-heavy-industries/arista-eapi' {
     // S5 (#75): the LAG status read — positive on both targets (hw sweep + cEOS CLI capture), same
     // evidence standing as the line above. `lag`/`lag resources` stay unmodelled recorded refusals.
     'port-channel dense': ShowPortChannelDenseReply
+    // S6 (#76): the corrected record — issue #76 claimed the JSON form was "never captured", but the
+    // repo already carries positive JSON captures on BOTH targets (the hw inventory recording and the
+    // cEOS live capture), which is why this key is modelled and the screen can render a captured
+    // device-status column. The correction is stated on issue #76 itself.
+    'ip interface brief': ShowIpInterfaceBriefReply
   }
 }

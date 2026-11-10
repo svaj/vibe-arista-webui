@@ -72,6 +72,15 @@ export default defineConfig({
       //   create/description refusals behind the same gate. Still under `src/features/interfaces`'s
       //   advisory 96-line key — which is exactly the #124 case: per-glob keys do not fire, so this
       //   sits as a MEASUREMENT, not a floor, and no new threshold entry was written.
+      // #76 (S6 IP addressing, stacked on #74+#75) measured the whole webui suite at 463 tests /
+      //   29 files: all files 94.22/89.23/97.34/98.28 (all four global legs pass against the
+      //   90/85/95/95 thresholds), with src/features/addressing at 93.07/89.77/98.18/98.16
+      //   (stmts/branch/funcs/lines). IpAddressing.tsx (92.2/87.59/96.96/97.9) has four
+      //   uncovered lines: the catch for an unparseable
+      //   endpoint URL (:206, the fakes always carry a real one), the writable-name-grammar
+      //   refusal that never executes because the split-QSFP row fails the kind guard first
+      //   (:370), the declined-abort-confirm path (:446), and the Reload click handler (:489).
+      //   No new threshold entry (same #124 advisory posture as above).
       // Floors below are set ~2-4 points under those figures (ratchet up, never down). Two notes for
       // the coverage-lane owner (#69): (1) `src/shared/` branch coverage is 86.40 while that entry
       // asks for 87, and the leg still exits 0 — the per-glob `branches` figure does not appear to be

@@ -39,10 +39,13 @@ describe('the webui widens ShowContracts by declaration merging (ARCHITECTURE §
   })
 
   it('a command the app has not modelled is `unknown`, so the screen must narrow it on purpose', () => {
-    expectTypeOf<ShowReply<'ip interface brief'>>().toEqualTypeOf<unknown>()
-    expectTypeOf<ShowReply<'ip interface brief'>>().not.toBeAny()
+    // S6 (#76) modelled `ip interface brief` (the capture-backed contract in
+    // `src/eapi/show-contracts.ts`), so the mechanism example moves to `lag` — a command
+    // that stays a committed refusal on both targets and therefore stays unmodelled here.
+    expectTypeOf<ShowReply<'lag'>>().toEqualTypeOf<unknown>()
+    expectTypeOf<ShowReply<'lag'>>().not.toBeAny()
     // @ts-expect-error - `unknown` cannot be indexed as if the contract already existed
-    const unmodelled: { interfaces?: unknown } = {} as unknown as ShowReply<'ip interface brief'>
+    const unmodelled: { interfaces?: unknown } = {} as unknown as ShowReply<'lag'>
     const modelled: ShowVersionReply = {} as unknown as ShowVersionReply
     expect(unmodelled).toEqual({})
     expect(modelled).toBeTypeOf('object')

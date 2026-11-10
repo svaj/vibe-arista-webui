@@ -6,6 +6,7 @@ import { InterfacesDashboard } from './features/interfaces/InterfacesDashboard'
 import { TrunkEditor } from './features/interfaces/TrunkEditor'
 import { CommandConsole } from './features/console/CommandConsole'
 import { LagManager } from './features/lags/LagManager'
+import { IpAddressing } from './features/addressing/IpAddressing'
 import { VlanManagement } from './features/vlans/VlanManagement'
 import { VlanAssignment } from './features/vlans/VlanAssignment'
 import type { RouteRegistry } from './router'
@@ -41,6 +42,13 @@ function App() {
     '/lags': {
       title: 'Port-Channels',
       element: <LagManager node={node} proxyConfigured={__EAPI_PROXY_CONFIGURED__} />,
+    },
+    // S6 (#76) owns `#/addressing`: routed ports and SVI addresses. Config truth is parsed
+    // running-config; the separate device columns ride the JSON `show ip interface brief` captures
+    // (#76's "never captured" note went stale — the correction is on the issue and in the screen copy).
+    '/addressing': {
+      title: 'IP addressing',
+      element: <IpAddressing node={node} proxyConfigured={__EAPI_PROXY_CONFIGURED__} />,
     },
     '/vlans/manage': {
       title: 'VLAN management',
