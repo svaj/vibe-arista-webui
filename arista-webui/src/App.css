@@ -203,3 +203,15 @@ tbody tr:last-child td { border-bottom: 0; }
 .ref-list { display: grid; gap: 3px; margin: 6px 0; padding-left: 18px; }
 .ref-list code { color: var(--ink); font-family: var(--mono); font-size: 11px; overflow-wrap: anywhere; }
 .group-list { font-family: var(--mono); font-size: 11px; overflow-wrap: anywhere; }
+
+/* S4 (#74) read-only command console. The transcript is newest-first and each entry states, in order,
+   the text that went on the wire, the device's own answer as TEXT (never HTML), and which encoding
+   answered — the encoding note is the difference between a model-backed read and the client's 1003 →
+   format:'text' repair, so it sits on the same line as the command rather than under the output. */
+.console-entry { padding: 10px 0; border-top: 1px solid var(--line); }
+.console-entry:first-child { border-top: 0; }
+.console-entry-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 8px; }
+.console-command-sent { color: var(--ink); font-size: 12px; overflow-wrap: anywhere; }
+.console-output { max-height: 420px; }
+.console-message { margin: 8px 0 0; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+.console-transcript li > .field-note { margin-top: 6px; }

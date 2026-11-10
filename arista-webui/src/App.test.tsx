@@ -12,7 +12,7 @@
  * builds no client at all: the unconfigured path still has to render full chrome plus the proxy
  * prompt, and it must contact nothing.
  */
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 
 import App from './App'
@@ -56,5 +56,18 @@ describe('App composition (F6 chrome)', () => {
     expect(manage).toHaveAttribute('href', '#/vlans/manage')
     expect(manage).not.toHaveAttribute('aria-current', 'page')
     expect(screen.getByRole('link', { name: 'VLAN assignment' })).toHaveAttribute('aria-current', 'page')
+  })
+
+  it('puts the S4 (#74) read-only command console in the nav on #/console', () => {
+    render(<App />)
+
+    const consoleLink = screen.getByRole('link', { name: 'Command console' })
+    expect(consoleLink).toHaveAttribute('href', '#/console')
+    expect(consoleLink).not.toHaveAttribute('aria-current', 'page')
+    // The unconfigured console is reachable and idles on the proxy prompt — navigating to it must not
+    // contact anything, which is the same `node === undefined` arm every other screen proves for itself.
+    fireEvent.click(consoleLink)
+    expect(screen.getByRole('heading', { level: 2, name: 'Read-only command console' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Run command' })).toBeDisabled()
   })
 })

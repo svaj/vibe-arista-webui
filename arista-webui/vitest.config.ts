@@ -55,6 +55,15 @@ export default defineConfig({
       //   (lines 90) did NOT fail the leg — so the per-glob keys appear not to be matched the way the
       //   report groups files, and both the `lines` and `branches` per-directory floors are advisory
       //   until that is re-checked. The four global thresholds are what actually gate today.
+      // #74 (S4 read-only command console, stacked on main) measured the whole webui suite at
+      //   all files 95.07/89.83/97.54/98.55 (stmts/branch/funcs/lines), per-directory from the JSON:
+      //   src/features/console 98.03/91.36/100 — the four uncovered statements are the `!canAct || busy`
+      //   and `!canAct` early arms of the four handlers, unreachable through real DOM because the same
+      //   flags disable the controls (jsdom still dispatches a FireEvent click, and the in-flight test
+      //   presses all three buttons to prove no second request starts, but the busy arm for `run` at the
+      //   moment of the FIRST click can never be covered by definition). Interfaces re-measured
+      //   95.06/92.16/99.24 and vlans 89.44/84.80/90.80 for the same tree, shared rose to 98.18/90.86.
+      //   No new floor written for console, and per #124 the per-directory keys stay advisory anyway.
       // Floors below are set ~2-4 points under those figures (ratchet up, never down). Two notes for
       // the coverage-lane owner (#69): (1) `src/shared/` branch coverage is 86.40 while that entry
       // asks for 87, and the leg still exits 0 — the per-glob `branches` figure does not appear to be
