@@ -9,6 +9,7 @@ import { LagManager } from './features/lags/LagManager'
 import { IpAddressing } from './features/addressing/IpAddressing'
 import { CapabilityPanel } from './features/capabilities/CapabilityPanel'
 import { SystemSettings } from './features/system/SystemSettings'
+import { StaticRoutes } from './features/routes/StaticRoutes'
 import { TransactionCenter } from './features/sessions/TransactionCenter'
 import { VlanManagement } from './features/vlans/VlanManagement'
 import { VlanAssignment } from './features/vlans/VlanAssignment'
@@ -64,6 +65,13 @@ function App() {
     '/sessions': {
       title: 'Sessions',
       element: <TransactionCenter node={node} proxyConfigured={__EAPI_PROXY_CONFIGURED__} />,
+    },
+    // S10 (#80) owns `#/routes/static`: the IPv4 static-route manager. Reads are the config-backed
+    // `staticroute` table (no `show ip route` extraction exists in this client), and every write is
+    // one staged line in a named session; the guard set is derived only from that same table.
+    '/routes/static': {
+      title: 'Static routes',
+      element: <StaticRoutes node={node} proxyConfigured={__EAPI_PROXY_CONFIGURED__} />,
     },
     '/vlans/manage': {
       title: 'VLAN management',

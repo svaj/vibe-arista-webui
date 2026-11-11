@@ -107,6 +107,21 @@ describe('App composition (F6 chrome)', () => {
     expect(screen.getByRole('button', { name: 'Disable ip routing' })).toBeDisabled()
   })
 
+  it('puts the S10 (#80) static-route manager in the nav on #/routes/static', () => {
+    render(<App />)
+
+    const staticRoutes = screen.getByRole('link', { name: 'Static routes' })
+    expect(staticRoutes).toHaveAttribute('href', '#/routes/static')
+    expect(staticRoutes).not.toHaveAttribute('aria-current', 'page')
+    // Registering the route must not warm anything up: with no proxy the screen prompts and the one
+    // write trigger it offers (Preview, which opens the named session) stays disabled.
+    fireEvent.click(staticRoutes)
+    expect(screen.getByRole('heading', { level: 2, name: 'Static routes' })).toBeInTheDocument()
+    expect(screen.getByRole('alert')).toHaveTextContent('EAPI_HOST')
+    expect(screen.getByRole('button', { name: 'Preview and read the device diff' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Reload static routes' })).toBeDisabled()
+  })
+
   it('puts the S7 (#77) capability probe panel in the nav on #/capabilities', () => {
     render(<App />)
 
