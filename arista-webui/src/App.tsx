@@ -10,7 +10,9 @@ import { IpAddressing } from './features/addressing/IpAddressing'
 import { CapabilityPanel } from './features/capabilities/CapabilityPanel'
 import { SystemSettings } from './features/system/SystemSettings'
 import { Ntp } from './features/ntp/Ntp'
+import { StaticRoutes } from './features/routes/StaticRoutes'
 import { TransactionCenter } from './features/sessions/TransactionCenter'
+import { Users } from './features/users/Users'
 import { VlanManagement } from './features/vlans/VlanManagement'
 import { VlanAssignment } from './features/vlans/VlanAssignment'
 import type { RouteRegistry } from './router'
@@ -60,6 +62,13 @@ function App() {
       title: 'System settings',
       element: <SystemSettings node={node} proxyConfigured={__EAPI_PROXY_CONFIGURED__} />,
     },
+    // S11 (#81) owns `#/users`: local usernames, privilege, role and SSH keys. The highest
+    // self-lockout surface in the wave, so every admin-affecting write is guarded from the parsed
+    // read — and no AAA/TACACS+/RADIUS command is reachable from this screen at all.
+    '/users': {
+      title: 'Users & roles',
+      element: <Users node={node} proxyConfigured={__EAPI_PROXY_CONFIGURED__} />,
+    },
     // S12 (#82) owns `#/ntp`: config-backed NTP servers/source, staged the standing named-session way.
     // Command text mirrors the frozen `node.ntp` verbs; the sync-status half stays hidden as
     // "not captured" until show ntp status/associations captures exist (#82's CAPTURES gate).
@@ -72,6 +81,13 @@ function App() {
     '/sessions': {
       title: 'Sessions',
       element: <TransactionCenter node={node} proxyConfigured={__EAPI_PROXY_CONFIGURED__} />,
+    },
+    // S10 (#80) owns `#/routes/static`: the IPv4 static-route manager. Reads are the config-backed
+    // `staticroute` table (no `show ip route` extraction exists in this client), and every write is
+    // one staged line in a named session; the guard set is derived only from that same table.
+    '/routes/static': {
+      title: 'Static routes',
+      element: <StaticRoutes node={node} proxyConfigured={__EAPI_PROXY_CONFIGURED__} />,
     },
     '/vlans/manage': {
       title: 'VLAN management',
