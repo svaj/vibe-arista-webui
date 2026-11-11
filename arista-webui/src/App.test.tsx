@@ -133,4 +133,20 @@ describe('App composition (F6 chrome)', () => {
     expect(screen.getByRole('heading', { level: 2, name: 'Read-only command console' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Run command' })).toBeDisabled()
   })
+
+  it('puts the S11 (#81) users and roles screen in the nav on #/users', () => {
+    render(<App />)
+
+    const users = screen.getByRole('link', { name: 'Users & roles' })
+    expect(users).toHaveAttribute('href', '#/users')
+    expect(users).not.toHaveAttribute('aria-current', 'page')
+    // Unconfigured: the route registers and the screen prompts, but with no proxy the whole
+    // self-lockout surface stays shut — no read, no session, and #81's standing banner is up even
+    // before any device answer exists.
+    fireEvent.click(users)
+    expect(screen.getByRole('heading', { level: 2, name: 'Users & roles' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Preview and read the device diff' })).toBeDisabled()
+    expect(screen.getByRole('alert')).toHaveTextContent('EAPI_HOST')
+    expect(screen.getByText(/Locking yourself out of a privilege-15 account/u)).toBeInTheDocument()
+  })
 })

@@ -10,6 +10,7 @@ import { IpAddressing } from './features/addressing/IpAddressing'
 import { CapabilityPanel } from './features/capabilities/CapabilityPanel'
 import { SystemSettings } from './features/system/SystemSettings'
 import { TransactionCenter } from './features/sessions/TransactionCenter'
+import { Users } from './features/users/Users'
 import { VlanManagement } from './features/vlans/VlanManagement'
 import { VlanAssignment } from './features/vlans/VlanAssignment'
 import type { RouteRegistry } from './router'
@@ -58,6 +59,13 @@ function App() {
     '/system': {
       title: 'System settings',
       element: <SystemSettings node={node} proxyConfigured={__EAPI_PROXY_CONFIGURED__} />,
+    },
+    // S11 (#81) owns `#/users`: local usernames, privilege, role and SSH keys. The highest
+    // self-lockout surface in the wave, so every admin-affecting write is guarded from the parsed
+    // read — and no AAA/TACACS+/RADIUS command is reachable from this screen at all.
+    '/users': {
+      title: 'Users & roles',
+      element: <Users node={node} proxyConfigured={__EAPI_PROXY_CONFIGURED__} />,
     },
     // S9 (#79) owns `#/sessions`: the transaction center (view/abort/preview half; the durable
     // persistence/rollback half stays out of scope until #89's captures land).
