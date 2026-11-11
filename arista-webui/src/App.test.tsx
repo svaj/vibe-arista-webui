@@ -164,4 +164,18 @@ describe('App composition (F6 chrome)', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('EAPI_HOST')
     expect(screen.getByText(/Locking yourself out of a privilege-15 account/u)).toBeInTheDocument()
   })
+
+  it('puts the S12 (#82) NTP screen in the nav on #/ntp', () => {
+    render(<App />)
+
+    const ntp = screen.getByRole('link', { name: 'NTP' })
+    expect(ntp).toHaveAttribute('href', '#/ntp')
+    expect(ntp).not.toHaveAttribute('aria-current', 'page')
+    // Unconfigured: the route registers and the screen idles on the proxy prompt — visiting `#/ntp`
+    // must not open a session or fire a show/version read.
+    fireEvent.click(ntp)
+    expect(screen.getByRole('heading', { level: 2, name: 'NTP' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Add server' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Set source interface' })).toBeDisabled()
+  })
 })
