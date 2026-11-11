@@ -19,6 +19,8 @@ import type { ReactElement } from 'react'
 
 import { ConnectionHeader } from '../../components/ui/ConnectionHeader'
 import type { ConnectionState } from '../../components/ui/ConnectionHeader'
+import { DataTable } from '../../components/ui/DataTable'
+import type { DataTableColumn } from '../../components/ui/DataTable'
 import { EmptyState } from '../../components/ui/EmptyState'
 import { StatePill } from '../../components/ui/StatePill'
 import type { SourceStem } from './ntp-rules'
@@ -129,6 +131,14 @@ export function NtpView(props: NtpViewProps): ReactElement {
     onReload,
   } = props
 
+  // F3 (#65) is the only table shape in this wave — every screen routes its tabular read through
+  // `DataTable`, so the `<th scope="col">` + `table-scroll` markup stays identical here too.
+  const serverColumns: readonly DataTableColumn<NtpServerRowView>[] = [
+    { header: 'Address', cell: (row) => <code>{row.address}</code> },
+    { header: 'Preference', cell: (row) => row.prefer ? <StatePill value="preferred" /> : 'normal' },
+    { header: 'Action', cell: (row) => <button className="danger-button" type="button" onClick={() => row.onRemove(row.address)} disabled={!canAct || busy}>Remove server {row.address}</button> },
+  ]
+
   return <section className="workspace" aria-labelledby="workspace-title">
     <div className="screen-connection">
       <ConnectionHeader
@@ -173,16 +183,7 @@ export function NtpView(props: NtpViewProps): ReactElement {
         ? <p className="field-note">No NTP read has answered yet, so the server list is unknown — not empty.</p>
         : serverCount === 0
           ? <EmptyState heading="No NTP servers are configured." hint="An empty server list is a normal configured state, not an error. Add one below to point this device at a clock source." />
-          : <table className="data-table">
-            <thead><tr><th scope="col">Address</th><th scope="col">Preference</th><th scope="col">Action</th></tr></thead>
-            <tbody>
-              {servers.map((row) => <tr key={row.address}>
-                <td><code>{row.address}</code></td>
-                <td>{row.prefer ? <StatePill value="preferred" /> : 'normal'}</td>
-                <td><button className="danger-button" type="button" onClick={() => row.onRemove(row.address)} disabled={!canAct || busy}>Remove server {row.address}</button></td>
-              </tr>)}
-            </tbody>
-          </table>}
+          : <DataTable columns={serverColumns} rows={servers} rowKey={(row) => row.address} label="Configured NTP servers" />}
 
       <form onSubmit={onAddServer}>
         <label htmlFor="ntp-new-server">Add NTP server (one address token)</label>
