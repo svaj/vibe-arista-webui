@@ -151,7 +151,7 @@ const READ_SECRET_FORMATS: readonly UserSecretFormat[] = ['0', '5', '7', 'sha512
 
 /**
  * One local user, as this client reads it. `name` repeats the table key (the `Vlan.id` shape,
- * `vlans.ts:147-158`) so an entry printed alone still names itself. pyeapi's inner record instead
+ * `vlans.ts:186-195`) so an entry printed alone still names itself. pyeapi's inner record instead
  * carries `privilege` (as a string), `role`, `nopassword`, `format`, `secret` and `sshkey`/`ssh-key` —
  * every key **always present**, `None` for absent fields (`users.py:135-149`): divergence 2 drops the
  * `None`s and divergence 3/DR-089 drops the secret text itself.
@@ -309,7 +309,7 @@ function parseError(line: string, because: string): ConfigParseError {
  * and inventing a meaning — or failing the whole read — for a modifier this model does not have would
  * be worse than the same silence. A **known** token with a missing or malformed value is a parse
  * failure: half-reading `privilege` or `secret` would answer something about the switch the switch
- * did not say (the `vlanStateOf` rule, `vlans.ts:340-354`).
+ * did not say (the `vlanStateOf` rule, `vlans.ts:338-345`).
  */
 function fieldsOfUsernameLine(line: string, modifiers: string): UsernameFields {
   const fields: UsernameFields = {}
@@ -410,7 +410,7 @@ function applyLine(user: MutableUser, fields: UsernameFields): void {
  * the privilege keyword is not required, ordering is free, and the ssh-key line may be anywhere (each
  * upstream requirement probed to *no user at all* on 2026-11-05). Keys are kept in **document order**,
  * first appearance winning position — the same device-order contract `vlansFromSections` cites
- * (`vlans.ts:389-418`).
+ * (`vlans.ts:401-421`).
  */
 function usersFromSections(sections: ConfigSections): Map<string, User> {
   const merged = new Map<string, MutableUser>()

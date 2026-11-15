@@ -14,7 +14,7 @@
  * stays a container concern.
  *
  * {@link TONE_BY_TOKEN} only chooses cosmetics. It lists tokens this repo already has evidence for:
- * VLAN `state` (`active`/`suspend`, the documented pair at `arista-api-client/src/resources/vlans.ts:330`
+ * VLAN `state` (`active`/`suspend`, the documented pair at `arista-api-client/src/resources/vlans.ts:342`
  * citing upstream `pyeapi api/vlans.py:41-43`); config-session `state` (`pending`/`conflicted`/
  * `completed` appear verbatim in
  * `arista-api-client/test/fixtures/show/show-configuration-sessions--pending-orphans.json`, and

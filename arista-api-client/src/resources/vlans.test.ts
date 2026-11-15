@@ -350,6 +350,42 @@ describe('VlansResource presence verbs — vlans.py:194-232, DR-005 replaces the
     expect((thrown as CommandError).failedCommand).toBe('no vlan 20')
     expect((thrown as CommandError).commands).toEqual(['enable', 'configure terminal', 'no vlan 20'])
   })
+
+  it('delete(1) refuses the default VLAN before anything reaches the wire (#122, DR-139)', async () => {
+    // Stricter than the range-guard case above: id 1 is VALID for assertVlanId, and this refusal is a
+    // policy inside the verb. The device's answer to `no vlan 1` is uncaptured (no hardware or cEOS
+    // evidence — #122 open question 1), so DR-005's posture is to refuse rather than send a caller
+    // into that unknown; no probe is staged either, because command presence would be quoted as
+    // deletion semantics (DR-043).
+    const transport = configTransport(LAB_CONFIG)
+    const thrown = await outcome(() => new Node(transport).vlans.delete(1))
+    expect(thrown).toBeInstanceOf(NotSupportedError)
+    expect((thrown as Error).message).toMatch(/refuse to delete vlan 1/)
+    expect(transport.sent()).toEqual([])
+  })
+
+  it('the VLAN 1 carve-out is delete-only: create(1) and setDefault(1) still compose their texts (#122)', async () => {
+    // assertVlanId keeps the shared 1..4094 range precisely because these two arms legitimately name the
+    // default VLAN (a `vlan 1` stanza is ordinary config). If widening the refusal is ever decided,
+    // DR-139 names the entry to amend.
+    const transport = configTransport(LAB_CONFIG)
+    transport
+      .replies('enable\nconfigure terminal\nvlan 1', [{}, {}, {}])
+      .replies('enable\nconfigure terminal\ndefault vlan 1', [{}, {}, {}])
+    const vlans = new Node(transport).vlans
+    await vlans.create(1)
+    await vlans.setDefault(1)
+    expect(transport.sent().map((cmds) => cmds.map(String))).toEqual([
+      ['enable', 'configure terminal', 'vlan 1'],
+      ['enable', 'configure terminal', 'default vlan 1'],
+    ])
+  })
+
+  it('VLAN 1 still reads back normally — the carve-out never touches the read path (DR-059)', async () => {
+    const vlan1 = await vlansFor(LAB_CONFIG).get(1)
+    expect(vlan1?.id).toBe(1)
+    expect(vlan1?.name).toBe('default')
+  })
 })
 
 describe('VlansResource name and state verbs — vlans.py:248-284', () => {
