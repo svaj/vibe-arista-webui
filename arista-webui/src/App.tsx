@@ -8,9 +8,11 @@ import { CommandConsole } from './features/console/CommandConsole'
 import { LagManager } from './features/lags/LagManager'
 import { IpAddressing } from './features/addressing/IpAddressing'
 import { CapabilityPanel } from './features/capabilities/CapabilityPanel'
+import { Mlag } from './features/mlag/Mlag'
 import { SystemSettings } from './features/system/SystemSettings'
 import { Ntp } from './features/ntp/Ntp'
 import { Stp } from './features/stp/Stp'
+import { Acls } from './features/acls/Acls'
 import { StaticRoutes } from './features/routes/StaticRoutes'
 import { TransactionCenter } from './features/sessions/TransactionCenter'
 import { Users } from './features/users/Users'
@@ -76,6 +78,21 @@ function App() {
     '/ntp': {
       title: 'NTP',
       element: <Ntp node={node} proxyConfigured={__EAPI_PROXY_CONFIGURED__} />,
+    },
+    // S13 (#83) owns `#/acls`: the access-list viewer/editor over the parsed `ip access-list` sections.
+    // Rules are shown as running-config text — no `show access-lists` capture exists, so no counter is
+    // printed — and deleting a section is always destructive because no client read covers
+    // `ip access-group`, i.e. the screen cannot see whether an interface still applies the ACL.
+    '/acls': {
+      title: 'ACLs',
+      element: <Acls node={node} proxyConfigured={__EAPI_PROXY_CONFIGURED__} />,
+    },
+    // S14 (#84) owns `#/mlag`: READ-ONLY MLAG status. The container's own seam is Pick<Node,
+    // 'mlag' | 'show'> — it cannot even see a config session — and the screen ships no writes:
+    // MLAG configuration needs a paired device (#84 closes editing; the banner says so).
+    '/mlag': {
+      title: 'MLAG',
+      element: <Mlag node={node} proxyConfigured={__EAPI_PROXY_CONFIGURED__} />,
     },
     // S15 (#85) owns `#/stp`: per-port bpduguard/portfast guard edits staged the named-session way,
     // plus a config-only STP summary. `show spanning-tree` is uncaptured (operational state is

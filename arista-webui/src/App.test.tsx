@@ -179,6 +179,34 @@ describe('App composition (F6 chrome)', () => {
     expect(screen.getByRole('button', { name: 'Set source interface' })).toBeDisabled()
   })
 
+  it('puts the S13 (#83) ACL screen in the nav on #/acls', () => {
+    render(<App />)
+
+    const acls = screen.getByRole('link', { name: 'ACLs' })
+    expect(acls).toHaveAttribute('href', '#/acls')
+    expect(acls).not.toHaveAttribute('aria-current', 'page')
+    // Unconfigured: the route registers and the screen idles on the proxy prompt — visiting `#/acls`
+    // must not run a config read or open a session.
+    fireEvent.click(acls)
+    expect(screen.getByRole('heading', { level: 2, name: 'ACLs' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Create ACL' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Reload device state' })).toBeDisabled()
+  })
+
+  it('puts the S14 (#84) read-only MLAG status screen in the nav on #/mlag', () => {
+    render(<App />)
+
+    const mlag = screen.getByRole('link', { name: 'MLAG' })
+    expect(mlag).toHaveAttribute('href', '#/mlag')
+    expect(mlag).not.toHaveAttribute('aria-current', 'page')
+    // Unconfigured: the route registers and the screen idles on the proxy prompt — visiting it
+    // fires no read, and the standing read-only banner is up before any device answer exists.
+    fireEvent.click(mlag)
+    expect(screen.getByRole('heading', { level: 2, name: 'MLAG' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Reload MLAG state' })).toBeDisabled()
+    expect(screen.getByText(/configuration editing is not offered here/u)).toBeInTheDocument()
+  })
+
   it('puts the S15 (#85) spanning-tree screen in the nav on #/stp', () => {
     render(<App />)
 
