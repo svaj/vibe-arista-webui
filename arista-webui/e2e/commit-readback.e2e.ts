@@ -7,7 +7,7 @@
  * port (its own clear-description commit, plus the `lab:run` finally-path teardown of the whole
  * disposable container as the backstop for a failed run).
  */
-import { deviceRead } from './device'
+import { deviceReadText } from './device'
 import { expect, test } from './fixtures'
 import { commitStaged, openInterfaces, refreshState, stageClearDescription, stageDescription } from './interactions'
 
@@ -18,8 +18,10 @@ test('commit lands in running-config, the UI reads it back, cleanup restores the
   const scratch = process.env['EAPI_SCRATCH_INTERFACE']
   expect(scratch, 'requires EAPI_SCRATCH_INTERFACE from scripts/ceos-lab.mjs run').toBeTruthy()
 
+  // running-config / startup-config over eAPI are text-format reads (no JSON converter exists;
+  // the client takes the same 1003→text repair path), asserted as raw device bytes.
   const runningOnScratch = async (): Promise<string> =>
-    JSON.stringify(await deviceRead(request, `show running-config interfaces ${scratch as string}`))
+    deviceReadText(request, `show running-config interfaces ${scratch as string}`)
 
   // Precondition: the scratch port carries no stale token from a prior interrupted run.
   expect(await runningOnScratch()).not.toContain(TOKEN)
@@ -32,7 +34,7 @@ test('commit lands in running-config, the UI reads it back, cleanup restores the
   // EOS state, not just the UI message: the committed description is in running-config NOW,
   // and startup was not touched (the app never offers persistence — the enforced #79/#89 split).
   await expect.poll(runningOnScratch, { timeout: 30_000 }).toContain(TOKEN)
-  const startup = JSON.stringify(await deviceRead(request, 'show startup-config'))
+  const startup = await deviceReadText(request, 'show startup-config')
   expect(startup).not.toContain(TOKEN)
 
   // UI read-back after an explicit refresh of device state.

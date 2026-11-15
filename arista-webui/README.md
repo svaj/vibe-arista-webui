@@ -101,16 +101,30 @@ npm run test:watch
 Vitest is the project's current test runner — Jest knowledge/patterns can be reused as
 guidance (`jest.*` → `vi.*`) but Jest itself is not used here.
 
-### Planned real-EOS browser E2E tests
+### Real-EOS browser E2E tests (opt-in, #91)
 
-Keep component tests mocked and offline. Use **Playwright** in a separate opt-in lane
-against disposable **cEOS-lab 4.28.14M**, with the UI's same-origin proxy targeting the
-lab's HTTPS eAPI endpoint. See the [cEOS runbook](../docs/CEOS.md) for the local image,
-bootstrap/readiness, credentials/TLS, isolation, CI restrictions, cleanup, and test flows.
-The proxy wiring and Playwright/cEOS harness are planned, not installed or runnable yet.
-Assert real EOS state after preview/abort and isolated commit/read-back flows, not just
-UI success messages. Do not direct browser E2E tests at the physical switch. cEOS
-coverage does not prove 7050TX-64 hardware capabilities or exact 4.28.13.1M behavior.
+Component tests stay mocked and offline. The separate **Playwright** lane drives the real
+app against disposable **cEOS-lab 4.28.14M** through the UI's same-origin dev proxy, and
+`src/e2e-lane-boundary.test.ts` fails offline CI if that ever stops being true.
+
+Preflight: Docker running with the pinned `arista/ceos:4.28.14M` image imported
+(see the [cEOS runbook](../docs/CEOS.md)), then once per machine
+`npx playwright install chromium`; keep `:5173-5176` free and `npm run lab:list` quiet.
+
+```bash
+npm run e2e -w arista-webui        # lab up → preflight → 4 dev servers → Playwright → teardown
+node scripts/assert-e2e-run.mjs arista-webui/e2e-results/results.json --check-secrets
+```
+
+`scripts/e2e-run.mjs` (the `lab:run` child) serves the connected state plus the three
+failure states the specs assert against — unconfigured proxy, unreachable target, and a
+real device 401 (placeholder credentials; the lab pair never leaves the proxy process, so
+browser artifacts are credential-free by construction). trace/video/HAR/screenshots are
+off; failure diagnostics are scrubbed text attachments (F8). The mutating commit/read-back
+spec is gated on `EAPI_LAB_FULL_WRITE` and touches only `EAPI_SCRATCH_INTERFACE`.
+Do not direct browser E2E tests at the physical switch; the lane refuses `EAPI_TARGET_CLASS=hardware`.
+cEOS coverage does not prove 7050TX-64 hardware capabilities or exact 4.28.13.1M behavior.
+The trusted `workflow_dispatch` CI job (docs/CEOS.md plan item 5) is tracked as a follow-up
 
 Currently, two official plugins are available:
 

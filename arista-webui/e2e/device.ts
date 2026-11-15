@@ -16,9 +16,9 @@ interface DeviceResponse {
 }
 
 /** Run `cmds` on the lab device through the connected app proxy. Throws the test on refusal. */
-export async function deviceRun(request: APIRequestContext, cmds: readonly string[]): Promise<unknown[]> {
+export async function deviceRun(request: APIRequestContext, cmds: readonly string[], format: 'json' | 'text' = 'json'): Promise<unknown[]> {
   const response = await request.post('/command-api', {
-    data: { jsonrpc: '2.0', method: 'runCmds', params: { version: 1, cmds: [...cmds], format: 'json' }, id: 'webui-e2e' },
+    data: { jsonrpc: '2.0', method: 'runCmds', params: { version: 1, cmds: [...cmds], format }, id: 'webui-e2e' },
   })
   expect(response.ok(), `device API call failed: HTTP ${response.status()}`).toBe(true)
   const body = (await response.json()) as DeviceResponse
@@ -26,11 +26,28 @@ export async function deviceRun(request: APIRequestContext, cmds: readonly strin
   return body.result ?? []
 }
 
-/** `enable <cmd>`-framed single read, matching the client's read framing (App.test convention). */
+/**
+ * `enable <cmd>`-framed single read. Real EOS answers an enable-framed batch with ONE ROW PER
+ * CLI command — the enable ack (`{}`) comes first, the command data last — so the LAST row is
+ * the answer. (Pinned by the first live run 2026-11-15: row[0] is `{}`.)
+ */
 export async function deviceRead<T = Record<string, unknown>>(request: APIRequestContext, command: string): Promise<T> {
-  const [result] = await deviceRun(request, ['enable', command])
+  const rows = await deviceRun(request, ['enable', command])
+  const result = rows[rows.length - 1]
   expect(result, `device returned no result row for: ${command}`).toBeDefined()
   return result as T
+}
+
+/**
+ * Text-format read for the commands EOS has no JSON converter for (the same 1003 → format=text
+ * path the client itself takes for session diffs, config-session.ts `diff()`): the text row
+ * carries `{ output: string }`.
+ */
+export async function deviceReadText(request: APIRequestContext, command: string): Promise<string> {
+  const rows = await deviceRun(request, ['enable', command], 'text')
+  const result = rows[rows.length - 1] as { output?: string } | undefined
+  expect(result, `device returned no text row for: ${command}`).toBeDefined()
+  return String(result?.output ?? '')
 }
 
 interface ShowConfigurationSessions {

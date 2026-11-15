@@ -5,7 +5,7 @@
  * `lab-pending-capture` session still open (the test's own session gone). Abort cannot undo a
  * commit; this flow never commits, so it is safe on scratch state.
  */
-import { deviceRead, pendingSessions } from './device'
+import { deviceReadText, pendingSessions } from './device'
 import { expect, test } from './fixtures'
 import { abortStaged, openInterfaces, stagedSessionName, stageDescription } from './interactions'
 
@@ -15,7 +15,10 @@ test('preview shows the real device diff, then abort leaves EOS untouched', asyn
   const scratch = process.env['EAPI_SCRATCH_INTERFACE']
   expect(scratch, 'requires EAPI_SCRATCH_INTERFACE from scripts/ceos-lab.mjs run').toBeTruthy()
 
-  const baseline = await deviceRead<Record<string, { generated_configs?: unknown[] }>>(request, `show running-config interfaces ${scratch as string}`)
+  // `show running-config interfaces …` is text-only over eAPI on 4.28 (1003 → format=text,
+  // the same codec path as the client's config-session diff), pinned 2026-11-15.
+  const runningOnScratch = () => deviceReadText(request, `show running-config interfaces ${scratch as string}`)
+  const baseline = await runningOnScratch()
   const baselineSessions = Object.keys(await pendingSessions(request))
 
   await openInterfaces(page)
@@ -29,8 +32,7 @@ test('preview shows the real device diff, then abort leaves EOS untouched', asyn
     const keys = Object.keys(await pendingSessions(request))
     return keys.includes(sessionName)
   }, { timeout: 30_000 }).toBe(true)
-  const stagedDiff = await deviceRead<{ diff?: string }>(request, `show session-config name ${sessionName} diffs`)
-  expect(stagedDiff.diff ?? JSON.stringify(stagedDiff)).toContain(TOKEN)
+  expect(await deviceReadText(request, `show session-config name ${sessionName} diffs`)).toContain(TOKEN)
 
   await abortStaged(page)
   await expect(page.getByText(/was aborted/i)).toBeVisible({ timeout: 30_000 })
@@ -40,7 +42,7 @@ test('preview shows the real device diff, then abort leaves EOS untouched', asyn
     const keys = Object.keys(await pendingSessions(request))
     return keys.filter((k) => !baselineSessions.includes(k))
   }, { timeout: 30_000 }).toEqual([])
-  const after = await deviceRead(request, `show running-config interfaces ${scratch as string}`)
-  expect(JSON.stringify(after)).not.toContain(TOKEN)
-  expect(JSON.stringify(after)).toBe(JSON.stringify(baseline))
+  const after = await runningOnScratch()
+  expect(after).not.toContain(TOKEN)
+  expect(after).toBe(baseline)
 })
