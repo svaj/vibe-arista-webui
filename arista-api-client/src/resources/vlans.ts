@@ -20,7 +20,7 @@
  * | `get` (`:91-113`): `get_block('vlan %s')`, `if not config: return None` (`:105-106`), then four `_parse_*` one-key dicts merged with `dict.update` (`:108-112`) | {@link VlansResource.getAll} / {@link VlansResource.get}; the record is typed, not stringly (MIGRATION.md §4, DR-003), and a missing entry is `undefined` (DR-027) |
  * | `_parse_vlan_id` (`:115-129`): `VLAN_ID_RE.search(config).group('value')` (`:128`) — the first `vlan\s` anywhere in the block, whole remainder | the **section header** of the entry (`vlan 20` → `20`), parsed to numbers — see divergence 1 |
  * | `NAME_RE` / `STATE_RE` / `TRUNK_GROUP_RE` (`:58-60`) + `_parse_name` (`:131-145`), `_parse_state` (`:147-161`), `_parse_trunk_groups` (`:163-177`: `findall`, `[]` when none) | {@link getVlanFields} — `valueAfterKeyword`/`valuesAfterKeyword` (`config-block.ts`) scoped to the block **body lines**, cut at the keyword |
- * | `create` / `delete` / `default` (`:194-232`): `'vlan %s'` / `'no vlan %s'` / `'default vlan %s'`, each `return self.configure(command) if isvlan(vid) else False` (`:204`, `:216`, `:232`) | {@link VlansResource.create} / {@link VlansResource.delete} / {@link VlansResource.setDefault} — the same three command texts, with `assertVlanId` and a **throw** instead of `False` (DR-005) |
+ * | `create` / `delete` / `default` (`:194-232`): `'vlan %s'` / `'no vlan %s'` / `'default vlan %s'`, each `return self.configure(command) if isvlan(vid) else False` (`:204`, `:216`, `:232`) | {@link VlansResource.create} / {@link VlansResource.delete} / {@link VlansResource.setDefault} — the same three command texts, with `assertVlanId` and a **throw** instead of `False` (DR-005); `delete` **additionally refuses VLAN 1** before the wire — the default-VLAN carve-out (divergence 13, DR-139) |
  * | `configure_vlan` (`:234-246`): `make_iterable` + `commands.insert(0, 'vlan %s')` (`:244-245`) | {@link VlansResource.configureVlan} over `submodeCommands` (`command-builder.ts`, row 71) — never mutates the caller's list |
  * | `set_name` (`:248-265`), `set_state` (`:267-284`): `command_builder('name'\|'state', value=…, default=…, disable=…)` (`:263`, `:282`) | `setVlanName` / `unsetVlanName` / `defaultVlanName`, `setVlanState` / `unsetVlanState` / `defaultVlanState` — the `default=`/`disable=` kwargs become the mode table in `command-builder.ts` (DR-037) |
  * | `set_trunk_groups` (`:286-327`): `default trunk group` (`:310`), `no trunk group` (`:312`), else `self.get(vid)['trunk_groups']` (`:314`) and one `configure_vlan` **per** add (`:319-321`) and per remove (`:323-325`) | {@link VlansResource.setTrunkGroups} — one read, one diff, **one** transaction; `defaultTrunkGroups` / `unsetTrunkGroups` are the two flag branches |
@@ -138,6 +138,18 @@
  *     two single-group verbs send their command without reading the config first — upstream does the same
  *     (`:204`, `:216`, `:232`, `:265`, `:284`, `:342`, `:358` issue zero reads), the device decides, and a
  *     rejected write rejects with its `CommandError` including `failedCommand` (DR-005).
+ * 13. **`delete` refuses VLAN 1.** `assertVlanId` admits `1..4094` for every verb and must keep doing it:
+ *     `create(1)` and `setDefault(1)` legitimately name the default VLAN (a `vlan 1` stanza with
+ *     `name`/`state` lines is ordinary config), and the read path runs no write-guard at all (DR-059).
+ *     `no vlan 1` is different — it attacks the VLAN every port starts on and every trunk carries by
+ *     default — and whether the device rejects it (`1002`), silently accepts it, or rewrites interface
+ *     state on the way is **uncaptured**: no answer exists in the 2026-11-08 supervised session or the
+ *     cEOS catalog (#122 open question 1), and even a future probe of command *presence* is not evidence
+ *     about deletion *semantics* (DR-043). Under DR-005's "refuse, don't soften" posture `delete(1)`
+ *     throws `NotSupportedError` **before a transaction opens** — same class as the range guard, no new
+ *     error type (DR-010). The lab lane already encoded the same reasoning: `requireScratchVlan` refuses
+ *     spare ids below 2 (`live-guard.ts:674`, "vlan 1 is the default every port begins on and is never a
+ *     scratch"). The webui S2 screen keeps its own matching guard as belt and braces (#122, DR-139).
  */
 
 import { ConfigParseError, NotFoundError, NotSupportedError } from '../errors'
@@ -464,9 +476,30 @@ export class VlansResource extends EntityCollection<Vlan, number, VlanAttrs> {
     await this.configure(submodeCommands(`vlan ${String(name)}`, commands))
   }
 
-  /** `no vlan <id>` — pyeapi's `delete` (`:206-216`), whose `return … if isvlan(vid) else False` is the `False` DR-005 removes. */
+  /**
+   * `no vlan <id>` — pyeapi's `delete` (`:206-216`), whose `return … if isvlan(vid) else False` is the
+   * `False` DR-005 removes.
+   *
+   * **VLAN 1 is refused here.** `assertVlanId` admits the whole 1..4094 write range — it is the shared
+   * guard for every verb on this class, and `create`/`setDefault` legitimately name any id in it — so the
+   * carve-out lives in this method alone. VLAN 1 is the default VLAN: present on every switch, the default
+   * member of every trunk, the access VLAN every port starts on. Whether the device would reject `no vlan 1`
+   * with a `1002`, silently accept it, or rewrite the interface table as a side effect is an uncaptured
+   * claim (issue #122 open question 1: neither the 2026-11-08 supervised hardware session nor the cEOS
+   * captures answer it, and an observation of the command's presence on some SKU would not be a statement
+   * about 7050TX-64 deletion *semantics*). Under DR-005's "refuse, don't soften" posture the client refuses
+   * to send it on a caller's behalf, and `NotSupportedError` is the same class `assertVlanId` already uses
+   * (row 10 above, and no new error class — DR-010). `VlanManagement.tsx` (the S2 screen shipped in #72)
+   * keeps its own matching guard as belt-and-braces, and its copy names the client's refusal so the screen
+   * never overstates or understates the lane.
+   */
   override async delete(name: number): Promise<void> {
     assertVlanId(name)
+    if (name === 1) {
+      throw new NotSupportedError(
+        'refuse to delete vlan 1: VLAN 1 is the default VLAN, present on every switch and the default member of every trunk. This client never sends `no vlan 1` (DR-005: refuse rather than soften). A caller who specifically wants to probe the device\'s answer should use a lower-level `configSession`.',
+      )
+    }
     await this.configure(this.commandBuilder(`vlan ${String(name)}`, { mode: 'no' }))
   }
 

@@ -9,6 +9,19 @@ surprise here — this file records what shipped, the migration map records what
 
 ## [Unreleased]
 
+### Changed — `vlans.delete(1)` now refuses instead of sending `no vlan 1` (2026-11-15; #122, DECISIONS DR-139, §5 row 240)
+- `VlansResource.delete` throws `NotSupportedError` for id 1 **before a config transaction opens**.
+  `create(1)`/`setDefault(1)` and the read path are unchanged — the shared `assertVlanId` keeps its
+  `1..4094` range because those arms legitimately name the default VLAN (the carve-out is delete-only,
+  and DR-059 keeps reads guarded by nothing but the device). Whether the device rejects `no vlan 1` is
+  an uncaptured M12 question (#122 open question 1), quoted nowhere as a device claim (DR-043); this
+  is DR-005 refuse-don't-soften posture, not an EOS observation.
+- Consumer note: a script that reached `node.vlans.delete(1)` now gets a client-side refusal naming the
+  policy. The lower-level `configSession` seam is untouched for anyone who specifically wants to learn
+  the device's answer under a supervised session.
+- webui S2 (`VlanManagement`): the screen's own VLAN 1 guard stays; its copy flipped from "the client
+  does not refuse it" to belt-and-braces wording now that both lanes refuse (#72 follow-through).
+
 ### Evidence — the cEOS 4.28.14M capture catalog refreshed in place; the wave-1 fixtures contract closes from both ends (2026-11-09; §5 row 239, DR-138)
 - `npm run fixtures:refresh -- --yes` (run `lab-1637825-9bbb4b`) rewrote all 30 files under
   `test/fixtures/live/ceos-4.28.14M/` — 24 JSON answers + 6 text-form mates, no name changes,

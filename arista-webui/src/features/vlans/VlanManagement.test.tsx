@@ -421,13 +421,13 @@ describe('VlanManagement — staged writes and the in-use guard', () => {
     await userEvent.click(within(prompt).getByRole('button', { name: 'Cancel' }))
   })
 
-  it('refuses to delete VLAN 1 and says plainly that the client does not', async () => {
+  it('refuses to delete VLAN 1 and names the client refusal too — both lanes guard (#122)', async () => {
     const { node, session } = makeFakes()
     await ready(node)
 
     await userEvent.selectOptions(screen.getByLabelText('VLAN'), '1')
     await chooseAction('delete')
-    expect(screen.getByText(/client does not refuse/i)).toBeInTheDocument()
+    expect(screen.getByText(/the client refuses/i)).toBeInTheDocument()
 
     await userEvent.click(screen.getByRole('button', { name: 'Preview change' }))
     expect(await screen.findByRole('alert')).toHaveTextContent(/refused on this screen/u)

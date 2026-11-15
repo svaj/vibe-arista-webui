@@ -116,7 +116,7 @@ describe('UsersResource reads — pyeapi api/users.py:85-149 (rows 150-152, DR-0
     const { node, transport } = nodeFor(USER_FIXTURE)
     const all = await node.users.getAll()
     expect([...all.keys()]).toEqual(['admin', 'eapi', 'test', 'test1', 'test2', 'test3'])
-    // Device order is the document order (the `vlansFromSections` contract, `vlans.ts:389-418`).
+    // Device order is the document order (the `vlansFromSections` contract, `vlans.ts:401-421`).
     expect(all.get('admin')).toEqual({ name: 'admin', privilege: 1, role: 'network-admin', nopassword: true })
     expect(all.get('test2')).toEqual({ name: 'test2', privilege: 9, role: 'ops', nopassword: false, secretFormat: '5' })
     expect(all.get('test3')).toEqual({ name: 'test3', privilege: 9, role: 'ops', nopassword: true })

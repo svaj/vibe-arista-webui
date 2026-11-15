@@ -39,9 +39,10 @@
  * where eAPI rides `Management1` (the 7050TX-64 capture), no front-panel VLAN is claimed. If the read
  * fails the screen says the answer is unknown and still requires the hard confirm for an in-use VLAN.
  *
- * **VLAN 1 is refused here.** `VlansResource.delete` is gated only by `assertVlanId`, so the client does
- * NOT refuse `no vlan 1` today (checked for this issue: `vlans.ts:466-471` → `assertVlanId` → 1..4094).
- * Rather than silently send it, the screen refuses and says the gap belongs to the client lane.
+ * **VLAN 1 is refused here — belt and braces.** The client-lane gap this screen used to carry alone is
+ * closed: `VlansResource.delete` now refuses id 1 with `NotSupportedError` before any session opens
+ * (#122, client DECISIONS DR-139). The screen keeps its own guard anyway — the refusal must not depend
+ * on which door an operator came through, and the stage-time check refuses before a session is opened.
  *
  * ## The trunk-group section is probe-gated, and the probe is explicit
  *
@@ -98,7 +99,7 @@ type Session = Pick<ConfigSession, 'name' | 'state' | 'run' | 'diff' | 'hasDiffB
 
 export type VlanAction = 'create' | 'rename' | 'clear-name' | 'set-state' | 'delete' | 'add-trunk-group' | 'remove-trunk-group'
 
-/** The two states the client's `setVlanState` accepts (`vlans.ts:315`, from pyeapi's own docstring). */
+/** The two states the client's `setVlanState` accepts (`vlans.ts:327`, from pyeapi's own docstring). */
 export const VLAN_STATES: readonly string[] = ['active', 'suspend']
 
 /** The probe question this screen asks. A map of feature name → candidate commands: the app owns the
@@ -288,7 +289,7 @@ function VlanManagementWorkspace({ node, proxyConfigured = true }: VlanManagemen
     const id = Number(target)
     if (target === '' || !Number.isInteger(id)) return 'A VLAN id must be a whole number — the client refuses anything else (assertVlanId, pyeapi `isvlan` range 1..4094).'
     if (id < 1 || id > 4094) return `VLAN ${String(id)} is outside the 1..4094 write range — assertVlanId refuses it (pyeapi "isvlan", vlans.py:77-78). Ids a READ produced outside that range stay listed for display (DR-059 read/write split).`
-    if (action === 'delete' && id === 1) return 'Deleting VLAN 1 is refused on this screen. The client does not refuse it: `VlansResource.delete` (vlans.ts:468-472) is gated only by assertVlanId, so `no vlan 1` would reach the device. Closing that gap is a client-lane task; until then the refusal lives here.'
+    if (action === 'delete' && id === 1) return 'Deleting VLAN 1 is refused on this screen — and in the client too: `VlansResource.delete` now rejects `no vlan 1` with NotSupportedError (#122). Belt and braces.'
     if (action === 'delete' && selectedRow?.unwritable === true) return 'This VLAN id is one the client can read but not write (DR-059); the delete is refused rather than silently re-forming an id the device wrote strangely.'
     if ((action === 'create' || action === 'rename') && name.trim() === '') return 'A name needs a value. Clear a name with the "Clear name" action instead of sending an empty value (DR-037: the client refuses `name` with no value).'
     if (usesNameField && /\s$/u.test(name)) return 'A name with trailing whitespace cannot read back through this client (it reads the text after the keyword) — pyeapi keeps it verbatim.'
@@ -301,7 +302,7 @@ function VlanManagementWorkspace({ node, proxyConfigured = true }: VlanManagemen
       const groupProblem = trunkGroupNameRefusal(value)
       if (groupProblem !== undefined) return `A trunk-group name ${groupProblem}.`
     }
-    if (action === 'set-state' && !VLAN_STATES.includes(state)) return `State must be one of ${VLAN_STATES.join(' / ')} — the client refuses anything else (assertVlanState, vlans.ts:315; pyeapi does not check).`
+    if (action === 'set-state' && !VLAN_STATES.includes(state)) return `State must be one of ${VLAN_STATES.join(' / ')} — the client refuses anything else (assertVlanState, vlans.ts:327; pyeapi does not check).`
     return undefined
   }
 
@@ -497,7 +498,7 @@ function VlanManagementWorkspace({ node, proxyConfigured = true }: VlanManagemen
 
             {usesTargetSelect && selectedRow !== undefined && selectedRow.referencedBy.length > 0 && <p className="notice notice-warning" role="status">VLAN {String(selectedRow.id)} is referenced by {String(selectedRow.referencedBy.length)} config line(s): {selectedRow.referencedBy.join(' · ')}</p>}
             {usesTargetSelect && selectedRow?.managementVlan && <p className="notice notice-warning" role="status">VLAN {String(selectedRow.id)} is the interface this device reports serving eAPI on. Changing or deleting it may drop this session.</p>}
-            {selectedRow?.reserved && action === 'delete' && <p className="notice notice-warning" role="status">VLAN 1 cannot be deleted from this screen: the client does not refuse <code>no vlan 1</code>, so the refusal lives here until the client lane closes it.</p>}
+            {selectedRow?.reserved && action === 'delete' && <p className="notice notice-warning" role="status">The client refuses <code>no vlan 1</code> too (#122), so VLAN 1 cannot be deleted from here or from the client lane — belt and braces.</p>}
 
             <button className="primary-button" type="submit" disabled={draft !== undefined || busy || (rows.length === 0 && action !== 'create')}>{busy ? 'Working…' : 'Preview change'}</button>
           </form>

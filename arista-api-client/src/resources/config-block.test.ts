@@ -29,7 +29,7 @@
  * M9 (#11) is the first real reader and took that escape hatch exactly once rather than per module:
  * {@link valueAfterKeyword} / {@link valuesAfterKeyword} (exported from this file) cut the value **at the
  * keyword** — `lstrip` plus `unquote` applied there instead of in `describeLine` — and are what
- * `vlans.ts:232-234` and `switchports.ts:292-296` call. `src/config/**` is untouched, so every as-built
+ * `vlans.ts:244-246` and `switchports.ts:292-296` call. `src/config/**` is untouched, so every as-built
  * pin above stays as it shipped. Because those two extractors are exports of the file this suite belongs
  * to, they get direct specs below (MIGRATION.md's `_parse_*` row: extractors are "pure, unit-tested
  * directly") instead of riding only on the indirect exercise through `switchports.test.ts` / `vlans.test.ts`.
@@ -177,7 +177,7 @@ describe('parseConfigBlock — PLAN.md M7 (no upstream twin, §5 row 81)', () =>
   })
 })
 
-describe('valueAfterKeyword / valuesAfterKeyword — M9 (#11) keyword-position reads, the reader row 81 deferred to this milestone (vlans.ts:232-234, switchports.ts:292-296)', () => {
+describe('valueAfterKeyword / valuesAfterKeyword — M9 (#11) keyword-position reads, the reader row 81 deferred to this milestone (vlans.ts:244-246, switchports.ts:292-296)', () => {
   // Both extractors take a **parsed body**, which is what `parseConfigBlock` hands its extractors; going
   // through `parseBlock` here keeps the lines device-shaped (dedented, rstripped by `describeLine`,
   // `config/text.ts:150`) instead of hand-built `ConfigLine` objects that could drift from it.
