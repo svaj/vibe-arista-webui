@@ -179,6 +179,20 @@ describe('App composition (F6 chrome)', () => {
     expect(screen.getByRole('button', { name: 'Set source interface' })).toBeDisabled()
   })
 
+  it('puts the S13 (#83) ACL screen in the nav on #/acls', () => {
+    render(<App />)
+
+    const acls = screen.getByRole('link', { name: 'ACLs' })
+    expect(acls).toHaveAttribute('href', '#/acls')
+    expect(acls).not.toHaveAttribute('aria-current', 'page')
+    // Unconfigured: the route registers and the screen idles on the proxy prompt — visiting `#/acls`
+    // must not run a config read or open a session.
+    fireEvent.click(acls)
+    expect(screen.getByRole('heading', { level: 2, name: 'ACLs' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Create ACL' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Reload device state' })).toBeDisabled()
+  })
+
   it('puts the S14 (#84) read-only MLAG status screen in the nav on #/mlag', () => {
     render(<App />)
 
