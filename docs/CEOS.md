@@ -280,6 +280,22 @@ never overwrite hardware fixtures with cEOS recordings.
 
 ## Browser E2E and CI plan
 
+> **Status (2026-11-15, #91): items 1–4 and 6 are implemented as the webui-owned opt-in
+> lane; item 5 (the trusted `workflow_dispatch` job) is a deliberate follow-up.** Entry
+> point: `npm run e2e` (repo root or `-w arista-webui`) — it wraps `scripts/ceos-lab.mjs run`
+> so the container lifecycle/teardown rules above apply unchanged, and the child
+> `scripts/e2e-run.mjs` runs the TLS/identity preflight
+> (`scripts/ceos-lab-eapi-child.mjs`) then serves four dev states: connected (:5173, proxy
+> creds in the vite process only), unconfigured (:5174), unreachable-target (:5175) and
+> bad-auth (:5176, a real 401 from cEOS using the guard's placeholder credential pair).
+> Specs are `arista-webui/e2e/*.e2e.ts`; results/boundary assert + F8 artifact scan live in
+> `node scripts/assert-e2e-run.mjs arista-webui/e2e-results/results.json --check-secrets`.
+> trace/video/HAR/screenshots are OFF — failure diagnostics are the scrubbed text attachments
+> from `e2e/fixtures.ts`, so everything on disk is text-scannable. Offline CI can never
+> reach the lane (`src/e2e-lane-boundary.test.ts` pins this). Deferred: the `ceos-e2e`
+> workflow_dispatch job — the `eos-lab` runner has no provisioned Chromium today, which the
+> follow-up issue must resolve first. The six requirements below remain the binding spec.
+
 1. Keep Vitest component tests mocked/offline. Add Playwright separately when the UI
    has an eAPI-backed workflow; no new runner is installed by this documentation change.
 2. Provision cEOS, pass the readiness gate, then start the frontend with its loopback

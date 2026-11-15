@@ -275,7 +275,9 @@ trusted dispatch only (`ceos-live`): runs-on [self-hosted, linux, eos-lab] (labe
 per-endpoint concurrency: the run group is `ceos-live-endpoint-<port>` with cancel-in-progress:false
       (push/PR keep `ci-<ref>` + cancel), the harness layers a stale-aware lock file per port, and the
       `live` vitest project already pins pool 'forks' + fileParallelism:false + maxWorkers:1.
-playwright / browser E2E: still NOT installed — a separate opt-in lane (docs/CEOS.md CI plan).
+playwright / browser E2E: installed as the webui-owned opt-in lane (#91) — `npm run e2e -w arista-webui`,
+      specs in arista-webui/e2e/, boundary assert scripts/assert-e2e-run.mjs; never part of this
+      package's unit/live projects (docs/CEOS.md CI plan).
 hardware dispatch only: explicit target authorization, secrets, per-endpoint concurrency lock
 ```
 
