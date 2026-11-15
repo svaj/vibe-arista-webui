@@ -206,4 +206,21 @@ describe('App composition (F6 chrome)', () => {
     expect(screen.getByRole('button', { name: 'Reload MLAG state' })).toBeDisabled()
     expect(screen.getByText(/configuration editing is not offered here/u)).toBeInTheDocument()
   })
+
+  it('puts the S15 (#85) spanning-tree screen in the nav on #/stp', () => {
+    render(<App />)
+
+    const stp = screen.getByRole('link', { name: 'Spanning tree' })
+    expect(stp).toHaveAttribute('href', '#/stp')
+    expect(stp).not.toHaveAttribute('aria-current', 'page')
+    // Unconfigured: the route registers and the screen idles on the proxy prompt — visiting `#/stp`
+    // must not open a session or read anything. And #85's standing boundary holds on the DOM itself:
+    // no global-mode control exists anywhere on the screen (mode change is blocked B3 #88).
+    fireEvent.click(stp)
+    expect(screen.getByRole('heading', { level: 2, name: 'Spanning tree' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Preview change' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Reload spanning-tree state' })).toBeDisabled()
+    expect(screen.queryAllByRole('button', { name: /mode/iu })).toHaveLength(0)
+    expect(screen.getByRole('alert')).toHaveTextContent('EAPI_HOST')
+  })
 })
