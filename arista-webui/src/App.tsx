@@ -8,8 +8,10 @@ import { CommandConsole } from './features/console/CommandConsole'
 import { LagManager } from './features/lags/LagManager'
 import { IpAddressing } from './features/addressing/IpAddressing'
 import { CapabilityPanel } from './features/capabilities/CapabilityPanel'
+import { Mlag } from './features/mlag/Mlag'
 import { SystemSettings } from './features/system/SystemSettings'
 import { Ntp } from './features/ntp/Ntp'
+import { Stp } from './features/stp/Stp'
 import { Acls } from './features/acls/Acls'
 import { StaticRoutes } from './features/routes/StaticRoutes'
 import { TransactionCenter } from './features/sessions/TransactionCenter'
@@ -84,6 +86,20 @@ function App() {
     '/acls': {
       title: 'ACLs',
       element: <Acls node={node} proxyConfigured={__EAPI_PROXY_CONFIGURED__} />,
+    },
+    // S14 (#84) owns `#/mlag`: READ-ONLY MLAG status. The container's own seam is Pick<Node,
+    // 'mlag' | 'show'> — it cannot even see a config session — and the screen ships no writes:
+    // MLAG configuration needs a paired device (#84 closes editing; the banner says so).
+    '/mlag': {
+      title: 'MLAG',
+      element: <Mlag node={node} proxyConfigured={__EAPI_PROXY_CONFIGURED__} />,
+    },
+    // S15 (#85) owns `#/stp`: per-port bpduguard/portfast guard edits staged the named-session way,
+    // plus a config-only STP summary. `show spanning-tree` is uncaptured (operational state is
+    // "not yet observable"), and no global-mode control renders — mode changes are blocked B3 (#88).
+    '/stp': {
+      title: 'Spanning tree',
+      element: <Stp node={node} proxyConfigured={__EAPI_PROXY_CONFIGURED__} />,
     },
     // S9 (#79) owns `#/sessions`: the transaction center (view/abort/preview half; the durable
     // persistence/rollback half stays out of scope until #89's captures land).
