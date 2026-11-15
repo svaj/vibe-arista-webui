@@ -55,6 +55,9 @@ export default defineConfig({
       //   (lines 90) did NOT fail the leg — so the per-glob keys appear not to be matched the way the
       //   report groups files, and both the `lines` and `branches` per-directory floors are advisory
       //   until that is re-checked. The four global thresholds are what actually gate today.
+      //   [RE-CHECKED + FIXED by #124, 2026-11-15 — the keys never matched anything; see the
+      //   enforcement note at the foot of this block. The 66.66 % case now exits 1 with a named
+      //   per-directory error line.]
       // #74 (S4 read-only command console, stacked on main) measured the whole webui suite at
       //   all files 95.07/89.83/97.54/98.55 (stmts/branch/funcs/lines), per-directory from the JSON:
       //   src/features/console 98.03/91.36/100 — the four uncovered statements are the `!canAct || busy`
@@ -64,6 +67,7 @@ export default defineConfig({
       //   moment of the FIRST click can never be covered by definition). Interfaces re-measured
       //   95.06/92.16/99.24 and vlans 89.44/84.80/90.80 for the same tree, shared rose to 98.18/90.86.
       //   No new floor written for console, and per #124 the per-directory keys stay advisory anyway.
+      //   [#124 landed later the same week; entries are live since then.]
       // #75 (S5 Port-Channel manager, stacked on the console lane) measured 404 tests / 28 files:
       //   all files 94.38/89.09/97.24/98.30 — the four GLOBAL legs still pass (94.38 ≥ 90 stmts,
       //   89.09 ≥ 85 branch, 97.24 ≥ 95 funcs, 98.30 ≥ 95 lines). Per-directory from the JSON:
@@ -107,18 +111,50 @@ export default defineConfig({
       //   `busy || draft !== undefined` short-circuits behind enabled/disabled buttons, the
       //   journal-unreadable recovery refusal (jsdom localStorage does not throw), and the
       //   verify `missingAnswer` pill arm. No new threshold entry (#124 posture).
-      // Floors below are set ~2-4 points under those figures (ratchet up, never down). Two notes for
-      // the coverage-lane owner (#69): (1) `src/shared/` branch coverage is 86.40 while that entry
-      // asks for 87, and the leg still exits 0 — the per-glob `branches` figure does not appear to be
-      // enforced the way `lines` is, so treat per-dir branch floors as advisory until #69 re-checks;
-      // (2) the text table truncates directory names, so per-directory claims come from the JSON.
+      // Floors below are set ~2-4 points under the measurements above (ratchet up, never down), and
+      // as of #124 they GATE: on 2026-11-15 every entry was mutation-checked by dropping that
+      // directory's coverage (uncovered probe files; for the two feature-aggregate entries, removing
+      // the dashboard/manager suites) and watching each emit its own
+      // `ERROR: Coverage for <metric> (<x>%) does not meet "<glob>" threshold (<n>%)` line, then
+      // restoring — clean tree exits 0 at these floors, all files 93.75/90.96/96.22/98.05. Two notes
+      // for the coverage-lane owner (#69): (1) superseded — the per-glob `branches` figure IS enforced
+      // now; the 86.40-vs-87 anecdote reproduced to the digit under a probe the day the keys were
+      // fixed (86.4), which is what proved the entries binding rather than decorative; (2) still true:
+      // the text table truncates directory names, so per-directory claims come from the JSON — though
+      // a failing glob now ALSO prints its pattern and percentages in the error line. #124 further
+      // found the historical per-directory numbers were DIRECT-FILES aggregates (istanbul's report
+      // grouping never nests), which the literal keys hid; the table below therefore carries both
+      // `dir/*` (the directory's own files — what those historical 100/92.3 figures measured) and
+      // `dir/*` (the directory's own files — what those historical 100/92.3 figures measured) and
+      // `dir/**` (subtree aggregate). Enforcement exposed one genuine floor miss — `src/features/*`
+      // direct files at branches 83.33 under the 84 floor, which is `stageDisplay`'s two non-EOF-
+      // framing arms, recorded open by #78 as "the object-spec fallback no current verb produces" —
+      // closed now with a spec, not a lowered floor. `AppShell`'s `tone: 'warn'` status-dot arm, the
+      // last uncovered spot anywhere in `src/components/`, was pinned by the same sweep: the direct
+      // files sat at branches 92.31 (passing) while the aggregate sat at 87.32, and that split was
+      // the whole reason the two key levels exist rather than one.
       thresholds: {
-        'src/components/': { lines: 98, branches: 90 },
-        'src/components/ui/': { lines: 90, branches: 84 },
-        'src/features/': { lines: 90, branches: 84 },
-        'src/features/interfaces/': { lines: 96, branches: 88 },
-        'src/shared/': { lines: 98, branches: 87 },
-        'src/testing/': { lines: 96, branches: 82 },
+        // #124: keys are **picomatch patterns matched against the workspace-relative file path**
+        // (vitest 5 `resolveThresholds`: `pm(glob)` over `relative(root, file)`). The legacy
+        // `'src/features/'` form is a LITERAL pattern matching no file: the entry aggregated the empty
+        // set and the leg exited 0 over a directory at 66.66 % (#124's smoking gun, reproduced
+        // 2026-11-15: covered files removed from four floored directories, exit still 0). Two forms
+        // bind, and they mean different things, so this config now carries both levels per directory:
+        //   'dir/*'  — the directory's DIRECT files only (what every historical per-directory figure
+        //              in the comments above actually measured, e.g. the `src/features 100/100` that
+        //              `staged-batch.ts` earned; a new uncovered sibling cannot hide in the aggregate).
+        //   'dir/**' — the whole subtree aggregate (screen directories carry their own entry too).
+        // Every entry was mutation-checked the same day (deliberate uncovered probes / dropped suites;
+        // each produced its own `does not meet "..." threshold` line, then restored). `components/*`
+        // needed one new spec — the `tone: 'warn'` status-dot arm of AppShell, previously never
+        // rendered, which is why the parent sat at branches 87.32 under a 90 floor.
+        'src/components/*': { lines: 98, branches: 90 },
+        'src/components/ui/**': { lines: 90, branches: 84 },
+        'src/features/*': { lines: 90, branches: 84 },
+        'src/features/**': { lines: 90, branches: 84 },
+        'src/features/interfaces/**': { lines: 96, branches: 88 },
+        'src/shared/**': { lines: 98, branches: 87 },
+        'src/testing/**': { lines: 96, branches: 82 },
         lines: 95,
         branches: 85,
         functions: 95,

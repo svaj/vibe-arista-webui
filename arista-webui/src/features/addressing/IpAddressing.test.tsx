@@ -335,7 +335,11 @@ describe('IpAddressing — staged batches match the client verbs', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: 'Commit to running-config' }))
     await screen.findByText('Changes committed to running-config. Startup-config was not changed.')
     expect(session.commit).toHaveBeenCalledTimes(1)
-    expect((node.ipinterfaces.getAll as unknown as { mock: { calls: unknown[][] } }).mock.calls.length).toBeGreaterThan(1)
+    // The post-commit re-read starts one React flush AFTER the success text renders, so the second
+    // `getAll` may not have reached the mock at the moment of a bare expect — it read 1 on a busy
+    // node-24 CI leg (#124's run surfaced this #76-era flake; same commit, node 22 green). Await
+    // the reload like TrunkEditor/Mlag already do for their read-count assertions.
+    await vi.waitFor(() => expect((node.ipinterfaces.getAll as unknown as { mock: { calls: unknown[][] } }).mock.calls.length).toBeGreaterThan(1))
   })
 
   it('stages the secondary-suffixed line, appending the word when the operator omitted it', async () => {

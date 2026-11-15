@@ -33,6 +33,18 @@ describe('stageDisplay (#78: the review copy for batches that may carry multilin
       .toEqual(['banner login (multiline input: 0 line(s), EOF-terminated)'])
   })
 
+  it('digests an input that is not in the client framing by its raw shape (#124: the fallback arms #78 left open)', () => {
+    // `setBanner` always sends `body\nEOF\n`, so neither fallback is reachable from this app's own
+    // verbs — #78 recorded that. The digester is still contract-bound to it: a batch arriving in a
+    // different framing (a replayed journal line, a future verb) must digest its RAW shape, and the
+    // copy's "EOF-terminated" phrase names the client convention (the contract the reviewer is
+    // accepting), never a claim that the body carried the terminator.
+    expect(stageDisplay([{ cmd: 'banner motd', input: 'just one line' }]))
+      .toEqual(['banner motd (multiline input: 1 line(s), EOF-terminated)'])
+    expect(stageDisplay([{ cmd: 'banner login', input: 'a\nb\n' }]))
+      .toEqual(['banner login (multiline input: 2 line(s), EOF-terminated)'])
+  })
+
   it('an object spec without an input renders just its command (and a bare cmd is digest-safe all the same)', () => {
     expect(stageDisplay([{ cmd: 'profile x' }])).toEqual(['profile x'])
   })

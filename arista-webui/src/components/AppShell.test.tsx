@@ -111,7 +111,13 @@ describe('AppShell chrome', () => {
     expect(screen.getByText('/command-api')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'VLAN assignment' })).toBeInTheDocument()
   })
+  it('shows a pending dot for a warning tone (#124: the arm the floored directory missed)', () => {
+    setHash('#/vlans')
+    const { container } = render(<AppShell homePath="/vlans" routes={routes} status={{ label: 'Some ports are not writable on this unit', tone: 'warn' }} />)
 
+    expect(screen.getByText('Some ports are not writable on this unit')).toBeInTheDocument()
+    expect(container.querySelector('.status-dot.is-pending')).not.toBeNull()
+  })
   it('shows a pending dot for an unconfigured proxy', () => {
     setHash('#/vlans')
     const { container } = render(<AppShell homePath="/vlans" routes={routes} status={{ label: 'Local proxy is not configured', tone: 'error' }} />)
