@@ -13,11 +13,14 @@ export async function openInterfaces(page: Page): Promise<void> {
   await expect(page.getByRole('heading', { level: 2, name: 'Interfaces dashboard' })).toBeVisible()
 }
 
-/** Stage a description change and wait for the device diff to appear in the review panel. */
+/** Stage a description change and wait for the device diff to appear in the review panel.
+ *  Controls are addressed by role + EXACT accessible name: bare getByLabel('Interface')
+ *  substring-collides with the inventory DataTable's aria-label="Interface inventory"
+ *  (live-run finding, 2026-11-15 → selectOption hit the table, not the <select>). */
 export async function stageDescription(page: Page, port: string, text: string): Promise<void> {
-  await page.getByLabel('Interface').selectOption(port)
-  await page.getByLabel('Change').selectOption('set-description')
-  await page.getByLabel('Description').fill(text)
+  await page.getByRole('combobox', { name: 'Interface', exact: true }).selectOption(port)
+  await page.getByRole('combobox', { name: 'Change', exact: true }).selectOption('set-description')
+  await page.getByRole('textbox', { name: 'Description', exact: true }).fill(text)
   await page.getByRole('button', { name: 'Preview change' }).click()
   await expect(page.getByRole('heading', { level: 3, name: /^Session / })).toBeVisible()
   await expect(page.getByLabel('Configuration diff')).toContainText(text, { timeout: 30_000 })
@@ -25,8 +28,8 @@ export async function stageDescription(page: Page, port: string, text: string): 
 
 /** Stage 'clear-description' (restores `no description`) and wait for its diff. */
 export async function stageClearDescription(page: Page, port: string, needle: string): Promise<void> {
-  await page.getByLabel('Interface').selectOption(port)
-  await page.getByLabel('Change').selectOption('clear-description')
+  await page.getByRole('combobox', { name: 'Interface', exact: true }).selectOption(port)
+  await page.getByRole('combobox', { name: 'Change', exact: true }).selectOption('clear-description')
   await page.getByRole('button', { name: 'Preview change' }).click()
   await expect(page.getByRole('heading', { level: 3, name: /^Session / })).toBeVisible()
   await expect(page.getByLabel('Configuration diff')).toContainText(needle, { timeout: 30_000 })

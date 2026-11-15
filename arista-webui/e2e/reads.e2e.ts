@@ -38,8 +38,9 @@ test('interfaces table lists the scratch port the harness discovered on the devi
   await expect(page.getByRole('heading', { level: 2, name: 'Interfaces dashboard' })).toBeVisible()
   // Port names come from the device config read — presence in the table AND the editor's
   // <option> set is the parity signal. <option> visibility is not asserted (native selects
-  // render options off-DOM until opened), so scope to a count.
-  await expect(page.getByLabel('Interface').locator('option', { hasText: scratch as string })).toHaveCount(1)
+  // render options off-DOM until opened), so scope to a count. Combobox + exact name avoids
+  // the 'Interface inventory' table-label substring collision (see interactions.ts).
+  await expect(page.getByRole('combobox', { name: 'Interface', exact: true }).locator('option', { hasText: scratch as string })).toHaveCount(1)
   await expect(page.getByRole('table').getByRole('row').filter({ hasText: scratch as string }).first()).toBeVisible()
 })
 
@@ -49,5 +50,9 @@ test('transaction center shows the provisioner pending session, matching the dev
 
   const sessions = await deviceRead<{ sessions?: Record<string, { state?: string }> }>(request, 'show configuration sessions')
   expect(Object.keys(sessions.sessions ?? {})).toContain('lab-pending-capture')
-  await expect(page.getByRole('cell').getByText('lab-pending-capture')).toBeVisible({ timeout: 30_000 })
+  // Device sessions render as a <ul aria-label="Device configuration sessions"> of
+  // <li><strong>name</strong> (the CELL-based table on this screen is the local journal,
+  // not the device list). Match the <strong> name exactly so the shared 'Abort session
+  // <name>' button text does not also match.
+  await expect(page.getByRole('list', { name: 'Device configuration sessions' }).getByText('lab-pending-capture', { exact: true })).toBeVisible({ timeout: 30_000 })
 })

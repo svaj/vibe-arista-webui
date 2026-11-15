@@ -24,26 +24,35 @@ test.describe('error states against real failing upstreams', () => {
   test('a dead upstream never renders a false connected state', async ({ browser }) => {
     const url = process.env['E2E_UNREACHABLE_URL']
     test.skip(url === undefined || url === '', 'E2E_UNREACHABLE_URL is only set under scripts/e2e-run.mjs')
+    // try/finally is load-bearing here (run-1 finding): this context deliberately holds
+    // requests to a hanging upstream, and a failed test that skips context.close() keeps
+    // those sockets open past the run, delaying the lab forwarder's release of the endpoint.
     const context = await browser.newContext({ baseURL: url })
-    const page = await context.newPage()
-    await page.goto('/#/vlans')
-    await expect(page.getByText('Connecting through local proxy')).toBeVisible({ timeout: 30_000 })
-    // Hold the position for a beat, then verify nothing success-shaped ever appears:
-    await page.waitForTimeout(5_000)
-    await expect(page.getByText('Connected through local proxy')).toHaveCount(0)
-    await expect(page.locator('.device-identity')).toHaveCount(0)
-    await expect(page.getByRole('alert')).toHaveCount(0)
-    await context.close()
+    try {
+      const page = await context.newPage()
+      await page.goto('/#/vlans')
+      await expect(page.getByText('Connecting through local proxy')).toBeVisible({ timeout: 30_000 })
+      // Hold the position for a beat, then verify nothing success-shaped ever appears:
+      await page.waitForTimeout(5_000)
+      await expect(page.getByText('Connected through local proxy')).toHaveCount(0)
+      await expect(page.locator('.device-identity')).toHaveCount(0)
+      await expect(page.getByRole('alert')).toHaveCount(0)
+    } finally {
+      await context.close()
+    }
   })
 
   test('a rejected credential from the real device renders the failed state too', async ({ browser }) => {
     const url = process.env['E2E_BADAUTH_URL']
     test.skip(url === undefined || url === '', 'E2E_BADAUTH_URL is only set under scripts/e2e-run.mjs')
     const context = await browser.newContext({ baseURL: url })
-    const page = await context.newPage()
-    await page.goto('/#/vlans')
-    await expect(page.getByText('Connection failed')).toBeVisible({ timeout: 60_000 })
-    expect(page.url()).toContain('#/vlans')
-    await context.close()
+    try {
+      const page = await context.newPage()
+      await page.goto('/#/vlans')
+      await expect(page.getByText('Connection failed')).toBeVisible({ timeout: 60_000 })
+      expect(page.url()).toContain('#/vlans')
+    } finally {
+      await context.close()
+    }
   })
 })
