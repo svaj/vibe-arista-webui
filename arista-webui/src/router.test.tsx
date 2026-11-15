@@ -7,9 +7,12 @@ import {
   Router,
   hrefFor,
   navigate,
+  paramFromHash,
   pathFromHash,
+  queryFromHash,
   resolveRoutePath,
   toRoutePath,
+  useHashParam,
   useHashRoute,
 } from './router'
 import type { RouteRegistry } from './router'
@@ -57,6 +60,62 @@ describe('hash path helpers', () => {
   it('resolves an empty hash to the home route', () => {
     expect(resolveRoutePath('', '/vlans')).toBe('/vlans')
     expect(resolveRoutePath('/interfaces', '/vlans')).toBe('/interfaces')
+  })
+})
+
+describe('query parameters (#126)', () => {
+  it('pathFromHash still strips the query — the registry keys on the path alone', () => {
+    expect(pathFromHash('#/switches/manage?port=Ethernet2')).toBe('/switches/manage')
+    expect(queryFromHash('#/switches/manage?port=Ethernet2')).toBe('port=Ethernet2')
+    expect(queryFromHash('#/vlans')).toBe('')
+    expect(queryFromHash('')).toBe('')
+    // An in-page fragment is not a route even when it carries a `?` — the route-shape guard runs on
+    // the part before the first `?`, exactly as `pathFromHash` does.
+    expect(queryFromHash('#workspace')).toBe('')
+    expect(queryFromHash('#workspace?port=Ethernet2')).toBe('')
+    // A second `#` ends the query (same split `pathFromHash` performs).
+    expect(queryFromHash('#/switches/manage?port=Ethernet2#frag')).toBe('port=Ethernet2')
+    // Hash-shaped or bare-path-shaped input, exactly the acceptance `pathFromHash` gives.
+    expect(queryFromHash('/switches/manage?port=Ethernet2')).toBe('port=Ethernet2')
+  })
+
+  it('reads one parameter, and treats an absent name and an empty value alike', () => {
+    expect(paramFromHash('#/switches/manage?port=Ethernet2&x=1', 'port')).toBe('Ethernet2')
+    expect(paramFromHash('#/switches/manage?port=Port-Channel1', 'port')).toBe('Port-Channel1')
+    expect(paramFromHash('#/switches/manage?port=Ethernet%32', 'port')).toBe('Ethernet2')
+    expect(paramFromHash('#/switches/manage?port=Ethernet2', 'nope')).toBeUndefined()
+    expect(paramFromHash('#/switches/manage', 'port')).toBeUndefined()
+    // `?port=` names nothing selectable; consumers must not each branch on the empty string.
+    expect(paramFromHash('#/switches/manage?port=', 'port')).toBeUndefined()
+    expect(paramFromHash('#workspace?port=Ethernet2', 'port')).toBeUndefined()
+  })
+
+  it('useHashParam reads a deep-linked query on first render', () => {
+    setHash('#/switches/manage?port=Ethernet2')
+    const { result } = renderHook(() => useHashParam('port'))
+    expect(result.current).toBe('Ethernet2')
+  })
+
+  it('useHashParam follows navigation, and non-route hashes are "no instruction" (undefined), not carried-over values', async () => {
+    const { result } = renderHook(() => useHashParam('port'))
+    expect(result.current).toBeUndefined()
+
+    act(() => navigate('/switches/manage?port=Ethernet2'))
+    expect(result.current).toBe('Ethernet2')
+
+    await act(async () => {
+      setHash('#/switches/manage?port=Ethernet3')
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+    expect(result.current).toBe('Ethernet3')
+
+    // The skip link (#workspace): path subscriptions remember the route, but the PARAM channel reads
+    // undefined — "no instruction" — so fragment navigation never steers deep-linked screens.
+    await act(async () => {
+      setHash('#workspace')
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+    expect(result.current).toBeUndefined()
   })
 })
 

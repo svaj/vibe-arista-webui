@@ -9,6 +9,13 @@ import type { MouseEvent, ReactElement, ReactNode } from 'react'
  * middle-click, back/forward, and screen readers keep working. Route paths always start with `/`; that
  * marker is what lets an in-page fragment (the `#workspace` skip link) coexist with routing instead of
  * being mistaken for an unknown screen.
+ *
+ * #126 added the **parameter channel** (`?port=Ethernet2`): the registry still keys on the path alone
+ * (`pathFromHash` strips the query, pinned), and a screen reads its parameter through
+ * {@link useHashParam} — deliberately a SEPARATE subscription rather than widening `useHashRoute`'s
+ * string contract (its shape is pinned and every caller depends on it). A query is transient in this
+ * design: an in-page fragment carries none, and the deep-link consumer must treat "no parameter" as
+ * "no instruction", never as "clear the current state".
  */
 
 /** One entry of the route registry: the title the document gets plus the element to mount. */
@@ -40,6 +47,33 @@ export function pathFromHash(hash: string): string | undefined {
   const [path = ''] = beforeQuery.split('#')
   if (!path.startsWith(ROUTE_MARKER)) return undefined
   return trimTrailingSlash(path)
+}
+
+/**
+ * `#/switches/manage?port=Ethernet2` -> `port=Ethernet2`; a hash with no query, an in-page fragment
+ * (even one carrying `?`), or an empty hash -> `''`. Splits where {@link pathFromHash} splits: first
+ * `?`, query ends at a following `#`.
+ */
+export function queryFromHash(hash: string): string {
+  const raw = hash.startsWith('#') ? hash.slice(1) : hash
+  const mark = raw.indexOf('?')
+  if (mark === -1) return ''
+  const [beforeQuery = ''] = raw.split('?')
+  if (!beforeQuery.startsWith(ROUTE_MARKER)) return ''
+  const [query = ''] = raw.slice(mark + 1).split('#')
+  return query
+}
+
+/**
+ * One query parameter of a route-shaped hash; `undefined` when the hash is not route-shaped, the
+ * parameter is absent, or its value is EMPTY — `?port=` carries no name to select, and the difference
+ * between "absent" and "a blank arrives on the wire" must not leak into every consumer's branches.
+ */
+export function paramFromHash(hash: string, name: string): string | undefined {
+  const query = queryFromHash(hash)
+  if (query === '') return undefined
+  const value = new URLSearchParams(query).get(name)
+  return value === null || value === '' ? undefined : value
 }
 
 /** An empty hash means "the home route", so links, the outlet, and the address bar can be reconciled. */
@@ -101,6 +135,18 @@ function readRouteSnapshot(): string {
  */
 export function useHashRoute(): string {
   return useSyncExternalStore(subscribeToHashChanges, readRouteSnapshot)
+}
+
+/**
+ * Reactive sibling of {@link useHashRoute} for one query parameter (#126). `getSnapshot` returns a
+ * primitive (`string | undefined`), so React's identity comparison is the value comparison: consumers
+ * re-render exactly when the named parameter's value changes. Unlike the path snapshot this one is
+ * NOT remembered across non-route hashes — a fragment like the skip link reads `undefined`, "no
+ * instruction" in the consumer's hands, which is the whole point: deep links seed screens on arrival
+ * and nothing in fragment navigation yanks them back.
+ */
+export function useHashParam(name: string): string | undefined {
+  return useSyncExternalStore(subscribeToHashChanges, () => paramFromHash(window.location.hash, name))
 }
 
 /** Programmatic navigation. The anchor path below and browser back/forward both land here too. */

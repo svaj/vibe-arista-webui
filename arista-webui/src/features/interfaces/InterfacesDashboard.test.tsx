@@ -144,8 +144,10 @@ describe('InterfacesDashboard — reads', () => {
     expect(screen.getAllByText('Not reported').length).toBeGreaterThanOrEqual(9)
     expect(screen.getByRole('cell', { name: 'to-desk-12' })).toBeInTheDocument()
     // DR-075's relation, inverted: the member row names its group. Two cells carry that token — the
-    // `Port-Channel1` row's own name cell and `Ethernet2`'s LAG-member column.
-    expect(screen.getAllByRole('cell', { name: 'Port-Channel1' })).toHaveLength(2)
+    // `Port-Channel1` row's own name cell and `Ethernet2`'s LAG-member column. The name cell's
+    // accessible name gained the #126 deep link (`Edit trunk settings for Port-Channel1`), so the
+    // match anchors on the leading token instead of the whole string.
+    expect(screen.getAllByRole('cell', { name: /^Port-Channel1/u })).toHaveLength(2)
     expect(node.interfaces.getAll).toHaveBeenCalledWith({ status: 'skip' })
   })
 
@@ -462,5 +464,43 @@ describe('InterfacesDashboard — staged writes', () => {
     const confirmPrompt = await screen.findByRole('dialog', { name: 'Abort pending device session' })
     await user.click(within(confirmPrompt).getByRole('button', { name: 'Abort pending session' }))
     expect(node.abortSession).toHaveBeenCalledWith('stale-pending')
+  })
+})
+
+describe('per-port deep link into the trunk editor (#126)', () => {
+  it('linkable rows carry a real anchor whose accessible name and href name the port', async () => {
+    const { node } = makeClient()
+    await ready(node)
+
+    for (const name of ['Ethernet1', 'Ethernet2', 'Ethernet22', 'Port-Channel1']) {
+      const link = screen.getByRole('link', { name: `Edit trunk settings for ${name}` })
+      // A REAL anchor (#63's rule): the raw href is what makes middle-click and open-in-new-tab
+      // carry the deep link, not just the router's own click.
+      expect(link).toHaveAttribute('href', `#/switches/manage?port=${name}`)
+    }
+    // The link sits beside the name it belongs to — the cell keeps the name node.
+    expect(within(screen.getByRole('cell', { name: /Ethernet22/u })).getByRole('link', { name: 'Edit trunk settings for Ethernet22' })).toBeInTheDocument()
+  })
+
+  it('no link for a name the editor will not write, and none for sections S3 does not list', async () => {
+    const { node } = makeClient()
+    await ready(node)
+    // Ethernet49/1 fails the client's own name grammar (same predicate behind the editor's shut
+    // controls); Management1/Vlan100 are not Ethernet/Port-Channel sections at all. A row S3 cannot
+    // edit must not get a link dead-ending into a disabled form (#126 acceptance).
+    for (const name of ['Ethernet49/1', 'Management1', 'Vlan100']) {
+      expect(screen.queryByRole('link', { name: `Edit trunk settings for ${name}` })).toBeNull()
+    }
+    // And the unrecognised-name note still rides its row — no link replaced it.
+    expect(screen.getByText('name this client cannot parse')).toBeInTheDocument()
+  })
+
+  it('a plain click routes through the hash channel with the parameter intact', async () => {
+    const user = userEvent.setup()
+    const { node } = makeClient()
+    await ready(node)
+    await user.click(screen.getByRole('link', { name: 'Edit trunk settings for Ethernet22' }))
+    expect(window.location.hash).toBe('#/switches/manage?port=Ethernet22')
+    window.location.hash = ''
   })
 })

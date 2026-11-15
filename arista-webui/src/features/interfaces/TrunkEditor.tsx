@@ -92,7 +92,7 @@
  * inconclusive answer never reads as support. The read side shows each port's parsed `switchport trunk
  * group …` lines (running-config text, not model-backed), with a probe offered before any commit.
  */
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import { commandBuilder, isInterfaceName, isSwitchportMode, submodeCommands, SWITCHPORT_MODES } from '@devhax-heavy-industries/arista-eapi'
 import type { ConfigSession, ConfigSessionSummary, FeatureProbeCommands, Interface, IpInterface, Node, Switchport, Vlan } from '@devhax-heavy-industries/arista-eapi'
@@ -107,6 +107,7 @@ import { ConfirmProvider, useConfirm } from '../../shared/use-confirm'
 import { candidateList, useCapabilities } from '../../shared/use-capabilities'
 import type { CapabilityClient } from '../../shared/use-capabilities'
 import { managementInterfaces } from './InterfacesDashboard'
+import { useHashParam } from '../../router'
 import { stageLines } from '../staged-batch'
 import { TrunkEditorView } from './TrunkEditorView'
 import type { TrunkAction, TrunkCapabilityView, TrunkDraftView, TrunkFields, TrunkLoadState, TrunkMessage, TrunkPortRow, TrunkSessionRow, TrunkVlanOption } from './TrunkEditorView'
@@ -297,6 +298,45 @@ function TrunkEditorWorkspace({ node, proxyConfigured = true }: TrunkEditorProps
   const data: TrunkData | undefined = read.state.kind === 'ready' ? read.state.data : undefined
   const rows = data === undefined ? [] : data.rows
   const port = rows.some((row) => row.name === fields.port) ? fields.port : (rows[0]?.name ?? '')
+
+  // ─── #126: the deep-link seam ────────────────────────────────────────────────────────────
+  // `#/switches/manage?port=Ethernet2` arrives from S1's per-row link (`InterfacesDashboard.tsx`), a
+  // shared URL opened cold, or browser back/forward. Rules, each pinned by `TrunkEditor.test.tsx`:
+  //  - ABSENT ≠ INSTRUCTION: `useHashParam` reads undefined on a plain visit AND while a fragment
+  //    (the skip link) is in the bar, so fragment navigation never yanks a seeded screen around.
+  //  - No guessing while the read is still loading: seeding waits for `ready`. A failed read shows
+  //    its own error — the editor never fabricates a preselection from an address bar.
+  //  - One application per arrived value (`deepLinkAppliedRef`): user interaction after a seed must
+  //    not be stomped on an unrelated re-render, yet back/forward ACROSS two different parameters
+  //    each counts as a fresh arrival — and crossing to a fresh value runs through `changeField`,
+  //    the shipped discard rule (#123), so a link can never become a second road for staging one
+  //    port's typed value at another. Back to the SAME value the store already holds emits no
+  //    change at all (a string-equal snapshot does not re-render the subscription) — pinned contract.
+  //  - Requested port not in the read: an explicit notice, never a silent drop onto the fallback
+  //    row; the requested name is not fed into `fields.port`, so no draft can target it.
+  const requestedPort = useHashParam('port')
+  const [deepLinkNotice, setDeepLinkNotice] = useState('')
+  const deepLinkAppliedRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    if (requestedPort === undefined || data === undefined) return
+    if (deepLinkAppliedRef.current === requestedPort) return
+    deepLinkAppliedRef.current = requestedPort
+    if (!rows.some((row) => row.name === requestedPort)) {
+      setDeepLinkNotice(`The deep link asked for ${requestedPort}, but that port was not in the read, so nothing is selected for it. Reload state or pick from the list below — the table above is what this device's running-config actually carries.`)
+      return
+    }
+    setDeepLinkNotice('')
+    if (fields.port === requestedPort) return
+    if (fields.port === '') {
+      // Untouched form: seed through the field shape without a discard notice — nothing was edited,
+      // and "Edits for <fallback row> were cleared" would be a sentence about a display artifact.
+      setFields((current) => ({ ...current, port: requestedPort }))
+      return
+    }
+    changeField('port', requestedPort)
+  })
+
   const selectedRow = rows.find((row) => row.name === port)
   const draftView: TrunkDraftView | undefined = draft === undefined ? undefined : {
     sessionName: draft.session.name,
@@ -578,6 +618,7 @@ function TrunkEditorWorkspace({ node, proxyConfigured = true }: TrunkEditorProps
     load={load}
     connection={read.state.kind === 'ready' ? 'connected' : read.state.kind === 'error' ? 'error' : 'connecting'}
     {...(identity === undefined ? {} : { identity })}
+    {...(deepLinkNotice === '' ? {} : { deepLinkNotice })}
     fields={{ ...fields, port }}
     modes={SWITCHPORT_MODES}
     {...(draftView === undefined ? {} : { draft: draftView })}

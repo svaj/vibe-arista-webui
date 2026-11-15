@@ -25,7 +25,7 @@
  * touching S1's screen — the screen carries its own port selector instead, and that gap is stated
  * in the shipped copy.
  */
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -960,6 +960,105 @@ describe('TrunkEditor — the trunk-group capability gate (#67 F5, #73\u2019s pr
     expect(session.commit).not.toHaveBeenCalled()
     expect(probe.validateChanges).not.toHaveBeenCalled()
     expect(node.listSessions).not.toHaveBeenCalled()
+  })
+})
+
+describe('TrunkEditor — deep links from the S1 dashboard (#126)', () => {
+  afterEach(() => {
+    window.location.hash = ''
+  })
+
+  /** jsdom, like a browser, delivers `hashchange` on a later task. */
+  async function toHash(hash: string): Promise<void> {
+    await act(async () => {
+      window.location.hash = hash
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+  }
+
+  it('a cold load of the shared URL seeds the port selector, without a discard notice', async () => {
+    window.location.hash = '#/switches/manage?port=Ethernet2'
+    const { node } = makeFakes()
+    await ready(node)
+
+    expect(await screen.findByLabelText('Interface')).toHaveValue('Ethernet2')
+    // Nothing was edited before the seed — "Edits for <row> were cleared" would describe a
+    // display artifact, not the operator's work.
+    expect(screen.queryByText(/cleared without being staged/u)).toBeNull()
+    expect(screen.queryByText(/was not in the read/u)).toBeNull()
+  })
+
+  it('a port the read does not have is announced, never silently dropped onto the first row', async () => {
+    window.location.hash = '#/switches/manage?port=Ethernet99'
+    const { node } = makeFakes()
+    await ready(node)
+
+    expect(await screen.findByText(/was not in the read/u)).toBeInTheDocument()
+    // The requested name never enters the state: what renders is the table's documented fallback
+    // display, and the notice is what tells the operator the link itself answered nothing.
+    expect(screen.getByLabelText('Interface')).toHaveValue('Ethernet1')
+  })
+
+  it('while the read is in flight the target port is not guessed, and a failed read shows no fabrication', () => {
+    // Synchronous on purpose: no await path may let an effect run with `data` defined while the
+    // device answer is still pending — the form simply does not exist yet. Render, then assert.
+    window.location.hash = '#/switches/manage?port=Ethernet2'
+    const { node } = makeFakes({ interfaces: 'pending' })
+    render(<TrunkEditor node={node} />)
+    expect(screen.getByRole('heading', { name: 'Trunk ports' })).toBeInTheDocument()
+    expect(screen.queryByLabelText('Interface')).toBeNull()
+  })
+
+  it('a failed device read shows the read error, with no preselection invented from the address bar', async () => {
+    window.location.hash = '#/switches/manage?port=Ethernet2'
+    const { node } = makeFakes({ switchports: new Error('eAPI socket hang up') })
+    render(<TrunkEditor node={node} />)
+
+    expect(await screen.findByRole('alert')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Interface')).toBeNull()
+    expect(screen.queryByText(/was not in the read/u)).toBeNull()
+  })
+
+  it('back/forward across two parameters re-seeds through the shipped crossing rule', async () => {
+    const user = userEvent.setup()
+    window.location.hash = '#/switches/manage?port=Ethernet3'
+    const { node } = makeFakes()
+    await ready(node)
+    await screen.findByLabelText('Interface')
+
+    await chooseAction('allowed-add')
+    await user.type(screen.getByLabelText('Allowed VLAN ranges'), '777')
+
+    await toHash('#/switches/manage?port=Ethernet2')
+    expect(within(notices()).getByText(/Edits for Ethernet3 were cleared without being staged/u)).toBeInTheDocument()
+    expect((screen.getByLabelText('Allowed VLAN ranges') as HTMLInputElement).value).toBe('')
+    expect(screen.getByLabelText('Interface')).toHaveValue('Ethernet2')
+
+    // Forward back across the history: the earlier parameter counts as a fresh arrival and crosses
+    // again — a link is never a second road for staging one port's typed value at another.
+    await user.type(screen.getByLabelText('Allowed VLAN ranges'), '888')
+    await toHash('#/switches/manage?port=Ethernet3')
+    expect(within(notices()).getByText(/Edits for Ethernet2 were cleared without being staged/u)).toBeInTheDocument()
+    expect((screen.getByLabelText('Allowed VLAN ranges') as HTMLInputElement).value).toBe('')
+    expect(screen.getByLabelText('Interface')).toHaveValue('Ethernet3')
+  })
+
+  it('the manual selection is not stomped by the seed that started it, nor by fragment navigation', async () => {
+    const user = userEvent.setup()
+    window.location.hash = '#/switches/manage?port=Ethernet2'
+    const { node, session } = makeFakes()
+    await ready(node)
+    await screen.findByLabelText('Interface')
+
+    // One application per arrived value: moving off the seeded port stands, and the skip link's
+    // fragment hash reads "no instruction" on the parameter channel — never a forced return.
+    await user.selectOptions(screen.getByLabelText('Interface'), 'Ethernet1')
+    await toHash('#workspace')
+    expect(screen.getByLabelText('Interface')).toHaveValue('Ethernet1')
+    expect(screen.queryByText(/was not in the read/u)).toBeNull()
+
+    // And the journey leaves nothing staged.
+    expect(session.run).not.toHaveBeenCalled()
   })
 })
 

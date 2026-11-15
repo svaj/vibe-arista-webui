@@ -40,8 +40,9 @@ function App() {
       title: 'Interfaces',
       element: <InterfacesDashboard node={node} proxyConfigured={__EAPI_PROXY_CONFIGURED__} />,
     },
-    // S3 (#73) owns `#/switches/manage`: the trunk/switch port editor. The per-port link from S1's
-    // table that #73 also lists is NOT wired yet — see the WIP note in the branches and issue #73.
+    // S3 (#73) owns `#/switches/manage`: the trunk/switch port editor. #126 wired the reachability
+    // half: S1's rows carry `#/switches/manage?port=<name>` anchors and the editor seeds from the
+    // parameter (`useHashParam`) — the registry itself still keys on the path alone.
     '/switches/manage': {
       title: 'Switch ports',
       element: <TrunkEditor node={node} proxyConfigured={__EAPI_PROXY_CONFIGURED__} />,

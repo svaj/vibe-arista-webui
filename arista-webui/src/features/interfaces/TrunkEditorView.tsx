@@ -214,6 +214,12 @@ export interface TrunkEditorViewProps {
   readonly failure: string
   readonly notice: string
   readonly onFieldChange: (field: TrunkFieldKey, value: string) => void
+  /**
+   * #126: set when the address asked for a port this read does not contain. Rendered as its own
+   * status line — the container does not feed an unknown name into the selection, and the screen
+   * must say so rather than let the table's first row answer silently.
+   */
+  readonly deepLinkNotice?: string
   readonly onPreview: (event: FormEvent<HTMLFormElement>) => void
   readonly onCommit: () => void
   readonly onAbortDraft: () => void
@@ -341,6 +347,7 @@ export function TrunkEditorView({
   load,
   connection,
   identity,
+  deepLinkNotice,
   fields,
   modes,
   draft,
@@ -388,7 +395,7 @@ export function TrunkEditorView({
 
       <p className="field-note">Every value on this screen is a <strong>parsed <code>show running-config</code> line</strong>: the client has no device-side trunk JSON capture of this command (its
         <code>switchport-trunk.conf</code> fixture is hand-authored), so nothing here is model-backed trunk state, and a write is checked by the device diff below. Trunk-group editing sits behind the capability probe below (#67): an `available` answer is command
-        presence only — never how many groups the SKU accepts, and never capacity (epic open item 6). This screen picks the port from its own list; the per-port link from the interfaces dashboard (#71) that #73 also names is not wired yet.</p>
+        presence only — never how many groups the SKU accepts, and never capacity (epic open item 6). The interfaces dashboard (#71) links straight here per port (<code>#/switches/manage?port=&lt;name&gt;</code> — a real anchor since #126, so the selection survives a cold open of the shared URL too); the list below stays the manual path, and a port the read does not have is announced, never guessed.</p>
 
       {load.kind === 'loading' && <p className="notice" role="status" aria-busy="true">Reading interfaces, switchport config, VLANs, IP addresses, configuration sessions, and the management path…</p>}
       {load.kind === 'error' && <div className="notice notice-error" role="alert"><strong>Device state could not be read.</strong><p>{load.message}</p>{canWrite && <button type="button" onClick={onReload}>Retry read</button>}</div>}
@@ -438,8 +445,7 @@ export function TrunkEditorView({
 
         <section className="panel" aria-labelledby="write-title">
           <div className="panel-heading"><div><p className="eyebrow">STAGED CHANGE</p><h3 id="write-title">Change one port</h3></div><span className="panel-index">02</span></div>
-
-          {selected !== undefined && !selected.editable && <p className="notice notice-warning" role="status">{selected.name} is listed but not writable here: this client refuses to put that name behind <code>interface &lt;name&gt;</code> (DECISIONS.md open item 7), so the write controls below are shut.</p>}
+          {deepLinkNotice !== undefined && <p className="notice notice-warning" role="status">{deepLinkNotice}</p>}          {selected !== undefined && !selected.editable && <p className="notice notice-warning" role="status">{selected.name} is listed but not writable here: this client refuses to put that name behind <code>interface &lt;name&gt;</code> (DECISIONS.md open item 7), so the write controls below are shut.</p>}
           {data.vlanOptions.length === 0 && <p className="notice notice-warning" role="status">The VLAN table came back empty, so there are no suggested VLAN ids. The fields below still accept an id; the device keeps authority over what it answers.</p>}
 
           <form onSubmit={onPreview}>
