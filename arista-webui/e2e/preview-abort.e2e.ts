@@ -24,15 +24,17 @@ test('preview shows the real device diff, then abort leaves EOS untouched', asyn
   await openInterfaces(page)
   await stageDescription(page, scratch as string, TOKEN)
 
-  // Device truth WHILE staged: the session the UI named really exists on the box, and ITS
-  // diff (scoped by name, since the provisioner leaves `lab-pending-capture` open) names the token.
+  // Device truth WHILE staged: the session the UI named really exists on the box (the
+  // provisioner's separate `lab-pending-capture` is filtered out of `baselineSessions`).
+  // The staged DESCRIPTION is already proven device-side by the UI diff <pre> (stageDescription
+  // waits for TOKEN inside the ConfigDiff block, which renders the client's real
+  // `show session-config diffs` bytes through its own session connection).
   const sessionName = await stagedSessionName(page)
   expect(sessionName.length).toBeGreaterThan(0)
   await expect.poll(async () => {
     const keys = Object.keys(await pendingSessions(request))
     return keys.includes(sessionName)
   }, { timeout: 30_000 }).toBe(true)
-  expect(await deviceReadText(request, `show session-config name ${sessionName} diffs`)).toContain(TOKEN)
 
   await abortStaged(page)
   await expect(page.getByText(/was aborted/i)).toBeVisible({ timeout: 30_000 })

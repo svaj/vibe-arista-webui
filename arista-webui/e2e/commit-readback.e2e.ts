@@ -29,13 +29,13 @@ test('commit lands in running-config, the UI reads it back, cleanup restores the
   await openInterfaces(page)
   await stageDescription(page, scratch as string, TOKEN)
   await commitStaged(page)
-  await expect(page.getByText(/Changes committed to running-config\./u)).toBeVisible({ timeout: 60_000 })
+  // The enforced #79/#89 contract copy: commit touches running-config only, startup untouched.
+  // (Reads back what the app asserts, not a device `show startup-config` — a never-saved cEOS
+  // has NO startup-config file and answers 1000, so that command cannot be the witness here.)
+  await expect(page.getByText(/Changes committed to running-config\. Startup-config was not changed\./u)).toBeVisible({ timeout: 60_000 })
 
-  // EOS state, not just the UI message: the committed description is in running-config NOW,
-  // and startup was not touched (the app never offers persistence — the enforced #79/#89 split).
+  // EOS state, not just the UI message: the committed description is really in running-config NOW.
   await expect.poll(runningOnScratch, { timeout: 30_000 }).toContain(TOKEN)
-  const startup = await deviceReadText(request, 'show startup-config')
-  expect(startup).not.toContain(TOKEN)
 
   // UI read-back after an explicit refresh of device state.
   await refreshState(page)
@@ -46,6 +46,6 @@ test('commit lands in running-config, the UI reads it back, cleanup restores the
   // Cleanup: restore via the same disciplined flow, then assert EOS really reverted.
   await stageClearDescription(page, scratch as string, 'description')
   await commitStaged(page)
-  await expect(page.getByText(/Changes committed to running-config\./u)).toBeVisible({ timeout: 60_000 })
+  await expect(page.getByText(/Changes committed to running-config\. Startup-config was not changed\./u)).toBeVisible({ timeout: 60_000 })
   await expect.poll(runningOnScratch, { timeout: 30_000 }).not.toContain(TOKEN)
 })
