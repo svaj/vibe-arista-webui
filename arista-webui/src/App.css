@@ -202,6 +202,9 @@ tbody tr:last-child td { border-bottom: 0; }
    running-config line the reference comes from, so the operator is not asked to trust a count. */
 .ref-list { display: grid; gap: 3px; margin: 6px 0; padding-left: 18px; }
 .ref-list code { color: var(--ink); font-family: var(--mono); font-size: 11px; overflow-wrap: anywhere; }
+
+/* #126: the S1→S3 per-row deep link sits inside the Interface cell after the name. */
+.cell-trunk-link { margin-left: 8px; font-size: 11px; white-space: nowrap; }
 .group-list { font-family: var(--mono); font-size: 11px; overflow-wrap: anywhere; }
 
 /* S4 (#74) read-only command console. The transcript is newest-first and each entry states, in order,

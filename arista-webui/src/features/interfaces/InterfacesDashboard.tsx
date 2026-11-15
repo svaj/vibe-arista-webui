@@ -70,6 +70,7 @@ import type { DeviceIdentity } from '../../shared/identity'
 import { softErrorText, softRead, softValue, useDeviceRead } from '../../shared/use-device-read'
 import { useOperation } from '../../shared/use-operation'
 import { ConfirmProvider, useConfirm } from '../../shared/use-confirm'
+import { hashLinkProps } from '../../router'
 import { stageLines } from '../staged-batch'
 import type { ShowManagementApiHttpCommandsReply } from '../../eapi/show-contracts'
 
@@ -389,7 +390,27 @@ function InterfacesWorkspace({ node, proxyConfigured = true }: InterfacesDashboa
   }
 
   const columns: readonly DataTableColumn<InterfaceRow>[] = [
-    { header: 'Interface', cell: (row) => <><strong>{row.name}</strong>{row.kind === 'Unrecognised' && <span className="cell-note">name this client cannot parse</span>}</> },
+    {
+      header: 'Interface',
+      // #126 (#73 reachability half): linkable rows carry a REAL anchor into the S3 editor —
+      // `#/switches/manage?port=<name>`, read back by the editor through `useHashParam`, so a fresh
+      // load of the shared URL preselects too (middle-click/open-in-new-tab included, #63's rule).
+      // Linkable means exactly what S3 will edit without a dead end: the same `isInterfaceName`
+      // predicate behind the editor's `editable` row flag, plus the editor's membership kinds
+      // (`isCandidate` in `TrunkEditor.tsx`: Ethernet/Port-Channel). A routed Ethernet still links —
+      // S3 lists it and states the no-switchport-record note on arrival (that IS the stated reason);
+      // an unparseable name (`Ethernet49/1`) never links, and neither do SVIs, Management, or
+      // Loopbacks, which the editor's read does not section at all.
+      cell: (row) => <>
+        <strong>{row.name}</strong>
+        {row.kind === 'Unrecognised' && <span className="cell-note">name this client cannot parse</span>}
+        {row.editable && (row.kind === 'Ethernet' || row.kind === 'Port-Channel') && <a
+          {...hashLinkProps(`/switches/manage?port=${encodeURIComponent(row.name)}`)}
+          className="cell-trunk-link"
+          aria-label={`Edit trunk settings for ${row.name}`}
+        >Edit trunk</a>}
+      </>,
+    },
     { header: 'Link', cell: (row) => row.link === undefined ? <span className="cell-note">Not reported</span> : <StatePill value={row.link} /> },
     { header: 'Line protocol', cell: (row) => row.protocol === undefined ? <span className="cell-note">Not reported</span> : <StatePill value={row.protocol} /> },
     { header: 'Admin state', cell: (row) => <StatePill value={row.admin} /> },
