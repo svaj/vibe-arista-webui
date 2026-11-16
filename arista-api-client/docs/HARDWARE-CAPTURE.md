@@ -139,7 +139,10 @@ still run, and their expectations are pinned to container provisioning, so their
 evidence (DR-043). Batch 1 is one file:
 
 ```sh
-npx vitest run -w arista-api-client --project live src/hw-inventory.live.test.ts
+# Batch 1, from the repo ROOT. Use `npm -w` (the ci.yml shape): the `live` project is defined only in
+# arista-api-client/vitest.config.ts, so `--project live` resolution from the root fails outright
+# ("No projects matched the filter") — the same config-resolution trap ci.yml records for the lab lane.
+npm -w arista-api-client run test:live -- src/hw-inventory.live.test.ts
 ```
 
 If you want the lab corpus against the switch deliberately as an extra read pass, run it separately and
@@ -167,11 +170,11 @@ forbidden families refused per §3; commit batches fenced to indented children o
 {{SCRATCH}}`), re-read by the operator on the session day.
 
 ```sh
-# same environment as batch 1, then:
+# same environment as batch 1, then (from the repo root, npm -w — see batch 1's note):
 export EAPI_SCRATCH_INTERFACE=Ethernet<n>      # the port from step 2.4 (guard-checked, §2.5 first)
-export EAPI_HW_PROBE_SPEC=$PWD/arista-api-client/docs/hw-session-probes.draft.json
+export EAPI_HW_PROBE_SPEC="$PWD/arista-api-client/docs/hw-session-probes.draft.json"
 export EAPI_HW_SESSION_PROBE=1                 # THE session opt-in
-npx vitest run src/hw-session-probe.live.test.ts -w arista-api-client --project live
+npm -w arista-api-client run test:live -- src/hw-session-probe.live.test.ts
 ```
 
 This is the **only** lane the guard lets mutate a switch: it states the exception in code
@@ -235,9 +238,9 @@ families listed in STATUS.md §3, not more rev-5 batches.
 # read the switch's own view of what is pending/committed BEFORE resuming (console, §2.5):
 #   show configuration sessions detail
 # then spend one abort-only batch doing the same read over eAPI:
-EAPI_HW_PROBE_ONLY=session-lifecycle npx vitest run -w arista-api-client --project live src/hw-session-probe.live.test.ts
+EAPI_HW_PROBE_ONLY=session-lifecycle npm -w arista-api-client run test:live -- src/hw-session-probe.live.test.ts
 # then the batches still owed:
-EAPI_HW_PROBE_ONLY=scratch-restore npx vitest run -w arista-api-client --project live src/hw-session-probe.live.test.ts
+EAPI_HW_PROBE_ONLY=scratch-restore npm -w arista-api-client run test:live -- src/hw-session-probe.live.test.ts
 ```
 
 ## 5. After the session

@@ -12,7 +12,7 @@
   },
   "captures": [
     {
-      "requestId": "1a4cd14a7757-1",
+      "requestId": "6ad5efccd202-1",
       "commands": [
         "enable",
         "show ntp status"

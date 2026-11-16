@@ -1,0 +1,89 @@
+{
+  "$comment": [
+    "Round 2 of the 7050TX-64 unblock probes (run 8, 2026-11-15). Round 1 (run 7) produced three",
+    "INCONCLUSIVE answers that were MY OWN invented spellings, not the box's verdicts — the DR-135",
+    "lesson, repeated live: (a) I staged bare `vrf UNBLOCK-PROBE`, but this client composes",
+    "`vrf instance X` (>= 4.23) / `vrf definition X` (vrfs.ts, W2d #41); (b) I staged `bgp router-id`,",
+    "but bgp.ts:535 composes plain `router-id <value>` inside the process; (c) I staged",
+    "`spanning-tree mode mst`, but the ported verb admits ONLY mstp|none (stp.ts set_mode / DR-096).",
+    "Round 2 therefore stages ONLY command texts read out of the ported resources, one question per",
+    "batch, exactly like the main draft. Every batch is allowCommit:false: stage -> record the diff ->",
+    "ABORT. Nothing reaches running-config; default forwarding is untouched (the 2026-11-15",
+    "authorization). Refusals are recorded as answers and the loop continues (DR-134).",
+    "Run-7 settled facts this spec builds on: `interface Vxlan1` STAGES (the stanza + its auto",
+    "`vxlan udp-port 4789` reached the diff); `router bgp 65199` opener STAGES; MST region config",
+    "stages; `router ospf 1` + bare `router-id` + `passive-interface default` stage FULLY (the diff",
+    "even shows the auto `max-lsa 12000`); `show bgp summary|neighbors` answer '% Not supported' on",
+    "this SKU while the OSPF/route-map reads parse; license features are EMPTY (open item 2).",
+    "NO batch uses {{SCRATCH}}; run with EAPI_SCRATCH_INTERFACE unset.",
+    "RUN (from the repo root, after the §2 env chain in docs/HARDWARE-CAPTURE.md):",
+    "  export EAPI_HW_SESSION_PROBE=1",
+    "  export EAPI_HW_PROBE_SPEC=$PWD/arista-api-client/docs/hw-capture-unblock2.draft.json",
+    "  npm -w arista-api-client run test:live -- src/hw-session-probe.live.test.ts"
+  ],
+  "batches": [
+    {
+      "name": "unblock2-vrf-instance",
+      "question": "the >= 4.23 spelling this client actually composes for VRF creation (vrfs.ts create): does `vrf instance X` + rd stage (B6 #90; round 1's bare-`vrf` 1002 was my spelling bug, not a device verdict)",
+      "commands": [
+        "vrf instance UNBLOCK-VRF",
+        "   rd 65000:1"
+      ],
+      "allowCommit": false
+    },
+    {
+      "name": "unblock2-vrf-definition",
+      "question": "upstream's older sibling spelling `vrf definition X` + rd — which of the two forms does 4.28.13.1M take (vrfs.ts accepts either on READ; create picks per version)",
+      "commands": [
+        "vrf definition UNBLOCK-VRF2",
+        "   rd 65000:2"
+      ],
+      "allowCommit": false
+    },
+    {
+      "name": "unblock2-vrf-assignment",
+      "question": "the interface-side spelling set_interface composes at >= 4.23 (bare `vrf <name>` INSIDE an interface stanza — distinct grammar from the refused global try); dangling-VRF staging semantics (run-4 dangling-SVI class). Vlan20 exists on this box; staging aborts, the live SVI keeps its address",
+      "commands": [
+        "interface Vlan20",
+        "   vrf UNBLOCK-VRF"
+      ],
+      "allowCommit": false
+    },
+    {
+      "name": "unblock2-bgp-client-composition",
+      "question": "does the client's true BGP composition stage end-to-end — opener (proven in run 7) + bare `router-id` (bgp.ts:535) + `neighbor <ip> remote-as <asn>` (the REMOTE_AS_REST grammar)? round 1 stopped at its own `bgp router-id` typo before the neighbor line was ever asked",
+      "commands": [
+        "router bgp 65199",
+        "   router-id 10.99.99.99",
+        "   neighbor 10.99.99.1 remote-as 65199"
+      ],
+      "allowCommit": false
+    },
+    {
+      "name": "unblock2-stp-mode-none",
+      "question": "the stp.ts set_mode other admitted value: does `spanning-tree mode none` stage (the box today runs mstp per running-config; ABORTED so STP never reconverges — the #88 blast-radius decision stays a DECISIONS item; `mst` was round 1's invented token)",
+      "commands": [
+        "spanning-tree mode none"
+      ],
+      "allowCommit": false
+    },
+    {
+      "name": "unblock2-vxlan-vlan-vni-mapping",
+      "question": "the vlan<->vni mapping the ported reader models (`vxlan vlan (\\d+)` + per-vlan vni, interfaces.ts Vxlan arm): `vxlan vlan 20 vni 10010` inside the already-proven Vxlan1 stanza — round 1 refused my invented bare `vxlan 10010` (B1 #86)",
+      "commands": [
+        "interface Vxlan1",
+        "   vxlan vlan 20 vni 10010"
+      ],
+      "allowCommit": false
+    },
+    {
+      "name": "unblock2-vxlan-source-interface",
+      "question": "the sourceInterface field's own spelling `vxlan source-interface Loopback1` (interfaces.ts DEFAULT_SRC_INTF comment, `vxlan source-interface <name>`) — staging semantics of a dangling Loopback reference inside an aborted session (B1 #86)",
+      "commands": [
+        "interface Vxlan1",
+        "   vxlan source-interface Loopback1"
+      ],
+      "allowCommit": false
+    }
+  ]
+}

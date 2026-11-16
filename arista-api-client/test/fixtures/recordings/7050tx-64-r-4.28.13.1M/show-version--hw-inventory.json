@@ -12,7 +12,7 @@
   },
   "captures": [
     {
-      "requestId": "a8050f42b4a7-1",
+      "requestId": "1794ca060437-1",
       "commands": [
         "enable",
         "show version"
@@ -22,15 +22,15 @@
         {},
         {
           "imageFormatVersion": "3.0",
-          "uptime": 692705.77,
+          "uptime": 1308723.73,
           "modelName": "DCS-7050TX-64-R",
           "internalVersion": "4.28.13.1M-41622611.428131M",
           "memTotal": 3982512,
           "mfgName": "Arista",
           "serialNumber": "<hw-redacted-serial>",
           "systemMacAddress": "00:00:00:00:00:00",
-          "bootupTimestamp": 1793491834.371714,
-          "memFree": 2556644,
+          "bootupTimestamp": 1793491834.369344,
+          "memFree": 2553048,
           "version": "4.28.13.1M",
           "configMacAddress": "00:00:00:00:00:00",
           "isIntlVersion": false,

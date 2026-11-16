@@ -1,0 +1,119 @@
+{
+  "format": "arista-eapi-recording/v1",
+  "identity": {
+    "targetSlug": "7050tx-64-r-4.28.13.1M",
+    "targetClass": "hardware",
+    "modelName": "DCS-7050TX-64-R",
+    "aristaVersion": "4.28.13.1M",
+    "versionNumber": "4.28.13.1",
+    "provenance": "captured",
+    "endpoint": "https://<hw-redacted>:443/command-api",
+    "topology": "supervised session; scratch=none"
+  },
+  "captures": [
+    {
+      "requestId": "b542924a0ce6-1",
+      "commands": [
+        "enable",
+        "configure session hw-probe-unblock-bgp-grammar description \"does the SKU accept router bgp + router-id + a remote-as\"",
+        "router bgp 65199",
+        "   bgp router-id 10.99.99.99",
+        "   neighbor 10.99.99.1 remote-as 65199"
+      ],
+      "format": "json",
+      "error": {
+        "data": [
+          {},
+          {},
+          {
+            "warnings": [
+              "IP routing not enabled"
+            ]
+          },
+          {
+            "errors": [
+              "Invalid input (at token 1: 'router-id')"
+            ]
+          }
+        ],
+        "message": "CLI command 4 of 5 '   bgp router-id 10.99.99.99' failed: invalid command",
+        "code": 1002
+      }
+    },
+    {
+      "requestId": "b542924a0ce6-2",
+      "commands": [
+        "enable",
+        "configure session hw-probe-unblock-bgp-grammar description \"does the SKU accept router bgp + router-id + a remote-as\"",
+        "show session-config diffs"
+      ],
+      "format": "text",
+      "result": [
+        {
+          "output": ""
+        },
+        {
+          "output": ""
+        },
+        {
+          "output": "--- system:/running-config\n+++ session:/hw-probe-unblock-bgp-grammar-session-config\n@@ -203,4 +203,6 @@\n role ops\n    10 permit command .*\n !\n+router bgp 65199\n+!\n end\n"
+        }
+      ]
+    },
+    {
+      "requestId": "b542924a0ce6-3",
+      "commands": [
+        "enable",
+        "configure session hw-probe-unblock-bgp-grammar description \"does the SKU accept router bgp + router-id + a remote-as\"",
+        "abort"
+      ],
+      "format": "json",
+      "result": [
+        {},
+        {},
+        {}
+      ]
+    },
+    {
+      "requestId": "b542924a0ce6-4",
+      "commands": [
+        "enable",
+        "show configuration sessions"
+      ],
+      "format": "json",
+      "result": [
+        {},
+        {
+          "maxSavedSessions": 1,
+          "maxOpenSessions": 5,
+          "sessions": {}
+        }
+      ]
+    },
+    {
+      "requestId": "b542924a0ce6-5",
+      "commands": [
+        "enable",
+        "show configuration sessions detail"
+      ],
+      "format": "json",
+      "result": [
+        {},
+        {
+          "maxSavedSessions": 1,
+          "maxOpenSessions": 5,
+          "sessions": {
+            "ui-127-0-0-1-e2e76c64": {
+              "instances": {},
+              "state": "completed",
+              "commitUser": "svaj",
+              "description": "\"webui vlan create 20\"",
+              "completedTime": 1794521920.149144
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "incomplete": []
+}

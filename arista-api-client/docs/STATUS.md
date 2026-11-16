@@ -334,6 +334,36 @@ source (pyeapi 1.0.4-rc0).
 > form (still missing). A further full run is optional from here: the sweep's open lines cannot be
 > answered by re-running rev 5.
 
+> **2026-11-15, run 7 (the UNBLOCK day, spec `docs/hw-capture-unblock.draft.json`): 7/7 batches,
+> 0 commits, 0 opener refusals — an all-abort day.** The refresh re-answered every batch-1 read (44
+> files; the box now carries `vlan 20`, Po10/Po30 and a monitor session — operator lab traffic, not
+> probe residue) and 9 NEW unblock reads landed: `show route-map` → `{routeMaps:{}}`,
+> `show ip route vrf all` → populated default-VRF table, `show vxlan vni` parses (text, empty),
+> `show ip ospf[ neighbor]` parse (text, empty — no instances under `no ip routing`), and the box
+> calls `show bgp summary|neighbors` **`% Not supported`** (an SKU-class platform negative, distinct
+> from 1002) while bare `show bgp` is 1002 incomplete-at-token-1. The staged-grammar answers:
+> **`router ospf 1` + `router-id` + `passive-interface` stage FULLY** (auto `max-lsa 12000` appears),
+> **`spanning-tree mst configuration` (name/revision/instance map) stages**, **`interface Vxlan1`
+> materializes** (stanza + `vxlan udp-port 4789` reach the diff), **`router bgp 65199` opener
+> stages**. THREE batches answered MY SPESSING BUGS, not the box: bare `vrf <name>`,
+> `bgp router-id` and `spanning-tree mode mst` match nothing any ported resource composes
+> (`vrf instance`/`vrf definition` in vrfs.ts, `router-id` at bgp.ts:535, mstp|none at stp.ts/DR-096)
+> — the DR-136 invented-token lesson, so those questions re-run as round 2
+> (`docs/hw-capture-unblock2.draft.json`, fence-validated, same all-abort posture) and DR-141 now
+> pins the rule. Net-zero proof: every post-state read shows `sessions: {}` pending with
+> `hw-probe`/`Vxlan1`/`UNBLOCK` strings ABSENT from the refreshed running-config; the single
+> completed-session slot rotated to an unrelated UI session (`ui-127-0-0-1-…`, "webui vlan create 20").
+> Side-catch: the run's `textPreferred` reads were the first-ever TEXT values through the hardware
+> scrubber and exposed its colon-form/serial-key gap — DR-140 fixes + regenerates (reserved IEEE
+> link-rules MACs exempted). Container side of the same day: `fixtures:refresh` added 5 #86/#87/#90
+> schema captures, and `docs/evidence/unblock-persistence.ceos.json` (cEOS-only, DR-043) records the
+> open-item-8 verb answers — `copy run start` ACCEPTED (`Copy completed successfully.` + the
+> startup-config before-1000/after-saved-text flip), `configure replace` EXISTS (1000 = the
+> deliberately-missing file, the verb ran), `rollback clean-config` at EXEC = 1002 at token 0
+> (session-scoped form still owed). cEOS surprise: `ip routing` STAGED this run (the saved startup
+> carries the line) where the 2026-11-07 probe refused it — a container-image fact only; a future
+> refresh may yet yield populated neighbor schema there, never a hardware verdict.
+
 Run the software/schema subset against cEOS first and store captures under
 `test/fixtures/recordings/ceos-4.28.14M/`; repeat target-sensitive checks on the
 7050TX-64 under `recordings/7050tx-64-4.28.13.1M/`. Keep exact version/model metadata,

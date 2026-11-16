@@ -12,16 +12,13 @@
     "internalVersion": "4.28.14M-50015774.42814M",
     "modelName": "cEOSLab",
     "hardwareEvidence": "none — cEOS-lab container capture; not DCS-7050TX-64 / 4.28.13.1M evidence (DR-043)",
-    "cliCapture": true,
-    "cliCaptureReason": "mgmt-path-owned-by-host-nat",
-    "cliCaptureNote": "bytes collected with `docker exec <run-owned container> Cli -p 15 … | json` because the published eAPI port was unavailable for this run on this Docker daemon; same EOS agent/parser answers both transports, and the container identity pins (model regex + base version) were re-checked from this CLI reply before any file was written",
-    "runId": "lab-1637825-9bbb4b",
-    "capturedAt": "2026-11-09T15:15:51.603Z",
+    "runId": "lab-1549185-7b7af2",
+    "capturedAt": "2026-11-16T01:21:19.981Z",
     "capturedBy": "scripts/ceos-lab.mjs",
-    "endpoint": "127.0.0.1:45121",
-    "transport": "docker exec Cli -p 15 (enable-mode) inside the run-owned container ceos-lab-lab-1637825-9bbb4b; eAPI refusal: mgmt-path-owned-by-host-nat",
-    "tlsPinFingerprint256": "8409DB215BBDB08FB0F3F31095E1F3BA42A5FD8BB9D4EAD41B73AA3F61DBB216",
-    "bootupTimestamp": 1794237292.719755,
+    "endpoint": "127.0.0.1:45863",
+    "transport": "https + HTTP basic auth to the run-owned published loopback port; container-side pinned certificate",
+    "tlsPinFingerprint256": "84A43F0495917C379CB1D32447E01FAA287D03C539A122825A2E67B719E8F281",
+    "bootupTimestamp": 1794791994.097316,
     "redactionApplied": [
       "username/secret and enable/passphrase text replaced with <redacted-lab-secret>, including the encryption-type form (`secret sha512 <hash>`, `enable algorithm <algo> password <hash>`) and **object keys**, because `show running-config` in `json` format keys its `cmds` map by the whole command line — the lab `username … secret sha512 $6$…` line is a key there, not a value (observed 2026-11-06)",
       "this run's random lab username replaced with <redacted-lab-user> (API user-stats otherwise leak it)",
@@ -34,7 +31,7 @@
   "format": "json",
   "result": {
     "header": [
-      "! device: 3a8bc4727a7c (cEOSLab, EOS-4.28.14M-50015774.42814M (engineering build))\n!\n"
+      "! device: 9aee849cc87a (cEOSLab, EOS-4.28.14M-50015774.42814M (engineering build))\n!\n"
     ],
     "comments": [],
     "cmds": {
@@ -552,6 +549,7 @@
       "no switchport port-security persistence disabled": null,
       "logging level BFD debugging": null,
       "default system mac-address": null,
+      "username <redacted-lab-user> privilege 15 role network-admin secret sha512 <redacted-lab-secret>": null,
       "no queue-monitor length": null,
       "no transceiver media 10gbase-zr temperature cooling-target": null,
       "monitor hadoop": {
@@ -576,7 +574,12 @@
       "logging level IPRIB debugging": null,
       "no mac address-table reserved forward 0180.c200.000e": null,
       "default snmp-server enable <redacted-lab-secret> ospf": null,
-      "bfd slow-timer 2000": null,
+      "management cli": {
+        "comments": [],
+        "cmds": {
+          "no command deprecated log": null
+        }
+      },
       "spanning-tree bpduguard rate-limit default": null,
       "no errdisable recovery cause bpduguard": null,
       "p4-runtime": {
@@ -726,8 +729,8 @@
         }
       },
       "no mac address-table reserved forward 0180.c200.0008": null,
-      "default snmp-server enable <redacted-lab-secret> bgp arista-established": null,
-      "no mac address-table reserved forward 0180.c200.0006": null,
+      "no mac address-table reserved forward 0180.c200.0009": null,
+      "logging level VRF debugging": null,
       "qos map traffic-class 0 1 2 3 4 5 6 7 8 9 10 11 to uc-tx-queue 4": null,
       "no mac address-table reserved forward 0180.c200.0004": null,
       "no mac address-table reserved forward 0180.c200.0005": null,
@@ -959,9 +962,9 @@
       "agent LedPolicy shutdown": null,
       "environment fan-speed auto": null,
       "environment insufficient-fans action shutdown": null,
-      "no ipv6 hardware fib optimize": null,
       "no ip igmp snooping vlan 100 querier last-member-query-interval": null,
       "no sflow interface disable default": null,
+      "hostname 9aee849cc87a": null,
       "default snmp-server enable <redacted-lab-secret> bridge arista-mac-learn": null,
       "logging level BMP debugging": null,
       "mac address-table notification host-flap logging": null,
@@ -1468,10 +1471,10 @@
       "logging level TUNNELINTF debugging": null,
       "no ip hardware fib programmed monitor": null,
       "no snmp-server ifmib ifspeed shape-rate": null,
-      "no mac address-table reserved forward 0180.c200.0009": null,
+      "default snmp-server enable <redacted-lab-secret> bgp arista-established": null,
       "logging level INFLUXTELEMETRY debugging": null,
       "no ip dhcp snooping bridging": null,
-      "logging level VRF debugging": null,
+      "no ipv6 hardware fib optimize": null,
       "no transceiver media 400gbase-lr4 temperature cooling-target": null,
       "no logging source-interface": null,
       "logging level DSCP debugging": null,
@@ -1479,6 +1482,7 @@
       "no transceiver media 100gbase-zr4 temperature cooling-target": null,
       "no spanning-tree guard loop default": null,
       "no ipv6 unicast-routing": null,
+      "no mac address-table reserved forward 0180.c200.0006": null,
       "ip route 10.20.0.0/24 10.0.100.2 1 tag 0": null,
       "logging level CAPI debugging": null,
       "no banner motd": null,
@@ -1592,7 +1596,7 @@
       "no spanning-tree portchannel guard misconfig": null,
       "default snmp-server enable <redacted-lab-secret> external-alarm arista-external-alarm-deasserted-notif": null,
       "no ipv6 dhcp snooping remote-id option": null,
-      "no ip igmp snooping restart query-interval": null,
+      "no transceiver media 40gbase-sr4 temperature cooling-target": null,
       "default snmp-server enable <redacted-lab-secret> snmpConfigManEvent": null,
       "no hardware speed-group default single-slot auto": null,
       "hardware fpga error action log": null,
@@ -1713,7 +1717,7 @@
       "no aaa accounting exec console": null,
       "spanning-tree max-age 20": null,
       "ip igmp snooping fast-leave": null,
-      "logging level MCS debugging": null,
+      "default snmp-server enable <redacted-lab-secret> switchover": null,
       "event-monitor buffer max-size 32": null,
       "no queue-monitor length tx-latency": null,
       "no transceiver media 1000base-bx10-u temperature cooling-target": null,
@@ -1761,7 +1765,7 @@
           "no from-user": null
         }
       },
-      "default snmp-server enable <redacted-lab-secret> switchover": null,
+      "logging level MCS debugging": null,
       "logging level ACCOUNTING debugging": null,
       "router segment-security": {
         "comments": [],
@@ -2381,7 +2385,6 @@
       "logging level KERNELFIB debugging": null,
       "no dns qos dscp": null,
       "no transceiver media 100gbase-sr2 temperature cooling-target": null,
-      "username <redacted-lab-user> privilege 15 role network-admin secret sha512 <redacted-lab-secret>": null,
       "no ip igmp snooping vlan 10 querier startup-query-interval": null,
       "default snmp-server enable <redacted-lab-secret> entity ent-config-change": null,
       "no mpls icmp fragmentation-needed tunneling": null,
@@ -2520,16 +2523,17 @@
         }
       },
       "no errdisable recovery cause acl": null,
-      "no logging event storm-control discards interval": null,
-      "logging level STAGEMGR debugging": null,
       "no transceiver media 10gbase-dwdm-er temperature cooling-target": null,
+      "logging level STAGEMGR debugging": null,
+      "no logging event storm-control discards interval": null,
       "no aaa authentication policy lockout": null,
       "aaa authentication login <redacted-lab-secret> local": null,
       "lldp hold-time 120": null,
       "system coredump compressed": null,
       "default switch forwarding-mode": null,
       "no errdisable recovery cause arp-inspection": null,
-      "no transceiver media 40gbase-sr4 temperature cooling-target": null,
+      "bfd slow-timer 2000": null,
+      "no ip igmp snooping restart query-interval": null,
       "no transceiver media 25gbase-lrl temperature cooling-target": null,
       "no service interface unconnected expose": null,
       "router traffic-engineering": {
@@ -2609,7 +2613,6 @@
         }
       },
       "no transceiver media 200gbase-cr8n temperature cooling-target": null,
-      "hostname 3a8bc4727a7c": null,
       "no transceiver media 50gbase-cr2s temperature cooling-target": null,
       "no hardware access-list resource sharing ipv4-ipv6 security-acl in": null,
       "logging level LDP debugging": null,
@@ -2923,12 +2926,6 @@
       "no dot1x system-auth-control": null,
       "no transceiver media 400gbase-cr8s temperature cooling-target": null,
       "logging level OSPF debugging": null,
-      "management cli": {
-        "comments": [],
-        "cmds": {
-          "no command deprecated log": null
-        }
-      },
       "platform etba multicast-routing kernel": null,
       "logging level FWK debugging": null,
       "logging level LACP debugging": null,

@@ -12,7 +12,7 @@
   },
   "captures": [
     {
-      "requestId": "0c6ee340022b-1",
+      "requestId": "825f502b7f38-1",
       "commands": [
         "enable",
         "show ip route"
@@ -32,7 +32,7 @@
                   "vias": [
                     {
                       "interface": "Management1",
-                      "nexthopAddr": "<hw-redacted>"
+                      "nexthopAddr": "192.168.1.1"
                     }
                   ],
                   "metric": 0,
@@ -40,7 +40,7 @@
                   "routeType": "static",
                   "preference": 1
                 },
-                "<hw-redacted>/24": {
+                "192.168.1.0/24": {
                   "kernelProgrammed": true,
                   "directlyConnected": true,
                   "routeAction": "forward",

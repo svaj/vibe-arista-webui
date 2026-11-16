@@ -12,7 +12,7 @@
   },
   "captures": [
     {
-      "requestId": "d376ffab20ab-1",
+      "requestId": "66a9b7adccdd-1",
       "commands": [
         "enable",
         "show vlan"
@@ -31,7 +31,7 @@
                   "privatePromoted": false,
                   "blocked": null
                 },
-                "Ethernet17": {
+                "Ethernet9": {
                   "privatePromoted": false,
                   "blocked": null
                 },
@@ -47,15 +47,34 @@
                   "privatePromoted": false,
                   "blocked": null
                 },
+                "Ethernet25": {
+                  "privatePromoted": false,
+                  "blocked": null
+                },
                 "Ethernet1": {
+                  "privatePromoted": false,
+                  "blocked": null
+                },
+                "Port-Channel30": {
+                  "privatePromoted": false,
+                  "blocked": null
+                },
+                "Ethernet17": {
                   "privatePromoted": false,
                   "blocked": null
                 },
                 "Port-Channel10": {
                   "privatePromoted": false,
                   "blocked": null
-                },
-                "Ethernet35": {
+                }
+              },
+              "dynamic": false
+            },
+            "20": {
+              "status": "active",
+              "name": "MGMT",
+              "interfaces": {
+                "Port-Channel10": {
                   "privatePromoted": false,
                   "blocked": null
                 }

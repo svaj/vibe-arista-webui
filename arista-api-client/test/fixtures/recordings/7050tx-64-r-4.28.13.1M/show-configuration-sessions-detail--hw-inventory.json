@@ -12,7 +12,7 @@
   },
   "captures": [
     {
-      "requestId": "ccbf9e92e8d3-1",
+      "requestId": "cfce666feea4-1",
       "commands": [
         "enable",
         "show configuration sessions detail"
@@ -24,12 +24,12 @@
           "maxSavedSessions": 1,
           "maxOpenSessions": 5,
           "sessions": {
-            "m12a-intf-clear-Ethernet22": {
+            "ui-127-0-0-1-e2e76c64": {
               "instances": {},
               "state": "completed",
               "commitUser": "svaj",
-              "description": "",
-              "completedTime": 1794182736.3879669
+              "description": "\"webui vlan create 20\"",
+              "completedTime": 1794521920.1491442
             }
           }
         }

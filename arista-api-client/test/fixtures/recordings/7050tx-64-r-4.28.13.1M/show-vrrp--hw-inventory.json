@@ -12,7 +12,7 @@
   },
   "captures": [
     {
-      "requestId": "ccc271fea2ff-1",
+      "requestId": "2ed6e9cfd7fe-1",
       "commands": [
         "enable",
         "show vrrp"

@@ -2004,6 +2004,20 @@ const CAPTURE_CATALOG = [
   { command: 'show vrf', format: 'json', id: 'ceos-lab-capability', note: 'read-only prerequisite of B6 (#90); answered `vrfs` on the probed container (cEOS-lab defaults to the default VRF only); empty/1002 answers are recorded as negative results, never files' },
   { command: 'show ip route', format: 'json', id: 'ceos-lab-capability', note: 'populated by the provisioned SVI connected routes + the provisioned static route; prerequisite of S10 (#80). cEOS-lab refused `ip routing` outright (tolerated probe), so this capture documents what the routing table answers with routing globally unavailable — the `ip routing` verdict on the hardware stays #14 §3' },
   { command: 'show vrrp', format: 'json', id: 'ceos-lab-capability', note: 'probed: VRRP config was refused on cEOS-lab 4.28.14M and the read answers nothing usable — record as a negative result (never a file), with the staging transcript as the capability evidence' },
+  /* ---- 2026-11-15 unblock reads (companion to the hardware lane in src/testing/hw-capture.ts).
+   * cEOS-lab refuses `ip routing` (PROVISION_TOLERATED), so routing/VXLAN/VRF commands land here as
+   * either a populated schema or a recorded 1002/negative — both are the cEOS-lab answer, never a
+   * 7050TX verdict (DR-043). The grammar VERDICTS on the real box come from the abort-only staged
+   * probes in docs/hw-capture-unblock.draft.json, not from this container. ---- */
+  { command: 'show vxlan interface', format: 'json', id: 'ceos-lab-capability', note: 'B1 (#86): does cEOS-lab 4.28.14M model a Vxlan interface at all; presence/schema here, the SKU verdict is the #14 §3 hardware read' },
+  { command: 'show vxlan vni', format: 'json', id: 'ceos-lab-capability', note: 'B1 (#86): VNI<->VLAN mapping shape (empty unless configured; provisioning does not add a VTEP, so a 1002 or empty map is the finding)' },
+  { command: 'show vxlan tunnel', format: 'json', id: 'ceos-lab-capability', note: 'B1 (#86): VTEP tunnel table shape from a configured VTEP — deliberately NOT configured here, so this documents the unconfigured-container answer' },
+  { command: 'show ip ospf', format: 'json', id: 'ceos-lab-capability', note: 'B2 (#87): OSPF read presence/schema. cEOS-lab refused `ip routing`, so this is the schema with routing unavailable; populated adjacency state is a hardware-side question' },
+  { command: 'show ip ospf neighbor', format: 'json', id: 'ceos-lab-capability', note: 'B2 (#87): neighbor-table field set the read-only status tab would render (unknown-safe); empty/1002 recorded as a negative' },
+  { command: 'show bgp summary', format: 'json', id: 'ceos-lab-capability', note: 'B2 (#87): 4.28 points at `show bgp` (not `show ip bgp`) — bare `show bgp` answers 1002 INCOMPLETE at token 1 (captured 2026-11-16), so the sub-keyed spelling is the real reader contract' },
+  { command: 'show bgp neighbors', format: 'json', id: 'ceos-lab-capability', note: 'B2 (#87): the second spelling #87 names outright; refused-with-code recorded as a negative result, never a file' },
+  { command: 'show route-map', format: 'json', id: 'ceos-lab-capability', note: 'B2 (#87): route-map model from an unconfigured container — an empty {routeMaps:{}} is the schema the S-side route-map viewer reads' },
+  { command: 'show ip route vrf all', format: 'json', id: 'ceos-lab-capability', note: 'B6 (#90): per-VRF route-table shape; cEOS-lab defaults to the default VRF only (no provisioning adds a VRF and `ip routing` is refused), so this documents the default-VRF-only answer' },
 ]
 
 /**

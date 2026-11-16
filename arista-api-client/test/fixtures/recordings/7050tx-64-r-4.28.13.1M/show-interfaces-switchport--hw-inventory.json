@@ -12,7 +12,7 @@
   },
   "captures": [
     {
-      "requestId": "af586e2963d1-1",
+      "requestId": "e62d24580275-1",
       "commands": [
         "enable",
         "show interfaces switchport"
@@ -427,33 +427,6 @@
                 "dot1qVlanTagRequired": false
               }
             },
-            "Ethernet13": {
-              "enabled": true,
-              "switchportInfo": {
-                "sourceportFilterMode": "enabled",
-                "macLearning": true,
-                "trunkAllowedVlans": "ALL",
-                "accessVlanId": 1,
-                "phoneTrunkUntagged": false,
-                "trunkingNativeVlanName": "default",
-                "dynamicAllowedVlans": {},
-                "vlanForwardingMode": "allowedVlansOnly",
-                "phoneVlan": 0,
-                "tpidStatus": true,
-                "trunkingNativeVlanId": 1,
-                "tpid": "0x8100",
-                "dot1qVlanTagRequiredStatus": false,
-                "phoneTrunk": false,
-                "staticTrunkGroups": [],
-                "dynamicBlockedVlans": {},
-                "dynamicTrunkGroups": [],
-                "accessVlanName": "default",
-                "mbvaEnabled": false,
-                "mode": "access",
-                "dot1qVlanTagDisallowed": false,
-                "dot1qVlanTagRequired": false
-              }
-            },
             "Ethernet50/4": {
               "enabled": true,
               "switchportInfo": {
@@ -508,7 +481,7 @@
                 "dot1qVlanTagRequired": false
               }
             },
-            "Ethernet50/2": {
+            "Ethernet13": {
               "enabled": true,
               "switchportInfo": {
                 "sourceportFilterMode": "enabled",
@@ -695,6 +668,32 @@
                 "mode": "access",
                 "dot1qVlanTagDisallowed": false,
                 "dot1qVlanTagRequired": false
+              }
+            },
+            "Port-Channel30": {
+              "enabled": true,
+              "switchportInfo": {
+                "phoneVlan": 0,
+                "staticTrunkGroups": [],
+                "sourceportFilterMode": "enabled",
+                "tpid": "0x8100",
+                "macLearning": true,
+                "dot1qVlanTagRequiredStatus": false,
+                "phoneTrunk": false,
+                "accessVlanName": "default",
+                "dynamicBlockedVlans": {},
+                "trunkAllowedVlans": "ALL",
+                "vlanForwardingMode": "allowedVlansOnly",
+                "dynamicTrunkGroups": [],
+                "accessVlanId": 1,
+                "mbvaEnabled": false,
+                "dot1qVlanTagRequired": false,
+                "mode": "access",
+                "phoneTrunkUntagged": false,
+                "dot1qVlanTagDisallowed": false,
+                "trunkingNativeVlanName": "default",
+                "dynamicAllowedVlans": {},
+                "trunkingNativeVlanId": 1
               }
             },
             "Port-Channel10": {
@@ -1156,6 +1155,33 @@
               }
             },
             "Ethernet30": {
+              "enabled": true,
+              "switchportInfo": {
+                "sourceportFilterMode": "enabled",
+                "macLearning": true,
+                "trunkAllowedVlans": "ALL",
+                "accessVlanId": 1,
+                "phoneTrunkUntagged": false,
+                "trunkingNativeVlanName": "default",
+                "dynamicAllowedVlans": {},
+                "vlanForwardingMode": "allowedVlansOnly",
+                "phoneVlan": 0,
+                "tpidStatus": true,
+                "trunkingNativeVlanId": 1,
+                "tpid": "0x8100",
+                "dot1qVlanTagRequiredStatus": false,
+                "phoneTrunk": false,
+                "staticTrunkGroups": [],
+                "dynamicBlockedVlans": {},
+                "dynamicTrunkGroups": [],
+                "accessVlanName": "default",
+                "mbvaEnabled": false,
+                "mode": "access",
+                "dot1qVlanTagDisallowed": false,
+                "dot1qVlanTagRequired": false
+              }
+            },
+            "Ethernet50/2": {
               "enabled": true,
               "switchportInfo": {
                 "sourceportFilterMode": "enabled",

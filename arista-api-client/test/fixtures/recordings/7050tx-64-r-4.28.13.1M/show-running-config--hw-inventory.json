@@ -12,7 +12,7 @@
   },
   "captures": [
     {
-      "requestId": "0d4282cbc385-1",
+      "requestId": "7093a063a979-1",
       "commands": [
         "enable",
         "show running-config"
@@ -22,7 +22,7 @@
         {},
         {
           "header": [
-            "! device: localhost (DCS-7050TX-64, EOS-4.28.13.1M)\n!\n"
+            "! device: <hw-redacted> (DCS-7050TX-64, EOS-4.28.13.1M)\n!\n"
           ],
           "comments": [],
           "cmds": {
@@ -46,9 +46,7 @@
             },
             "interface Ethernet33": {
               "comments": [],
-              "cmds": {
-                "description synology_nas": null
-              }
+              "cmds": {}
             },
             "interface Ethernet32": {
               "comments": [],
@@ -62,10 +60,17 @@
               "comments": [],
               "cmds": {}
             },
-            "transceiver qsfp default-mode 4x10G": null,
+            "vlan 20": {
+              "comments": [],
+              "cmds": {
+                "name MGMT": null
+              }
+            },
             "interface Ethernet43": {
               "comments": [],
-              "cmds": {}
+              "cmds": {
+                "description to_cell_LAN": null
+              }
             },
             "interface Ethernet49/1": {
               "comments": [],
@@ -79,11 +84,11 @@
               "comments": [],
               "cmds": {}
             },
-            "ip name-server vrf default <hw-redacted>": null,
+            "ip name-server vrf default 192.168.1.1": null,
             "interface Ethernet38": {
               "comments": [],
               "cmds": {
-                "description to_gfiber_router_AP": null
+                "description to_gfiber_WAN": null
               }
             },
             "interface Ethernet50/2": {
@@ -115,7 +120,7 @@
               "comments": [],
               "cmds": {}
             },
-            "ip route 0.0.0.0/0 <hw-redacted>": null,
+            "ip route 0.0.0.0/0 192.168.1.1": null,
             "interface Ethernet51/3": {
               "comments": [],
               "cmds": {}
@@ -134,7 +139,9 @@
             },
             "interface Ethernet44": {
               "comments": [],
-              "cmds": {}
+              "cmds": {
+                "description to_cell_WAN": null
+              }
             },
             "interface Ethernet45": {
               "comments": [],
@@ -146,7 +153,9 @@
             },
             "interface Ethernet13": {
               "comments": [],
-              "cmds": {}
+              "cmds": {
+                "description to_gfiber_LAN": null
+              }
             },
             "interface Ethernet40": {
               "comments": [],
@@ -176,6 +185,7 @@
                 "no shutdown": null
               }
             },
+            "hostname <hw-redacted>": null,
             "interface Ethernet50/4": {
               "comments": [],
               "cmds": {}
@@ -207,7 +217,10 @@
             },
             "interface Ethernet11": {
               "comments": [],
-              "cmds": {}
+              "cmds": {
+                "channel-group 30 mode active": null,
+                "description prox2 team": null
+              }
             },
             "interface Ethernet10": {
               "comments": [],
@@ -219,7 +232,10 @@
             },
             "interface Ethernet12": {
               "comments": [],
-              "cmds": {}
+              "cmds": {
+                "channel-group 30 mode active": null,
+                "description prox2 team": null
+              }
             },
             "ip name-server vrf default 1.1.1.1": null,
             "! boot system flash:/EOS-4.28.13.1M.swi": null,
@@ -272,7 +288,9 @@
             },
             "interface Ethernet9": {
               "comments": [],
-              "cmds": {}
+              "cmds": {
+                "description prox2 mgmt": null
+              }
             },
             "interface Ethernet8": {
               "comments": [],
@@ -292,7 +310,9 @@
             },
             "interface Ethernet25": {
               "comments": [],
-              "cmds": {}
+              "cmds": {
+                "description diskstation": null
+              }
             },
             "interface Ethernet26": {
               "comments": [],
@@ -352,6 +372,14 @@
               "comments": [],
               "cmds": {}
             },
+            "username svaj ssh-key ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAILTRqE+E/8r793gfDC6XwCzD0BFOZMHXTGjYC65MW87c svaj@SVAJTOWER": null,
+            "interface Port-Channel30": {
+              "comments": [],
+              "cmds": {
+                "description prox2lacp": null
+              }
+            },
+            "transceiver qsfp default-mode 4x10G": null,
             "no aaa root": null
           }
         }
