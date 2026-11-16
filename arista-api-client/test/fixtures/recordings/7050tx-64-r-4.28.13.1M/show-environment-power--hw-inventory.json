@@ -12,7 +12,7 @@
   },
   "captures": [
     {
-      "requestId": "1efa2f43cbf2-1",
+      "requestId": "c4290f8cee29-1",
       "commands": [
         "enable",
         "show environment power"
@@ -23,18 +23,18 @@
         {
           "powerSupplies": {
             "1": {
-              "outputPower": 78.375,
-              "uptime": 1793502108.8744712,
+              "outputPower": 81.875,
+              "uptime": 1793502108.8744745,
               "modelName": "PWR-500AC-R",
               "capacity": 500,
               "tempSensors": {
                 "TempSensorP1/2": {
                   "status": "ok",
-                  "temperature": 26
+                  "temperature": 27
                 },
                 "TempSensorP1/1": {
                   "status": "ok",
-                  "temperature": 33
+                  "temperature": 35
                 }
               },
               "fans": {
@@ -44,25 +44,25 @@
                 }
               },
               "state": "ok",
-              "inputCurrent": 0.755859375,
+              "inputCurrent": 0.771484375,
               "dominant": false,
               "inputVoltage": 120.625,
-              "outputCurrent": 6.53125,
+              "outputCurrent": 6.765625,
               "managed": true
             },
             "2": {
-              "outputPower": 82.375,
+              "outputPower": 84.375,
               "uptime": 1793503987.4088569,
               "modelName": "PWR-500AC-R",
               "capacity": 500,
               "tempSensors": {
                 "TempSensorP2/1": {
                   "status": "ok",
-                  "temperature": 33
+                  "temperature": 36
                 },
                 "TempSensorP2/2": {
                   "status": "ok",
-                  "temperature": 26
+                  "temperature": 28
                 }
               },
               "fans": {
@@ -72,10 +72,10 @@
                 }
               },
               "state": "ok",
-              "inputCurrent": 0.779296875,
+              "inputCurrent": 0.8046875,
               "dominant": false,
               "inputVoltage": 120.5,
-              "outputCurrent": 6.921875,
+              "outputCurrent": 7.203125,
               "managed": true
             }
           }

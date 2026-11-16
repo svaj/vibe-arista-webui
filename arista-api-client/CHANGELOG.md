@@ -9,6 +9,29 @@ surprise here — this file records what shipped, the migration map records what
 
 ## [Unreleased]
 
+### Evidence — the unblock capture day: run 7 on the box (all-abort, net-zero) and the cEOS persistence-verb answers (2026-11-15/16; DR-140/DR-141, §5 rows 241-242, STATUS §3 run-7 blockquote)
+- **Box (supervised, `hw-capture-unblock.draft.json`, 7/7 batches, 0 commits, every batch aborted,
+  net-zero recording-verified):** 44 batch-1 files refreshed + 9 new unblock reads added to
+  `HW_INVENTORY_CATALOG` (`show route-map` → `{routeMaps:{}}`; `show ip route vrf all` → populated
+  default-VRF table; `show vxlan vni` empty-parse; `show ip ospf[ neighbor]` parse; and the platform
+  negatives — `show bgp summary|neighbors` = `% Not supported`, `show vxlan interface|tunnel` = 1002).
+  Staging verdicts: OSPF triple FULL, `spanning-tree mst configuration` FULL, `interface Vxlan1`
+  materializes, `router bgp` opener. Three refusals were the SPEC's invented spellings, not the
+  box's — round 2 (`hw-capture-unblock2.draft.json`, fence-validated, all-abort) re-asks the exact
+  text the resources compose (DR-141 pins the rule).
+- **Container (disposable cEOS-lab 4.28.14M, container evidence only — DR-043):**
+  `test/fixtures/live/ceos-4.28.14M/` gained the five #86/#87/#90 schema captures (+ corrected
+  `show bgp summary|neighbors` spellings next refresh); `docs/evidence/unblock-persistence.ceos.json`
+  answers open item 8's verbs — `copy run start` ACCEPTED (startup-config before/after flip proves
+  persistence), `configure replace` exists (1000 at file-copy, not grammar), `rollback clean-config`
+  at EXEC = 1002 at token 0; `show startup-config` needs `format=text` (1003 over JSON, both targets).
+- **Lane hygiene (DR-140):** the hardware scrubber now zeroes Cisco-dotted MACs and text-position
+  serials (IEEE 802 reserved link-rules MACs explicitly EXEMPT — they live inside
+  `show running-config all` config-line keys); the three recordings carrying pre-existing text-form
+  leaks (serial / system-MAC / LLDP device IDs since PR #110) were regenerated in place with the
+  fixed chain, idempotence-verified. The cEOS capture child keeps raw replies and self-redacts
+  (`scripts/capture-unblock-ceos.mjs`), because EOS answers refusals as HTTP 200 + error OBJECT.
+
 ### Changed — `vlans.delete(1)` now refuses instead of sending `no vlan 1` (2026-11-15; #122, DECISIONS DR-139, §5 row 240)
 - `VlansResource.delete` throws `NotSupportedError` for id 1 **before a config transaction opens**.
   `create(1)`/`setDefault(1)` and the read path are unchanged — the shared `assertVlanId` keeps its

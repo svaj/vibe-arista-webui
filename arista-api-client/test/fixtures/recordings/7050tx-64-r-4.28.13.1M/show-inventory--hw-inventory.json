@@ -12,7 +12,7 @@
   },
   "captures": [
     {
-      "requestId": "1c4e331a1f56-1",
+      "requestId": "72812fa45024-1",
       "commands": [
         "enable",
         "show inventory"

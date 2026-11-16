@@ -20,8 +20,13 @@
  * system IDs sit under other keys and passed verbatim — flagged for review in PR #98). A real switch's
  * serial numbers *are* a person's asset inventory, and its hostname/IPs are a lab map, so the hardware
  * lane scrubs strictly:
- *  - every MAC-shaped **value** (whole-value zero or in-string replace), not just MAC-named keys;
- *  - every key containing `serial` (and `serialNum`-shaped values are not re-introduced);
+ *  - every MAC-shaped **value**, colon-separated OR Cisco-dotted (whole-value zero or in-string
+ *    replace, in the spelling the value used), not just MAC-named keys (DR-140: the text twins render
+ *    `2899.abcd.0123`, which the colon-only rules let through at the first three hardware runs);
+ *  - every key containing `serial` (and `serialNum`-shaped values are not re-introduced), plus
+ *    serial-shaped tokens (`SSJ17171298`, `S45022730018`) found in free TEXT — `show version` and its
+ *    text twin print the serial with no key to hint on (DR-140); pure-digit and 7-digit forms
+ *    (deviation IDs like `D0003316`) are deliberately NOT serial-shaped;
  *  - `secret sha512 …` / `secret md5 …` material and PEM blocks (same rules as the lab lane), applied
  *    to object **keys** as well as values — the running-config JSON keys each config LINE, and the
  *    first executed capture leaked a live hash that way (DR-133) — and to the envelope's free-text
@@ -30,7 +35,9 @@
  *  - the recorder's own enable-input rule stays (`findUnredactedEnableInput` gates every write through
  *    `recordingText`/`parseRecording`).
  * Scrubbing is **before** the file is built, not after: the returned log lists every rewrite path so the
- * live run's console shows what was changed (counts only — never the secret text).
+ * live run's console shows what was changed (counts only — never the secret text). Run 7 (2026-11-15)
+ * ran the new `textPreferred` reads first-ever through this chain, exposed the text-form gap above,
+ * and its committed recordings were regenerated with the fixed scrubber (DR-140, DR-133 precedent).
  *
  * ## Session-probe policy (DR-035(b) made physical)
  * The `HwProbeBatch` type is the shape the operator reviews **before the switch session**: batches that
@@ -125,6 +132,21 @@ export const HW_INVENTORY_CATALOG: readonly HwCatalogEntry[] = [
   { cmd: 'show vlan' },
   { cmd: 'show vrf' },
   { cmd: 'show vrrp' },
+  // --- unblock captures (2026-11-15): the reads the blocked Web-UI screens B1/B2/B6 still need.
+  // These families are unproven on the 7050TX-64, so the speculative ones carry `textPreferred: true`
+  // — a 1002 answer is then recorded verbatim as the §3 evidence (#86/VXLAN not-licensed, #87 routing)
+  // instead of a JSON attempt that gets thrown away as "unconverted". `show route-map` /
+  // `show ip route vrf all` stay JSON because an empty `{routeMaps:{}}` / route table IS the finding.
+  // Pair with docs/hw-capture-unblock.draft.json: those stage the CONFIG grammar; these read the state.
+  { cmd: 'show vxlan interface', textPreferred: true }, // #86 (B1) — Vxlan interface table
+  { cmd: 'show vxlan vni', textPreferred: true }, // #86 (B1) — VNI<->VLAN flood state
+  { cmd: 'show vxlan tunnel', textPreferred: true }, // #86 (B1) — VTEP tunnel state
+  { cmd: 'show ip ospf', textPreferred: true }, // #87 (B2) — OSPF presence on a no-routing box
+  { cmd: 'show ip ospf neighbor', textPreferred: true }, // #87 (B2)
+  { cmd: 'show bgp summary', textPreferred: true }, // #87 (B2) — bare `show bgp` is 1002 INCOMPLETE at token 1 (cEOS capture 2026-11-16): the sub-keyword is required
+  { cmd: 'show bgp neighbors', textPreferred: true }, // #87 (B2) — the second spelling #87 names outright
+  { cmd: 'show route-map' }, // #87 (B2) — empty {routeMaps:{}} is the schema the UI reads
+  { cmd: 'show ip route vrf all' }, // #90 (B6) — per-VRF route table shape (default VRF only today)
   { cmd: 'show running-config' },
   { cmd: 'show running-config all' },
   { cmd: 'show startup-config' },
@@ -167,10 +189,25 @@ export function hwDeviceIdentity(reported: { version: string; modelName: string 
 
 /** Zero placeholder written for every MAC the scrubber rewrites (the lab lane's existing constant). */
 export const HW_ZEROED_MAC = '00:00:00:00:00:00'
+/** The dotted rendering of {@link HW_ZEROED_MAC} — rewrites keep the spelling they matched (DR-140). */
+export const HW_ZEROED_MAC_DOTTED = '0000.0000.0000'
 
 /** The MAC-shaped string, bare-token form: exact whole values get zeroed, substrings get replaced. */
 const MAC_EXACT = /^([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}$/u
 const MAC_EMBEDDED = /([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}/gu
+/** Cisco-dotted MAC (`2899.3ab9.0b33`): what EOS TEXT output renders, colon forms never appear there. */
+const MAC_DOTTED_EXACT = /^([0-9a-fA-F]{4}\.){2}[0-9a-fA-F]{4}$/u
+const MAC_DOTTED_EMBEDDED = /([0-9a-fA-F]{4}\.){2}[0-9a-fA-F]{4}/gu
+/**
+ * IEEE 802 reserved link-rules MACs (`0180.c200.0000-003f` / colon twin): LACP/STP/802.1X group
+ * addresses. These are PUBLIC protocol constants that EOS prints verbatim in `show running-config
+ * all` default lines (`no mac address-table reserved forward 0180.c200.0001-000f`) — assets
+ * identifying nobody. Zeroing them mangles parser fixtures and would collide 16 distinct
+ * config-line KEYS onto one scrubbed key; exempt from both MAC spellings (DR-140 review).
+ */
+const MAC_RESERVED = /^(?:0180\.c200\.00[0-3][0-9a-f]|01:80:c2:00:00:[0-3][0-9a-f])$/iu
+/** EOS asset serial printed in free text with no key to hint on: 1–3 letters + 8–11 digits. */
+const SERIAL_IN_TEXT = /(?<![A-Za-z0-9])[A-Z]{1,3}\d{8,11}(?![A-Za-z0-9])/gu
 
 /** `secret sha512 <hash>` / `secret md5 <hash>` — one rule that matches running/startup config text. */
 const SECRET_MATERIAL = /\bsecret\s+(sha512|md5)\s+\S+/giu
@@ -230,15 +267,36 @@ function redactHwString(value: string, opts: HwRedactOptions, keyHint: string | 
     out = out.replace(PEM_BLOCK, REPLACEMENTS.pem)
   }
   PEM_BLOCK.lastIndex = 0
-  if (MAC_EXACT.test(out)) {
+  if (MAC_EXACT.test(out) && !MAC_RESERVED.test(out)) {
     sink.push({ path, rule: 'mac' })
     out = HW_ZEROED_MAC
   } else if (MAC_EMBEDDED.test(out)) {
     MAC_EMBEDDED.lastIndex = 0
-    sink.push({ path, rule: 'mac' })
-    out = out.replace(MAC_EMBEDDED, HW_ZEROED_MAC)
+    const replaced = out.replace(MAC_EMBEDDED, (match) => (MAC_RESERVED.test(match) ? match : HW_ZEROED_MAC))
+    if (replaced !== out) {
+      sink.push({ path, rule: 'mac' })
+      out = replaced
+    }
   }
   MAC_EMBEDDED.lastIndex = 0
+  if (MAC_DOTTED_EXACT.test(out) && !MAC_RESERVED.test(out)) {
+    sink.push({ path, rule: 'mac' })
+    out = HW_ZEROED_MAC_DOTTED
+  } else if (MAC_DOTTED_EMBEDDED.test(out)) {
+    MAC_DOTTED_EMBEDDED.lastIndex = 0
+    const replaced = out.replace(MAC_DOTTED_EMBEDDED, (match) => (MAC_RESERVED.test(match) ? match : HW_ZEROED_MAC_DOTTED))
+    if (replaced !== out) {
+      sink.push({ path, rule: 'mac' })
+      out = replaced
+    }
+  }
+  MAC_DOTTED_EMBEDDED.lastIndex = 0
+  if (SERIAL_IN_TEXT.test(out)) {
+    SERIAL_IN_TEXT.lastIndex = 0
+    sink.push({ path, rule: 'serial' })
+    out = out.replace(SERIAL_IN_TEXT, REPLACEMENTS.serial)
+  }
+  SERIAL_IN_TEXT.lastIndex = 0
   for (const secret of extras) {
     if (out.includes(secret)) {
       sink.push({ path, rule: 'extra' })

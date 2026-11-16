@@ -12,7 +12,7 @@
   },
   "captures": [
     {
-      "requestId": "9e79c44d7587-1",
+      "requestId": "ad2e3b4d54b7-1",
       "commands": [
         "enable",
         "show lldp neighbors"
@@ -21,48 +21,48 @@
       "result": [
         {},
         {
-          "tablesLastChangeTime": 1793998915.252285,
-          "tablesAgeOuts": 1,
-          "tablesInserts": 62,
+          "tablesLastChangeTime": 1794711566.6724753,
+          "tablesAgeOuts": 4,
+          "tablesInserts": 84,
           "lldpNeighbors": [
             {
               "ttl": 120,
-              "neighborDevice": "1c2a.a332.1d90",
+              "neighborDevice": "0000.0000.0000",
               "neighborPort": "TE5",
               "port": "Ethernet1"
             },
             {
               "ttl": 180,
-              "neighborDevice": "5c35.fc88.1820",
-              "neighborPort": "da9c.c65b.4969",
+              "neighborDevice": "0000.0000.0000",
+              "neighborPort": "0000.0000.0000",
               "port": "Ethernet13"
             },
             {
               "ttl": 120,
               "neighborDevice": "GR6EXX0C-1820",
-              "neighborPort": "5c35.fc88.1820",
+              "neighborPort": "0000.0000.0000",
               "port": "Ethernet13"
             },
             {
               "ttl": 3601,
               "neighborDevice": "SVAJTOWER",
-              "neighborPort": "a036.9f30.278c",
+              "neighborPort": "0000.0000.0000",
               "port": "Ethernet17"
             },
             {
               "ttl": 3601,
               "neighborDevice": "SVAJTOWER",
-              "neighborPort": "a036.9f30.278e",
+              "neighborPort": "0000.0000.0000",
               "port": "Ethernet18"
             },
             {
               "ttl": 120,
-              "neighborDevice": "1c2a.a332.1d90",
+              "neighborDevice": "0000.0000.0000",
               "neighborPort": "TE2",
               "port": "Management1"
             }
           ],
-          "tablesDeletes": 56,
+          "tablesDeletes": 78,
           "tablesDrops": 0
         }
       ]

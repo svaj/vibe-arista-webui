@@ -1,0 +1,105 @@
+{
+  "$comment": [
+    "Authored UNBLOCK probe spec (2026-11-15) for the physical 7050TX-64. Companion to",
+    "docs/hw-session-probes.draft.json; this file exists to capture the device VERDICTS that the",
+    "blocked Web-UI issues need: VXLAN (#86), routing OSPF/BGP/route-map (#87), STP mode/MST region",
+    "grammar (#88) and VRF-Lite (#90).",
+    "EVERY batch here is allowCommit:false — the harness stages the lines inside `configure session",
+    "hw-probe-<name>`, records `show session-config diffs` + `show configuration sessions detail`, then",
+    "ABORTS. Nothing is ever committed to running-config, so default forwarding on the live ports is",
+    "untouched, which is exactly the authorization granted on 2026-11-15 (create/modify VXLANs/VRFs etc.",
+    "only while default traffic is unaffected). The capture asks only 'does the 4.28.13.1M CLI accept",
+    "this grammar', and a refusal (1002/1004) is RECORDED as the batch answer and the loop continues",
+    "(DR-134) — a refusal is itself the §3 evidence these issues want.",
+    "NO batch uses {{SCRATCH}}: these are global feature-object grammars, not port writes, so this spec",
+    "needs NO designated scratch interface and must be run with EAPI_SCRATCH_INTERFACE unset.",
+    "WHY the #89 persistence verbs are NOT here: `copy running-config startup-config`, `configure",
+    "replace` and `rollback clean-config` are mechanically refused on the hardware lane by",
+    "HW_PROBE_FORBIDDEN (rollback / configure-replace) and assertNoPersistenceCommand (copy run start)",
+    "in src/testing/hw-capture.ts. The operator's authorized 'default traffic unaffected' scope still",
+    "excludes overwriting startup-config or replacing running-config on a live switch. Those three",
+    "answers belong to the DISPOSABLE cEOS lane: see scripts/capture-unblock-ceos.mjs. Routing neighbour",
+    "TABLES are also a box-only question because cEOS-lab 4.28.14M refuses `ip routing`",
+    "(scripts/ceos-lab.mjs PROVISION_TOLERATED) — but enabling `ip routing` on this unit is a FORWARDING",
+    "change to its saved `no ip routing` state, so it is deliberately NOT automated; capture it only if",
+    "the operator separately accepts that specific global toggle.",
+    "RUN (after the §2 env chain in docs/HARDWARE-CAPTURE.md, hardware class; from the repo ROOT use",
+    "  the npm -w shape — the live project resolves only from arista-api-client/vitest.config.ts):",
+    "  export EAPI_HW_SESSION_PROBE=1",
+    "  export EAPI_HW_PROBE_SPEC=$PWD/arista-api-client/docs/hw-capture-unblock.draft.json",
+    "  npm -w arista-api-client run test:live -- src/hw-session-probe.live.test.ts",
+    "Or use scripts/capture-unblock-hw.sh, which sets these and runs the box reads too."
+  ],
+  "batches": [
+    {
+      "name": "unblock-vrf-grammar",
+      "question": "does 4.28.13.1M accept a named VRF + RD + route-target staged (config# vrf verb the operator saw); abort-only so no VRF persists (feeds B6 #90)",
+      "commands": [
+        "vrf UNBLOCK-PROBE",
+        "   rd 65000:1",
+        "   address-family ipv4",
+        "      route-target both 65000:1"
+      ],
+      "allowCommit": false
+    },
+    {
+      "name": "unblock-vxlan-grammar",
+      "question": "does the SKU accept interface Vxlan1 + VNI + source-interface despite 'active:[]' licensing and the refused 'vxlan interface' form; abort-only (feeds B1 #86). The exact 'vxlan interface' command is known-invalid and is deliberately NOT staged",
+      "commands": [
+        "interface Vxlan1",
+        "   description LAB-UNBLOCK-PROBE",
+        "   vxlan 10010",
+        "   source-interface Loopback1"
+      ],
+      "allowCommit": false
+    },
+    {
+      "name": "unblock-route-map-grammar",
+      "question": "does the SKU accept a route-map entry staged (config# route-map verb exists per operator console); abort-only (feeds B2 #87)",
+      "commands": [
+        "route-map LAB-UNBLOCK permit 10",
+        "   set community 65000:1"
+      ],
+      "allowCommit": false
+    },
+    {
+      "name": "unblock-ospf-grammar",
+      "question": "does the SKU accept router ospf + router-id + passive-interface staged; abort-only, no adjacency forms (feeds B2 #87)",
+      "commands": [
+        "router ospf 1",
+        "   router-id 10.99.99.99",
+        "   passive-interface default"
+      ],
+      "allowCommit": false
+    },
+    {
+      "name": "unblock-bgp-grammar",
+      "question": "does the SKU accept router bgp + router-id + a remote-as neighbor staged; abort-only so the neighbor never lives past the session (feeds B2 #87)",
+      "commands": [
+        "router bgp 65199",
+        "   bgp router-id 10.99.99.99",
+        "   neighbor 10.99.99.1 remote-as 65199"
+      ],
+      "allowCommit": false
+    },
+    {
+      "name": "unblock-stp-mode-mst-grammar",
+      "question": "grammar-only: does the CLI accept 'spanning-tree mode mst' staged INSIDE a session that is then ABORTED so STP never reconverges; the #88 blast-radius risk is precisely why this is grammar-only and never committed (feeds B3 #88)",
+      "commands": [
+        "spanning-tree mode mst"
+      ],
+      "allowCommit": false
+    },
+    {
+      "name": "unblock-stp-mst-region-grammar",
+      "question": "does the CLI accept an MST region (name/revision/instance-to-VLAN map) staged; abort-only, never applied (feeds the B3 #88 'should MST region config be exposed at all' decision)",
+      "commands": [
+        "spanning-tree mst configuration",
+        "   name LAB-UNBLOCK",
+        "   revision 1",
+        "   instance 1 vlan 100,110"
+      ],
+      "allowCommit": false
+    }
+  ]
+}

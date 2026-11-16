@@ -8,20 +8,24 @@ for the **7050X** series, and what's in EOS 4.28.13M.
 > - Check an item off once the UI covers it.
 > - *(FlexProfile)* / *(FlexProfile Lite)* = the source matrix ties the feature to a programmable
 >   forwarding-profile partition (FLX / FLX-Lite). Other footnote tags from the source (E, Z, V2) are dropped.
+> - **Tick audit 2026-11-15:** a checked box means a shipped UI screen covers the row's core, with the
+>   screen/issue key in the note. Rows the UI covers only partly are left **unchecked** and carry an
+>   inline *partial* note so the covered half is still findable. Title still says **7050X** — re-derive
+>   is DECISIONS open item 6, not done here.
 
 ### Note
 Since this was pulled from a feature list, this needs to be turned into relevant terminology for our project.  (E.g "IEEE 1588 PTP — two-step transparent clock" might just be "IEE 1588 PTP configuration")
 
 ## Management & System Services
 
-- [ ] (Medium priority) Allow command execution / a shell to EOS
+- [ ] (Medium priority) Allow command execution / a shell to EOS *(partial: S4 #74 console executes operator-typed reads behind an allow-list — no shell, no config writes)*
 - [ ] SSH v2 (with SSH host keys) config
 - [ ] Telnet config
 - [ ] Management VRF
 - [ ] Management port isolation
 - [ ] Management to IPv6 addresses on VLAN and management interfaces
 - [ ] (Low priority) DNS client
-- [ ] NTP / NTPv6
+- [x] NTP / NTPv6 *(S12 #82: server add/prefer/remove + source/local-interface staged via named session; NTPv6 address forms unproven on this target)*
 - [ ] NTP extensions for DHCP in ZTP
 - [ ] IEEE 1588 PTP — two-step boundary clock
 - [ ] IEEE 1588 PTP — two-step transparent clock
@@ -29,8 +33,8 @@ Since this was pulled from a feature list, this needs to be turned into relevant
 - [ ] IEEE 802.1AB LLDP
 - [ ] (Medium priority) View Syslog
 - [ ] File download via FTP, TFTP, HTTP, HTTPS
-- [ ] Login and MOTD banners
-- [ ] Interface range support
+- [x] Login and MOTD banners *(S8 #78: motd/login/exec banners, EOF-framed, plus hostname and the ip-routing toggle)*
+- [ ] Interface range support *(the interface-name grammar refuses range forms — DECISIONS open item 7)*
 - [ ] Show reload cause
 - [ ] VMs on EOS / VMTracer
 - [ ] Locator LED control
@@ -40,8 +44,8 @@ Since this was pulled from a feature list, this needs to be turned into relevant
 - [ ] Event Manager / Event Monitor
 - [ ] Tcpdump sessions
 - [ ] Smart System Upgrade (SSU) — leaf, and spine in maintenance mode
-- [ ] Configure replace
-- [ ] Config sessions (incl. merge on commit)
+- [ ] Configure replace *(no UI; the hardware probe lane fences the verb — see docs/CAPTURE-UNBLOCK.md; #89)*
+- [x] Config sessions (incl. merge on commit) *(S9 #79 transaction center — list/abort/diff preview; every screen writes through a named session; commit-merge not surfaced; save/rollback half parked at #89)*
 - [ ] Config versions
 - [ ] Bug Alerts
 
@@ -52,7 +56,7 @@ Since this was pulled from a feature list, this needs to be turned into relevant
 - [ ] ACL counters
 - [ ] ACL deny logging
 - [ ] Discontiguous masks for IPv6 ACLs
-- [ ] Layer 3 ACLs
+- [x] Layer 3 ACLs *(S13 #83: IPv4 standard + extended viewer/editor over the parsed `ip access-list` sections; IPv6 ACLs and interface attachment out of scope)*
 - [ ] TACACS+ authentication & authorization (PAP)
 - [ ] TACACS+ accounting
 - [ ] RADIUS authentication, authorization, and accounting
@@ -66,7 +70,7 @@ Since this was pulled from a feature list, this needs to be turned into relevant
 
 ## Observability, Mirroring & Automation
 
-- [ ] (High priority) EOS API (eAPI) Typescript client
+- [x] (High priority) EOS API (eAPI) Typescript client *(packaged `@devhax-heavy-industries/arista-eapi`: resource modules, named config sessions, recording/live lanes, docs — consumed by the proxy this UI rides)*
 - [ ] OpenConfig models over gRPC / RESTCONF / NETCONF
 - [ ] OpenConfig support for CPU state
 - [ ] GNSI (gRPC Network Security Interface)
@@ -81,10 +85,10 @@ Since this was pulled from a feature list, this needs to be turned into relevant
 
 ## Layer 2
 
-- [ ] (High priority) VLAN-based port segmentation
+- [x] (High priority) VLAN-based port segmentation *(S2 #72 VLAN create/rename/delete/state + S1 #71 / S3 #73 per-port access/trunk assignment)*
 - [ ] Tagged native VLAN mode
 - [ ] IEEE 802.1D bridging
-- [ ] IEEE 802.1Q trunking
+- [x] IEEE 802.1Q trunking *(S3 #73 trunk editor — mode/native-VLAN/allowed-lists through a named session; S1 #71 → S3 per-port deep link from #126; trunk-group writes probe-gated)*
 - [ ] IEEE 802.1Q-in-Q and selective Q-in-Q
 - [ ] VLAN translation / dual-tag VLAN manipulation
 - [ ] PVLAN
@@ -92,15 +96,15 @@ Since this was pulled from a feature list, this needs to be turned into relevant
 - [ ] IEEE 802.1s MSTP
 - [ ] Rapid Per-VLAN Spanning Tree (Rapid-PVSTP)
 - [ ] MST–PVST interop
-- [ ] BPDU guard / BPDU filtering
+- [x] BPDU guard / BPDU filtering *(S15 #85 per-port `spanning-tree bpduguard` + `portfast`/edge/auto writes through a named session; BPDU filtering is not in the ported pyeapi stp verbs, so that half stays open)*
 - [ ] Root guard / loop guard / loop protection
 - [ ] Bridge assurance
 - [ ] Disable STP on a VLAN (routed ports)
 - [ ] Backup interface
-- [ ] (High priority) Link Aggregation Groups — up to 16 ports per LAG, 64 member interfaces total
-- [ ] (High priority) IEEE 802.3ad LACP (incl. minimum links)
+- [x] (High priority) Link Aggregation Groups — up to 16 ports per LAG, 64 member interfaces total *(S5 #75 LAG manager — create/edit/resolve members via the config relation, DR-075; the 16/64 limits themselves are retired wrong-SKU prose per open item 6)*
+- [x] (High priority) IEEE 802.3ad LACP (incl. minimum links) *(S5 #75: member `channel-group <id> mode <x>` writes; `port-channel min-links` / `lacp fallback [timeout]` read as config fields, with presence F5-probed)*
 - [ ] LAG hash on L2 & L3 header fields
-- [ ] Multi-chassis LAG (MLAG), incl. peer gateway
+- [ ] Multi-chassis LAG (MLAG), incl. peer gateway *(view-only: S14 #84 read-only status screen; config + validation need a second physical device — DECISIONS' MLAG note)*
 - [ ] IGMP snooping + MLAG
 - [ ] VARP for MLAG / VARP + proxy-ARP
 - [ ] Port mirroring (port-channel source supported)
@@ -112,7 +116,7 @@ Since this was pulled from a feature list, this needs to be turned into relevant
 - [ ] Auto-negotiation with 1000BASE-X; auto MDI/MDI-X on Base-T
 - [ ] IEEE 802.3x PAUSE frames (RX and TX)
 - [ ] Priority Flow Control watchdog
-- [ ] Jumbo frames up to 9214 bytes
+- [x] Jumbo frames up to 9214 bytes *(S1 #71 per-interface mtu writes; the 9214 ceiling is device-side, the UI sends whatever the client's mtu guard admits)*
 - [ ] sFlow
 - [ ] Storm control
 - [ ] Control-Plane Protection (CoPP)
@@ -142,6 +146,11 @@ Since this was pulled from a feature list, this needs to be turned into relevant
 
 ## VXLAN & EVPN
 
+> Device note (2026-11-15): the 7050TX-64 capture set answers `show license features` =
+> `{"active":[],"missing":[]}`, and the console has **no** `vxlan interface` form (a global
+> `config# vxlan` verb does exist). Whether VXLAN works on this SKU at all is the pending
+> stage-then-abort probe (`hw-capture-unblock.draft.json`, issue #86); nothing below is tickable until it decides.
+
 ### Bridging & Routing
 
 - [ ] VXLAN bridging (with MLAG)
@@ -167,12 +176,12 @@ Since this was pulled from a feature list, this needs to be turned into relevant
 
 ### Static Routing & Interfaces
 
-- [ ] IPv4 / IPv6 static routing; static IPv4 routes with IPv6 next hops
-- [ ] Routed interfaces and L3 subinterfaces
+- [ ] IPv4 / IPv6 static routing; static IPv4 routes with IPv6 next hops *(IPv4 only: S10 #80 manager; its guard explicitly refuses IPv6 forms)*
+- [ ] Routed interfaces and L3 subinterfaces *(partial: S6 #76 edits routed-port IPv4 addressing (`no switchport` + address); L3 subinterface spellings are refused by the name grammar — open item 7)*
 - [ ] Loopback and NULL interfaces
 - [ ] SVI counters (ingress and egress)
 - [ ] IP unnumbered (OSPF, IS-IS, BFD)
-- [ ] Layer 3 access lists
+- [x] Layer 3 access lists *(S13 #83 — same shipped screen as the Security section's "Layer 3 ACLs": IPv4 standard/extended CRUD; hit counters withheld, `show access-lists` refuses on this target)*
 
 ### Next Hops, Tunnels & Availability
 

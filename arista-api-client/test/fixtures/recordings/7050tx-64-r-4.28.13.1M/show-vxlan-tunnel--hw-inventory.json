@@ -1,0 +1,39 @@
+{
+  "format": "arista-eapi-recording/v1",
+  "identity": {
+    "targetSlug": "7050tx-64-r-4.28.13.1M",
+    "targetClass": "hardware",
+    "modelName": "DCS-7050TX-64-R",
+    "aristaVersion": "4.28.13.1M",
+    "versionNumber": "4.28.13.1",
+    "provenance": "captured",
+    "endpoint": "https://<hw-redacted>:443/command-api",
+    "topology": "supervised 7050TX-64 session; single device; recorder per case"
+  },
+  "captures": [
+    {
+      "requestId": "d6bde3a621b5-1",
+      "commands": [
+        "enable",
+        "show vxlan tunnel"
+      ],
+      "format": "text",
+      "error": {
+        "data": [
+          {
+            "output": ""
+          },
+          {
+            "output": "% Invalid input (at token 2: 'tunnel')\n",
+            "errors": [
+              "Invalid input (at token 2: 'tunnel')"
+            ]
+          }
+        ],
+        "message": "CLI command 2 of 2 'show vxlan tunnel' failed: invalid command",
+        "code": 1002
+      }
+    }
+  ],
+  "incomplete": []
+}

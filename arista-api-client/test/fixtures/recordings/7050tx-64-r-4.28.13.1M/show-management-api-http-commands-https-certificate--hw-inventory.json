@@ -12,7 +12,7 @@
   },
   "captures": [
     {
-      "requestId": "8ce805c638b3-1",
+      "requestId": "5c27bcff5fbc-1",
       "commands": [
         "enable",
         "show management api http-commands https certificate"

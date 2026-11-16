@@ -12,7 +12,7 @@
   },
   "captures": [
     {
-      "requestId": "b5bcc99fd694-1",
+      "requestId": "1445deda0130-1",
       "commands": [
         "enable",
         "show port-channel dense"
@@ -21,8 +21,58 @@
       "result": [
         {},
         {
-          "numberOfAggregators": 1,
+          "numberOfAggregators": 2,
           "portChannels": {
+            "Port-Channel30": {
+              "inactive": false,
+              "protocol": "lacp",
+              "lacpMode": "active",
+              "linkState": "up",
+              "ports": {
+                "Ethernet11": {
+                  "staticLag": false,
+                  "lacpState": {
+                    "collecting": true,
+                    "distributing": true,
+                    "synchronization": true,
+                    "defaulted": false,
+                    "timeout": false,
+                    "activity": true,
+                    "expired": false,
+                    "aggregation": true
+                  },
+                  "intf": "Ethernet11",
+                  "suspended": false,
+                  "lagMember": true,
+                  "lacpMisconfig": {
+                    "status": "bundled"
+                  },
+                  "exceedsMaxWeight": false,
+                  "linkDown": false
+                },
+                "Ethernet12": {
+                  "staticLag": false,
+                  "lacpState": {
+                    "collecting": true,
+                    "distributing": true,
+                    "synchronization": true,
+                    "defaulted": false,
+                    "timeout": false,
+                    "activity": true,
+                    "expired": false,
+                    "aggregation": true
+                  },
+                  "intf": "Ethernet12",
+                  "suspended": false,
+                  "lagMember": true,
+                  "lacpMisconfig": {
+                    "status": "bundled"
+                  },
+                  "exceedsMaxWeight": false,
+                  "linkDown": false
+                }
+              }
+            },
             "Port-Channel10": {
               "inactive": false,
               "protocol": "lacp",
@@ -74,7 +124,7 @@
               }
             }
           },
-          "numberOfChannelsInUse": 1
+          "numberOfChannelsInUse": 2
         }
       ]
     }

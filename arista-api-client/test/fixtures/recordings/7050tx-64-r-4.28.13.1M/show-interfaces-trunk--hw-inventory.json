@@ -12,7 +12,7 @@
   },
   "captures": [
     {
-      "requestId": "ac1fd7b7c051-1",
+      "requestId": "06f755b4f8ae-1",
       "commands": [
         "enable",
         "show interfaces trunk"
@@ -31,14 +31,16 @@
               "portMode": "trunk",
               "activeVlans": {
                 "vlanIds": [
-                  1
+                  1,
+                  20
                 ]
               },
               "nativeVlan": 1,
               "phoneTrunk": false,
               "forwardingVlans": {
                 "vlanIds": [
-                  1
+                  1,
+                  20
                 ]
               }
             }

@@ -12,7 +12,7 @@
   },
   "captures": [
     {
-      "requestId": "70b9b0e87ed5-1",
+      "requestId": "b7427e2419ac-1",
       "commands": [
         "enable",
         "show version detail"
@@ -22,7 +22,7 @@
         {},
         {
           "imageFormatVersion": "3.0",
-          "uptime": 692705.92,
+          "uptime": 1308723.88,
           "modelName": "DCS-7050TX-64-R",
           "details": {
             "deviations": [
@@ -39,11 +39,11 @@
               },
               {
                 "name": "Ucd9012-1",
-                "version": "SFT002790110 (2.3.4.0007)"
+                "version": "<hw-redacted-serial> (2.3.4.0007)"
               },
               {
                 "name": "Ucd9012-2",
-                "version": "SFT002830110 (2.3.4.0000)"
+                "version": "<hw-redacted-serial> (2.3.4.0000)"
               },
               {
                 "name": "scd-2",
@@ -8348,8 +8348,8 @@
           "mfgName": "Arista",
           "serialNumber": "<hw-redacted-serial>",
           "systemMacAddress": "00:00:00:00:00:00",
-          "bootupTimestamp": 1793491834.369482,
-          "memFree": 2556644,
+          "bootupTimestamp": 1793491834.3682418,
+          "memFree": 2553048,
           "version": "4.28.13.1M",
           "configMacAddress": "00:00:00:00:00:00",
           "isIntlVersion": false,

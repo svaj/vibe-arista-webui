@@ -1,0 +1,39 @@
+{
+  "format": "arista-eapi-recording/v1",
+  "identity": {
+    "targetSlug": "7050tx-64-r-4.28.13.1M",
+    "targetClass": "hardware",
+    "modelName": "DCS-7050TX-64-R",
+    "aristaVersion": "4.28.13.1M",
+    "versionNumber": "4.28.13.1",
+    "provenance": "captured",
+    "endpoint": "https://<hw-redacted>:443/command-api",
+    "topology": "supervised 7050TX-64 session; single device; recorder per case"
+  },
+  "captures": [
+    {
+      "requestId": "f2eec548c22d-1",
+      "commands": [
+        "enable",
+        "show bgp neighbors"
+      ],
+      "format": "text",
+      "error": {
+        "data": [
+          {
+            "output": ""
+          },
+          {
+            "output": "% Not supported\n",
+            "errors": [
+              "Not supported"
+            ]
+          }
+        ],
+        "message": "CLI command 2 of 2 'show bgp neighbors' failed: could not run command",
+        "code": 1000
+      }
+    }
+  ],
+  "incomplete": []
+}

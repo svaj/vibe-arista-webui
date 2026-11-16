@@ -12,7 +12,7 @@
   },
   "captures": [
     {
-      "requestId": "c58f32391822-1",
+      "requestId": "d580a1ed8c03-1",
       "commands": [
         "enable",
         "show configuration sessions"

@@ -12,16 +12,13 @@
     "internalVersion": "4.28.14M-50015774.42814M",
     "modelName": "cEOSLab",
     "hardwareEvidence": "none — cEOS-lab container capture; not DCS-7050TX-64 / 4.28.13.1M evidence (DR-043)",
-    "cliCapture": true,
-    "cliCaptureReason": "mgmt-path-owned-by-host-nat",
-    "cliCaptureNote": "bytes collected with `docker exec <run-owned container> Cli -p 15 … | json` because the published eAPI port was unavailable for this run on this Docker daemon; same EOS agent/parser answers both transports, and the container identity pins (model regex + base version) were re-checked from this CLI reply before any file was written",
-    "runId": "lab-1637825-9bbb4b",
-    "capturedAt": "2026-11-09T15:15:51.613Z",
+    "runId": "lab-1549185-7b7af2",
+    "capturedAt": "2026-11-16T01:21:20.011Z",
     "capturedBy": "scripts/ceos-lab.mjs",
-    "endpoint": "127.0.0.1:45121",
-    "transport": "docker exec Cli -p 15 (enable-mode) inside the run-owned container ceos-lab-lab-1637825-9bbb4b; eAPI refusal: mgmt-path-owned-by-host-nat",
-    "tlsPinFingerprint256": "8409DB215BBDB08FB0F3F31095E1F3BA42A5FD8BB9D4EAD41B73AA3F61DBB216",
-    "bootupTimestamp": 1794237292.719755,
+    "endpoint": "127.0.0.1:45863",
+    "transport": "https + HTTP basic auth to the run-owned published loopback port; container-side pinned certificate",
+    "tlsPinFingerprint256": "84A43F0495917C379CB1D32447E01FAA287D03C539A122825A2E67B719E8F281",
+    "bootupTimestamp": 1794791994.097316,
     "redactionApplied": [
       "username/secret and enable/passphrase text replaced with <redacted-lab-secret>, including the encryption-type form (`secret sha512 <hash>`, `enable algorithm <algo> password <hash>`) and **object keys**, because `show running-config` in `json` format keys its `cmds` map by the whole command line — the lab `username … secret sha512 $6$…` line is a key there, not a value (observed 2026-11-06)",
       "this run's random lab username replaced with <redacted-lab-user> (API user-stats otherwise leak it)",
@@ -47,7 +44,7 @@
         "state": "completed",
         "commitUser": "root",
         "description": "",
-        "completedTime": 1794237321.96128
+        "completedTime": 1794792042.8621676
       }
     }
   }

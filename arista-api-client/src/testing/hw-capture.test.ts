@@ -22,6 +22,7 @@ import {
   HW_SESSION_SCENARIO,
   HW_TEXT_SCENARIO,
   HW_ZEROED_MAC,
+  HW_ZEROED_MAC_DOTTED,
   HW_PROBE_SESSION_PREFIX,
   hwCaseName,
   hwDeviceIdentity,
@@ -116,6 +117,40 @@ describe('the hardware scrubber', () => {
     const { value, log } = redactHwValue({ serialNumber: 'S45022730018', mfgHours: 41723, memberId: '101' }, opts)
     expect(value).toEqual({ serialNumber: '<hw-redacted-serial>', mfgHours: 41723, memberId: '101' })
     expect(log.filter((entry) => entry.rule === 'serial')).toHaveLength(1)
+  })
+
+  it('zeroes Cisco-DOTTED MACs — `show version` text and LLDP IDs never use the colon spelling (DR-140)', () => {
+    const text = 'Hardware MAC address: 2899.3ab9.0b33\nSystem MAC address: 2899.3ab9.0b33\n'
+    const { value, log } = redactHwValue({ versionText: text, neighborDevice: '1c2a.a332.1d90', exact: '5C35.FC88.1820' }, opts)
+    const rendered = JSON.stringify(value)
+    // Label survives; only the asset-bearing value is zeroed, in the dotted spelling it used.
+    expect((value as { versionText: string }).versionText).toContain(`Hardware MAC address: ${HW_ZEROED_MAC_DOTTED}`)
+    expect(rendered).not.toContain('2899.3ab9.0b33')
+    expect(rendered).not.toContain('1c2a.a332.1d90')
+    expect(rendered).not.toContain('5C35.FC88.1820') // case-insensitive; exact-value form zeroes whole
+    expect(log.filter((entry) => entry.rule === 'mac').length).toBeGreaterThanOrEqual(3)
+  })
+
+  it('scrubs serial-shaped tokens in free text, and nothing shorter/digit-only (DR-140 negatives)', () => {
+    const text = 'Serial number: SSJ17171298\nDevice: DCS-7050TX-64-R deviation D0003316 PWR-500AC-R EOS-4.28.13.1M'
+    const { value, log } = redactHwValue(text, opts)
+    expect(value).toContain('Serial number: <hw-redacted-serial>')
+    expect(value).not.toContain('SSJ17171298')
+    // The sibling identifiers that must SURVIVE the widened rule:
+    expect(value).toContain('D0003316')
+    expect(value).toContain('PWR-500AC-R')
+    expect(value).toContain('EOS-4.28.13.1M')
+    expect(value).toContain('DCS-7050TX-64-R')
+    expect(log.filter((entry) => entry.rule === 'serial')).toHaveLength(1)
+  })
+
+  it('keeps IEEE 802 reserved link-rules MACs verbatim in both spellings (DR-140 exception)', () => {
+    // The exact default-config lines `show running-config all` keys in JSON form — public protocol
+    // constants; zeroing them would mangle the parser fixture and collide 16 distinct line KEYS.
+    const line = 'no mac address-table reserved forward 0180.c200.0001-0180.c200.000f'
+    const { value, log } = redactHwValue({ [line]: null, stpId: '01:80:c2:00:00:00', lacpDotted: '0180.c200.0002' }, opts)
+    expect(value).toEqual({ [line]: null, stpId: '01:80:c2:00:00:00', lacpDotted: '0180.c200.0002' })
+    expect(log.filter((entry) => entry.rule === 'mac')).toHaveLength(0)
   })
 
   it('rewrites secret sha512/md5 material and multi-block PEM armour in config text', () => {

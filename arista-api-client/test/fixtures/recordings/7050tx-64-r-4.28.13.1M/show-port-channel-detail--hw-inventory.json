@@ -12,7 +12,7 @@
   },
   "captures": [
     {
-      "requestId": "d69d63dc4156-1",
+      "requestId": "ec8550e19ae6-1",
       "commands": [
         "enable",
         "show port-channel detail"
