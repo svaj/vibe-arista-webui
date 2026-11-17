@@ -31,6 +31,7 @@ import type {
   ShowVersionReply,
   ShowVlanEntry,
   ShowVlanReply,
+  ShowVrfReply,
 } from './show-contracts'
 
 type Exactly<A, B> =
@@ -375,5 +376,62 @@ describe('show ip interface brief — modelled from the two committed positives 
     // Device vocabulary stays the device's: status strings are open spellings, not unions.
     const status: string = capBriefCeos.interfaces['Vlan110']?.interfaceStatus as string
     expect(status).toBe('notconnect')
+  })
+})
+
+describe('S16 (#90): `vrf` is modelled from positive captures on BOTH targets', () => {
+  it('the augmentation lands on ShowReply<\'vrf\'>', () => {
+    expectTypeOf<Exactly<ShowReply<'vrf'>, ShowVrfReply>>().toEqualTypeOf<true>()
+  })
+
+  // The two payloads below are verbatim copies of the recorded replies: the 7050TX-64 hardware
+  // inventory capture (`show-vrf--hw-inventory.json`, capture `['enable','show vrf']`, `result[1]`)
+  // and the cEOS-lab 4.28.14M live capture (`live/ceos-4.28.14M/show-vrf.json`, `result`). Both
+  // carries exactly the `default` VRF — the contract notes that no capture proves a named-VRF entry.
+  const capVrfHw: ShowVrfReply = {
+    vrfs: {
+      default: {
+        routeDistinguisher: '',
+        vrfState: 'up',
+        interfacesV6: [],
+        interfacesV4: ['Management1'],
+        interfaces: ['Management1'],
+        protocols: {
+          ipv4: { routingState: 'down', protocolState: 'up', supported: true },
+          ipv6: { routingState: 'down', protocolState: 'up', supported: true },
+        },
+      },
+    },
+  }
+
+  const capVrfCeos: ShowVrfReply = {
+    vrfs: {
+      default: {
+        routeDistinguisher: '',
+        vrfState: 'up',
+        interfacesV6: [],
+        interfacesV4: ['Vlan100', 'Vlan110'],
+        interfaces: ['Vlan100', 'Vlan110'],
+        protocols: {
+          ipv4: { routingState: 'up', protocolState: 'up', supported: true },
+          ipv6: { routingState: 'down', protocolState: 'up', supported: true },
+        },
+      },
+    },
+  }
+
+  it('both captures type verbatim, and the default-VRF-only truth stays visible', () => {
+    expect(capVrfHw.vrfs['default']?.interfacesV4).toEqual(['Management1'])
+    expect(capVrfCeos.vrfs['default']?.protocols.ipv4.routingState).toBe('up')
+    expect(capVrfHw.vrfs['default']?.protocols.ipv4.routingState).toBe('down')
+    // Nothing besides `default` appears in either capture — the record type is open (device keys),
+    // but no screen may assume a named entry exists. @ts-expect-error below pins the REQUIRED entry
+    // keys: inventing a wider section shape fails compilation.
+    // @ts-expect-error - `vrfState` is required because both captures carry it; a partial entry is a contract violation
+    const partial: ShowVrfReply = { vrfs: { default: { interfaces: [] } } }
+    expect(partial.vrfs['default']?.interfaces).toEqual([])
+    // @ts-expect-error - `routeTargets` appears in no capture and is therefore not modelled at all
+    const invented: ShowVrfReply = { vrfs: {}, routeTargets: [] }
+    expect(invented.vrfs).toEqual({})
   })
 })

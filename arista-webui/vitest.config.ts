@@ -111,6 +111,14 @@ export default defineConfig({
       //   `busy || draft !== undefined` short-circuits behind enabled/disabled buttons, the
       //   journal-unreadable recovery refusal (jsdom localStorage does not throw), and the
       //   verify `missingAnswer` pill arm. No new threshold entry (#124 posture).
+      // #90 (S16 VRF manager, 2026-11-16) measured the whole webui at 93/90.64/95.79/97.86
+      //   (stmts/branch/funcs/lines, 951/50). Per-directory from the JSON: src/features/vrfs at
+      //   84.02/86.41/91.59/95.2 — vrfs-rules.ts 100/97.56/100/100 (every mirrored guard and each
+      //   byte-exact batch pinned), VrfsView.tsx 93.33 lines (the two dead `interfaceOptions.length
+      //   === 0` select-disable arms are unreachable when the hard read answered rows, and the
+      //   draft-index arm renders per-batch), Vrfs.tsx 94.81 lines (catch arms behind disabled
+      //   controls — the same DOM-unreachable guard family the #74-#79 records track). New
+      //   `src/features/vrfs/**` entry below holds the subtree at 2+ points under the measurement.
       // Floors below are set ~2-4 points under the measurements above (ratchet up, never down), and
       // as of #124 they GATE: on 2026-11-15 every entry was mutation-checked by dropping that
       // directory's coverage (uncovered probe files; for the two feature-aggregate entries, removing
@@ -153,6 +161,8 @@ export default defineConfig({
         'src/features/*': { lines: 90, branches: 84 },
         'src/features/**': { lines: 90, branches: 84 },
         'src/features/interfaces/**': { lines: 96, branches: 88 },
+        // #90: measured 95.2 lines / 86.41 branches (2026-11-16); floors sit 2.2 / 1.4 under that.
+        'src/features/vrfs/**': { lines: 93, branches: 85 },
         'src/shared/**': { lines: 98, branches: 87 },
         'src/testing/**': { lines: 96, branches: 82 },
         lines: 95,
