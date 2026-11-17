@@ -1,0 +1,106 @@
+{
+  "format": "arista-eapi-recording/v1",
+  "identity": {
+    "targetSlug": "7050tx-64-r-4.28.13.1M",
+    "targetClass": "hardware",
+    "modelName": "DCS-7050TX-64-R",
+    "aristaVersion": "4.28.13.1M",
+    "versionNumber": "4.28.13.1",
+    "provenance": "captured",
+    "endpoint": "https://<hw-redacted>:443/command-api",
+    "topology": "supervised session; scratch=none"
+  },
+  "captures": [
+    {
+      "requestId": "73c9ec9564aa-1",
+      "commands": [
+        "enable",
+        "configure session hw-probe-unblock2-vxlan-source-interface description \"the sourceInterface field's own spelling `vxlan source-i\"",
+        "interface Vxlan1",
+        "   vxlan source-interface Loopback1"
+      ],
+      "format": "json",
+      "result": [
+        {},
+        {},
+        {},
+        {}
+      ]
+    },
+    {
+      "requestId": "73c9ec9564aa-2",
+      "commands": [
+        "enable",
+        "configure session hw-probe-unblock2-vxlan-source-interface description \"the sourceInterface field's own spelling `vxlan source-i\"",
+        "show session-config diffs"
+      ],
+      "format": "text",
+      "result": [
+        {
+          "output": ""
+        },
+        {
+          "output": ""
+        },
+        {
+          "output": "--- system:/running-config\n+++ session:/hw-probe-unblock2-vxlan-source-interface-session-config\n@@ -191,6 +191,10 @@\n interface Management1\n    ip address <hw-redacted>/24\n !\n+interface Vxlan1\n+   vxlan source-interface Loopback1\n+   vxlan udp-port 4789\n+!\n no ip routing\n !\n monitor session 1 source Ethernet37\n"
+        }
+      ]
+    },
+    {
+      "requestId": "73c9ec9564aa-3",
+      "commands": [
+        "enable",
+        "configure session hw-probe-unblock2-vxlan-source-interface description \"the sourceInterface field's own spelling `vxlan source-i\"",
+        "abort"
+      ],
+      "format": "json",
+      "result": [
+        {},
+        {},
+        {}
+      ]
+    },
+    {
+      "requestId": "73c9ec9564aa-4",
+      "commands": [
+        "enable",
+        "show configuration sessions"
+      ],
+      "format": "json",
+      "result": [
+        {},
+        {
+          "maxSavedSessions": 1,
+          "maxOpenSessions": 5,
+          "sessions": {}
+        }
+      ]
+    },
+    {
+      "requestId": "73c9ec9564aa-5",
+      "commands": [
+        "enable",
+        "show configuration sessions detail"
+      ],
+      "format": "json",
+      "result": [
+        {},
+        {
+          "maxSavedSessions": 1,
+          "maxOpenSessions": 5,
+          "sessions": {
+            "ui-127-0-0-1-e2e76c64": {
+              "instances": {},
+              "state": "completed",
+              "commitUser": "svaj",
+              "description": "\"webui vlan create 20\"",
+              "completedTime": 1794521920.1491437
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "incomplete": []
+}

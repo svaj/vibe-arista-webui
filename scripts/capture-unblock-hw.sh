@@ -23,14 +23,21 @@ VERSION="${EAPI_ALLOW_VERSION:-4.28.13.1M}"
 PORT="${EAPI_PORT:-443}"
 CA_FILE="${EAPI_CA_FILE:-}"
 FINGERPRINT="${EAPI_FINGERPRINT:-}"
-SCRUB="${EAPI_HW_SCRUB:-}"   # comma list: hostname,mgmt-ip,lab-domain -- every occurrence scrubbed
+SCRUB="${EAPI_HW_SCRUB:-}"   # comma list: hostname,mgmt-ip,lab-domain,default-gateway,lan-dns -- every occurrence scrubbed
 DO_INVENTORY=1
 DO_PROBE=1
+# Run 8 (2026-11-16) proved the silent-default hazard: re-running "the unblock script" without
+# EAPI_HW_PROBE_SPEC re-stages ROUND 1 (already-answered) batches. Round 2 is the current default;
+# --spec1 goes back for a deliberate re-confirm, any other EAPI_HW_PROBE_SPEC prefix still overrides.
+SPEC_SELECT=2
 
 usage() {
   sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'
   echo
-  echo "usage: $0 --go [--host H] [--user U] [--port 443] [--ca /tmp/eapi.pem] [--fp AA:BB:..] [--scrub host,ip,domain]"
+  echo "usage: $0 --go [--host H] [--user U] [--port 443] [--ca /tmp/eapi.pem] [--fp AA:BB:..] [--scrub h,ip,domain,gateway,dns] [--spec1|--spec2]"
+  echo "       (no --go -> dry run only; --spec2 default = round-2 port-composed probes, --spec1 = run-7 set)"
+  echo "       --scrub MUST include every literal that maps YOUR network: hostname, mgmt ip, lab domain,"
+  echo "       DEFAULT GATEWAY and LAN DNS server -- diff-context lines and read replies carry those."
   echo "       (no --go  -> dry run only)"
   echo
   echo "cert triple (HARDWARE-CAPTURE.md section 2.3 -- the box serves a self-signed leaf,"
@@ -52,11 +59,27 @@ while [ $# -gt 0 ]; do
     --ca) CA_FILE="$2"; shift ;;
     --fp) FINGERPRINT="$2"; shift ;;
     --scrub) SCRUB="$2"; shift ;;
+    --spec1) SPEC_SELECT=1 ;;
+    --spec2) SPEC_SELECT=2 ;;
     -h|--help) usage; exit 0 ;;
     *) echo "unknown arg: $1" >&2; usage; exit 2 ;;
   esac
   shift
 done
+
+# Resolve the probe spec once, against the REPO ROOT (the script's location -- not $PWD, which
+# depends on where the operator invoked it). An explicit EAPI_HW_PROBE_SPEC always wins (runbook
+# compat, and then it is the operator's path verbatim); else --spec1/--spec2 pick the repo file.
+# A missing file is a hard exit BEFORE the password prompt.
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# NOTE the asymmetric file names: round 1 shipped as hw-capture-unblock.draft.json (no digit).
+if [ "$SPEC_SELECT" = "1" ]; then SPEC_DEFAULT="$REPO_ROOT/arista-api-client/docs/hw-capture-unblock.draft.json"; else SPEC_DEFAULT="$REPO_ROOT/arista-api-client/docs/hw-capture-unblock2.draft.json"; fi
+SPEC="${EAPI_HW_PROBE_SPEC:-$SPEC_DEFAULT}"
+if [ ! -f "$SPEC" ]; then
+  echo "probe spec not found: $SPEC" >&2
+  echo "  round files: arista-api-client/docs/hw-capture-unblock.draft.json (run 7) / hw-capture-unblock2.draft.json (round 2)" >&2
+  exit 2
+fi
 
 if [ "$GO" -ne 1 ]; then
   echo "== DRY RUN (pass --go to execute against the switch) =="
@@ -65,9 +88,9 @@ if [ "$GO" -ne 1 ]; then
   echo "           EAPI_CA_FILE=$CA_FILE EAPI_FINGERPRINT=<set?> EAPI_SERVER_NAME=self.signed"
   echo "           EAPI_HW_SCRUB=$SCRUB"
   echo "would run 1: EAPI_HW_CAPTURE=1 npm -w arista-api-client run test:live -- src/hw-inventory.live.test.ts"
-  echo "would run 2: EAPI_HW_SESSION_PROBE=1 EAPI_HW_PROBE_SPEC=<repo>/arista-api-client/docs/hw-capture-unblock.draft.json \\"
+  echo "would run 2: EAPI_HW_SESSION_PROBE=1 EAPI_HW_PROBE_SPEC=$SPEC \\"
   echo "                 npm -w arista-api-client run test:live -- src/hw-session-probe.live.test.ts"
-  echo "(round 8: prefix EAPI_HW_PROBE_SPEC=.../hw-capture-unblock2.draft.json to stage that spec instead)"
+  echo "(spec resolves from --spec1/--spec2 or an explicit EAPI_HW_PROBE_SPEC; a missing spec file hard-exits)"
   echo "(npm -w, NOT 'npx vitest run -w ... --project live': the live project is defined only in"
   echo " arista-api-client/vitest.config.ts, and --project resolution from the repo root fails --"
   echo " ci.yml records the same fix for the lab lane, probed 2026-11-08)"
@@ -100,7 +123,7 @@ export EAPI_CA_FILE="$CA_FILE" EAPI_FINGERPRINT="$FINGERPRINT" EAPI_SERVER_NAME=
 export EAPI_HW_SCRUB="$SCRUB"
 # NOTE: EAPI_SCRATCH_INTERFACE is intentionally NOT exported -- the unblock spec names no {{SCRATCH}}.
 
-cd "$(dirname "$0")/.."
+cd "$REPO_ROOT"
 RECORDINGS_DIR=arista-api-client/test/fixtures/recordings/7050tx-64-r-4.28.13.1M
 
 guard_nothing_recorded() {
@@ -121,8 +144,9 @@ fi
 
 if [ "$DO_PROBE" -eq 1 ]; then
   echo "== step 2: abort-only staged-grammar probes (no commit; default traffic untouched) =="
+  echo "   spec = $SPEC   (batches stage as configure-session-<name>--hw-session-probe)"
   EAPI_HW_SESSION_PROBE=1 \
-    EAPI_HW_PROBE_SPEC="${EAPI_HW_PROBE_SPEC:-$PWD/arista-api-client/docs/hw-capture-unblock.draft.json}" \
+    EAPI_HW_PROBE_SPEC="$SPEC" \
     npm -w arista-api-client run test:live -- src/hw-session-probe.live.test.ts
 fi
 

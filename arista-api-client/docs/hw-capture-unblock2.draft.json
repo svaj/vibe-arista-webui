@@ -1,7 +1,8 @@
 {
   "$comment": [
-    "Round 2 of the 7050TX-64 unblock probes (run 8, 2026-11-15). Round 1 (run 7) produced three",
-    "INCONCLUSIVE answers that were MY OWN invented spellings, not the box's verdicts — the DR-135",
+    "Round 2 of the 7050TX-64 unblock probes (EXECUTED 2026-11-16 as run 9; originally planned as run 8,",
+    "which instead re-ran round 1 by default -- see CAPTURE-UNBLOCK.md's run log). Round 1 (run 7) had",
+    "produced three INCONCLUSIVE answers that were MY OWN invented spellings, not the box's verdicts — the DR-135",
     "lesson, repeated live: (a) I staged bare `vrf UNBLOCK-PROBE`, but this client composes",
     "`vrf instance X` (>= 4.23) / `vrf definition X` (vrfs.ts, W2d #41); (b) I staged `bgp router-id`,",
     "but bgp.ts:535 composes plain `router-id <value>` inside the process; (c) I staged",
