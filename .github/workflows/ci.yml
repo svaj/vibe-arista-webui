@@ -3,9 +3,10 @@ name: CI
 # Offline quality gate for every push and pull_request (#2 / M0). **The rule that must never
 # weaken: a push/PR job must never start, build or contact an EOS device or a cEOS-lab container —
 # no image, no docker, no eAPI endpoint.** The M12 (#14) real-EOS lane exists exactly as this header
-# always reserved it: a separate, explicitly trusted `workflow_dispatch` **job** (`ceos-live` below)
-# on a dedicated self-hosted runner per docs/CEOS.md. It cannot be reached by a push, a PR (including
-# a fork PR) or a scheduled run, and it is the only job in this workflow allowed to create a
+# always reserved it: separate, explicitly trusted `workflow_dispatch` **jobs** (`ceos-live` and the
+# #142 `ceos-e2e` browser lane below, one per dispatch chosen by the `lane` input) on a dedicated
+# self-hosted runner per docs/CEOS.md. Neither can be reached by a push, a PR (including
+# a fork PR) or a scheduled run, and they are the only jobs in this file allowed to create a
 # container — everything else in this file stays offline by construction.
 
 on:
@@ -21,6 +22,16 @@ on:
         description: 'Loopback port the lab publishes (must be free on the lab runner)'
         required: false
         default: '8443'
+      # #142: the dispatch picks WHICH trusted lane runs. Both lanes provision their own run-owned
+      # cEOS container; neither may ever run on a push/PR event.
+      lane:
+        description: 'Trusted lab lane to run'
+        required: false
+        default: 'live'
+        type: choice
+        options:
+          - live
+          - e2e
 
 permissions:
   contents: read
@@ -32,8 +43,12 @@ concurrency:
   # docs/CEOS.md "single-flight execution per endpoint" rule, at the scheduler level. Second
   # dispatch on the same port QUEUES behind the first. The harness layers a second, machine-local
   # guard (scripts/.state/lock-<port>.json, stale-aware), so a run smuggled past the scheduler still
-  # refuses with exit 4. If a second lab runner is ever added, put its name in this group too.
-  group: ${{ github.event_name == 'workflow_dispatch' && format('ceos-live-endpoint-{0}', github.event.inputs.port || '8443') || format('ci-{0}', github.ref) }}
+  # refuses with exit 4 — that guard is also what keeps a live-lane dispatch and an e2e-lane dispatch
+  # on the SAME port from touching one endpoint at once, now that the group key carries the lane
+  # (#142). Before the e2e lane existed this group was `ceos-live-endpoint-<port>`; the default
+  # lane ('live') reproduces that exact string, so in-flight live queues were never re-keyed.
+  # If a second lab runner is ever added, put its name in this group too.
+  group: ${{ github.event_name == 'workflow_dispatch' && format('ceos-{0}-endpoint-{1}', github.event.inputs.lane || 'live', github.event.inputs.port || '8443') || format('ci-{0}', github.ref) }}
   cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
 
 jobs:
@@ -176,8 +191,9 @@ jobs:
   ceos-live:
     name: cEOS-lab live eAPI suite (trusted dispatch, self-hosted lab runner)
     # Belt and braces on top of the `workflow_dispatch` trigger: a fork PR, a push, or a copy of this
-    # file reaching another event must never start a privileged container.
-    if: ${{ github.event_name == 'workflow_dispatch' }}
+    # file reaching another event must never start a privileged container. The #142 `lane` input
+    # picks between the two trusted lanes; an unset lane stays the live suite (exact prior behavior).
+    if: ${{ github.event_name == 'workflow_dispatch' && (github.event.inputs.lane || 'live') == 'live' }}
     runs-on: [self-hosted, linux, eos-lab]
     timeout-minutes: 45
     env:
@@ -263,5 +279,122 @@ jobs:
         with:
           name: ceos-live-diagnostics-${{ github.run_id }}
           path: ${{ env.LIVE_LOG }}
+          if-no-files-found: error
+          retention-days: 14
+
+  # ---------------------------------------------------------------------------
+  # #142 (docs/CEOS.md §Browser E2E and CI plan item 5): the trusted-dispatch half of the
+  # B5 (#91) Playwright lane. Mirrors `ceos-live`'s guarantees exactly — dispatch-only,
+  # self-hosted lab runner, `--quiet` (credentials exist only in the 0600 per-run state file the
+  # harness deletes), `--no-fixtures` (this job can never write a committed capture), guaranteed
+  # teardown on an always() path, and NO `secrets.*` anywhere. cEOS results are container
+  # evidence only: a green run here never establishes 7050TX-64 / 4.28.13.1M support (DR-043).
+  # ---------------------------------------------------------------------------
+  ceos-e2e:
+    name: cEOS-lab browser E2E (trusted dispatch, self-hosted lab runner)
+    if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.lane == 'e2e' }}
+    runs-on: [self-hosted, linux, eos-lab]
+    timeout-minutes: 60
+    concurrency:
+      # The endpoint the lane dials is single-flight, and the lane additionally owns the fixed
+      # dev-server ports 5173-5176 (scripts/e2e-run.mjs), so two e2e dispatches must never run
+      # concurrently even on different LAB_PORT values — operators dispatching a second e2e lane
+      # while one is in flight watch it QUEUE here. Never cancelled mid-flight: a killed lane
+      # would orphan four vite servers and (worst case) a lab container the teardown step then
+      # has to clean.
+      group: ci-e2e-endpoint-${{ github.event.inputs.port || '8443' }}
+      cancel-in-progress: false
+    env:
+      LAB_PORT: ${{ github.event.inputs.port || '8443' }}
+      E2E_LOG: e2e-run.log
+      # #142 blocker 2 (band determinism) resolution: on this WSL2 mirrored-mode host BOTH
+      # route-verified bands proved intermittently poisoned mid-run — the B5 lane (2026-11-15)
+      # watched 192.168.255.x and 172.31.x bridges pass `verifyMgmtBridgeRoute` and then fail
+      # ARP, killing readiness with `mgmt-path-owned-by-host-nat` (exit 7); the green run landed
+      # only after decoy networks forced the uncontested 10.177.x band. Route verification is
+      # necessary but NOT sufficient under HNS, so this dispatch pins the band via the harness's
+      # `--band`/CEOS_LAB_MGMT_BAND support (`npm run lab:mgmt-bands` previews what a pin
+      # selects, read-only). A host that genuinely loses 10.177 too fails fast with the pin named
+      # in the refusal instead of flaking — the correct CI posture is fix-the-host, not
+      # random-band roulette.
+      CEOS_LAB_MGMT_BAND: '10.177'
+    steps:
+      - uses: actions/checkout@v4
+
+      # vitest 5 / vite 8 / jsdom 30 engine floors make Node 22 the minimum here, same split as
+      # the `quality` (22/24) vs `dist-node20` jobs.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install (lockfile at the workspace root)
+        run: npm ci
+
+      # #142 blocker 1 (no provisioned Chromium) resolution. The runner host already carries the
+      # revision this lockfile pins (chromium-1255 + headless shell + ffmpeg-1013 under
+      # ~/.cache/ms-playwright, provisioned for the 2026-11-15 local B5 runs that went 10 passed /
+      # 0 skipped), so this is normally a no-op — kept as a step so a wiped cache FAILS LOUDLY
+      # here instead of dying inside the first spec with "Executable doesn't exist".
+      - name: Browser — ensure the pinned Playwright Chromium (idempotent when cached)
+        run: npx playwright install chromium
+
+      - name: Preflight — what this harness already owns (read-only listing, nothing created)
+        run: npm run lab:list
+
+      - name: Browser E2E against the run-owned lab (up → probe → preflight + 4 dev states + Playwright → down)
+        # The child (`scripts/e2e-run.mjs`) refuses any target that is not the loopback lab
+        # endpoint, runs the TLS/identity preflight child, serves the four browser-observable
+        # truth states (:5173 connected / :5174 unconfigured / :5175 unreachable / :5176 bad-auth,
+        # a real 401 from cEOS), and owns the vite servers — credentials stay in the vite process
+        # tree (F8: the browser never holds one; artifact traces/video/HAR are OFF, so everything
+        # on disk is text and scannable). Playwright workers:1, retries:0. pipefail keeps the
+        # harness exit code (child code or the 2-9 refusal classes).
+        run: |
+          set -o pipefail
+          npm run lab:run -- --quiet --no-fixtures --port "$LAB_PORT" -- node scripts/e2e-run.mjs 2>&1 | tee "$E2E_LOG"
+        shell: bash
+
+      - name: Teardown — always, including readiness/test/timeout failure paths
+        # Same safety net as ceos-live: `lab:run` tears its own run down in a finally and on
+        # SIGINT/SIGTERM/SIGHUP; this catches the paths where that never got to run (job
+        # cancelled, step killed by timeout-minutes). Run-labelled, verified, idempotent.
+        if: ${{ always() }}
+        run: npm run lab:down
+
+      - name: Diagnostics — the summary the assertion read
+        if: ${{ always() }}
+        run: |
+          if [ -f "$E2E_LOG" ]; then
+            grep -nE '(passed|failed|flipped|skipped)' "$E2E_LOG" | tail -5 || echo 'no playwright summary line in the log'
+          else
+            echo "$E2E_LOG was never written — the lane died before the child produced output"
+          fi
+          if [ -f arista-webui/e2e-results/results.json ]; then
+            node -e "const r=require('./arista-webui/e2e-results/results.json').stats||{};console.log('results.json stats:', JSON.stringify({expected:r.expected,unexpected:r.unexpected,skipped:r.skipped,flaky:r.flaky}))" || echo 'results.json unreadable — the assert step below prints the reason'
+          else
+            echo 'arista-webui/e2e-results/results.json absent — Playwright never reported'
+          fi
+        shell: bash
+
+      - name: Assert the specs actually EXECUTED + scan every artifact for secrets
+        id: assert
+        if: ${{ always() }}
+        # Playwright's own exit code cannot carry the skip story (and the harness's `--quiet` rule
+        # means nothing credential-shaped may live in anything this job keeps): assert-e2e-run
+        # demands expected >= 1, unexpected = 0, flaky = 0, SKIPPED = 0 in results.json, then runs
+        # the F8 secret scan over every text artifact (--check-secrets). A skip here means the lane
+        # broke (in a real-cEOS run a skip is a bug, not coverage) — same rule assert-live-run enforces.
+        run: node scripts/assert-e2e-run.mjs arista-webui/e2e-results/results.json --check-secrets
+
+      - name: Upload the redacted e2e diagnostics
+        if: ${{ always() && steps.assert.outcome == 'success' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ceos-e2e-diagnostics-${{ github.run_id }}
+          path: |
+            ${{ env.E2E_LOG }}
+            arista-webui/e2e-results/**
           if-no-files-found: error
           retention-days: 14
