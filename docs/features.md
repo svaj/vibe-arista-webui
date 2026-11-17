@@ -146,10 +146,13 @@ Since this was pulled from a feature list, this needs to be turned into relevant
 
 ## VXLAN & EVPN
 
-> Device note (2026-11-15): the 7050TX-64 capture set answers `show license features` =
-> `{"active":[],"missing":[]}`, and the console has **no** `vxlan interface` form (a global
-> `config# vxlan` verb does exist). Whether VXLAN works on this SKU at all is the pending
-> stage-then-abort probe (`hw-capture-unblock.draft.json`, issue #86); nothing below is tickable until it decides.
+> Device note (2026-11-15, DECIDED 2026-11-17): the 7050TX-64 capture set answers
+> `show license features` = `{"active":[],"missing":[]}`; the stage-then-abort probes ran (runs 7/9)
+> and found the VTEP config grammar stages (`interface Vxlan1`, `vxlan vlan <id> vni <n>`,
+> `vxlan source-interface`) while every VXLAN read stays suppressed/empty — **feature-absent**.
+> **DECISION: the VXLAN/EVPN UI does not ship on this deployment (#86 closed won't-ship, DR-142).**
+> Nothing below is tickable; the rows stay as 7050X datasheet content, and DR-142's disposition
+> never edits them. Reopen is evidence-gated: one populated `show vxlan …` read from this hardware.
 
 ### Bridging & Routing
 

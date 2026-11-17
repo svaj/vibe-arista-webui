@@ -8,7 +8,7 @@ A Typescript EOS eAPI client and a React frontend (using that eAPI client) to ma
 * Language: Typescript 7
 * Frontend: React 19 with the React Compiler
 * * Vite 8, using Rolldown and oxc tools for formatting/linting, etc.
-* Test Frameworks: Vitest and Playwright
+* Test Frameworks: Vitest (unit/component/integration; the offline default — plain `npm test` never contacts a device); Playwright drives the **opt-in** cEOS browser E2E lane in `arista-webui/e2e/` (`npm run e2e`, or the trusted `lane=e2e` CI dispatch — #91/#142) and is never part of `npm test`
 
 ## Arista offical material related to this project
 
@@ -18,5 +18,5 @@ A Typescript EOS eAPI client and a React frontend (using that eAPI client) to ma
 * Arista's cEOS-lab **4.28.14M** image and vendor install instructions are in `/home/svaj/development/arista/cEOS`. Prefer disposable cEOS for opt-in real-eAPI integration/live and browser E2E tests; see [the cEOS runbook](docs/CEOS.md). Ordinary `npm test` stays offline. Container results do not establish hardware support or exact behavior on the 7050TX-64 / 4.28.13.1M.
 * Arista's EOS binary (swi) for 4.28 can be viewed at `/home/svaj/development/arista/EOS-4.28.13.1M.swi`.  If needed we can attempt to reverse engineer that to see if anything useful shows up, just let the user know and we can get that analyzed.
 
-Rules/Instructions
-All agent rules and instructions in .github/instructions
+## Rules/Instructions
+Agent definitions live in `.github/agents/` (`arista-eos-eapi-expert.agent.md`, `frontend-react-engineer.agent.md`) and project skills in `.github/skills/`. The `.github/instructions/` directory is empty and nothing reads it (corrected per #92 — it formerly held the only pointer).
