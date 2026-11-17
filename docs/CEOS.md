@@ -280,8 +280,9 @@ never overwrite hardware fixtures with cEOS recordings.
 
 ## Browser E2E and CI plan
 
-> **Status (2026-11-15, #91): items 1–4 and 6 are implemented as the webui-owned opt-in
-> lane; item 5 (the trusted `workflow_dispatch` job) is a deliberate follow-up.** Entry
+> **Status (updated 2026-11-16, #142): all six items below are implemented.** Items 1–4 and 6
+> shipped with the webui-owned opt-in lane (#91); item 5 is now the **`ceos-e2e`** job in
+> `.github/workflows/ci.yml`. Entry
 > point: `npm run e2e` (repo root or `-w arista-webui`) — it wraps `scripts/ceos-lab.mjs run`
 > so the container lifecycle/teardown rules above apply unchanged, and the child
 > `scripts/e2e-run.mjs` runs the TLS/identity preflight
@@ -292,9 +293,48 @@ never overwrite hardware fixtures with cEOS recordings.
 > `node scripts/assert-e2e-run.mjs arista-webui/e2e-results/results.json --check-secrets`.
 > trace/video/HAR/screenshots are OFF — failure diagnostics are the scrubbed text attachments
 > from `e2e/fixtures.ts`, so everything on disk is text-scannable. Offline CI can never
-> reach the lane (`src/e2e-lane-boundary.test.ts` pins this). Deferred: the `ceos-e2e`
-> workflow_dispatch job — the `eos-lab` runner has no provisioned Chromium today, which the
-> follow-up issue must resolve first. The six requirements below remain the binding spec.
+> reach the lane (`src/e2e-lane-boundary.test.ts` pins this). The six requirements below remain
+> the binding spec.
+>
+> > A green `ceos-e2e` run is **container evidence only** (DR-043): like every other cEOS result,
+> > it never establishes DCS-7050TX-64 / EOS 4.28.13.1M support or exact hardware behavior.
+
+### The `ceos-e2e` dispatch (#142, item 5)
+
+Ordinary pushes and PRs never reach it — the job is `if: github.event_name == 'workflow_dispatch'`
+on the `eos-lab` self-hosted runner, carries no `secrets.*` (credentials exist only in the `--quiet`
+0600 state file the harness deletes on teardown, per F8), runs `--no-fixtures` (it can never write a
+committed capture), and tears down on an `always()` path exactly like `ceos-live`. The dispatch form
+picks the trusted lane:
+
+```bash
+gh workflow run --repo svaj/vibe-arista-webui ci.yml --ref main -f port=8443 -f lane=e2e
+gh run watch   # job: "cEOS-lab browser E2E (trusted dispatch, self-hosted lab runner)"
+```
+
+Both **blockers #142 recorded as unresolved** are addressed, and the second one verifiably:
+
+1. **Chromium on the runner.** The runner host (the operator's WSL2 box) now carries the pinned
+   revision — `~/.cache/ms-playwright/chromium-1255` + headless shell + `ffmpeg-1013` — installed
+   for the 2026-11-15 local B5 runs that went 10 passed / 0 skipped. The job still runs
+   `npx playwright install chromium` before the lane so a later wiped cache fails LOUDLY in that
+   step instead of dying inside the first spec with "Executable doesn't exist".
+2. **mgmt-band determinism under WSL2 mirrored mode.** `scripts/ceos-lab.mjs` gained a band pin —
+   `--band <prefix[,prefix]>` or `CEOS_LAB_MGMT_BAND` (1–3 dotted octets, e.g. `10.177`; malformed
+   or out-of-universe pins refuse at once) — and `npm run lab:mgmt-bands` previews, read-only, what
+   a pin selects (no container, no network). The job pins `10.177`, the one band outside every HNS
+   range on this host, because **route verification is necessary but not sufficient there**: the #91
+   lane repeatedly watched `192.168.255.x` and `172.31.x` bridges pass `verifyMgmtBridgeRoute`
+   at creation and fail ARP minutes later — readiness died with
+   `mgmt-path-owned-by-host-nat` (exit 7) before the child could even start (runs 4/5 rode random
+   .183/.42 octets fine; .255/.163 died, and the green run needed decoy Docker networks to be
+   forced onto 10.177.x). The pin replaces that decoy-network workaround mechanically. Verified on
+   2026-11-16: `lab:up --band 10.177` settled `10.177.188.0/24` and `lab:probe` reported
+   `readiness.ready: true` — the first success on this host's default route with **no manual
+   decoy networks** — then `lab:down` left no containers, networks, or state files. A host that
+   genuinely loses 10.177 too
+   fails fast with the pin named in the refusal; the right response there is the host fix
+   (`networkingMode=NAT` / native-Linux runner), not random-band roulette.
 
 1. Keep Vitest component tests mocked/offline. Add Playwright separately when the UI
    has an eAPI-backed workflow; no new runner is installed by this documentation change.

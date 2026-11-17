@@ -772,7 +772,39 @@ async function waitForEosCli(container, timeoutSec) {
  * same first candidate. IPv6 ipam entries and link-local noise are ignored.
  * @returns {{ octetBase: string, cidr: string }[]}
  */
-function mgmtSubnetCandidates() {
+/**
+ * Parse a `--band` / `CEOS_LAB_MGMT_BAND` pinspec: a comma-separated list of dotted prefixes,
+ * 1–3 octets wide (`10.177` pins the whole band, `10.177.204` pins one /24). `auto` / empty =
+ * unpinned (today's default order). A malformed prefix is a USAGE refusal — a typo must never
+ * silently widen back to the poisoned default order. Exported via the read-only `mgmt-bands`
+ * command so an operator can see what a pin selects BEFORE starting a run.
+ * @param {string | undefined} raw
+ * @returns {{ parts: string[] }[] | undefined}
+ */
+function parseMgmtBandPin(raw) {
+  if (raw === undefined) return undefined
+  const trimmed = raw.trim()
+  if (trimmed === '' || trimmed === 'auto') return undefined
+  return trimmed.split(',').map((piece) => {
+    const parts = piece.trim().split('.')
+    if (parts.length < 1 || parts.length > 3 || parts.some((p) => !/^\d{1,3}$/.test(p) || Number(p) > 255)) {
+      refuse(`--band / CEOS_LAB_MGMT_BAND expects 1-3 dotted octets per pin (e.g. 10.177 or 10.177.204), got ${JSON.stringify(piece)}`, EXIT.usage)
+    }
+    return { parts }
+  })
+}
+
+/** Does an octetBase like `10.177.204` fall under a parsed pin prefix? */
+function mgmtBandMatches(pin, octetBase) {
+  const octets = octetBase.split('.')
+  return pin.parts.every((p, i) => octets[i] === p)
+}
+
+/**
+ * @param {string | undefined} bandPinSpec see {@link parseMgmtBandPin}
+ */
+function mgmtSubnetCandidates(bandPinSpec) {
+  const pins = parseMgmtBandPin(bandPinSpec)
   const ids = docker(['network', 'ls', '-q']).trim().split('\n').filter(Boolean)
   /** @type {{addr: number[], plen: number}[]} */
   const used = []
@@ -829,7 +861,7 @@ function mgmtSubnetCandidates() {
     { a: 10, b: 177, min: 16, max: 255 },
   ]
   /** @type {{ octetBase: string, cidr: string }[]} */
-  const out = []
+  let out = []
   for (const band of bands) {
     const span = band.max - band.min + 1
     const start = crypto.randomInt(0, span)
@@ -839,6 +871,35 @@ function mgmtSubnetCandidates() {
       if (!used.some((u) => overlaps(cand, 24, u.addr, u.plen))) {
         out.push({ octetBase: `${band.a}.${band.b}.${o}`, cidr: `${band.a}.${band.b}.${o}.0/24` })
       }
+    }
+  }
+  // #142 band pin: on this operator's WSL2 mirrored-mode host BOTH default-first bands proved
+  // intermittently poisoned (B5 lane, 2026-11-15: 192.168.255.*/172.31.* bridges verified their
+  // ROUTE live and then failed ARP mid-run — exit 7, `mgmt-path-owned-by-host-nat`; the green run
+  // only landed after decoy networks forced the clean 10.177.x band, outside every HNS range).
+  // Route verification is necessary, not sufficient, so a dispatch that must not flake pins the
+  // band it knows is uncontested instead of trusting the order.
+  if (pins !== undefined) {
+    const matchesBand = (pin, band) =>
+      pin.parts[0] === String(band.a)
+      && (pin.parts.length === 1
+        || (pin.parts[1] === String(band.b)
+          && (pin.parts.length === 2 || (Number(pin.parts[2]) >= band.min && Number(pin.parts[2]) <= band.max))))
+    if (!pins.some((pin) => bands.some((band) => matchesBand(pin, band)))) {
+      refuse(
+        `--band / CEOS_LAB_MGMT_BAND pin ${JSON.stringify(bandPinSpec ?? '')} selects nothing: this harness only ever bridges ` +
+        'inside 192.168.255.0/24, 172.31.16-255, or 10.177.16-255 (mgmtSubnetCandidates) — pin a prefix inside one of those.',
+        EXIT.usage,
+      )
+    }
+    out = out.filter((cand) => pins.some((pin) => mgmtBandMatches(pin, cand.octetBase)))
+    if (out.length === 0) {
+      refuse(
+        `pinned mgmt band ${JSON.stringify(bandPinSpec ?? '')} currently has no free /24 — every candidate overlaps a ` +
+        'live docker network, host route, or interface address. Remove stale lab networks for THIS pin ' +
+        '(npm run lab:list shows the harness-owned ones) or re-dispatch without the pin.',
+        EXIT.internal,
+      )
     }
   }
   if (out.length === 0) {
@@ -1030,7 +1091,7 @@ async function cmdUp(cfg) {
     let mgmtSubnet = undefined
     /** @type {string[]} */
     const mgmtTries = []
-    for (const [i, cand] of mgmtSubnetCandidates().entries()) {
+    for (const [i, cand] of mgmtSubnetCandidates(cfg.mgmtBand).entries()) {
       if (i >= 40) break
       const res = dockerOpt([
         'network', 'create',
@@ -2854,6 +2915,17 @@ function labConfig(flags) {
     // redacted diagnostics). Default stays false so the operator recipe keeps printing.
     quiet: flags['quiet'] === true,
     captureVia: str('capture-via', DEFAULTS.captureVia),
+    /**
+     * #142: deterministic mgmt-band selection for CI (docs/CEOS.md §Browser E2E and CI plan item 5,
+     * blocker 2). `--band <prefix[,prefix]>` wins over `CEOS_LAB_MGMT_BAND`; both accept 1-3 dotted
+     * octets per pin and refuse typos. Undefined = the unpinned default candidate order.
+     */
+    mgmtBand:
+      typeof flags['band'] === 'string'
+        ? flags['band']
+        : typeof process.env.CEOS_LAB_MGMT_BAND === 'string' && process.env.CEOS_LAB_MGMT_BAND.trim() !== ''
+          ? process.env.CEOS_LAB_MGMT_BAND.trim()
+          : undefined,
   }
   if (!['auto', 'eapi', 'cli'].includes(cfg.captureVia)) {
     refuse(`--capture-via must be auto, eapi, or cli, got ${JSON.stringify(cfg.captureVia)}`, EXIT.usage)
@@ -2920,6 +2992,11 @@ flags
                                eapi = strict (no fallback). cli = skip the eAPI probe and capture via Cli directly.
   --quiet                      suppress the one-time credential print (CI logs; the 0600 state file
                                remains the only copy and teardown deletes it)
+  --band <prefix[,prefix]>     pin the mgmt bridge to dotted-prefix band(s) (1-3 octets each, e.g.
+                               10.177). CI default via CEOS_LAB_MGMT_BAND; #142's band-determinism
+                               blocker — route verification alone cannot see WSL2/HNS ARP poisoning,
+                               so a CI dispatch pins the band known uncontested on its runner.
+                               Read-only preview without creating anything: npm run lab:mgmt-bands
   --all                        with down: tear down every labelled run
   --help                       this text
 `,
@@ -2991,6 +3068,25 @@ async function main(argv) {
       // exercisable on any machine (docs/CEOS.md keeps the lab itself trusted-host only).
       guardInheritedHost()
       return cmdFixtures(cfg)
+    }
+    case 'mgmt-bands': {
+      // Read-only operator/CI aid (#142): print what the band pin selects, create nothing. Runs
+      // only `docker network ls`/`ip` reads inside mgmtSubnetCandidates — no container, no network.
+      const pin = cfg.mgmtBand
+      const bands = mgmtSubnetCandidates(pin)
+      process.stdout.write(
+        `${JSON.stringify(
+          {
+            pin: pin ?? 'auto',
+            totalFreeCandidates: bands.length,
+            firstTen: bands.slice(0, 10).map((c) => c.cidr),
+            note: 'candidates exclude every subnet a live docker network, host route, or interface address already holds',
+          },
+          null,
+          2,
+        )}\n`,
+      )
+      return { exitCode: EXIT.ok }
     }
     case 'list': {
       const resources = listLabResources()

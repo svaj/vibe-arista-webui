@@ -22,6 +22,7 @@
     "lab:probe": "node scripts/ceos-lab.mjs probe",
     "lab:down": "node scripts/ceos-lab.mjs down",
     "lab:list": "node scripts/ceos-lab.mjs list",
+    "lab:mgmt-bands": "node scripts/ceos-lab.mjs mgmt-bands",
     "lab:run": "node scripts/ceos-lab.mjs run",
     "fixtures:refresh": "node scripts/ceos-lab.mjs fixtures",
     "e2e": "npm run e2e -w arista-webui"
