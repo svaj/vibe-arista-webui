@@ -12,6 +12,7 @@ import { Mlag } from './features/mlag/Mlag'
 import { SystemSettings } from './features/system/SystemSettings'
 import { Ntp } from './features/ntp/Ntp'
 import { Stp } from './features/stp/Stp'
+import { Vrfs } from './features/vrfs/Vrfs'
 import { Acls } from './features/acls/Acls'
 import { StaticRoutes } from './features/routes/StaticRoutes'
 import { TransactionCenter } from './features/sessions/TransactionCenter'
@@ -79,6 +80,14 @@ function App() {
     '/ntp': {
       title: 'NTP',
       element: <Ntp node={node} proxyConfigured={__EAPI_PROXY_CONFIGURED__} />,
+    },
+    // S16 (#90) owns `#/vrfs`: the VRF manager. #90's blocked premise (hardware unknowns) was
+    // retired by the run-9 supervised probes — every batch this screen stages is one those captures
+    // proved or one the frozen `node.vrfs` verbs compose verbatim (DR-141). Device columns ride the
+    // capture-backed `show vrf` contract; membership is the parsed config `vrf` line.
+    '/vrfs': {
+      title: 'VRF manager',
+      element: <Vrfs node={node} proxyConfigured={__EAPI_PROXY_CONFIGURED__} />,
     },
     // S13 (#83) owns `#/acls`: the access-list viewer/editor over the parsed `ip access-list` sections.
     // Rules are shown as running-config text — no `show access-lists` capture exists, so no counter is

@@ -246,6 +246,7 @@ Since this was pulled from a feature list, this needs to be turned into relevant
 
 ### Policy, VRFs & DHCP/ARP
 
+- [x] VRF instances — create/delete, rd, description, per-VRF IPv4/IPv6 routing flags, port assignment *(S16 #90: `#/vrfs` VRF manager; every staged batch is a run-9-proven or `vrfs.test.ts`-pinned composition (DR-141), the device columns ride the capture-backed `show vrf` contract — both captures are default-only today, so no named-VRF device shape is claimed)*
 - [ ] Route maps
 - [ ] Routing Control Plane Functions / Routing Configuration Functions (RCF)
 - [ ] Selective route download

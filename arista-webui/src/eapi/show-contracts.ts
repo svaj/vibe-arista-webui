@@ -360,6 +360,49 @@ export interface ShowIpInterfaceBriefReply {
   readonly interfaces: Readonly<Record<string, ShowIpInterfaceBriefInterface>>
 }
 
+/**
+ * One protocol block inside a `show vrf` entry. Both captures carry `ipv4` and `ipv6` with the
+ * same three keys, so they are required — value sets stay the device's open spellings.
+ */
+export interface ShowVrfProtocolState {
+  /** `"up"` / `"down"` in the captures — whether routing is active for this family in this VRF. */
+  readonly routingState: string
+  /** `"up"` in every capture seen; open spelling. */
+  readonly protocolState: string
+  /** Whether the family is supported in this VRF — captured `true` four times, still a boolean floor. */
+  readonly supported: boolean
+}
+
+/**
+ * One VRF section of the `show vrf` reply. Both recorded replies carry exactly the **`default`**
+ * VRF and nothing else, so every key here is an intersection-of-two-captures key seen in that one
+ * section; a non-default VRF is expected to answer the same keys but no capture proves it.
+ */
+export interface ShowVrfEntry {
+  /** `""` in both captures (the default VRF has no rd) — a string floor, not an enum. */
+  readonly routeDistinguisher: string
+  /** `"up"` in both captures; open spelling. */
+  readonly vrfState: string
+  /** The interfaces in this VRF — `["Management1"]` on the switch, `["Vlan100","Vlan110"]` in the lab. */
+  readonly interfaces: readonly string[]
+  readonly interfacesV4: readonly string[]
+  readonly interfacesV6: readonly string[]
+  readonly protocols: { readonly ipv4: ShowVrfProtocolState; readonly ipv6: ShowVrfProtocolState }
+}
+
+/**
+ * `show vrf` — captured on BOTH targets: the 7050TX-64 hardware inventory
+ * (`arista-api-client/test/fixtures/recordings/7050tx-64-r-4.28.13.1M/show-vrf--hw-inventory.json`)
+ * and the cEOS-lab 4.28.14M live capture
+ * (`arista-api-client/test/fixtures/live/ceos-4.28.14M/show-vrf.json`).
+ * Keys are RAW device keys — `node.show()` does not re-key the reply (the `default` VRF arrives
+ * under `default`, same standing as the http-commands contract's `vrf: "default"` above).
+ */
+export interface ShowVrfReply {
+  /** Map VRF name → entry; both captures contain exactly the `default` key. */
+  readonly vrfs: Readonly<Record<string, ShowVrfEntry>>
+}
+
 declare module '@devhax-heavy-industries/arista-eapi' {
   interface ShowContracts {
     version: ShowVersionReply
@@ -377,5 +420,9 @@ declare module '@devhax-heavy-industries/arista-eapi' {
     // cEOS live capture), which is why this key is modelled and the screen can render a captured
     // device-status column. The correction is stated on issue #76 itself.
     'ip interface brief': ShowIpInterfaceBriefReply
+    // S16 (#90): the VRF operational read behind the VRF manager's device columns. Positive JSON
+    // captures on BOTH targets (hw inventory recording + cEOS live capture), same evidence standing
+    // as the line above; both entries are the `default` VRF — see the contract's capture note.
+    vrf: ShowVrfReply
   }
 }

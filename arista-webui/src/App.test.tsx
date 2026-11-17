@@ -179,6 +179,20 @@ describe('App composition (F6 chrome)', () => {
     expect(screen.getByRole('button', { name: 'Set source interface' })).toBeDisabled()
   })
 
+  it('puts the S16 (#90) VRF manager in the nav on #/vrfs', () => {
+    render(<App />)
+
+    const vrfs = screen.getByRole('link', { name: 'VRF manager' })
+    expect(vrfs).toHaveAttribute('href', '#/vrfs')
+    expect(vrfs).not.toHaveAttribute('aria-current', 'page')
+    // Unconfigured: the route registers and the screen idles on the proxy prompt — visiting
+    // `#/vrfs` must not run the config reads or open a session.
+    fireEvent.click(vrfs)
+    expect(screen.getByRole('heading', { level: 2, name: 'VRF manager' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Stage create VRF' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Reload device state' })).toBeDisabled()
+  })
+
   it('puts the S13 (#83) ACL screen in the nav on #/acls', () => {
     render(<App />)
 
