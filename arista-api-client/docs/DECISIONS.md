@@ -2636,6 +2636,44 @@ admitted value) staged FULL; and BOTH VXLAN children — `vxlan vlan 20 vni 1001
 `vxlan source-interface Loopback1` (dangling reference accepted at stage time) — staged inside the
 materializing `interface Vxlan1`. All seven aborted; post-state `sessions: {}` per batch.
 
+### DR-142 — the VXLAN/EVPN screen does not ship on this deployment: grammar-present/feature-absent is decided from run 9, and a stageable stanza with no readable state was never a product
+
+Open item 2 asked whether VXLAN is licensed on this SKU — the item that, in its own words, "decides
+whether `VxlanInterface` belongs in wave 3 or never" (DR-004's framing) — and CAPTURE-UNBLOCK.md's
+per-issue table gave #86 two honest exits: "close as won't-ship or re-spec the VTEP fields" after
+the captures landed. Run 9 (2026-11-16) landed them, and both halves of the picture are now on record
+for the `-R` unit on 4.28.13.1M:
+
+- **Feature-absent.** License state is `{active:[], missing:[]}` (2026-11-08, unchanged at run 9 —
+  nothing licensed, nothing licensable-listed); every VXLAN-relevant read is suppressed or empty:
+  `show vxlan interface|tunnel` answer `1002`, `show vxlan vni` parses empty (DR-062: a refusal is
+  the device's answer, recorded as such, never a fixture).
+- **Grammar-present.** `interface Vxlan1` materializes (with the device's own auto
+  `vxlan udp-port 4789` diff line), `vxlan vlan 20 vni 10010` and `vxlan source-interface Loopback1`
+  stage FULL — all aborted, `sessions: {}` verified, port-composed spellings only (DR-141).
+
+**Decision: #86 closes NOT SHIPPING on the DCS-7050TX-64-R / 4.28.13.1M deployment.** The deciding
+half is the reads, not the grammar: a screen whose every write stages silently and whose every read
+is structurally unable to show an effect cannot honor the UI lane's standing error-vs-empty rule
+(`arista-webui/src/shared/load-state.ts`) at all — it would report success it can never confirm and
+emptiness it can
+never distinguish from "feature absent". Compare the sibling disposition from the same run: #90
+(VRF) **proceeds** because `vrf instance` stages *and* `show vrf` answers — grammar plus a live read
+is a screen; grammar alone is a form pointed at a void.
+**Consequences:** (1) `VxlanInterface` **stays in the client** exactly as DR-115 shipped it — a
+faithful pyeapi port (DR-068 field groups) carrying *no hardware claim*; this decision dispositions
+the screen, never the port, and deleting the port would itself breach the port's contract.
+(2) `docs/features.md` is **not edited** to say "no VXLAN": its VXLAN rows describe the 7050X
+datasheet matrix (open item 6), and this verdict is SKU/deployment-scoped, never an EOS statement
+(DR-043). (3) Reopening is evidence-gated, not opinion-gated: any future unit or license that makes
+ONE of `show vxlan interface|vni|tunnel` answer with a populated model reopens #86 as a spec task —
+the client resource already waits there for it. (4) EVPN inherits this verdict (it reads through the
+same suppressed VTEP state) and is not separately specced.
+**Related:** DR-115 (the no-claim port), DR-062 (presence ≠ claim), DR-141 (port-composed probe
+text), DR-043 (lane separation), DR-004 (open item 2's owning question); open item 2 (the DECIDED
+annotation this entry formalizes); CAPTURE-UNBLOCK.md run log (run 9); issues #86 (#90 contrast,
+#52 origin).
+
 ## Open items (need the device)
 
 Use cEOS first for software behavior and schema exploration, recording its model/version;
@@ -2669,7 +2707,8 @@ config session and are **not read-only**:
    UI (#86) closes as NOT SHIPPING on the 7050TX-64. VRF half of this item likewise settled: `vrf
    instance` + `rd` stage complete with the device's auto `no ip routing vrf <name>` line, the box
    itself reports `vrf definition` deprecated, and interface assignment enforces VRF existence at
-   runtime — #90's editor grammar is proven and the client's version branch is the right one.)**
+   runtime — #90's editor grammar is proven and the client's version branch is the right one.
+   Formalized as DR-142; the VXLAN half of this item is CLOSED.)**
 3. `show management api http-commands` + `show management api http-commands https certificate`:
    TLS versions/ssl-profile support (7050TX is ALE-era; `DEFAULT_TLS_PROTOCOLS = ['1.0','1.1','1.2']`
    in `HttpServiceConstants.py:44` looks stale but unconfirmed), and whether the intended config style
