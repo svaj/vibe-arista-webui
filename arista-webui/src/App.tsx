@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { createNode } from '@devhax-heavy-industries/arista-eapi'
+import { createAppNode } from './eapi/app-node'
 import './App.css'
 import { AppShell } from './components/AppShell'
 import { InterfacesDashboard } from './features/interfaces/InterfacesDashboard'
@@ -25,11 +25,9 @@ import type { RouteRegistry } from './router'
 const HOME_PATH = '/vlans'
 
 function App() {
-  const [node] = useState(() => __EAPI_PROXY_CONFIGURED__ ? createNode({
-    kind: 'http',
-    baseUrl: window.location.origin,
-    path: '/command-api',
-  }) : undefined)
+  // #153: the node comes from `createAppNode` so the UI-path deadline (`UI_REQUEST_TIMEOUT_MS`)
+  // is set in one pinned place instead of riding the client's 60 s library default unnoticed.
+  const [node] = useState(() => __EAPI_PROXY_CONFIGURED__ ? createAppNode(window.location.origin) : undefined)
 
   // The routed screens keep their own `{ node, proxyConfigured }` props byte-identical through the F6
   // split (#68): the registry element closes over the values App already owns, so one route needs no
