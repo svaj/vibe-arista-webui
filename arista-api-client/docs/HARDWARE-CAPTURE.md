@@ -128,7 +128,10 @@ export EAPI_HW_CONSENT=DCS-7050TX-64-R     # must echo the pin, variant included
 export EAPI_CA_FILE=/tmp/eapi-<host>.pem   # the leaf PEM, self-signed (see §2.3)
 export EAPI_FINGERPRINT='<sha256 hex, colons ok, no "Fingerprint=" label>'
 export EAPI_SERVER_NAME=self.signed        # the cert has no SAN; without this every call dies in TLS
-export EAPI_HW_SCRUB=<hostname>,<mgmt-ip>,<lab-domain>   # literals scrubbed from every value
+export EAPI_HW_SCRUB=<hostname>,<mgmt-ip>,<lab-domain>,<default-gateway>,<lan-dns>   # literals scrubbed from every value
+# Run-9 lesson: diff CONTEXT lines and read replies also carry the gateway (e.g. `ip name-server vrf
+# default <lan-dns>`) — every literal that maps YOUR network belongs in this list, not just the
+# address you connect to.
 export EAPI_HW_CAPTURE=1                   # THE write opt-in: files land, overwrite allowed
 ```
 

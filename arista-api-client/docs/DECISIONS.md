@@ -2622,6 +2622,19 @@ re-asks ONLY port-composed text: the two `vrf` forms, interface-side `vrf <name>
 question already leans not-licensed (DR-062 is the authority); round 2 decides whether the
 VLAN↔VNI mapping even parses — a stageable stanza WITH no supporting reads and no licensed feature
 is still not a claim, and DR-043 keeps it so.
+**Round 2 EXECUTED (run 9, 2026-11-16) and the rule paid for itself — six batches got real verdicts
+where round 1 had gotten my typos:** `vrf instance UNBLOCK-VRF` + `rd 65000:1` staged COMPLETE with
+the device AUTO-ADDING `no ip routing vrf UNBLOCK-VRF` to the diff (the per-VRF routing-line family
+`vrfs.ts` reads is native); `vrf definition …` refused **by the device's own mouth** — `Unavailable
+command (This command is deprecated by 'vrf instance [VRF_ID]') (at token 1: 'definition')`, which
+device-justifies pyeapi's ≥ 4.23 branch the client takes on 4.28.13.1M; interface-side
+`vrf <name>` passed grammar and hit the RUNTIME check `VRF UNBLOCK-VRF not configured.` (1000) —
+dangling-VRF assignment semantics now on record for the editor's confirm copy;
+`router bgp 65199`/`router-id`/`neighbor … remote-as …` staged FULL (config grammar alive even
+where the monitoring reads answer `% Not supported`); `spanning-tree mode none` (the port's other
+admitted value) staged FULL; and BOTH VXLAN children — `vxlan vlan 20 vni 10010` and
+`vxlan source-interface Loopback1` (dangling reference accepted at stage time) — staged inside the
+materializing `interface Vxlan1`. All seven aborted; post-state `sessions: {}` per batch.
 
 ## Open items (need the device)
 
@@ -2648,6 +2661,15 @@ config session and are **not read-only**:
    the port's own mapping text (`vxlan vlan <id> vni <n>`, `hw-capture-unblock2.draft.json`); the SKU
    refuses the `show vxlan interface|tunnel` reads outright (1002) and `show vxlan vni` parses empty,
    so absent round-2 surprise the item closes NOT-LICENSED/NOT-SHIPPED on this unit — DR-141, DR-062.)**
+   **(DECIDED 2026-11-16 (run 9): the config grammar lives — `interface Vxlan1` +
+   `vxlan vlan <id> vni <n>` + `vxlan source-interface <name>` ALL stage (aborted, nothing committed)
+   — while every VXLAN-relevant read stays suppressed or empty and the license is still
+   `{active:[],missing:[]}`. Verdict: the VTEP is CONFIG-GRAMMAR-PRESENT, FEATURE-ABSENT on this
+   unit; `VxlanInterface` stays a faithful port with no hardware claim (DR-115), and the VXLAN/EVPN
+   UI (#86) closes as NOT SHIPPING on the 7050TX-64. VRF half of this item likewise settled: `vrf
+   instance` + `rd` stage complete with the device's auto `no ip routing vrf <name>` line, the box
+   itself reports `vrf definition` deprecated, and interface assignment enforces VRF existence at
+   runtime — #90's editor grammar is proven and the client's version branch is the right one.)**
 3. `show management api http-commands` + `show management api http-commands https certificate`:
    TLS versions/ssl-profile support (7050TX is ALE-era; `DEFAULT_TLS_PROTOCOLS = ['1.0','1.1','1.2']`
    in `HttpServiceConstants.py:44` looks stale but unconfirmed), and whether the intended config style

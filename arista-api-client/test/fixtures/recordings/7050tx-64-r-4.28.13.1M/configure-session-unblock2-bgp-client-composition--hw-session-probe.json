@@ -1,0 +1,112 @@
+{
+  "format": "arista-eapi-recording/v1",
+  "identity": {
+    "targetSlug": "7050tx-64-r-4.28.13.1M",
+    "targetClass": "hardware",
+    "modelName": "DCS-7050TX-64-R",
+    "aristaVersion": "4.28.13.1M",
+    "versionNumber": "4.28.13.1",
+    "provenance": "captured",
+    "endpoint": "https://<hw-redacted>:443/command-api",
+    "topology": "supervised session; scratch=none"
+  },
+  "captures": [
+    {
+      "requestId": "e01dfb35a939-1",
+      "commands": [
+        "enable",
+        "configure session hw-probe-unblock2-bgp-client-composition description \"does the client's true BGP composition stage end-to-end \"",
+        "router bgp 65199",
+        "   router-id 10.99.99.99",
+        "   neighbor 10.99.99.1 remote-as 65199"
+      ],
+      "format": "json",
+      "result": [
+        {},
+        {},
+        {
+          "warnings": [
+            "IP routing not enabled"
+          ]
+        },
+        {},
+        {}
+      ]
+    },
+    {
+      "requestId": "e01dfb35a939-2",
+      "commands": [
+        "enable",
+        "configure session hw-probe-unblock2-bgp-client-composition description \"does the client's true BGP composition stage end-to-end \"",
+        "show session-config diffs"
+      ],
+      "format": "text",
+      "result": [
+        {
+          "output": ""
+        },
+        {
+          "output": ""
+        },
+        {
+          "output": "--- system:/running-config\n+++ session:/hw-probe-unblock2-bgp-client-composition-session-config\n@@ -203,4 +203,8 @@\n role ops\n    10 permit command .*\n !\n+router bgp 65199\n+   router-id 10.99.99.99\n+   neighbor 10.99.99.1 remote-as 65199\n+!\n end\n"
+        }
+      ]
+    },
+    {
+      "requestId": "e01dfb35a939-3",
+      "commands": [
+        "enable",
+        "configure session hw-probe-unblock2-bgp-client-composition description \"does the client's true BGP composition stage end-to-end \"",
+        "abort"
+      ],
+      "format": "json",
+      "result": [
+        {},
+        {},
+        {}
+      ]
+    },
+    {
+      "requestId": "e01dfb35a939-4",
+      "commands": [
+        "enable",
+        "show configuration sessions"
+      ],
+      "format": "json",
+      "result": [
+        {},
+        {
+          "maxSavedSessions": 1,
+          "maxOpenSessions": 5,
+          "sessions": {}
+        }
+      ]
+    },
+    {
+      "requestId": "e01dfb35a939-5",
+      "commands": [
+        "enable",
+        "show configuration sessions detail"
+      ],
+      "format": "json",
+      "result": [
+        {},
+        {
+          "maxSavedSessions": 1,
+          "maxOpenSessions": 5,
+          "sessions": {
+            "ui-127-0-0-1-e2e76c64": {
+              "instances": {},
+              "state": "completed",
+              "commitUser": "svaj",
+              "description": "\"webui vlan create 20\"",
+              "completedTime": 1794521920.1491446
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "incomplete": []
+}

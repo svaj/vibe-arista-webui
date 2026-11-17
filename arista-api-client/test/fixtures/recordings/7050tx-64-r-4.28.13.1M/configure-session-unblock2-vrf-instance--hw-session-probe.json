@@ -1,0 +1,110 @@
+{
+  "format": "arista-eapi-recording/v1",
+  "identity": {
+    "targetSlug": "7050tx-64-r-4.28.13.1M",
+    "targetClass": "hardware",
+    "modelName": "DCS-7050TX-64-R",
+    "aristaVersion": "4.28.13.1M",
+    "versionNumber": "4.28.13.1",
+    "provenance": "captured",
+    "endpoint": "https://<hw-redacted>:443/command-api",
+    "topology": "supervised session; scratch=none"
+  },
+  "captures": [
+    {
+      "requestId": "f9dd6b5e2cfe-1",
+      "commands": [
+        "enable",
+        "configure session hw-probe-unblock2-vrf-instance description \"the >= 4.23 spelling this client actually composes for V\"",
+        "vrf instance UNBLOCK-VRF",
+        "   rd 65000:1"
+      ],
+      "format": "json",
+      "result": [
+        {},
+        {},
+        {},
+        {
+          "messages": [
+            "Since the RD is required for BGP operation, please configure the RD for VRF UNBLOCK-VRF under the 'router bgp vrf' submode. The configuration of the RD under the VRF definition submode is deprecated and no longer required."
+          ]
+        }
+      ]
+    },
+    {
+      "requestId": "f9dd6b5e2cfe-2",
+      "commands": [
+        "enable",
+        "configure session hw-probe-unblock2-vrf-instance description \"the >= 4.23 spelling this client actually composes for V\"",
+        "show session-config diffs"
+      ],
+      "format": "text",
+      "result": [
+        {
+          "output": ""
+        },
+        {
+          "output": ""
+        },
+        {
+          "output": "--- system:/running-config\n+++ session:/hw-probe-unblock2-vrf-instance-session-config\n@@ -25,6 +25,9 @@\n vlan 20\n    name MGMT\n !\n+vrf instance UNBLOCK-VRF\n+   rd 65000:1\n+!\n management api http-commands\n    no shutdown\n !\n@@ -192,6 +195,7 @@\n    ip address <hw-redacted>/24\n !\n no ip routing\n+no ip routing vrf UNBLOCK-VRF\n !\n monitor session 1 source Ethernet37\n monitor session 1 destination Ethernet3\n"
+        }
+      ]
+    },
+    {
+      "requestId": "f9dd6b5e2cfe-3",
+      "commands": [
+        "enable",
+        "configure session hw-probe-unblock2-vrf-instance description \"the >= 4.23 spelling this client actually composes for V\"",
+        "abort"
+      ],
+      "format": "json",
+      "result": [
+        {},
+        {},
+        {}
+      ]
+    },
+    {
+      "requestId": "f9dd6b5e2cfe-4",
+      "commands": [
+        "enable",
+        "show configuration sessions"
+      ],
+      "format": "json",
+      "result": [
+        {},
+        {
+          "maxSavedSessions": 1,
+          "maxOpenSessions": 5,
+          "sessions": {}
+        }
+      ]
+    },
+    {
+      "requestId": "f9dd6b5e2cfe-5",
+      "commands": [
+        "enable",
+        "show configuration sessions detail"
+      ],
+      "format": "json",
+      "result": [
+        {},
+        {
+          "maxSavedSessions": 1,
+          "maxOpenSessions": 5,
+          "sessions": {
+            "ui-127-0-0-1-e2e76c64": {
+              "instances": {},
+              "state": "completed",
+              "commitUser": "svaj",
+              "description": "\"webui vlan create 20\"",
+              "completedTime": 1794521920.149144
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "incomplete": []
+}

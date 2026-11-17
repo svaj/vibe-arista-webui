@@ -1,0 +1,104 @@
+{
+  "format": "arista-eapi-recording/v1",
+  "identity": {
+    "targetSlug": "7050tx-64-r-4.28.13.1M",
+    "targetClass": "hardware",
+    "modelName": "DCS-7050TX-64-R",
+    "aristaVersion": "4.28.13.1M",
+    "versionNumber": "4.28.13.1",
+    "provenance": "captured",
+    "endpoint": "https://<hw-redacted>:443/command-api",
+    "topology": "supervised session; scratch=none"
+  },
+  "captures": [
+    {
+      "requestId": "f0543918ed22-1",
+      "commands": [
+        "enable",
+        "configure session hw-probe-unblock2-stp-mode-none description \"the stp.ts set_mode other admitted value: does `spanning\"",
+        "spanning-tree mode none"
+      ],
+      "format": "json",
+      "result": [
+        {},
+        {},
+        {}
+      ]
+    },
+    {
+      "requestId": "f0543918ed22-2",
+      "commands": [
+        "enable",
+        "configure session hw-probe-unblock2-stp-mode-none description \"the stp.ts set_mode other admitted value: does `spanning\"",
+        "show session-config diffs"
+      ],
+      "format": "text",
+      "result": [
+        {
+          "output": ""
+        },
+        {
+          "output": ""
+        },
+        {
+          "output": "--- system:/running-config\n+++ session:/hw-probe-unblock2-stp-mode-none-session-config\n@@ -18,7 +18,7 @@\n ip name-server vrf default 8.8.8.8\n ip name-server vrf default <hw-redacted>\n !\n-spanning-tree mode mstp\n+spanning-tree mode none\n !\n environment fan-speed override 30\n !\n"
+        }
+      ]
+    },
+    {
+      "requestId": "f0543918ed22-3",
+      "commands": [
+        "enable",
+        "configure session hw-probe-unblock2-stp-mode-none description \"the stp.ts set_mode other admitted value: does `spanning\"",
+        "abort"
+      ],
+      "format": "json",
+      "result": [
+        {},
+        {},
+        {}
+      ]
+    },
+    {
+      "requestId": "f0543918ed22-4",
+      "commands": [
+        "enable",
+        "show configuration sessions"
+      ],
+      "format": "json",
+      "result": [
+        {},
+        {
+          "maxSavedSessions": 1,
+          "maxOpenSessions": 5,
+          "sessions": {}
+        }
+      ]
+    },
+    {
+      "requestId": "f0543918ed22-5",
+      "commands": [
+        "enable",
+        "show configuration sessions detail"
+      ],
+      "format": "json",
+      "result": [
+        {},
+        {
+          "maxSavedSessions": 1,
+          "maxOpenSessions": 5,
+          "sessions": {
+            "ui-127-0-0-1-e2e76c64": {
+              "instances": {},
+              "state": "completed",
+              "commitUser": "svaj",
+              "description": "\"webui vlan create 20\"",
+              "completedTime": 1794521920.1491442
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "incomplete": []
+}

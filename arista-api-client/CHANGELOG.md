@@ -9,6 +9,28 @@ surprise here — this file records what shipped, the migration map records what
 
 ## [Unreleased]
 
+### Evidence — run 9 answers the last grammar questions; open item 2 decided (2026-11-16; DR-141 addendum, §5 row 243, STATUS run-8/9 blockquotes)
+- **Run 8 = re-confirmation only:** the round-1 probe answers were re-captured **byte-identical** to
+  run 7 (7/7, including the three invented-token refusals) — the volatile-refreshed inventory files
+  were discarded, evidence provenance stays run 7's. The script's silent round-1 default that caused
+  it is closed: `capture-unblock-hw.sh` now resolves the spec up front (`--spec1|--spec2`, default
+  round 2), prints it, and refuses a missing file before any prompt.
+- **Run 9 = `hw-capture-unblock2.draft.json` executed: 7 port-composed batches, 5 FULL stages,
+  0 commits, all aborted:** `vrf instance` + `rd` staged complete **with the device auto-adding
+  `no ip routing vrf <name>`**; the box reported `vrf definition` **deprecated by `vrf instance`**
+  in its own error; interface-side `vrf <name>` hit the runtime `VRF … not configured.` (1000) →
+  dangling-assignment semantics on record for #90; `router bgp`/`router-id`/`neighbor … remote-as`
+  staged fully even though `show bgp …` reads answer `% Not supported`; `spanning-tree mode none`
+  staged (both of the port's admitted mode values now proven); `vxlan vlan 20 vni 10010` and
+  `vxlan source-interface Loopback1` staged inside `interface Vxlan1`. **Open item 2 DECIDED:**
+  VXLAN is config-grammar-present but feature-absent on this unit → #86 not shipping; #90's editor
+  grammar is fully proven.
+- **Hygiene:** one round-2 diff-context line surfaced the LAN gateway (as a configured name-server)
+  because the capture-time scrub list lacked that literal — the new recording was re-scrubbed with
+  the gateway (idempotence + format asserts), `--scrub` help + the runbook now say to include
+  default-gateway and LAN-DNS addresses, and older committed captures carrying the same RFC1918
+  literal (since 2026-11-08; no credentials among them) are flagged for an optional operator sweep.
+
 ### Evidence — the unblock capture day: run 7 on the box (all-abort, net-zero) and the cEOS persistence-verb answers (2026-11-15/16; DR-140/DR-141, §5 rows 241-242, STATUS §3 run-7 blockquote)
 - **Box (supervised, `hw-capture-unblock.draft.json`, 7/7 batches, 0 commits, every batch aborted,
   net-zero recording-verified):** 44 batch-1 files refreshed + 9 new unblock reads added to

@@ -364,6 +364,28 @@ source (pyeapi 1.0.4-rc0).
 > carries the line) where the 2026-11-07 probe refused it — a container-image fact only; a future
 > refresh may yet yield populated neighbor schema there, never a hardware verdict.
 
+> **2026-11-16, runs 8-9 (same script, two outcomes; run 9 = round 2).** Run 8 re-ran the
+> ROUND-1 spec by default (a trap since closed: `capture-unblock-hw.sh` now defaults to round 2 with
+> `--spec1|--spec2` selectors, prints the resolved spec, and hard-exits on a missing file). Its
+> verdicts were checked against run 7 field-by-field: 7/7 probe answers and every read verdict
+> BYTE-IDENTICAL — a re-confirmation day only, and its 60 volatile-refreshed inventory files were
+> discarded (`git restore`) so the evidence keeps run 7's provenance. Run 9 then executed
+> `hw-capture-unblock2.draft.json`: **5 FULL stages + 2 genuine device verdicts, 0 commits, all
+> batches aborted with `sessions: {}` post-states.** `vrf instance UNBLOCK-VRF` + `rd 65000:1`
+> staged with the device's AUTO `+no ip routing vrf UNBLOCK-VRF`; the box called `vrf definition`
+> deprecated **in its own error text** (`deprecated by 'vrf instance [VRF_ID]'`); interface-side
+> `vrf <name>` reached the runtime existence check (`VRF UNBLOCK-VRF not configured.`, 1000);
+> `router bgp`/`router-id`/`neighbor … remote-as` staged fully; `spanning-tree mode none` staged;
+> and BOTH ported VXLAN children (`vxlan vlan 20 vni 10010`, `vxlan source-interface Loopback1`)
+> staged inside the materializing `interface Vxlan1`. Side-catches: one round-2 diff-context line
+> surfaced the LAN gateway (`ip name-server … 192.168.1.1`) because `EAPI_HW_SCRUB` only got the
+> mgmt literal — the new file was re-scrubbed with the gateway (idempotence + format asserted), the
+> script's `--scrub` help now says to include gateway/DNS literals, and the pre-existing occurrences
+> in older committed captures (since 2026-11-08: `show-ip-route`, running-config files) are a
+> separate history-sweep call for the operator — RFC1918 gateway/DNS addresses, no credentials among
+> them. **Open item 2 is now DECIDED (VXLAN config-grammar-present / feature-absent → #86 not
+> shipping; #90 editor grammar proven) — DR-141 executed exactly as designed.**
+
 Run the software/schema subset against cEOS first and store captures under
 `test/fixtures/recordings/ceos-4.28.14M/`; repeat target-sensitive checks on the
 7050TX-64 under `recordings/7050tx-64-4.28.13.1M/`. Keep exact version/model metadata,

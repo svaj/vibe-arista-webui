@@ -1,0 +1,113 @@
+{
+  "format": "arista-eapi-recording/v1",
+  "identity": {
+    "targetSlug": "7050tx-64-r-4.28.13.1M",
+    "targetClass": "hardware",
+    "modelName": "DCS-7050TX-64-R",
+    "aristaVersion": "4.28.13.1M",
+    "versionNumber": "4.28.13.1",
+    "provenance": "captured",
+    "endpoint": "https://<hw-redacted>:443/command-api",
+    "topology": "supervised session; scratch=none"
+  },
+  "captures": [
+    {
+      "requestId": "a7b7f60a40ff-1",
+      "commands": [
+        "enable",
+        "configure session hw-probe-unblock2-vrf-definition description \"upstream's older sibling spelling `vrf definition X` + r\"",
+        "vrf definition UNBLOCK-VRF2",
+        "   rd 65000:2"
+      ],
+      "format": "json",
+      "error": {
+        "data": [
+          {},
+          {},
+          {
+            "errors": [
+              "Unavailable command (This command is deprecated by 'vrf instance [VRF_ID]') (at token 1: 'definition')"
+            ]
+          }
+        ],
+        "message": "CLI command 3 of 4 'vrf definition UNBLOCK-VRF2' failed: invalid command",
+        "code": 1002
+      }
+    },
+    {
+      "requestId": "a7b7f60a40ff-2",
+      "commands": [
+        "enable",
+        "configure session hw-probe-unblock2-vrf-definition description \"upstream's older sibling spelling `vrf definition X` + r\"",
+        "show session-config diffs"
+      ],
+      "format": "text",
+      "result": [
+        {
+          "output": ""
+        },
+        {
+          "output": ""
+        },
+        {
+          "output": ""
+        }
+      ]
+    },
+    {
+      "requestId": "a7b7f60a40ff-3",
+      "commands": [
+        "enable",
+        "configure session hw-probe-unblock2-vrf-definition description \"upstream's older sibling spelling `vrf definition X` + r\"",
+        "abort"
+      ],
+      "format": "json",
+      "result": [
+        {},
+        {},
+        {}
+      ]
+    },
+    {
+      "requestId": "a7b7f60a40ff-4",
+      "commands": [
+        "enable",
+        "show configuration sessions"
+      ],
+      "format": "json",
+      "result": [
+        {},
+        {
+          "maxSavedSessions": 1,
+          "maxOpenSessions": 5,
+          "sessions": {}
+        }
+      ]
+    },
+    {
+      "requestId": "a7b7f60a40ff-5",
+      "commands": [
+        "enable",
+        "show configuration sessions detail"
+      ],
+      "format": "json",
+      "result": [
+        {},
+        {
+          "maxSavedSessions": 1,
+          "maxOpenSessions": 5,
+          "sessions": {
+            "ui-127-0-0-1-e2e76c64": {
+              "instances": {},
+              "state": "completed",
+              "commitUser": "svaj",
+              "description": "\"webui vlan create 20\"",
+              "completedTime": 1794521920.149144
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "incomplete": []
+}
