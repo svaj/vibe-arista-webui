@@ -12,13 +12,13 @@
     "internalVersion": "4.28.14M-50015774.42814M",
     "modelName": "cEOSLab",
     "hardwareEvidence": "none — cEOS-lab container capture; not DCS-7050TX-64 / 4.28.13.1M evidence (DR-043)",
-    "runId": "lab-1549185-7b7af2",
-    "capturedAt": "2026-11-16T01:21:19.951Z",
+    "runId": "lab-1895090-86f942",
+    "capturedAt": "2026-11-18T04:47:50.200Z",
     "capturedBy": "scripts/ceos-lab.mjs",
-    "endpoint": "127.0.0.1:45863",
+    "endpoint": "127.0.0.1:46133",
     "transport": "https + HTTP basic auth to the run-owned published loopback port; container-side pinned certificate",
-    "tlsPinFingerprint256": "84A43F0495917C379CB1D32447E01FAA287D03C539A122825A2E67B719E8F281",
-    "bootupTimestamp": 1794791994.097316,
+    "tlsPinFingerprint256": "BFE0C42666BC4F246470DB8E96BA76EB17F801028AF9EC010B26DC6413D02812",
+    "bootupTimestamp": 1794977194.9846203,
     "redactionApplied": [
       "username/secret and enable/passphrase text replaced with <redacted-lab-secret>, including the encryption-type form (`secret sha512 <hash>`, `enable algorithm <algo> password <hash>`) and **object keys**, because `show running-config` in `json` format keys its `cmds` map by the whole command line — the lab `username … secret sha512 $6$…` line is a key there, not a value (observed 2026-11-06)",
       "this run's random lab username replaced with <redacted-lab-user> (API user-stats otherwise leak it)",
@@ -38,18 +38,18 @@
     "users": {
       "<redacted-lab-user>": {
         "requestCount": 33,
-        "bytesOut": 238477,
-        "lastHitTime": 1794792079.8259223,
+        "bytesOut": 288829,
+        "lastHitTime": 1794977270.0558562,
         "bytesIn": 6186
       }
     },
-    "bytesOut": 238477,
+    "bytesOut": 288829,
     "logLevel": "none",
     "dscpValue": 0,
     "corsOrigins": [],
     "hitCount": 44,
     "vrf": "default",
-    "lastHitTime": 1794792079.8256469,
+    "lastHitTime": 1794977270.0547824,
     "tlsProtocol": [
       "1.0",
       "1.1",
@@ -60,7 +60,7 @@
       "configured": false,
       "port": 8080
     },
-    "executionTime": 2.671827896934701,
+    "executionTime": 4.053094638016773,
     "enabled": true,
     "fipsEnabled": false,
     "httpsServer": {

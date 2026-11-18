@@ -2724,6 +2724,52 @@ the 35 s/30 s pin implements), DR-053 (pre-wire refusals computed client-side), 
 above); issues #140 (this split), #153 (the timeout the relay is pinned above); F8 placeholder
 discipline in `arista-webui/README.md`.
 
+### DR-144 — the cEOS "refuses ip routing" verdicts were a license-daemon BOOT RACE, not a capability: routing config enters lab provisioning behind an abort-only feature canary, and the BGP read model joins the recorded double negative
+
+Three container verdicts have contradicted each other across sessions — `ip routing` refused
+(2026-11-07/09), accepted (post-#98, B4 2026-11-16), refused and accepted AGAIN within minutes on
+2026-11-18 with the SAME image (`arista/ceos:4.28.14M`) and the SAME harness code: runs
+`lab-1841022-612e1d` and `lab-1858323-0626ae` committed the full routing block (staging transcript
+clean, stanzas verified in `show running-config`), `lab-1849196-3fd06e` refused `router ospf 1`
+with `% Unavailable command (not supported on this hardware platform)` at the same ~36 s boot.
+Readiness so far meant "Cli answers `show version`", but EOS license activation is asynchronous
+behind that — the routing feature family flips to ready late on some boots.
+
+**Decision: treat routing readiness as a harness feature-gate, not a device verdict.**
+`waitForRoutingFeatures` stages an abort-only `router ospf 1` canary (same named-session sandbox
+as provisioning, zero committed effect) before any provisioning line runs, bounded 10 × 5 s, and
+counts ONLY the platform-capability wording as not-ready — any other transcript lets the real
+staging run carry the device's verdict (the canary must never swallow a genuine grammar finding,
+the DR-141 rule). After commit, `provisionLab` verifies the routing model is LIVE
+(`show ip route | json` answers `vrfs.default`) and fails the run at a named `routing` stage if
+this draw refused — because #154's captures now BIND on configured routing, and silently capturing
+an unconfigured shape would manufacture fixtures that lie. Both gates earned their keep
+immediately: capture run `lab-1895090-86f942` hit the refusal on canary attempt 1, went ready on
+2, and the refresh completed over published eAPI.
+**Corollaries:** (1) The historic per-run "cEOS refuses `ip routing`" records stay in place as
+that run's answer, but any NEW doc must cite them as boot-dependent, never as platform
+capability; the docs' "shape-dependent" hedge is now named precisely. (2) A refusal that survives
+the bounded wait is actionable: recreate the run — still never record the race as a device verdict
+(DR-062). (3) Adjacent spelling findings from the same session: the provisioned SVI
+`vrrp 1 ip …` wording changed to "deprecated by 'vrrp ipv4'" and the correct successor order
+`vrrp <id> ipv4 <addr>` (NOT `vrrp ipv4 <id>`, which invalids) stages FULL — provisioning keeps
+the old line deliberately (#154 scopes VRRP out; owner call); and `show bgp summary|neighbors`
+are **unreachable even with BGP committed** on this image (eAPI 1000; Cli
+`{"errors":["Not supported"]}`; `json raw` invalid; `json revision 2` prints nothing) — the
+container-side sibling of run 7's hardware `% Not supported`, recorded per-lane, never
+cross-quoted (DR-043). #87's BGP tab therefore binds NO read model on either lane: that is a
+spec-input, not a probe gap.
+**Consequences:** lab provisioning now yields the configured-state routing captures #154 items 1/3
+named (OSPF process model, route-map entries, populated route table; neighbor tables need the
+two-node slice); `docs/CEOS.md` carries the `1895090` refresh card with the full answer set; the
+canary pattern is the template for any future feature-gated provisioning (MLAG/VXLAN families if
+they ever enter lab scope); #89/#88 lab work inherits the gate automatically — every `up` runs it.
+**Related:** DR-062 (a refusal is an answer, but only a REAL refusal), DR-043 (per-lane evidence,
+containers never borrow hardware verdicts or vice versa), DR-141 (device composed the spellings —
+the canary stages `router ospf 1`, not an invented token); DR-123 (the Cli-fallback transport this
+run did not need); CAPTURE-UNBLOCK.md "Still owed" line (the bgp entry now CLOSED as a double
+negative); issues #154 (items 1/3), #87 (read-model inputs), #90 (VRRP successor spelling).
+
 ## Open items (need the device)
 
 Use cEOS first for software behavior and schema exploration, recording its model/version;

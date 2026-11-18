@@ -12,13 +12,13 @@
     "internalVersion": "4.28.14M-50015774.42814M",
     "modelName": "cEOSLab",
     "hardwareEvidence": "none — cEOS-lab container capture; not DCS-7050TX-64 / 4.28.13.1M evidence (DR-043)",
-    "runId": "lab-1549185-7b7af2",
-    "capturedAt": "2026-11-16T01:21:19.991Z",
+    "runId": "lab-1895090-86f942",
+    "capturedAt": "2026-11-18T04:47:50.240Z",
     "capturedBy": "scripts/ceos-lab.mjs",
-    "endpoint": "127.0.0.1:45863",
+    "endpoint": "127.0.0.1:46133",
     "transport": "https + HTTP basic auth to the run-owned published loopback port; container-side pinned certificate",
-    "tlsPinFingerprint256": "84A43F0495917C379CB1D32447E01FAA287D03C539A122825A2E67B719E8F281",
-    "bootupTimestamp": 1794791994.097316,
+    "tlsPinFingerprint256": "BFE0C42666BC4F246470DB8E96BA76EB17F801028AF9EC010B26DC6413D02812",
+    "bootupTimestamp": 1794977194.9846203,
     "redactionApplied": [
       "username/secret and enable/passphrase text replaced with <redacted-lab-secret>, including the encryption-type form (`secret sha512 <hash>`, `enable algorithm <algo> password <hash>`) and **object keys**, because `show running-config` in `json` format keys its `cmds` map by the whole command line — the lab `username … secret sha512 $6$…` line is a key there, not a value (observed 2026-11-06)",
       "this run's random lab username replaced with <redacted-lab-user> (API user-stats otherwise leak it)",
@@ -32,13 +32,13 @@
   "result": {
     "interfaces": {
       "Ethernet2": {
-        "lastStatusChangeTimestamp": 1794792036.9692466,
+        "lastStatusChangeTimestamp": 1794977245.9061494,
         "lanes": 0,
         "name": "Ethernet2",
         "interfaceStatus": "connected",
         "autoNegotiate": "unknown",
         "loopbackMode": "loopbackNone",
-        "burnedInAddress": "8e:88:6a:ef:3f:23",
+        "burnedInAddress": "d6:6b:aa:e8:ce:e7",
         "l2Mru": 0,
         "interfaceStatistics": {
           "inBitsRate": 0,
@@ -60,7 +60,7 @@
           "outUcastPkts": 0,
           "totalOutErrors": 0,
           "inMulticastPkts": 0,
-          "counterRefreshTime": 1794792077.023654,
+          "counterRefreshTime": 1794977266.679024,
           "inBroadcastPkts": 0,
           "outputErrorsDetail": {
             "deferredTransmissions": 0,
@@ -88,14 +88,14 @@
         },
         "interfaceMembership": "Member of Port-Channel1",
         "interfaceAddress": [],
-        "physicalAddress": "8e:88:6a:ef:3f:23",
+        "physicalAddress": "d6:6b:aa:e8:ce:e7",
         "description": ""
       },
       "Vlan100": {
-        "lastStatusChangeTimestamp": 1794792042.9188383,
+        "lastStatusChangeTimestamp": 1794977258.1248696,
         "name": "Vlan100",
         "interfaceStatus": "connected",
-        "burnedInAddress": "8e:88:6a:e7:52:bb",
+        "burnedInAddress": "2a:94:d9:d0:b1:c7",
         "l2Mru": 0,
         "mtu": 1500,
         "hardware": "vlan",
@@ -121,14 +121,14 @@
             }
           }
         ],
-        "physicalAddress": "8e:88:6a:e7:52:bb",
+        "physicalAddress": "2a:94:d9:d0:b1:c7",
         "description": ""
       },
       "Vlan110": {
-        "lastStatusChangeTimestamp": 1794792042.8689032,
+        "lastStatusChangeTimestamp": 1794977258.0997486,
         "name": "Vlan110",
         "interfaceStatus": "notconnect",
-        "burnedInAddress": "8e:88:6a:e7:52:bb",
+        "burnedInAddress": "2a:94:d9:d0:b1:c7",
         "l2Mru": 0,
         "mtu": 1500,
         "hardware": "vlan",
@@ -154,11 +154,11 @@
             }
           }
         ],
-        "physicalAddress": "8e:88:6a:e7:52:bb",
+        "physicalAddress": "2a:94:d9:d0:b1:c7",
         "description": ""
       },
       "Port-Channel1": {
-        "lastStatusChangeTimestamp": 1794792042.8684158,
+        "lastStatusChangeTimestamp": 1794977258.0995374,
         "name": "Port-Channel1",
         "interfaceStatus": "notconnect",
         "memberInterfaces": {},
@@ -183,7 +183,7 @@
           "outUcastPkts": 0,
           "totalOutErrors": 0,
           "inMulticastPkts": 0,
-          "counterRefreshTime": 1794792077.033384,
+          "counterRefreshTime": 1794977266.681687,
           "inBroadcastPkts": 0,
           "inOctets": 0,
           "outDiscards": 0,
@@ -197,17 +197,17 @@
         },
         "fallbackEnabledType": "fallbackNone",
         "interfaceAddress": [],
-        "physicalAddress": "8e:88:6a:ef:3f:23",
+        "physicalAddress": "d6:6b:aa:e8:ce:e7",
         "description": "LAB-LACP"
       },
       "Ethernet1": {
-        "lastStatusChangeTimestamp": 1794792036.980922,
+        "lastStatusChangeTimestamp": 1794977245.9148304,
         "lanes": 0,
         "name": "Ethernet1",
         "interfaceStatus": "connected",
         "autoNegotiate": "unknown",
         "loopbackMode": "loopbackNone",
-        "burnedInAddress": "c2:2d:41:63:19:9b",
+        "burnedInAddress": "2a:94:d9:e1:f3:5a",
         "l2Mru": 0,
         "interfaceStatistics": {
           "inBitsRate": 0,
@@ -224,12 +224,12 @@
         "lineProtocolStatus": "up",
         "l3MtuConfigured": false,
         "interfaceCounters": {
-          "outBroadcastPkts": 11,
-          "outTotalPkts": 11,
+          "outBroadcastPkts": 5,
+          "outTotalPkts": 6,
           "outUcastPkts": 0,
           "totalOutErrors": 0,
           "inMulticastPkts": 0,
-          "counterRefreshTime": 1794792077.028101,
+          "counterRefreshTime": 1794977266.680069,
           "inBroadcastPkts": 0,
           "outputErrorsDetail": {
             "deferredTransmissions": 0,
@@ -239,7 +239,7 @@
           },
           "inOctets": 0,
           "outDiscards": 0,
-          "outOctets": 704,
+          "outOctets": 402,
           "inUcastPkts": 0,
           "inTotalPkts": 0,
           "inputErrorsDetail": {
@@ -251,12 +251,12 @@
             "symbolErrors": 0
           },
           "linkStatusChanges": 2,
-          "outMulticastPkts": 0,
+          "outMulticastPkts": 1,
           "totalInErrors": 0,
           "inDiscards": 0
         },
         "interfaceAddress": [],
-        "physicalAddress": "c2:2d:41:63:19:9b",
+        "physicalAddress": "2a:94:d9:e1:f3:5a",
         "description": ""
       }
     }

@@ -1220,6 +1220,26 @@ async function cmdUp(cfg) {
       )
     }
 
+    // #154: routing features are license-gated on EOS and the cEOS-lab license daemon can
+    // lag Cli readiness by many seconds (observed 2026-11-18: consecutive runs on the same
+    // image — two committed the full routing block, one refused `router ospf 1` with
+    // "% Unavailable command (not supported on this hardware platform)" at the same ~36 s
+    // boot; `ip routing`'s documented shape-dependence is this same race). Stage-abort a
+    // canary until the platform answers for routing, so provisioning either runs against a
+    // ready feature set or refuses HERE with the canary's verdict instead of dying later
+    // behind a mode-cascade wall of misleading per-line errors.
+    const features = await waitForRoutingFeatures(names.container)
+    if (!features.ready) {
+      refuse(
+        `lab provisioning aborted before staging: the abort-only routing canary (\`router ospf 1\` in session ` +
+          `${FEATURE_CANARY_SESSION}) answered "not supported on this hardware platform" on all ${String(features.attemptsUsed)} attempt(s) — ` +
+          'the license daemon never reported routing ready on this boot. This is a boot-time race, not a lab-shape verdict: ' +
+          'teardown ran; recreate the run. Last canary transcript head: ' +
+          features.last.split('\n').filter((l) => l.trim().startsWith('%')).slice(0, 2).join(' / '),
+        EXIT.readiness,
+      )
+    }
+
     // Issue #62: the captures the UI screens need only answer in the configured shape,
     // so `up` now provisions that shape before anything is read. A refusal here lands in
     // the catch below: teardown runs, no probe is taken, no half-configured capture set exists.
@@ -1230,7 +1250,9 @@ async function cmdUp(cfg) {
       const detail =
         provision.stage === 'verification'
           ? `show vlan after commit is missing VLAN(s) ${provision.missingVlans.join(', ')} — the commit transcript said more than the device did`
-          : provision.fatal.map((e) => `${e.command} -> ${e.line}`).join('; ')
+          : provision.stage === 'routing'
+            ? `show ip route after commit is not a populated routing model (${provision.routingDown}) — this container shape refused ip routing, and the #154 routing captures require it live (see the tolerated-line verdict in the staging transcript)`
+            : provision.fatal.map((e) => `${e.command} -> ${e.line}`).join('; ')
       refuse(
         `lab provisioning (issue #62, session ${PROVISION_SESSION}) failed during ${provision.stage}: ${detail}. ` +
           'The session was aborted (staging path) or the run is being destroyed (verification path), the running ' +
@@ -1415,6 +1437,7 @@ function bootstrapLab(container, creds) {
  */
 const PROVISION_SESSION = 'lab-provision'
 const PENDING_SESSION = 'lab-pending-capture'
+const FEATURE_CANARY_SESSION = 'lab-feature-canary'
 
 /**
  * The staging lines, in apply order, aimed at the OBSERVED front-panel ports.
@@ -1471,9 +1494,33 @@ function provisionStaging(ethA, ethB) {
   '   switchport trunk allowed vlan 100-110',
   '   switchport trunk group LABGRP',
   'exit',
-  // Routing + a static next hop so `show ip route` / `show ip interface brief` answer as configured.
+  // Routing: #154 items 1/3 promote this from "a static route so the table answers" to the
+  // configured ROUTING shape — the field sets #87's read-only tabs bind on (OSPF process,
+  // BGP neighbor summary, route-map entries). Every spelling below staged FULL on this
+  // container on 2026-11-18 (abort-only proof on run lab-1809618-4b3cc0, post-abort residue
+  // zero); the device itself composed `area 0.0.0.0` and `max-lsa 12000`. A single node
+  // cannot form adjacencies — populated neighbor tables are #154 item 2's two-node lane.
+  // `ip routing` stays in the batch (and stays tolerated) so its boot-race-dependent verdict
+  // is always recorded in the transcript; `provisionLab` below turns a refusal into a
+  // loud run failure instead of a silently unconfigured capture set.
   'ip routing',
   'ip route 10.20.0.0/24 10.0.100.2',
+  'router ospf 1',
+  '   router-id 10.0.110.1',
+  '   network 10.0.100.0/24 area 0',
+  '   network 10.0.110.0/24 area 0',
+  'exit',
+  'router bgp 65001',
+  '   router-id 10.0.110.1',
+  '   neighbor 10.0.110.2 remote-as 65002',
+  '   network 10.20.0.0/24',
+  'exit',
+  'ip prefix-list PL-LAB-STATIC seq 5 permit 10.20.0.0/24 le 32',
+  'route-map RM-LAB-IMPORT permit 10',
+  '   match ip address prefix-list PL-LAB-STATIC',
+  'exit',
+  'route-map RM-LAB-IMPORT deny 20',
+  'exit',
   // NTP: an unreachable server is intended — S12 reads the *shape* (`associations` entries, unsynced status).
   'ntp server 10.20.0.2',
   // Standard + extended ACLs. Attachment may be refused on cEOS-lab (see the tolerated
@@ -1497,6 +1544,20 @@ function provisionStaging(ethA, ethB) {
  * `% Unavailable command (not supported on this hardware platform)`. None of that is a
  * 7050TX verdict (DR-043); the lines stay on the wire so the staging transcript
  * records today's container answer instead of the harness guessing for the device.
+ *
+ * The `ip routing` entry outlived its own refusal: the verdict is BOOT-dependent — a
+ * license-daemon race, see `waitForRoutingFeatures` (refused 2026-11-07/09, accepted
+ * post-#98 and again on 2026-11-18, run lab-1809618-4b3cc0), and since #154 the routing
+ * captures DEPEND on it landing — so it stays tolerated for the transcript, while
+ * `provisionLab` now verifies the routing model after commit and fails the run loudly
+ * if this draw refuses again.
+ *
+ * The `vrrp 1 ip …` entry keeps the DEPRECATED spelling on the wire on purpose: 2026-11-18
+ * (run lab-1841022-612e1d) answered "% Unavailable command (This command is deprecated by
+ * 'vrrp ipv4')" — new wording — and the successor order `vrrp <id> ipv4 <addr>` stages FULL
+ * abort-only on the same image (bench lab-1858323-0626ae). Switching the provisioned line
+ * would buy a configured-VRRP capture; #154 scopes VRRP OUT, so the line stays as the
+ * deprecation transcript and the switch is an owner call tracked on #154/#90.
  */
 const PROVISION_TOLERATED = new Set([
   'switchport trunk group LABGRP',
@@ -1565,6 +1626,32 @@ function provisionLab(container, ethA, ethB) {
   if (missingVlans.length > 0) {
     return { ok: false, stage: 'verification', errors, fatal: [], staged: staged + '\n' + committed, aborted: '', missingVlans }
   }
+  // #154: routing must be LIVE, not merely staged. `ip routing` is a tolerated line because
+  // its cEOS verdict is shape-dependent, so WITHOUT this check a refusing container shape
+  // would flow straight into the routing captures as an "answers-while-unconfigured" set —
+  // files that claim to model configured state (#87's read-only tabs bind on those field
+  // sets). Non-throwing reader on purpose: a refusal here is the expected negative, not a
+  // transport failure, and the run's teardown must still name the stage that died.
+  const routeRaw = cliScriptOpt(container, ['show ip route | json'])
+  let routeModel = null
+  try {
+    const brace = routeRaw.indexOf('{')
+    if (brace >= 0) routeModel = JSON.parse(routeRaw.slice(brace))
+  } catch {
+    routeModel = null
+  }
+  if (!routeModel?.vrfs?.default) {
+    return {
+      ok: false,
+      stage: 'routing',
+      errors,
+      fatal: [],
+      staged: staged + '\n' + committed,
+      aborted: '',
+      missingVlans: [],
+      routingDown: routeRaw.trim().split('\n').find((l) => l.trim().startsWith('%')) ?? '(no % line found)',
+    }
+  }
   const pending = openPendingSession(container)
   return {
     ok: true,
@@ -1573,6 +1660,34 @@ function provisionLab(container, ethA, ethB) {
     committed,
     pending,
   }
+}
+
+/**
+ * Bounded wait for the routing feature set to be LICENSE-ACTIVE (see the call site in `cmdUp`).
+ * The canary stages `router ospf 1` and aborts — zero committed effect, same session sandbox
+ * provisionLab uses. Only the platform-capability wording counts as not-ready; any other `%`
+ * answer breaks the wait and lets the real staging transcript carry the verdict (the canary
+ * must never swallow a genuine grammar finding — DR-141 lesson: probe answers belong to the
+ * device, not to the harness's patience).
+ * @param {string} container
+ * @param {{ attempts?: number, sleepMs?: number }} [opts]
+ */
+async function waitForRoutingFeatures(container, opts = {}) {
+  const attempts = opts.attempts ?? 10
+  const sleepMs = opts.sleepMs ?? 5000
+  const canaryInput = [`configure session ${FEATURE_CANARY_SESSION}`, 'router ospf 1', 'abort']
+  /** @type {string} */
+  let last = ''
+  for (let i = 1; i <= attempts; i += 1) {
+    last = cliScriptOpt(container, canaryInput, 60_000)
+    if (!/not supported on this hardware platform/i.test(last)) {
+      return { ready: true, attemptsUsed: i, last }
+    }
+    const headline = last.split('\n').find((l) => l.trim().startsWith('%')) ?? '% Unavailable command'
+    log(`[up] routing features not ready (canary ${String(i)}/${String(attempts)}): ${headline.trim()} — waiting ${String(sleepMs)}ms`)
+    await sleep(sleepMs)
+  }
+  return { ready: false, attemptsUsed: attempts, last }
 }
 
 /**
@@ -2063,22 +2178,26 @@ const CAPTURE_CATALOG = [
   },
   { command: 'show configuration sessions detail', format: 'json', id: 'ceos-lab-capability', note: 'verbatim per #62; feeds the same field-set questions' },
   { command: 'show vrf', format: 'json', id: 'ceos-lab-capability', note: 'read-only prerequisite of B6 (#90); answered `vrfs` on the probed container (cEOS-lab defaults to the default VRF only); empty/1002 answers are recorded as negative results, never files' },
-  { command: 'show ip route', format: 'json', id: 'ceos-lab-capability', note: 'populated by the provisioned SVI connected routes + the provisioned static route; prerequisite of S10 (#80). cEOS-lab refused `ip routing` outright (tolerated probe), so this capture documents what the routing table answers with routing globally unavailable — the `ip routing` verdict on the hardware stays #14 §3' },
-  { command: 'show vrrp', format: 'json', id: 'ceos-lab-capability', note: 'probed: VRRP config was refused on cEOS-lab 4.28.14M and the read answers nothing usable — record as a negative result (never a file), with the staging transcript as the capability evidence' },
+  { command: 'show ip route', format: 'json', id: 'ceos-lab-capability', note: 'populated by the provisioned SVI connected routes + the provisioned static route; prerequisite of S10 (#80). Since #154 routing is LIVE at capture time (run lab-1841022-612e1d answered vrf `default` with both routes and the `routingDisabled` field visible) — the historic capture answered with routing globally unavailable, which was the license-boot race, not a platform refusal; the `ip routing` verdict on the hardware stays #14 §3' },
+  { command: 'show vrrp', format: 'json', id: 'ceos-lab-capability', note: 'recorded as a negative result (never a file): the provisioned SVI line stays the OLD spelling `vrrp 1 ip …`, which 2026-11-18 (run lab-1841022-612e1d) refuses with "% Unavailable command (This command is deprecated by \'vrrp ipv4\')" — wording changed from the 2026-11-07 platform refusal, and the successor order `vrrp <id> ipv4 <addr>` stages FULL abort-only on the same image (bench lab-1858323-0626ae). A configured-VRRP capture is therefore possible on this container, which touches the out-of-scope line of #154 and the posture of #90 — deliberate owner decision before provisioning changes' },
   /* ---- 2026-11-15 unblock reads (companion to the hardware lane in src/testing/hw-capture.ts).
-   * cEOS-lab refuses `ip routing` (PROVISION_TOLERATED), so routing/VXLAN/VRF commands land here as
-   * either a populated schema or a recorded 1002/negative — both are the cEOS-lab answer, never a
-   * 7050TX verdict (DR-043). The grammar VERDICTS on the real box come from the abort-only staged
-   * probes in docs/hw-capture-unblock.draft.json, not from this container. ---- */
+   * Since #154 the provisioning block carries a CONFIGURED routing shape (OSPF process, BGP
+   * neighbor, route-map + prefix-list), gated by the license-readiness canary, so the routing
+   * commands below answer as configured whenever the boot's license daemon is ready. The
+   * historic "cEOS refuses ip routing" wording described a boot race, not a capability (see
+   * `waitForRoutingFeatures`); a refusing draw still fails the run loudly at the post-commit
+   * routing check. Every answer stays the cEOS-lab verdict, never a 7050TX one (DR-043); the
+   * real box's grammar verdicts come from the abort-only staged probes in
+   * docs/hw-capture-unblock.draft.json. ---- */
   { command: 'show vxlan interface', format: 'json', id: 'ceos-lab-capability', note: 'B1 (#86): does cEOS-lab 4.28.14M model a Vxlan interface at all; presence/schema here, the SKU verdict is the #14 §3 hardware read' },
   { command: 'show vxlan vni', format: 'json', id: 'ceos-lab-capability', note: 'B1 (#86): VNI<->VLAN mapping shape (empty unless configured; provisioning does not add a VTEP, so a 1002 or empty map is the finding)' },
   { command: 'show vxlan tunnel', format: 'json', id: 'ceos-lab-capability', note: 'B1 (#86): VTEP tunnel table shape from a configured VTEP — deliberately NOT configured here, so this documents the unconfigured-container answer' },
-  { command: 'show ip ospf', format: 'json', id: 'ceos-lab-capability', note: 'B2 (#87): OSPF read presence/schema. cEOS-lab refused `ip routing`, so this is the schema with routing unavailable; populated adjacency state is a hardware-side question' },
-  { command: 'show ip ospf neighbor', format: 'json', id: 'ceos-lab-capability', note: 'B2 (#87): neighbor-table field set the read-only status tab would render (unknown-safe); empty/1002 recorded as a negative' },
-  { command: 'show bgp summary', format: 'json', id: 'ceos-lab-capability', note: 'B2 (#87): 4.28 points at `show bgp` (not `show ip bgp`) — bare `show bgp` answers 1002 INCOMPLETE at token 1 (captured 2026-11-16), so the sub-keyed spelling is the real reader contract' },
-  { command: 'show bgp neighbors', format: 'json', id: 'ceos-lab-capability', note: 'B2 (#87): the second spelling #87 names outright; refused-with-code recorded as a negative result, never a file' },
-  { command: 'show route-map', format: 'json', id: 'ceos-lab-capability', note: 'B2 (#87): route-map model from an unconfigured container — an empty {routeMaps:{}} is the schema the S-side route-map viewer reads' },
-  { command: 'show ip route vrf all', format: 'json', id: 'ceos-lab-capability', note: 'B6 (#90): per-VRF route-table shape; cEOS-lab defaults to the default VRF only (no provisioning adds a VRF and `ip routing` is refused), so this documents the default-VRF-only answer' },
+  { command: 'show ip ospf', format: 'json', id: 'ceos-lab-capability', note: 'B2 (#87): the per-instance field set for the OSPF status tab, CONFIGURED (run lab-1841022-612e1d: `vrfs.default.instList.1` with asbr, lsaInformation, spfInformation, maxLsaInformation, referenceBandwidth, gracefulRestartInfo, …). Single-node limits: no adjacencies exist here — populated neighbor state is #154 item 2 (two-node lane); the hardware own OSPF answers stay the run-7/run-9 recordings (DR-043)' },
+  { command: 'show ip ospf neighbor', format: 'json', id: 'ceos-lab-capability', note: 'B2 (#87): the neighbor-table field set the read-only status tab would render (unknown-safe), configured-single-node answer `instList.1.ospfNeighborEntries: []` — a live table ENTRY shape needs a second node (#154 item 2); empty is the honest answer for this topology, not a refusal' },
+  { command: 'show bgp summary', format: 'json', id: 'ceos-lab-capability', note: 'B2 (#87): 4.28 points at `show bgp` (not `show ip bgp`) — bare `show bgp` answers 1002 INCOMPLETE at token 1 (captured 2026-11-16), so the sub-keyed spelling is the real reader contract. #154 re-probed CONFIGURED (router bgp 65001 committed, run lab-1841022-612e1d): eAPI answers 1000 "could not run command" and the same container CLI answers `{"errors":["Not supported"]}`; `json raw` is invalid input and `json revision 2` prints nothing (bench lab-1858323-0626ae). VERDICT: the BGP JSON read model is unreachable on this image even when configured — the BGP tab of #87 cannot bind a container read model (the 7050TX half is the run-7 "% Not supported" recording — never a cross-claim, DR-043)' },
+  { command: 'show bgp neighbors', format: 'json', id: 'ceos-lab-capability', note: 'B2 (#87): the second spelling #87 names outright; refused-with-code recorded as a negative result, never a file. #154 configured re-probe (bench lab-1858323-0626ae over Cli): `{"errors":["Invalid requested version for ModelMetaClass: no such revision 3, most current is 2","Not supported"]}` — the model exists at an older revision but NO spelling reachable from eAPI `format:json` can pin it, so the unreadable verdict stands for the reader contract' },
+  { command: 'show route-map', format: 'json', id: 'ceos-lab-capability', note: 'B2 (#87): route-map model, now CONFIGURED by provisioning (#154: RM-LAB-IMPORT entries 10 permit/match prefix-list PL-LAB-STATIC and 20 deny, committed in run lab-1841022-612e1d) — the viewer reads populated `routeMaps.<name>.entries.<seq>` with match/set/description shapes; the earlier unconfigured `{routeMaps:{}}` capture still stands as the empty schema case in git history' },
+  { command: 'show ip route vrf all', format: 'json', id: 'ceos-lab-capability', note: 'B6 (#90): per-VRF route-table shape with routing live (#154: default VRF populated with the connected/static routes); still default-VRF-only because provisioning adds no VRF instance — the multi-VRF table shape remains a #14 §3 question (run 7 answered POPULATED on the real box)' },
 ]
 
 /**

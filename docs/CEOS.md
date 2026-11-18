@@ -221,6 +221,28 @@ CLI shortcut, and container output never settles a hardware sentence (DR-043).
 
 ## Latest refresh cards
 
+- `lab-1895090-86f942` (2026-11-18 04:47Z, `npm run fixtures:refresh -- --yes`, band 10.177.105,
+  transport **published-eAPI https** — no Cli fallback needed): **#154 slice 1 — the routing
+  captures are now CONFIGURED.** `provisionStaging` carries `router ospf 1` (both SVI networks),
+  `router bgp 65001` (router-id + neighbor + network), `ip prefix-list PL-LAB-STATIC` +
+  `route-map RM-LAB-IMPORT` (permit/match + deny); 34 files rewritten. Population: `show ip ospf`
+  answers the per-instance process model (`vrfs.default.instList.1`: asbr, lsaInformation,
+  spfInformation, maxLsaInformation, …), `show route-map` answers both RM-LAB-IMPORT entries,
+  `show ip route[ vrf all]` carries the connected + static routes with routing live, and
+  `show ip ospf neighbor` answers the field set at `instList.1.ospfNeighborEntries: []` — single
+  node has no adjacency, and that empty is the topology's honest answer (populated tables are
+  #154 item 2). `show bgp summary|neighbors` stay **recorded negatives even configured**: eAPI 1000
+  "could not run command", container CLI `{"errors":["Not supported"]}` — the BGP JSON read model
+  is unreachable on this image (full evidence in the catalog notes; the 7050TX half stays run 7's,
+  never cross-quoted, DR-043). Two harness changes landed with this batch and are load-bearing:
+  the **routing-feature canary** (`waitForRoutingFeatures`) and the **post-commit routing check**,
+  because this boot hit the license-daemon race (canary 1/10 answered `router ospf 1`
+  "not supported on this hardware platform", ready on attempt 2, provisioning 8.4 s) — see DR-144:
+  this same race, not a capability refusal, produced the historic "cEOS refuses `ip routing`"
+  verdicts below. A separate finding rides the staging transcript: SVI `vrrp 1 ip …` now refuses
+  as "deprecated by 'vrrp ipv4'" and the successor order `vrrp <id> ipv4 <addr>` stages FULL
+  (abort-only bench `lab-1858323-0626ae`) — provisioning was NOT switched; #154 scopes VRRP out
+  and the change is an owner call tracked there.
 - `lab-1637825-9bbb4b` (2026-11-09 15:15Z, `npm run fixtures:refresh -- --yes`, docker 29.9.3):
   **All 30 committed capture files rewritten in place** — 24 command answers as JSON plus 6 of
   those reads also captured in text form; no additions, removals or renames against the
