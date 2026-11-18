@@ -2,6 +2,7 @@ import react, { reactCompilerPreset } from '@vitejs/plugin-react'
 import babel from '@rolldown/plugin-babel'
 import { Buffer } from 'node:buffer'
 import { defineConfig, loadEnv } from 'vite'
+import { eapiRelayPlugin } from './eapi-relay.js'
 
 export default defineConfig(({ command, mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
@@ -13,6 +14,9 @@ export default defineConfig(({ command, mode }) => {
     plugins: [
       react(),
       babel({ presets: [reactCompilerPreset()] }),
+      // #140a: runtime connect relay — always mounted in dev; inert (status `'env'`, no setup)
+      // whenever the boot-time env proxy above is configured, so existing lanes are untouched.
+      ...(server ? [eapiRelayPlugin({ envProxyConfigured: proxy !== undefined })] : []),
     ],
     ...(server ? {
       server: {
