@@ -11,7 +11,10 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     setupFiles: ['./src/setupTests.ts'],
-    include: ['src/**/*.{test,spec}.{ts,tsx}'],
+    // #140a's second pattern is the package-root NODE-side tooling test (dev-server relay), which
+    // opted into the node environment via per-file docblock; it sits outside src/, so it is outside
+    // the coverage include too — like vite.config.ts, it is tooling, not shipped app code.
+    include: ['src/**/*.{test,spec}.{ts,tsx}', 'eapi-relay.test.ts'],
     coverage: {
       provider: 'v8',
       reportsDirectory: './coverage',

@@ -37,8 +37,12 @@ describe('E2E lane boundary (#91)', () => {
       const ok = file.endsWith('.e2e.ts') || E2E_HELPERS.includes(file)
       expect(ok, `e2e file ${file} must be *.e2e.ts or a known helper`).toBe(true)
     }
-    // The vitest collection glob can never reach the lane dir:
-    expect(vitestConfigRaw).toContain("include: ['src/**/*.{test,spec}.{ts,tsx}']")
+    // The vitest collection glob can never reach the lane dir. #140a added ONE explicit extra
+    // pattern — the package-root `eapi-relay.test.ts` (a Node-side TOOLING test for the dev-server
+    // relay, opted into the node environment by docblock). Still a src-rooted glob plus one named
+    // non-e2e file: no directory pattern here can collect `/e2e/**`, and `.e2e.ts` files remain
+    // uncollectable by construction.
+    expect(vitestConfigRaw).toContain("include: ['src/**/*.{test,spec}.{ts,tsx}', 'eapi-relay.test.ts']")
   })
 
   it('keeps the aggregate test scripts device-free and playwright-blind', () => {

@@ -12,8 +12,8 @@
  * builds no client at all: the unconfigured path still has to render full chrome plus the proxy
  * prompt, and it must contact nothing.
  */
-import { fireEvent, render, screen } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import App from './App'
 
@@ -236,5 +236,86 @@ describe('App composition (F6 chrome)', () => {
     expect(screen.getByRole('button', { name: 'Reload spanning-tree state' })).toBeDisabled()
     expect(screen.queryAllByRole('button', { name: /mode/iu })).toHaveLength(0)
     expect(screen.getByRole('alert')).toHaveTextContent('EAPI_HOST')
+  })
+
+  // ---- #140a: runtime-connect composition (dev server WITHOUT the env proxy). These render the
+  // real App with the probe seam stubbed; nothing here dials a device.
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    window.location.hash = ''
+  })
+
+  it('#140a: the Connect nav entry lands on the relay form when env vars are absent', () => {
+    window.location.hash = '#/vlans'
+    render(<App />)
+
+    const connect = screen.getByRole('link', { name: 'Connect' })
+    expect(connect).toHaveAttribute('href', '#/connect')
+    fireEvent.click(connect)
+    expect(screen.getByRole('heading', { level: 2, name: 'Connect a device' })).toBeInTheDocument()
+    // No boot-probe contact is faked here: the honest empty state is still form + prose, no claims.
+    expect(screen.queryByText(/Connected/u)).toBeNull()
+  })
+
+  it('#140a: when the boot probe reports a live runtime relay, screens leave the proxy prompt', async () => {
+    window.location.hash = '#/vlans'
+    vi.stubGlobal('fetch', vi.fn(async (input: unknown) => {
+      const url = String(input)
+      if (url.includes('/__eapi/status')) {
+        return { ok: true, status: 200, json: async () => ({ configured: 'runtime', host: 'https://sw1.lan', username: 'admin' }) } as unknown as Response
+      }
+      // The screens' device reads then ride the relay path; a 502 keeps them on an honest ERROR,
+      // which is what distinguishes "configured + unreachable" from "not configured".
+      return { ok: false, status: 502, statusText: 'Bad Gateway', text: async () => '' } as unknown as Response
+    }))
+    render(<App />)
+
+    await waitFor(() => expect(screen.queryByText(/proxy is not configured/u)).toBeNull())
+    expect(await screen.findByRole('alert')).toHaveTextContent('502')
+    expect(screen.queryByText(/Connected through/u)).toBeNull()
+  })
+
+  it('#140a: connect through the real screen flips the running app, and disconnect returns to the prompt', async () => {
+    window.location.hash = '#/connect'
+    const versionReply = { version: '4.28.13.1M', modelName: 'DCS-7050TX-64-R', hostname: 'lab-switch' }
+    vi.stubGlobal('fetch', vi.fn(async (input: unknown, init?: { body?: string }) => {
+      const url = String(input)
+      if (url.includes('/__eapi/setup')) {
+        return { ok: true, status: 200, json: async () => ({ configured: 'runtime', host: 'https://relayed.lan', username: 'admin' }) } as unknown as Response
+      }
+      if (url.includes('/__eapi/disconnect')) {
+        return { ok: true, status: 200, json: async () => ({ configured: null }) } as unknown as Response
+      }
+      if (url.includes('/command-api')) {
+        // The client sends `["enable", "show version"]` and pops the enable reply — the envelope
+        // must carry one result per command, with the id echoed (what real eAPI always does).
+        const request = JSON.parse(String(init?.body ?? '{}')) as { id?: string | number }
+        const cmds = (JSON.parse(String(init?.body ?? '{}')) as { params?: { cmds?: unknown[] } }).params?.cmds ?? []
+        const result = cmds.map((cmd: unknown) => (cmd === 'show version' ? versionReply : {}))
+        return { ok: true, status: 200, text: async () => JSON.stringify({ jsonrpc: '2.0', id: request.id ?? '1', result }) } as unknown as Response
+      }
+      return { ok: true, status: 200, json: async () => ({ configured: null }) } as unknown as Response
+    }))
+    render(<App />)
+
+    fireEvent.change(screen.getByLabelText('Device host'), { target: { value: 'relayed.lan' } })
+    fireEvent.change(screen.getByLabelText('Username'), { target: { value: 'admin' } })
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'never-sent' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Connect' }))
+
+    // Connected => the app left the connect screen (navigate home) and home NO LONGER says
+    // "not configured"; its reads now flow (the stub answers every command with the version
+    // reply, so screens land on parse-shaped states — either way, not the proxy prompt).
+    await waitFor(() => expect(screen.queryByText(/Local proxy is not configured/u)).toBeNull())
+    // The routed home screen mounts (its own read may still be in flight or on an error arm — the
+    // point is the PROXY gate opened, which the screen's chrome proves).
+    expect(await screen.findByRole('heading', { level: 2, name: 'VLAN assignment' })).toBeInTheDocument()
+
+    // Disconnect from the (now runtime) connect screen: back to the honest prompt app-wide.
+    fireEvent.click(screen.getByRole('link', { name: 'Connect' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Disconnect' }))
+    // The connect screen itself has no prompt (it's the form); a real SCREEN must show it again.
+    fireEvent.click(screen.getByRole('link', { name: 'VLAN assignment' }))
+    expect(await screen.findByText(/Local proxy is not configured/u)).toBeInTheDocument()
   })
 })

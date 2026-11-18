@@ -2674,6 +2674,56 @@ text), DR-043 (lane separation), DR-004 (open item 2's owning question); open it
 annotation this entry formalizes); CAPTURE-UNBLOCK.md run log (run 9); issues #86 (#90 contrast,
 #52 origin).
 
+### DR-143 — the dev-server proxy gains an in-process runtime relay (option A): connect from the browser without env vars, with the env-var proxy kept authoritative and the owner's split of option B recorded
+
+Issue #140 asked how to keep the browser-side trust posture (DR-013: no CA pinning in the browser;
+DR-027: credentials never live in the page) while removing the `.env.local` boot friction. Option A
+is a Node relay inside the Vite dev server; option B is browser-direct HTTPS to the device with
+CORS configured on the switch. The owner chose **"build A now, B later"** (2026-11-17 comment);
+this entry records that split, what A actually is, and the gate B must later pass.
+
+**Decision: ship A as a dev-only capability.** `eapiRelayPlugin` registers
+`GET /__eapi/status`, `POST /__eapi/setup`, `POST /__eapi/disconnect` and, only while a runtime
+target is installed, `POST /command-api`; the new `#/connect` screen installs/clears targets and
+verifies success with a real `show version` probe **through the relay** before flipping the app to
+configured state. Hard properties, each pinned by tests in `arista-webui`:
+
+- **Env-authoritative:** with `EAPI_*` configured, setup/disconnect answer `409`, status says
+  `{configured:"env"}`, and `/command-api` falls through untouched to the existing proxy — the
+  2026-11-08 boot-proxy design is unchanged, not competing with it (verified live, not just mocked).
+- **Credential containment:** the password lives only in the Vite process's closure; every reply is
+  scanned to exclude it (setup echo, status echo, 4xx/5xx bodies); localStorage (`…connect.hostbook.v1`)
+  holds name/host/username only, with the field whitelist applied on load *and* save so a smuggled
+  `password` key is stripped; the UI clears the password field on success.
+- **Deadlines honored (DR-019):** relay upstream timeout 35 s > UI request timeout 30 s (#153), so
+  the browser always gives up first and can retry. A live WSL-mirrored-network quirk proved the
+  ceiling worth having: connect to a dead **loopback** port there black-holes instead of refusing,
+  and the UI waited the full margin — the relay destroys the socket on node's idle-`timeout` event
+  and reports `502 {error:"relay-upstream-failed", code:"ETIMEDOUT"}` rather than hanging forever.
+- **Same trust class, explicitly:** cleartext never leaves the machine because the relay is
+  loopback-bound (Vite binds `127.0.0.1`), Basic auth is injected server-side exactly as DR-036's
+  `secure:false` proxy does, and the relay exists only in `configureServer` — a production build
+  contains no relay code at all (the plugin is dev-only; the built app ships the unconfigured state).
+
+**Consequences:** (1) **Option B is deferred behind an evidence gate, not a date:** browser-direct
+requires EOS CORS behavior verified on real 4.28.13.1M (`management api http-commands …
+transports https cors …` producing the preflight the browser needs) plus a decision on where the
+credential lives once no local server exists; it was NOT silently dropped — a follow-up issue
+carries it, cross-referencing DR-013/DR-027/#153. (2) The e2e and live lanes are untouched: no
+e2e test may depend on the relay (it disappears from prod bundles by construction, and the
+boundary guard still pins `vitest.config.ts`'s include literal), and the supervised/CI lanes keep
+using their env-var proxies. (3) The hostbook is UX memory, not a secret store — the stated
+invariant outranks convenience: any future field added there must pass the load/save whitelist and
+the redaction guard. (4) `__EAPI_PROXY_CONFIGURED__` stops being the only `configured` input at
+runtime: `App` now ORs it with a live boot probe of `/__eapi/status`, so the flag alone no longer
+predicts the chrome — screens receive a `proxyConfigured` *value*, which keeps every existing
+test's construction legal.
+**Related:** DR-013/DR-027/DR-036 (browser trust and the boot proxy), DR-019 (deadline hierarchy
+the 35 s/30 s pin implements), DR-053 (pre-wire refusals computed client-side), PR #155
+(`UI_REQUEST_TIMEOUT_MS` in `arista-webui/src/eapi/app-node.ts`, the value the relay is pinned
+above); issues #140 (this split), #153 (the timeout the relay is pinned above); F8 placeholder
+discipline in `arista-webui/README.md`.
+
 ## Open items (need the device)
 
 Use cEOS first for software behavior and schema exploration, recording its model/version;

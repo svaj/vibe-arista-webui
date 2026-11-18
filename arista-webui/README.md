@@ -6,6 +6,7 @@ membership, the management-path answer, and staged `description` / `mtu` / `shut
 `#/vlans/manage` (S2 #72 — the VLAN table with referencing config lines, staged create / rename /
 clear-name / state / delete writes, and trunk groups gated on the #67 capability verdict), and
 `#/vlans` (F6 #68 — VLAN inventory and access-port assignment).
+In dev with no `EAPI_*` env there is additionally `#/connect` (see the relay section below).
 Changes are staged in a named EOS config session and require a reviewed device diff plus explicit
 confirmation before commit. Commits affect running-config only; startup-config is never saved implicitly.
 
@@ -28,6 +29,29 @@ not the browser bundle. See the [eAPI connectivity guide](../arista-api-client/d
 
 With all three variables absent, the UI renders its unconfigured state and makes no
 eAPI requests. Partial configuration is rejected; there is no default switch target.
+
+### Runtime connect — the dev-server relay (#140a)
+
+Without `EAPI_*`, the dev server also serves a small **loopback-only relay** so you can attach to a
+switch from the browser instead of editing `.env.local`: open `#/connect`, submit
+host + username + password once, and the UI probes the device (`show version`) through the relay
+before landing on the workspace. Details, in order of consequence:
+
+- The Vite plugin (`eapi-relay.ts`) holds the target **in the dev-server process memory only** —
+  never a file, never localStorage, never a response body. `POST /__eapi/setup` installs it,
+  `POST /__eapi/disconnect` clears it, `GET /__eapi/status` echoes at most `{host, username}`.
+- While installed, the relay forwards `POST /command-api` to `https://<host>/command-api` with the
+  **exact posture of the env-var proxy**: Basic auth injected server-side, `rejectUnauthorized:
+  false` (self-signed device certs, DR-036), a 35 s upstream ceiling that bounds black-holed
+  connects (DR-019), and credential-free `502 {error:'relay-upstream-failed', code}` failures.
+- **The env-var proxy remains authoritative.** With `EAPI_*` set, the relay refuses
+  setup/disconnect with `409` and reports `{configured:'env'}`; when unset it never answers
+  `/command-api` itself. Nothing about the deployed-product threat model changes: this is a dev
+  tool in the same trust class as the existing proxy (DR-013/DR-027), not a production mode —
+  the browser still never holds the device password, and the connect hostbook
+  (`arista-webui.connect.hostbook.v1` in localStorage) stores labels/hosts/usernames only.
+- Pre-wire refusals (`https://`-prefixed hosts, credential-bearing URLs, oversized fields) are
+  computed client-side and **no request is sent at all** for them (DR-053).
 
 ## Credentials and test artifacts (F8, issue #70)
 
