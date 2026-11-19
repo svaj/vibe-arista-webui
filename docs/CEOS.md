@@ -254,6 +254,35 @@ for CI" is NOT a substitute for the gate. Until the suite has actually run, #154
 as *implemented, evidence pending* — never as unsupported (the absence is host-attributed), and
 never as observed.
 
+### Third symptom, and the actual root cause: EVERY privileged cEOS start now fails here (DR-146)
+
+DR-145 read the host as "single-node works, two-node bridging doesn't." That is no longer true on
+this box: a plain **single-node** `npm run lab:up` dies at container *start* —
+
+```
+runc create failed … error setting cgroup config for procHooks process:
+failed to call BPF_PROG_LOAD: bpf: permission denied
+```
+
+— and `docker run --privileged --security-opt systempaths=unconfined …` (the usual user-mode escape)
+does not bypass it. The root cause is `kernel.unprivileged_bpf_disabled=2`: WSL2's most restrictive
+BPF lockdown, which denies `BPF_PROG_LOAD` even to the privileged cgroup-v2 path, and is irreversible
+at runtime (2 cannot revert to 0). Consequences:
+
+- Until a host clears it, NO cEOS container starts here, so #154 items 1–6 container evidence
+  (refreshes, the blast suite, the two-node lane) cannot be produced locally at all — slices 2/3
+  ship gated accordingly, and "wait for CI" is no refuge because the `eos-lab` runner shares this
+  kernel.
+- This is a host fix, **not** a lane fix, and needs root: set `kernel.unprivileged_bpf_disabled=0`
+  at early boot in `/etc/sysctl.d/` (it must be 0/1 before any unprivileged BPF use — writing it
+  after the value reached 2 is rejected), or run the runner on **cgroup v1** (`systemd.unified_cgroup_hierarchy=0`),
+  or move it to **native Linux**. `networkingMode=NAT` (DR-145 above) fixes the *bridging* symptom
+  but NOT this start-phase BPF fault — check both independently.
+- A quick check that the host is ready again, before trusting any capture:
+  `docker run --rm --privileged alpine:latest echo ready` must print `ready`; if it dies on
+  `BPF_PROG_LOAD`, every cEOS run will too. `cat /proc/sys/kernel/unprivileged_bpf_disabled` should
+  read `0` (or `1`).
+
 ## Latest refresh cards
 
 - `lab-1895090-86f942` (2026-11-18 04:47Z, `npm run fixtures:refresh -- --yes`, band 10.177.105,
