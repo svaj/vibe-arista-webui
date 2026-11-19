@@ -219,6 +219,41 @@ Practical consequences, in the order they should be tried:
 What remains true either way: the live lane (`lab:run`, `*.live.test.ts`, the CI job) never takes the
 CLI shortcut, and container output never settles a hardware sentence (DR-043).
 
+### Second symptom of the same stack: cEOS-endpoint L2 invisibility (DR-145)
+
+The reconciliation above is about the **routed/NAT** management path, which is why single-node work
+always worked here. A **bridged** data path between two containers behaves differently on this
+mirrored-mode host, and only when a *cEOS* container is an endpoint: two fully-provisioned cEOS
+nodes back-to-back on one user bridge answer 0/5 pings, form no OSPF adjacency, and miss ARP/ICMP/
+OSPF-multicast in BOTH directions — while plain containers on the *same bridge at the same moment*
+ping in <1 ms, both cEOS bridge ports report `state forwarding`, STP is off, host-side veth
+counters rise on both ends, and tcpdump inside the peer never sees a single frame from the other
+cEOS. Kernel-injected frames from inside the cEOS netns (`arping -I eth1`) are equally invisible,
+so it is not the EOS data plane; and the two escapes are host-dead too: macvlan endpoint creation
+fails outright (`runc … BPF_PROG_LOAD: bpf: permission denied`) and the same BPF fault recurs
+transiently for ordinary starts until the docker daemon restarts.
+
+Consequence for #154: `--nodes 2` and `src/ospf-two-node.live.test.ts` are **gated, not claimed**
+(DR-145). The acceptance test is one command on a host whose container-to-container L2 is proven —
+
+```bash
+# one-time host verification: two plain containers must ping across a fresh user bridge
+docker network create gatecheck && docker run -d --name g1 --network gatecheck alpine sleep 60 \
+  && docker run -d --name g2 --network gatecheck alpine sleep 60 \
+  && docker exec g1 ping -c2 "$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' g2)" \
+  ; docker rm -f g1 g2 >/dev/null; docker network rm gatecheck >/dev/null
+# then the suite itself
+npm run lab:run -- --nodes 2 --no-fixtures -- \
+  npm -w arista-api-client run test:live -- src/ospf-two-node.live.test.ts
+```
+
+If the control ping passes but cEOS frames still vanish, the host needs the runbook's own remedy —
+`networkingMode=NAT` in the Windows-side `.wslconfig` + `wsl --shutdown`, or the native-Linux
+eos-lab runner; the self-hosted CI runner lives in a container on this same WSL2 kernel, so "wait
+for CI" is NOT a substitute for the gate. Until the suite has actually run, #154 items 2+4 read
+as *implemented, evidence pending* — never as unsupported (the absence is host-attributed), and
+never as observed.
+
 ## Latest refresh cards
 
 - `lab-1895090-86f942` (2026-11-18 04:47Z, `npm run fixtures:refresh -- --yes`, band 10.177.105,
