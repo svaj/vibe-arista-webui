@@ -1050,6 +1050,7 @@ async function cmdUp(cfg) {
     mgmt: networkName(runId, 'mgmt'),
     data1: networkName(runId, 'data1'),
     data2: networkName(runId, 'data2'),
+    peer: networkName(runId, 'peer'),
   }
   /** @type {number} */
   let port
@@ -1127,7 +1128,10 @@ async function cmdUp(cfg) {
       )
     }
     const mgmtIp = `${mgmtSubnet.octetBase}.10`
-    for (const net of [names.data1, names.data2]) {
+    // #154 --nodes=2: the peer bridge joins the family of run-owned bridges created here;
+    // it carries the back-to-back wire between the two nodes' front panels.
+    const extraNets = cfg.nodes === 2 ? [names.peer] : []
+    for (const net of [names.data1, names.data2, ...extraNets]) {
       docker(['network', 'create', `--label=${LABEL_RUN}=${runId}`, `--label=${LABEL_MANAGER}=${MANAGER}`, net])
     }
     log(
@@ -1166,8 +1170,9 @@ async function cmdUp(cfg) {
     }
     // Data bridges join AFTER create and BEFORE start: NICs exist at boot so cEOS
     // binds them as front-panel ports, while create-time attachment stays a single
-    // endpoint for the port-forward resolution (topology note above).
-    for (const net of [names.data1, names.data2]) {
+    // endpoint for the port-forward resolution (topology note above). The peer bridge
+    // (nodes=2) rides the same pre-start attach — a runtime connect inserts nothing.
+    for (const net of [names.data1, names.data2, ...extraNets]) {
       docker(['network', 'connect', net, names.container])
     }
     const privileged = docker(['container', 'inspect', '--format', '{{.HostConfig.Privileged}}', names.container]).trim()
@@ -1219,6 +1224,18 @@ async function cmdUp(cfg) {
         EXIT.readiness,
       )
     }
+    // #154 nodes=2: attach order (data1, data2, peer) maps to the Ethernet numbers cEOS
+    // assigns at boot; the peer NIC must be the THIRD front panel or provisioning would
+    // put the transit address on a port the representative config also owns. Refusing on
+    // a mismatch beats capturing an adjacency that never forms for a naming reason.
+    if (cfg.nodes === 2 && (frontPanels.length !== 3 || frontPanels[2] === undefined)) {
+      refuse(
+        `--nodes=2 expects exactly 3 front-panel ports on the primary (data1+data2+peer), got ` +
+          `${JSON.stringify(frontPanels)} — the peer bridge did not bind at boot, or the NIC→Ethernet ` +
+          'mapping changed; refusing rather than stage the transit onto the wrong port.',
+        EXIT.readiness,
+      )
+    }
 
     // #154: routing features are license-gated on EOS and the cEOS-lab license daemon can
     // lag Cli readiness by many seconds (observed 2026-11-18: consecutive runs on the same
@@ -1244,7 +1261,7 @@ async function cmdUp(cfg) {
     // so `up` now provisions that shape before anything is read. A refusal here lands in
     // the catch below: teardown runs, no probe is taken, no half-configured capture set exists.
     const provisionStart = Date.now()
-    const provision = provisionLab(names.container, frontPanels[0], frontPanels[1])
+    const provision = provisionLab(names.container, frontPanels[0], frontPanels[1], cfg.nodes === 2 ? { peerPort: frontPanels[2] } : undefined)
     const provisionMs = Date.now() - provisionStart
     if (!provision.ok) {
       const detail =
@@ -1284,9 +1301,29 @@ async function cmdUp(cfg) {
       }
     }
 
+    /**
+     * #154 nodes=2: the peer comes up AFTER the primary is fully provisioned and its own
+     * forwarder is listening — every failure path below still lands in cmdUp's catch, and
+     * teardownRun drops the (label-verified) peer resources idempotently.
+     * @type {Awaited<ReturnType<typeof bringUpPeerNode>> | null}
+     */
+    let nodesB = null
+    if (cfg.nodes === 2) {
+      log(`[up] --nodes=2: bringing up the peer node (wire bridge ${names.peer})…`)
+      nodesB = await bringUpPeerNode(cfg, {
+        image: { tag: image.tag, imageId: image.imageId },
+        runId,
+        aMgmtSubnet: mgmtSubnet.cidr,
+        creds,
+        stateFile: sp,
+        aPeerPort: frontPanels[2],
+      })
+      log(`[up] peer ${nodesB.container} ready: interface-pair ${nodesB.aPeerInterface}<->${nodesB.peerInterface}, eAPI at ${cfg.hostIp}:${nodesB.port}`)
+    }
+
     const state = {
       runId,
-      schema: 3,
+      schema: 4,
       container: names.container,
       containerId: cid,
       networks: { mgmt: names.mgmt, data1: names.data1, data2: names.data2 },
@@ -1317,6 +1354,7 @@ async function cmdUp(cfg) {
       versionJson,
       interfacesJson,
       httpCommandsJson,
+      ...(nodesB === null ? {} : { nodesB }),
     }
     writeState(state)
     process.stdout.write(
@@ -1324,6 +1362,7 @@ async function cmdUp(cfg) {
         {
           ok: true,
           runId,
+          nodes: cfg.nodes,
           container: names.container,
           containerId: cid,
           networks: names,
@@ -1355,6 +1394,15 @@ async function cmdUp(cfg) {
           eosVersionFromCli: identityFromShowVersion(versionJson),
           eosInterfacesObserved: Object.keys(interfacesJson?.interfaceStatuses ?? interfacesJson?.interfaces ?? {}),
           httpCommandsAfterBootstrap: httpCommandsJson,
+          ...(nodesB === null ? {} : {
+            peerNode: {
+              container: nodesB.container,
+              endpoint: `${cfg.hostIp}:${nodesB.port} -> ${nodesB.mgmtContainerIp}:${cfg.containerApiPort} (forwarder pid ${nodesB.forwarderPid})`,
+              wireInterfacePair: { a: nodesB.aPeerInterface, b: nodesB.peerInterface },
+              peerLink: PEER_LINK,
+              note: 'OSPF runs on both nodes; adjacency formation and blast behavior are asserted by the two-node live suite, never assumed here',
+            },
+          }),
           credentialsPrintedOnce: cfg.quiet
             ? {
                 user: creds.user,
@@ -1438,14 +1486,33 @@ function bootstrapLab(container, creds) {
 const PROVISION_SESSION = 'lab-provision'
 const PENDING_SESSION = 'lab-pending-capture'
 const FEATURE_CANARY_SESSION = 'lab-feature-canary'
+const PEER_SESSION = 'lab-peer-provision'
+/**
+ * #154 items 2+4 — the back-to-back transit link for `--nodes=2`. Fixed addresses on
+ * purpose: the peer segment is harness-defined topology (not device-discovered), the
+ * ranges collide with nothing the single-node provisioning uses (10.0.100/110, 10.20),
+ * and the loopbacks give OSPF stable router-ids. `/30` keeps the wire point-to-point.
+ * BGP is deliberately NOT specced between the pair: the BGP JSON read model is
+ * unreachable on this image even when configured (2026-11-18 catalog finding), so a
+ * BGP adjacency here would form something no reader can observe; OSPF answers for the
+ * mechanics evidence instead.
+ */
+const PEER_LINK = /** @type {const} */ {
+  subnet: '10.155.0.0/30',
+  aIp: '10.155.0.1',
+  bIp: '10.155.0.2',
+  aLoopback: '10.156.0.1',
+  bLoopback: '10.156.0.2',
+  ospfArea: '0',
+}
 
 /**
  * The staging lines, in apply order, aimed at the OBSERVED front-panel ports.
  * Indentation mirrors the CLI's sub-mode style used by `bootstrapLab`, so the
  * transcript is readable to a reviewer.
- * @param {string} ethA @param {string} ethB
+ * @param {string} ethA @param {string} ethB @param {{ peerPort: string } | undefined} peer
  */
-function provisionStaging(ethA, ethB) {
+function provisionStaging(ethA, ethB, peer) {
   return [
   // VLAN names belong in vlan sub-mode (probed 2026-11-07: `name …` under
   // `interface Vlan…` answers `% Invalid input`); the SVI stanza carries addressing only.
@@ -1532,6 +1599,22 @@ function provisionStaging(ethA, ethB) {
   '   10 permit tcp any host 10.0.100.1 eq 443',
   '   20 permit icmp any any',
   'exit',
+  // #154 --nodes=2 only: the routed transit to the peer node + OSPF over it. Re-entering
+  // `router ospf 1` is normal EOS — the block above already created the process.
+  ...(peer === undefined ? [] : [
+    'interface Loopback1',
+    `   ip address ${PEER_LINK.aLoopback}/32`,
+    'exit',
+    `interface ${peer.peerPort}`,
+    '   no switchport',
+    `   ip address ${PEER_LINK.aIp}/30`,
+    '   no shutdown',
+    'exit',
+    'router ospf 1',
+    `   network ${PEER_LINK.subnet} area ${PEER_LINK.ospfArea}`,
+    `   network ${PEER_LINK.aLoopback}/32 area ${PEER_LINK.ospfArea}`,
+    'exit',
+  ]),
   ]
 }
 
@@ -1608,8 +1691,8 @@ function findStagingErrors(transcript, inputCommands) {
  * already aborted on the staging path.
  * @param {string} container
  */
-function provisionLab(container, ethA, ethB) {
-  const stagingInput = [`configure session ${PROVISION_SESSION}`, ...provisionStaging(ethA, ethB)]
+function provisionLab(container, ethA, ethB, peer) {
+  const stagingInput = [`configure session ${PROVISION_SESSION}`, ...provisionStaging(ethA, ethB, peer)]
   const staged = cliScriptOpt(container, stagingInput, 180_000)
   const errors = findStagingErrors(staged, stagingInput)
   const fatal = errors.filter((e) => !PROVISION_TOLERATED.has(e.command))
@@ -1688,6 +1771,177 @@ async function waitForRoutingFeatures(container, opts = {}) {
     await sleep(sleepMs)
   }
   return { ready: false, attemptsUsed: attempts, last }
+}
+
+/**
+ * #154 `--nodes=2`: the minimal configured shape for the PEER node — routed transit
+ * link + loopback + OSPF, in a named session with the same stage-all-then-commit (or
+ * abort) discipline as `provisionLab`. Deliberately NOT the full single-node config: the
+ * peer exists so adjacency-dependent reads answer with real neighbor state, and every
+ * extra stanza on B only widens the drift surface between the two nodes' captures.
+ * @param {string} container @param {string} peerPort
+ */
+function provisionPeer(container, peerPort) {
+  const stagingInput = [
+    `configure session ${PEER_SESSION}`,
+    'ip routing',
+    `interface ${peerPort}`,
+    '   no switchport',
+    `   ip address ${PEER_LINK.bIp}/30`,
+    '   no shutdown',
+    'exit',
+    'interface Loopback1',
+    `   ip address ${PEER_LINK.bLoopback}/32`,
+    'exit',
+    'router ospf 1',
+    `   router-id ${PEER_LINK.bLoopback}`,
+    `   network ${PEER_LINK.subnet} area ${PEER_LINK.ospfArea}`,
+    `   network ${PEER_LINK.bLoopback}/32 area ${PEER_LINK.ospfArea}`,
+    'exit',
+  ]
+  const staged = cliScriptOpt(container, stagingInput, 180_000)
+  const errors = findStagingErrors(staged, stagingInput).filter((e) => !PROVISION_TOLERATED.has(e.command))
+  if (errors.length > 0) {
+    const aborted = cliScriptOpt(container, [`configure session ${PEER_SESSION}`, 'abort', 'end'])
+    return { ok: /** @type {boolean} */ (false), errors, staged, aborted }
+  }
+  const committed = cliScriptOpt(container, [`configure session ${PEER_SESSION}`, 'commit', 'end'], 120_000)
+  // Apply proof from the independent direction, like provisionLab's `show vlan` check:
+  // the peer link must answer with routing live before the run is declared two-node.
+  const routeRaw = cliScriptOpt(container, ['show ip route | json'])
+  let routeModel = null
+  try {
+    const brace = routeRaw.indexOf('{')
+    if (brace >= 0) routeModel = JSON.parse(routeRaw.slice(brace))
+  } catch {
+    routeModel = null
+  }
+  if (!routeModel?.vrfs?.default) {
+    return { ok: false, errors: [], staged: staged + '\n' + committed, aborted: '', routingDown: routeRaw.trim().split('\n').find((l) => l.trim().startsWith('%')) ?? '(no % line)' }
+  }
+  return { ok: true, errors: [], staged, committed }
+}
+
+/**
+ * #154 `--nodes=2`: bring up the peer node on the run-owned peer bridge. Mirrors the
+ * primary node's contract on every safety dimension that matters — pinned image,
+ * label ownership, privileged check, one create-time (bmgmt) attachment with the data
+ * bridge joined before START (NICs bind at boot only), the license canary before any
+ * routing staging, a run-scoped band-pinned mgmt bridge (the forwarder dials it from
+ * the host, so the live-route requirement is identical to the primary's), the pinned
+ * release/model identity check over authenticated eAPI, and its own loopback forwarder
+ * + public-cert anchor so child suites trust it with the same triple as the primary.
+ * Shares the run's lab credentials and state file (A's — the watchdog self-extinguish
+ * covers both forwarders, and one secret print stays true).
+ * @param {ReturnType<typeof labConfig>} cfg
+ * @param {{ image: { tag: string, imageId: string }, runId: string, aMgmtSubnet: string, creds: { user: string, secret: string }, stateFile: string, aPeerPort: string }} opts
+ */
+async function bringUpPeerNode(cfg, opts) {
+  const { runId, image, creds } = opts
+  const containerB = `${containerName(runId)}-b`
+  const bmgmt = networkName(runId, 'bmgmt')
+  const peer = networkName(runId, 'peer')
+  // A second host-reachable mgmt bridge: same candidate walk as the primary, minus the
+  // /24 the primary already holds. Same failure mode (mirrored-mode route ownership) —
+  // same refusal.
+  /** @type {{ octetBase: string, cidr: string } | undefined} */
+  let bSubnet
+  const bTries = []
+  for (const cand of mgmtSubnetCandidates(cfg.mgmtBand)) {
+    if (cand.cidr === opts.aMgmtSubnet) continue
+    const res = dockerOpt(['network', 'create', `--label=${LABEL_RUN}=${runId}`, `--label=${LABEL_MANAGER}=${MANAGER}`, `--subnet=${cand.cidr}`, bmgmt])
+    if (res.status !== 0) {
+      dockerOpt(['network', 'rm', bmgmt])
+      bTries.push(`${cand.cidr}: create refused`)
+      continue
+    }
+    const verdict = verifyMgmtBridgeRoute(cand.cidr, `${cand.octetBase}.10`)
+    if (verdict.ok) {
+      bSubnet = cand
+      bTries.push(`${cand.cidr}: ${verdict.why}`)
+      break
+    }
+    dockerOpt(['network', 'rm', bmgmt])
+    bTries.push(`${cand.cidr}: ${verdict.why}`)
+  }
+  if (bSubnet === undefined) {
+    refuse(`no peer mgmt subnet settled a live connected route. Tried: ${bTries.slice(0, 4).join(' · ')}`, EXIT.readiness)
+  }
+  const bMgmtIp = `${bSubnet.octetBase}.10`
+  docker(['network', 'create', `--label=${LABEL_RUN}=${runId}`, `--label=${LABEL_MANAGER}=${MANAGER}`, peer])
+
+  const createArgs = [
+    'create',
+    `--name=${containerB}`,
+    '--privileged',
+    `--label=${LABEL_RUN}=${runId}`,
+    `--label=${LABEL_MANAGER}=${MANAGER}`,
+    `--network=${bmgmt}`,
+    `--ip=${bMgmtIp}`,
+  ]
+  for (const [k, v] of VENDOR_ENV) createArgs.push('-e', `${k}=${v}`)
+  createArgs.push('-i', image.tag, '/sbin/init')
+  for (const [k, v] of VENDOR_ENV) createArgs.push(`systemd.setenv=${k}=${v}`)
+  const cidB = docker(createArgs).trim()
+  docker(['network', 'connect', peer, containerB]) // pre-START: NICs bind at boot only
+  const privileged = docker(['container', 'inspect', '--format', '{{.HostConfig.Privileged}}', containerB]).trim()
+  if (privileged !== 'true') refuse(`docker recorded HostConfig.Privileged=${privileged} for ${containerB}`, EXIT.privileged)
+  docker(['start', containerB])
+  const cliB = await waitForEosCli(containerB, cfg.cliTimeoutSec)
+  if (!cliB.ready) refuse(`peer EOS never answered within ${cfg.cliTimeoutSec}s (${cliB.attempt} attempts, last: ${cliB.last})`, EXIT.readiness)
+
+  const bPanels = await waitForFrontPanelPorts(containerB, cfg.frontPanelTimeoutSec)
+  if (bPanels.length < 1) refuse(`peer presented no front-panel Ethernet ports within ${cfg.frontPanelTimeoutSec}s — the peer bridge did not bind at boot`, EXIT.readiness)
+
+  const bCreds = { user: creds.user, secret: creds.secret }
+  bootstrapLab(containerB, bCreds)
+  const bFeatures = await waitForRoutingFeatures(containerB)
+  if (!bFeatures.ready) refuse('peer node: routing canary never went ready (license-daemon race) — recreate the run', EXIT.readiness)
+  const bPorts = bPanels[0]
+  const bProv = provisionPeer(containerB, bPorts)
+  if (!bProv.ok) {
+    const why = 'routingDown' in bProv ? `peer routing not live after commit (${bProv.routingDown})` : bProv.errors.map((e) => `${e.command} -> ${e.line}`).join('; ')
+    refuse(`peer provisioning (session ${PEER_SESSION}) failed: ${why}`, EXIT.internal)
+  }
+
+  const bPort = await allocateEndpoint(cfg.hostIp, runId, null)
+  const { pid: bForwarderPid, ready: bReady } = startForwarder({ hostIp: cfg.hostIp, port: bPort, mgmtIp: bMgmtIp, apiPort: cfg.containerApiPort, stateFile: opts.stateFile })
+  try {
+    await bReady
+  } catch (err) {
+    refuse(`peer loopback forwarder ${cfg.hostIp}:${bPort} -> ${bMgmtIp}:${cfg.containerApiPort} never came up: ${String(err instanceof Error ? err.message : err)}`, EXIT.readiness)
+  }
+  const bAnchor = await readContainerPublicCertWait(containerB, cfg.certWaitSec)
+  if (!bAnchor.pem) refuse('peer container exposed no public certificate anchor — no trust anchor, refusing', EXIT.readiness)
+  const bCertFile = certFilePath(`${runId}-b`)
+  fs.writeFileSync(bCertFile, `${bAnchor.pem}\n`, { mode: 0o600 })
+  fs.chmodSync(bCertFile, 0o600)
+  // Identity gate identical to the primary probe: same pinned base release, container model only.
+  const reply = await eapiRunCmds(
+    { host: cfg.hostIp, port: bPort, user: bCreds.user, secret: bCreds.secret, anchor: bAnchor },
+    { cmds: ['show version'], format: 'json', id: 'ceos-lab-peer-ready', timeoutMs: cfg.requestTimeoutMs },
+  )
+  const identity = identityFromShowVersion(reply.result[0])
+  const baseOk = identity.baseFromVersion === cfg.expectVersion || identity.baseFromInternal === cfg.expectVersion || identity.bareInternal === cfg.expectVersion
+  if (!baseOk || !identity.modelName || !/^ceos/i.test(identity.modelName)) {
+    refuse(`peer identity failed the release/model gate (base=${JSON.stringify(identity.baseFromVersion ?? identity.baseFromInternal)}, model=${JSON.stringify(identity.modelName)})`, EXIT.readiness)
+  }
+  return {
+    container: containerB,
+    containerId: cidB,
+    networks: { bmgmt, peer },
+    mgmtSubnet: bSubnet.cidr,
+    mgmtContainerIp: bMgmtIp,
+    port: bPort,
+    forwarderPid: bForwarderPid,
+    certFile: bCertFile,
+    anchorFingerprint256: bAnchor.fingerprint256,
+    anchorSubject: bAnchor.subject,
+    frontPanelPorts: bPanels,
+    peerInterface: bPorts,
+    cliReadyMs: cliB.elapsedMs,
+    aPeerInterface: opts.aPeerPort,
+  }
 }
 
 /**
@@ -2591,6 +2845,14 @@ function writeFixtures(cfg, state, probe) {
  * @param {ReturnType<typeof labConfig>} cfg
  */
 async function cmdFixtures(cfg) {
+  if (cfg.nodes !== 1) {
+    refuse(
+      '--nodes=2 writes no fixtures: CAPTURE_CATALOG is the SINGLE-node contract, and a two-node run ' +
+        'would silently change interface/neighbor models under every pinned fixture. Two-node reads ' +
+        'are review evidence (#154) and land under docs/evidence/, not fixtures/live/.',
+      EXIT.usage,
+    )
+  }
   if (cfg.fixtureDir === null) {
     refuse(
       '`fixtures` cannot be combined with --no-fixtures: writing the captures IS this command. Drop the flag ' +
@@ -2780,6 +3042,11 @@ function teardownRun(runId) {
 
   const state = readState(runId)
   dropContainer(containerName(runId), state?.containerId)
+  // #154 nodes=2 peer resources — idempotent by design: single-node runs simply report
+  // "already absent", and every removal is label-verified against THIS run.
+  dropContainer(`${containerName(runId)}-b`, state?.nodesB?.containerId)
+  dropNetwork(networkName(runId, 'bmgmt'))
+  dropNetwork(networkName(runId, 'peer'))
   dropNetwork(networkName(runId, 'mgmt'))
   dropNetwork(networkName(runId, 'data')) // pre-#62 topologies (idempotent for newer runs)
   dropNetwork(networkName(runId, 'data1'))
@@ -2789,6 +3056,7 @@ function teardownRun(runId) {
   // cmdline-verified SIGTERM path wins over the forwarder's state-watch watchdog
   // (which would self-exit within 5s anyway). Idempotent: a recycled pid is skipped.
   if (state?.forwarderPid) stopForwarder(state)
+  if (state?.nodesB?.forwarderPid) stopForwarder(state.nodesB)
 
   const sp = statePath(runId)
   if (fs.existsSync(sp)) {
@@ -2801,6 +3069,11 @@ function teardownRun(runId) {
     // Public certificate only, but it is run-owned scratch and dies with the run.
     fs.rmSync(cf, { force: true })
     removed.stateFiles.push(path.relative(REPO_ROOT, cf))
+  }
+  const cfB = certFilePath(`${runId}-b`)
+  if (fs.existsSync(cfB)) {
+    fs.rmSync(cfB, { force: true })
+    removed.stateFiles.push(path.relative(REPO_ROOT, cfB))
   }
   removed.locks = releaseLocksForRun(runId)
 
@@ -2898,6 +3171,23 @@ async function cmdRun(cfg, childArgv) {
     // stays non-negotiable either way; `EAPI_LAB_FULL_WRITE=1` narrows nothing, it only lets the
     // suites past the scratch-ONLY gate for genuinely-spare objects.
     ...(cfg.fullWrite ? { EAPI_LAB_FULL_WRITE: '1' } : {}),
+    // #154 nodes=2: the peer endpoint, same trust triple shape as the primary (own cert
+    // anchor, own loopback forwarder). Suits that don't know the peer ignore these; the
+    // two-node suite refuses to run without them, so a single-node live run can never
+    // half-execute the adjacency assertions by accident.
+    ...(state.nodesB
+      ? {
+          EAPI_PEER_HOST: cfg.hostIp,
+          EAPI_PEER_PORT: String(state.nodesB.port),
+          EAPI_PEER_USER: state.user,
+          EAPI_PEER_PASS: state.secret,
+          EAPI_PEER_CA_FILE: String(state.nodesB.certFile),
+          EAPI_PEER_FINGERPRINT: String(state.nodesB.anchorFingerprint256),
+          ...(serverNameFromCertSubject(state.nodesB.anchorSubject)
+            ? { EAPI_PEER_SERVER_NAME: serverNameFromCertSubject(state.nodesB.anchorSubject) }
+            : {}),
+        }
+      : {}),
     // The run's declared spare VLAN for the `requireScratchVlan` gate (`live-guard.ts`): outside the
     // provisioned 10/100/110, outside EOS's reserved 1006-1199, and outside the >=2000 block the
     // SVI-owning suites (varp/ipinterfaces/vrrp) create per-case. Guard still validates the value.
@@ -3016,6 +3306,14 @@ function labConfig(flags) {
     retryDelayMs: int('retry-delay', DEFAULTS.retryDelayMs),
     port: flags['port'] === undefined || flags['port'] === true ? null : Number(flags['port']),
     runId: typeof flags['run'] === 'string' ? flags['run'] : undefined,
+    // #154: `--nodes 2` adds the back-to-back peer for OSPF adjacency + blast evidence.
+    // Validated to 1|2 only — a typo must never silently halve topology.
+    nodes: (() => {
+      if (flags['nodes'] === true) refuse('--nodes needs a value: 1 or 2', EXIT.usage)
+      const n = int('nodes', 1)
+      if (n !== 1 && n !== 2) refuse(`--nodes supports 1 or 2, got ${String(n)}`, EXIT.usage)
+      return n
+    })(),
     fixtureDir: flags['fixtures'] === false || flags['no-fixtures'] === true ? null : str('fixtures', FIXTURE_DIR),
     /**
      * DR-126 full-write lab lane: `lab:run` against a run-owned disposable container **is** the
@@ -3066,6 +3364,9 @@ usage: node scripts/ceos-lab.mjs <command> [flags] [-- <child args>]
   up      create + start one disposable lab (labelled container, mgmt + data bridge,
           ephemeral published loopback port) and bootstrap eAPI. Prints the run-owned
           credentials exactly once. Waits for EOS's own CLI, not for Docker.
+          --nodes 2 adds a second labelled container wired back-to-back to the first
+          (#154: OSPF adjacency + blast evidence; its endpoint reaches child suites as
+          EAPI_PEER_*). The fixtures command refuses --nodes 2 — captures stay single-node.
   probe   poll authenticated eAPI "show version" with a bounded deadline, assert the
           pinned release and the container model, then print identity, TLS pin,
           interface and capability observations (negative results included verbatim).

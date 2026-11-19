@@ -2770,6 +2770,59 @@ the canary stages `router ospf 1`, not an invented token); DR-123 (the Cli-fallb
 run did not need); CAPTURE-UNBLOCK.md "Still owed" line (the bgp entry now CLOSED as a double
 negative); issues #154 (items 1/3), #87 (read-model inputs), #90 (VRRP successor spelling).
 
+### DR-145 — two-node lab topology ships GATED: `--nodes 2` + the OSPF blast suite land now, but the adjacency/blast evidence class cannot run on the mirrored-mode WSL2 host (cEOS NICs are L2-invisible across every docker network driver there), so it runs only where NAT-mode or a native Linux host is proven
+
+#154 items 2+4 (real OSPF adjacency + blast-behavior live tests) need two containers exchanging
+frames. On this dev host (WSL2 **mirrored-mode** + Windows HNS — the same stack docs/CEOS.md
+§Host-route reconciliation already blames for mgmt-band route death), a fully bisected bench says
+the frames vanish host-side whenever **a cEOS container is an endpoint**:
+
+- Vendor-README-faithful pair (create no-net, one shared bridge attached after create before
+  start, both nodes provisioned, OSPF up on both, ports "up/connected"): **100 % packet loss,
+  adjacency never forms** — in BOTH directions, for ARP, ICMP, and OSPF multicast alike.
+- **Control on the same user bridge at the same time:** plain-container ↔ plain-container pings
+  answer in <1 ms, both directions; `bridge link show` says both cEOS ports `state forwarding`,
+  STP off; veth counters rise on both host ends, but tcpdump at a peer's veth NEVER sees the
+  other cEOS's frames (each node itself tx-counters its own HELLO/ARP out the window).
+- Kernel-injected frames from inside a cEOS netns (`arping -I eth1`) are as invisible as
+  EOS-plane frames — it is not the EOS data plane specifically, it is the endpoint pairing.
+- Single-node eAPI has ALWAYS worked on this stack because it rides the NAT/routed path, never
+  a bridge — the first harness feature that actually needs bridged L2 is #154, which is why both
+  prior cEOS milestones (M12/#62/B4) sailed past it.
+- The two candidate escapes are host-dead too: **macvlan** endpoints fail creation outright here
+  (`runc … failed to call BPF_PROG_LOAD: bpf: permission denied` at endpoint setup — same class
+  as the transient host-wide BPF outage observed mid-session), and the transient outage itself
+  recurs until the docker daemon restarts. Neither is fixable from non-root userland.
+
+**Decision: ship the capability now, gate the evidence.** `--nodes 2` (harness) and
+`ospf-two-node.live.test.ts` (five tests: identity gates both nodes, adjacency FULL both ways,
+peer-loopback route present, blast-1 route withdraw/restore, blast-2 adjacency drop/reform,
+net-zero config/session check) land with this PR but **cannot claim a single adjacency from
+this host** — the file only runs when the harness exported `EAPI_PEER_*`, and every skip names
+the reason. The acceptance gate for the evidence class: **any run of
+`npm run lab:run -- --nodes 2 --no-fixtures -- npm -w arista-api-client run test:live --
+src/ospf-two-node.live.test.ts` on a host whose container-to-container L2 is proven** (= a
+docker restart cleared of the BPF fault AND, if mirrored-mode still eats cEOS frames,
+`networkingMode=NAT` in the Windows `.wslconfig` per docs/CEOS.md, or the native-Linux
+eos-lab-runner path the runbook already documents). Until then #154 items 2+4 stay open with
+their implementation marked **verified-offline-only**, and no doc or PR body may describe the
+adjacency as observed on this host (standing honesty rule — the same one behind DR-043).
+**Consequences:** (1) the bench diagnostic sequence (pair → control → arping → macvlan) is
+recorded here in full so the next agent on a suspect host re-runs 4 commands instead of a
+session; (2) CI's self-hosted `eos-lab` runner runs in a docker container on the SAME WSL2
+host, so the gate is environment verification, not just "wait for CI"; (3) `--nodes 2`
+refuses fixtures writes (single-node capture contract, stated at the seam) and the blast suite
+writes only under `docs/evidence/` when `EAPI_TWO_NODE_EVIDENCE=1`; (4) if NAT-mode ever
+regresses the mgmt band, the existing `mgmt-path-owned-by-host-nat` probe still refuses —
+the two failure classes are separately attributed.
+**Related:** DR-019 (bounded deadline for every read the gate waits on), DR-034/DR-035 (the
+lane is opt-in and container-only — the peer re-keys through the same guard for exactly this
+reason), DR-043 (gated ≠ claimed: until the gate runs, container two-node behavior is
+"unobserved", which is NOT "unsupported"), DR-129 (route-only verification is necessary-not-
+sufficient — this is the L2 sibling of that lesson); docs/CEOS.md §Host-route reconciliation
+(the mirrored-mode block this extends with a symptom name: *cEOS-endpoint L2 invisibility*);
+issue #154 (items 2+4: implemented here, evidence pending the gate).
+
 ## Open items (need the device)
 
 Use cEOS first for software behavior and schema exploration, recording its model/version;
