@@ -2823,6 +2823,48 @@ sufficient — this is the L2 sibling of that lesson); docs/CEOS.md §Host-route
 (the mirrored-mode block this extends with a symptom name: *cEOS-endpoint L2 invisibility*);
 issue #154 (items 2+4: implemented here, evidence pending the gate).
 
+### DR-146 — the STP configured-capture + mode-change blast lane (#154 item 5 / #88 step 1) ships GATED and verified-offline-only: the host fault that DR-145 blamed only for two-node L2 now refuses EVERY privileged cEOS start on this box (`kernel.unprivileged_bpf_disabled=2`), so neither the capture refresh nor the blast can be produced locally — and the guard-design half of #88 (step 2) stays a DECISION this lane feeds, never replaces
+
+#154 item 5 asks for two things whose container evidence #88 is blocked on:
+`show spanning-tree` / `…detail` from a CONFIGURED (not default-bare) container, and a
+mode-change blast (`spanning-tree mode rapid-pvst` → observe → reverse → net-zero). Both need a
+running cEOS. The implementation lands now and offline-verifies (typecheck clean; the suite
+skips with a named reason, 1 file / 5 tests, exit 0; default `npm test` never loads it):
+`src/stp-mode-change.live.test.ts` (5 tests — configured-populated read model, abort-only
+grammar, blast-1 commit-flips-protocol + abort-reverse keeps it net-zero, scratch-VLAN isolation,
+plus a `--nodes 2`-gated network-wide-reconvergence stub) and refreshed `CAPTURE_CATALOG` notes
+for the two spanning-tree rows. The committed `show-spanning-tree.json` fixture is still the
+DEFAULT (priority-joined MST0) capture — the exact #88 blocker ("an unconfigured container") — so
+**no fixture is overwritten** here: the refresh is a gated `fixtures:refresh` on a healthy host.
+
+**Why it cannot be produced locally now (broadens DR-145):** DR-145 attributed the failure to
+two-node front-panel L2. It is in fact host-wide: a single-node `npm run lab:up` now dies at
+container *start* — `runc create failed … failed to call BPF_PROG_LOAD: bpf: permission denied`,
+and the standard user-mode escape `--security-opt systempaths=unconfined` does NOT bypass it.
+Root cause is `kernel.unprivileged_bpf_disabled=2` on this WSL2 kernel under cgroup v2 — the most
+restrictive setting, which denies `BPF_PROG_LOAD` even to runc's privileged path, and is
+irreversible at runtime (2 cannot revert to 0). Remediation is host-level, out of non-root userland
+and NOT this lane's to apply: set `kernel.unprivileged_bpf_disabled=0` at early boot via
+`/etc/sysctl.d/`, move the runner to cgroup v1, or run on a native-Linux host (the runbook's
+`networkingMode=NAT` fixes DR-145's *bridging* symptom but not this start-phase one). Until a host
+clears both, #154 items 1–6 container evidence cannot be produced here at all — this is the reason
+slice 2/3 ship gated.
+
+**Decision: ship the gated lane, keep the honesty rule, keep #88 step 2 open.** Like slice 2,
+this PR does not claim an observed mode-flip or a refreshed capture. Consequences: (1) #88's real
+blocker is the **guard-design DECISION** (can an in-session diff-and-confirm express "STP will
+reconverge"; drain step; whether to expose MST region config) — a DECISION, never a capture, and
+this lane only *feeds* it (per CAPTURE-UNBLOCK: "a guard-design decision, not a capture"; #88 step
+3 per-port guards ship in S15). (2) the fixture refresh is a deliberate operator/CI action on a
+proven host (`fixtures:refresh -- --yes`), never triggered from a blocked run. (3) the blast suite
+isolates on scratch VLAN 130 so the provisioned Eth1 guards stay untouched, and never persists
+(reads + session-scoped config only — DR-035(c), `assertNoPersistenceCommand`).
+**Related:** DR-145 (same host stack; the bridging-specific sibling — this DR generalizes it to all
+cEOS starts), DR-144 (the license-boot routing canary the configured-STP capture piggybacks on),
+DR-043 (gated ≠ claimed), DR-034/DR-035 (opt-in, container-only, no persistence), DR-019 (bounded
+reconvergence polls); docs/CEOS.md (host gate, extended below); #154 item 5; #88 (steps 1 captures
+gated here, step 2 guard-decision still open, step 3 in S15).
+
 ## Open items (need the device)
 
 Use cEOS first for software behavior and schema exploration, recording its model/version;
