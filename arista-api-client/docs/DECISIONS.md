@@ -2865,6 +2865,52 @@ DR-043 (gated ≠ claimed), DR-034/DR-035 (opt-in, container-only, no persistenc
 reconvergence polls); docs/CEOS.md (host gate, extended below); #154 item 5; #88 (steps 1 captures
 gated here, step 2 guard-decision still open, step 3 in S15).
 
+### DR-147 — the commit-timer / session-name live lane (#154 item 6 = #89 open items 5 + 7) ships GATED and verified-offline-only; item 8 is already closed by the 2026-11-16 part B, and the DEVICE-bound session-name limit stays a concrete not-faked plan because the command layer refuses a raw config opener by design
+
+#154 item 6 is the only place #89's commit-timer / persistence-verb class can ever be exercised:
+`copy run start` / `configure replace` / `rollback clean-config` sit behind `HW_PROBE_FORBIDDEN` on
+the real unit, and the commit-timer revert handler is native below the image's Python. Two of the
+three #89 sub-questions were already settled: **item 8** (which verbs answer 1002/1004) by the
+2026-11-16 part B (`copy run start` ACCEPTED + startup flip; `configure replace` exists;
+`rollback clean-config` exec = 1002), and the hardware half of **item 5** by run 5 / DR-137. What
+was open and lab-testable is the CONTAINER verdict for **item 5** and any CONTAINER input to
+**item 7**. The implementation lands and offline-verifies (typecheck clean; suite skips with a named
+reason, 1 file / 8 skipped (6 real + 2 gated stubs), exit 0; default `npm test` never loads it;
+never persists — no `persist: true`, `assertNoPersistenceCommand` fences `copy run start`):
+`src/commit-timer-persistence.live.test.ts`.
+
+**Item 5, container verdict (3 tests + 1).** Each arms `commit timer 00:02:00` on its own scratch
+VLAN (140/141/142, isolated so sequential revert/confirm cleanups never collide) and: (1) records
+whether the container ACCEPTS the timer and re-lists the session on the plain form with `commitBy`
++ a pending state (the container spelling of `pendingCommitTimer` is itself the finding); (2) waits
+the deadline out and records an unattended revert firing (scratch VLAN gone); (3) issues the
+client's own `confirmRevertTimer` (second commit) before the deadline and records whether the change
+then persists past the original deadline — **confirming-vs-resetting, the half DR-137 left open even
+on hardware**, answered here per class with no cross-claim (DR-043); (4) opens+aborts a later
+session while a timer is armed and accepts-or-records a 1006 (DR-134: a refusal is the answer).
+
+**Item 7, session-name bounds.** The client's own bounds — `MAX_SESSION_NAME_LENGTH=64` + the
+whitespace/quote/backslash/backtick/`;`/control charset refusals — are pinned ONLINE-in-suite as
+*this port's* limits (they fire before the wire) and shown WORKABLE against the device (a 64-char
+name opens and aborts clean). The **device-bound** limit stays open by design: the command layer
+refuses a raw config opener through `exec` (config belongs in `configure()`/`configSession()`), and
+`buildFullWriteNode` exposes no raw-config bypass, so probing past 64 / past the safe charset needs
+a transport-level opener under operator consent on a cleared host — recorded as two `it.skip`ed
+discovery stubs with the exact (and, for `;`/quotes, injection-hazardous) sequence, NOT blind-probed.
+
+**Decision (mirrors DR-145/DR-146): ship gated, keep #89 open.** No container verdict is claimed
+here — the whole privileged cEOS start is refused on this host (`BPF_PROG_LOAD`,
+`unprivileged_bpf_disabled=2`), so #89 items 5/7 read *implemented, evidence pending* until the run
+lands on a BPF-cleared host (DR-146 remediation). **Consequences:** (1) #89's B4 spec still cannot
+be finalized — it needs these answers plus the pending-session field-set capture (the catalog already
+leaves `lab-pending-capture` open for the `show configuration sessions [detail]` rows); (2) the
+revert tests arm only SHORT timers (00:02:00) and rely on the harness destroying the container
+before any timer could matter — the "ephemeral by construction" promise of #154 item 6; (3) a
+surviving armed session is best-effort aborted in `afterAll` so a half-run never parks a lock.
+**Related:** DR-137 (the hardware item-5 answer, and the confirming half still open — this lane is
+its container sibling); DR-134 (device refusal is the answer); DR-145/DR-146 (the host gate);
+DR-035(c) (no persistence); DR-043/DR-034/DR-035; #89 (items 8 closed, 5/7 gated here).
+
 ## Open items (need the device)
 
 Use cEOS first for software behavior and schema exploration, recording its model/version;
