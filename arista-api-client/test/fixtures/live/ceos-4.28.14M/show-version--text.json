@@ -12,15 +12,18 @@
     "internalVersion": "4.28.14M-50015774.42814M",
     "modelName": "cEOSLab",
     "hardwareEvidence": "none — cEOS-lab container capture; not DCS-7050TX-64 / 4.28.13.1M evidence (DR-043)",
-    "runId": "lab-1895090-86f942",
-    "capturedAt": "2026-11-18T04:47:50.201Z",
+    "cliCapture": true,
+    "cliCaptureReason": "mgmt-path-owned-by-host-nat",
+    "cliCaptureNote": "bytes collected with `docker exec <run-owned container> Cli -p 15 … | json` because the published eAPI port was unavailable for this run on this Docker daemon; same EOS agent/parser answers both transports, and the container identity pins (model regex + base version) were re-checked from this CLI reply before any file was written",
+    "runId": "lab-36102-4b33b0",
+    "capturedAt": "2026-11-19T23:05:36.096Z",
     "capturedBy": "scripts/ceos-lab.mjs",
-    "endpoint": "127.0.0.1:46133",
-    "transport": "https + HTTP basic auth to the run-owned published loopback port; container-side pinned certificate",
-    "tlsPinFingerprint256": "BFE0C42666BC4F246470DB8E96BA76EB17F801028AF9EC010B26DC6413D02812",
-    "bootupTimestamp": 1794977194.9846203,
+    "endpoint": "127.0.0.1:46575",
+    "transport": "docker exec Cli -p 15 (enable-mode) inside the run-owned container ceos-lab-lab-36102-4b33b0; eAPI refusal: mgmt-path-owned-by-host-nat",
+    "tlsPinFingerprint256": "29FEBFBF12B6F7543837D840D2630EABBAA596C4C92D0B714CA1582AC08D37B1",
+    "bootupTimestamp": 1795129482.9808476,
     "redactionApplied": [
-      "username/secret and enable/passphrase text replaced with <redacted-lab-secret>, including the encryption-type form (`secret sha512 <hash>`, `enable algorithm <algo> password <hash>`) and **object keys**, because `show running-config` in `json` format keys its `cmds` map by the whole command line — the lab `username … secret sha512 $6$…` line is a key there, not a value (observed 2026-11-06)",
+      "username/secret, enable-password, login-password/login-secret, and passphrase values replaced with <redacted-lab-secret>, including the encryption-type form (`secret sha512 <hash>`, `enable algorithm <algo> password <hash>`) and **object keys**, because `show running-config` in `json` format keys its `cmds` map by the whole command line — the lab `username … secret sha512 $6$…` line is a key there, not a value (observed 2026-11-06)",
       "this run's random lab username replaced with <redacted-lab-user> (API user-stats otherwise leak it)",
       "every MAC-shaped string under a *mac*-named key zeroed, at any depth (M12c: `show interfaces` / `show port-channel detail` carry a MAC per interface, not only systemMacAddress/hwMacAddress/configMacAddress)",
       "no key material: the container keeps the key in a sibling file (capikey.pem) that is never read",
@@ -30,6 +33,6 @@
   "command": "show version",
   "format": "text",
   "result": {
-    "output": "Arista cEOSLab\nHardware version: \nSerial number: \nHardware MAC address: 2a94.d9d0.b1c7\nSystem MAC address: 2a94.d9d0.b1c7\n\nSoftware image version: 4.28.14M-50015774.42814M (engineering build)\nArchitecture: i686\nInternal build version: 4.28.14M-50015774.42814M\nInternal build ID: 9ce2494c-255b-4104-b282-676994531323\nImage format version: 1.0\nImage optimization: None\n\ncEOS tools version: 1.1\nKernel version: 6.18.58.1-microsoft-standard-WSL2\n\nUptime: 1 minute\nTotal memory: 65801360 kB\nFree memory: 56661252 kB\n\n"
+    "output": "Arista cEOSLab\nHardware version: \nSerial number: \nHardware MAC address: 0e70.6dd7.03fa\nSystem MAC address: 0e70.6dd7.03fa\n\nSoftware image version: 4.28.14M-50015774.42814M (engineering build)\nArchitecture: i686\nInternal build version: 4.28.14M-50015774.42814M\nInternal build ID: 9ce2494c-255b-4104-b282-676994531323\nImage format version: 1.0\nImage optimization: None\n\ncEOS tools version: 1.1\nKernel version: 6.18.58.1-microsoft-standard-WSL2\n\nUptime: 0 minutes\nTotal memory: 65801364 kB\nFree memory: 58439792 kB\n"
   }
 }

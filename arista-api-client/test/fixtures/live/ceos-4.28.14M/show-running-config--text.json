@@ -12,15 +12,18 @@
     "internalVersion": "4.28.14M-50015774.42814M",
     "modelName": "cEOSLab",
     "hardwareEvidence": "none — cEOS-lab container capture; not DCS-7050TX-64 / 4.28.13.1M evidence (DR-043)",
-    "runId": "lab-1895090-86f942",
-    "capturedAt": "2026-11-18T04:47:50.202Z",
+    "cliCapture": true,
+    "cliCaptureReason": "mgmt-path-owned-by-host-nat",
+    "cliCaptureNote": "bytes collected with `docker exec <run-owned container> Cli -p 15 … | json` because the published eAPI port was unavailable for this run on this Docker daemon; same EOS agent/parser answers both transports, and the container identity pins (model regex + base version) were re-checked from this CLI reply before any file was written",
+    "runId": "lab-36102-4b33b0",
+    "capturedAt": "2026-11-19T23:05:36.096Z",
     "capturedBy": "scripts/ceos-lab.mjs",
-    "endpoint": "127.0.0.1:46133",
-    "transport": "https + HTTP basic auth to the run-owned published loopback port; container-side pinned certificate",
-    "tlsPinFingerprint256": "BFE0C42666BC4F246470DB8E96BA76EB17F801028AF9EC010B26DC6413D02812",
-    "bootupTimestamp": 1794977194.9846203,
+    "endpoint": "127.0.0.1:46575",
+    "transport": "docker exec Cli -p 15 (enable-mode) inside the run-owned container ceos-lab-lab-36102-4b33b0; eAPI refusal: mgmt-path-owned-by-host-nat",
+    "tlsPinFingerprint256": "29FEBFBF12B6F7543837D840D2630EABBAA596C4C92D0B714CA1582AC08D37B1",
+    "bootupTimestamp": 1795129482.9808476,
     "redactionApplied": [
-      "username/secret and enable/passphrase text replaced with <redacted-lab-secret>, including the encryption-type form (`secret sha512 <hash>`, `enable algorithm <algo> password <hash>`) and **object keys**, because `show running-config` in `json` format keys its `cmds` map by the whole command line — the lab `username … secret sha512 $6$…` line is a key there, not a value (observed 2026-11-06)",
+      "username/secret, enable-password, login-password/login-secret, and passphrase values replaced with <redacted-lab-secret>, including the encryption-type form (`secret sha512 <hash>`, `enable algorithm <algo> password <hash>`) and **object keys**, because `show running-config` in `json` format keys its `cmds` map by the whole command line — the lab `username … secret sha512 $6$…` line is a key there, not a value (observed 2026-11-06)",
       "this run's random lab username replaced with <redacted-lab-user> (API user-stats otherwise leak it)",
       "every MAC-shaped string under a *mac*-named key zeroed, at any depth (M12c: `show interfaces` / `show port-channel detail` carry a MAC per interface, not only systemMacAddress/hwMacAddress/configMacAddress)",
       "no key material: the container keeps the key in a sibling file (capikey.pem) that is never read",
@@ -30,9 +33,6 @@
   "command": "show running-config",
   "format": "text",
   "result": {
-    "output": "! Command: show running-config\n! device: 10dd72e869f0 (cEOSLab, EOS-4.28.14M-50015774.42814M (engineering build))\n!\nno aaa root\n!\nusername <redacted-lab-user> privilege 15 role network-admin secret sha512 <redacted-lab-secret>\n!\ntransceiver qsfp default-mode 4x10G\n!\nservice routing protocols model ribd\n!\nagent Bfd shutdown\nagent PowerManager shutdown\nagent LedPolicy shutdown\nagent Thermostat shutdown\nagent PowerFuse shutdown\nagent StandbyCpld shutdown\nagent LicenseManager shutdown\n!\nhostname 10dd72e869f0\n!\nspanning-tree mode mstp\nspanning-tree mst 0 priority 4096\n!\nvlan 10\n   name LAB-NATIVE\n!\nvlan 100\n   name LAB-ACCESS\n!\nvlan 110\n   name LAB-SPARE\n!\nmanagement api http-commands\n   no shutdown\n!\ninterface Port-Channel1\n   description LAB-LACP\n   switchport trunk native vlan 10\n   switchport trunk allowed vlan 100-110\n   switchport mode trunk\n   switchport trunk group LABGRP\n!\ninterface Ethernet1\n   switchport access vlan 100\n   spanning-tree portfast\n   spanning-tree bpduguard enable\n<redacted-lab-secret>\ninterface Ethernet2\n   channel-group 1 mode active\n!\ninterface Vlan100\n   ip address 10.0.100.1/24\n!\ninterface Vlan110\n   ip address 10.0.110.1/24\n!\nip access-list EXT-ACL-1\n   10 permit tcp any host 10.0.100.1 eq https\n   20 permit icmp any any\n!\nip access-list standard STD-ACL-1\n   10 permit 10.0.0.0/8\n!\nip routing\n!\nip prefix-list PL-LAB-STATIC seq 5 permit 10.20.0.0/24 le 32\n!\nip route 10.20.0.0/24 10.0.100.2\n!\nntp server 10.20.0.2\n!\nroute-map RM-LAB-IMPORT permit 10\n   match ip address prefix-list PL-LAB-STATIC\n!\nroute-map RM-LAB-IMPORT deny 20\n!\nrouter bgp 65001\n   router-id 10.0.110.1\n   neighbor 10.0.110.2 remote-as 65002\n   network 10.20.0.0/24\n!\nrouter ospf 1\n   router-id 10.0.110.1\n   network 10.0.100.0/24 area 0.0.0.0\n   network 10.0.110.0/24 area 0.0.0.0\n   max-lsa 12000\n!\nend\n",
-    "warnings": [
-      "Command: show running-config"
-    ]
+    "output": "\n! Command: show running-config at line 1\n! device: a563e463e894 (cEOSLab, EOS-4.28.14M-50015774.42814M (engineering build))\n!\nno aaa root\n!\nusername <redacted-lab-user> privilege 15 role network-admin secret sha512 <redacted-lab-secret>\n!\ntransceiver qsfp default-mode 4x10G\n!\nservice routing protocols model ribd\n!\nagent Bfd shutdown\nagent PowerManager shutdown\nagent LedPolicy shutdown\nagent Thermostat shutdown\nagent PowerFuse shutdown\nagent StandbyCpld shutdown\nagent LicenseManager shutdown\n!\nhostname a563e463e894\n!\nspanning-tree mode mstp\nspanning-tree mst 0 priority 4096\n!\nvlan 10\n   name LAB-NATIVE\n!\nvlan 100\n   name LAB-ACCESS\n!\nvlan 110\n   name LAB-SPARE\n!\nmanagement api http-commands\n   no shutdown\n!\ninterface Port-Channel1\n   description LAB-LACP\n   switchport trunk native vlan 10\n   switchport trunk allowed vlan 100-110\n   switchport mode trunk\n   switchport trunk group LABGRP\n!\ninterface Ethernet1\n   switchport access vlan 100\n   spanning-tree portfast\n   spanning-tree bpduguard enable\n!\ninterface Ethernet2\n   channel-group 1 mode active\n!\ninterface Vlan100\n   ip address 10.0.100.1/24\n!\ninterface Vlan110\n   ip address 10.0.110.1/24\n!\nip access-list EXT-ACL-1\n   10 permit tcp any host 10.0.100.1 eq https\n   20 permit icmp any any\n!\nip access-list standard STD-ACL-1\n   10 permit 10.0.0.0/8\n!\nip routing\n!\nip prefix-list PL-LAB-STATIC seq 5 permit 10.20.0.0/24 le 32\n!\nip route 10.20.0.0/24 10.0.100.2\n!\nntp server 10.20.0.2\n!\nroute-map RM-LAB-IMPORT permit 10\n   match ip address prefix-list PL-LAB-STATIC\n!\nroute-map RM-LAB-IMPORT deny 20\n!\nrouter bgp 65001\n   router-id 10.0.110.1\n   neighbor 10.0.110.2 remote-as 65002\n   network 10.20.0.0/24\n!\nrouter ospf 1\n   router-id 10.0.110.1\n   network 10.0.100.0/24 area 0.0.0.0\n   network 10.0.110.0/24 area 0.0.0.0\n   max-lsa 12000\n!\nend\n"
   }
 }

@@ -1,0 +1,41 @@
+{
+  "metadata": {
+    "targetClass": "lab",
+    "targetKind": "ceos-container",
+    "imageTag": "arista/ceos:4.28.14M",
+    "imageId": "sha256:8fd4e31caeba5db82d706eaed00252d67a1caa7d68670e5bd7e2af54935f2e28",
+    "imageRepoDigests": [
+      "arista/ceos@sha256:8fd4e31caeba5db82d706eaed00252d67a1caa7d68670e5bd7e2af54935f2e28"
+    ],
+    "aristaVersion": "4.28.14M-50015774.42814M (engineering build)",
+    "aristaVersionBase": "4.28.14M",
+    "internalVersion": "4.28.14M-50015774.42814M",
+    "modelName": "cEOSLab",
+    "hardwareEvidence": "none — cEOS-lab container capture; not DCS-7050TX-64 / 4.28.13.1M evidence (DR-043)",
+    "cliCapture": true,
+    "cliCaptureReason": "mgmt-path-owned-by-host-nat",
+    "cliCaptureNote": "bytes collected with `docker exec <run-owned container> Cli -p 15 … | json` because the published eAPI port was unavailable for this run on this Docker daemon; same EOS agent/parser answers both transports, and the container identity pins (model regex + base version) were re-checked from this CLI reply before any file was written",
+    "runId": "lab-36102-4b33b0",
+    "capturedAt": "2026-11-19T23:05:36.116Z",
+    "capturedBy": "scripts/ceos-lab.mjs",
+    "endpoint": "127.0.0.1:46575",
+    "transport": "docker exec Cli -p 15 (enable-mode) inside the run-owned container ceos-lab-lab-36102-4b33b0; eAPI refusal: mgmt-path-owned-by-host-nat",
+    "tlsPinFingerprint256": "29FEBFBF12B6F7543837D840D2630EABBAA596C4C92D0B714CA1582AC08D37B1",
+    "bootupTimestamp": 1795129482.9808476,
+    "redactionApplied": [
+      "username/secret, enable-password, login-password/login-secret, and passphrase values replaced with <redacted-lab-secret>, including the encryption-type form (`secret sha512 <hash>`, `enable algorithm <algo> password <hash>`) and **object keys**, because `show running-config` in `json` format keys its `cmds` map by the whole command line — the lab `username … secret sha512 $6$…` line is a key there, not a value (observed 2026-11-06)",
+      "this run's random lab username replaced with <redacted-lab-user> (API user-stats otherwise leak it)",
+      "every MAC-shaped string under a *mac*-named key zeroed, at any depth (M12c: `show interfaces` / `show port-channel detail` carry a MAC per interface, not only systemMacAddress/hwMacAddress/configMacAddress)",
+      "no key material: the container keeps the key in a sibling file (capikey.pem) that is never read",
+      "serialNumber is the empty string on this cEOS-lab image and is kept verbatim"
+    ]
+  },
+  "command": "show bgp neighbors",
+  "format": "json",
+  "result": {
+    "errors": [
+      "Invalid requested version for ModelMetaClass: no such revision 3, most current is 2",
+      "Not supported"
+    ]
+  }
+}
