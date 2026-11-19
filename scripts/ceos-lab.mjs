@@ -2658,10 +2658,10 @@ async function captureFromCliOnce(container, command, format) {
  * Fixture scrubbing. Three layers, deliberately blunt so a reviewer can see what was
  * removed:
  *  1. credential-shaped text (`username … secret [sha512|5|plain] <value>`, `enable … password
- *     <value>`, `login`/`passphrase`); the encryption-type keyword is part of the command, so the
- *     token that gets replaced is the one AFTER it — M12c's `show running-config all` capture made
- *     that distinction load-bearing, because the pre-existing pattern stopped at `secret` and would
- *     have committed a real `$6$…` SHA-512 hash (observed 2026-11-06 on this image's own config);
+ *     <value>`); the encryption-type keyword is part of the command, so the token that gets
+ *     replaced is the one AFTER it — M12c's `show running-config all` capture made that distinction
+ *     load-bearing, because the pre-existing pattern stopped at `secret` and would have committed a
+ *     real `$6$…` SHA-512 hash (observed 2026-11-06 on this image's own config);
  *  2. this run's **random username**, as an object key and inside strings — observed
  *     2026-11-03: `show management api http-commands` reports per-user stats, so the
  *     lab user's name otherwise lands in every API fixture;
@@ -2675,13 +2675,12 @@ async function captureFromCliOnce(container, command, format) {
  * @param {string} text
  * @param {readonly RegExp[]} userPatterns
  */
-function redactCredentialText(text, userPatterns) {
+export function redactCredentialText(text, userPatterns) {
   let out = text
-    .replace(/(username\s+\S+\s+(?:privilege\s+\d+\s+)?(?:role\s+\S+\s+)?secret\s+(?:(?:sha512|sha256|md5|plain)\s+|[0-7]\s+)?)[^\s]+/gi, '$1<redacted-lab-secret>')
-    .replace(/(enable\s+algorithm\s+\S+\s+password\s+)[^\s]+/gi, '$1<redacted-lab-secret>')
-    .replace(/(enable\s+password\s+)[^\s]+/gi, '$1<redacted-lab-secret>')
-    .replace(/(username\s+\S+\s+secret\s+)[^\s]+/gi, '$1<redacted-lab-secret>')
-    .replace(/((?:enable|login|passphrase)\s+)(?:\S+)/gi, '$1<redacted-lab-secret>')
+    .replace(/(username[ \t]+\S+[ \t]+(?:privilege[ \t]+\d+[ \t]+)?(?:role[ \t]+\S+[ \t]+)?secret[ \t]+(?:(?:sha512|sha256|md5|plain)[ \t]+|[0-7][ \t]+)?)[^\s]+/gi, '$1<redacted-lab-secret>')
+    .replace(/(^[ \t]*enable[ \t]+algorithm[ \t]+\S+[ \t]+password[ \t]+)[^\s]+/gim, '$1<redacted-lab-secret>')
+    .replace(/(^[ \t]*enable[ \t]+password[ \t]+)[^\s]+/gim, '$1<redacted-lab-secret>')
+    .replace(/(^[ \t]*(?:passphrase|login[ \t]+(?:password|secret))[ \t]+)[^\s]+/gim, '$1<redacted-lab-secret>')
   for (const p of userPatterns) out = out.replace(p, '<redacted-lab-user>')
   if (/-----BEGIN (RSA |EC )?(PRIVATE KEY|ENCRYPTED)/.test(out)) out = '<redacted-private-key-material>'
   return out
@@ -2804,7 +2803,7 @@ function writeFixtures(cfg, state, probe) {
         tlsPinFingerprint256: probe.anchor.fingerprint256,
         bootupTimestamp: probe.identity.bootupTimestamp,
         redactionApplied: [
-          'username/secret and enable/passphrase text replaced with <redacted-lab-secret>, including the encryption-type form (`secret sha512 <hash>`, `enable algorithm <algo> password <hash>`) and **object keys**, because `show running-config` in `json` format keys its `cmds` map by the whole command line — the lab `username … secret sha512 $6$…` line is a key there, not a value (observed 2026-11-06)',
+          'username/secret, enable-password, login-password/login-secret, and passphrase values replaced with <redacted-lab-secret>, including the encryption-type form (`secret sha512 <hash>`, `enable algorithm <algo> password <hash>`) and **object keys**, because `show running-config` in `json` format keys its `cmds` map by the whole command line — the lab `username … secret sha512 $6$…` line is a key there, not a value (observed 2026-11-06)',
           `this run's random lab username replaced with <redacted-lab-user> (API user-stats otherwise leak it)`,
           'every MAC-shaped string under a *mac*-named key zeroed, at any depth (M12c: `show interfaces` / `show port-channel detail` carry a MAC per interface, not only systemMacAddress/hwMacAddress/configMacAddress)',
           'no key material: the container keeps the key in a sibling file (capikey.pem) that is never read',
@@ -3534,8 +3533,10 @@ async function main(argv) {
   }
 }
 
-const outcome = await main(process.argv.slice(2)).catch((err) => {
-  reportError(err, 'ceos-lab')
-  return { exitCode: err instanceof LabError ? err.code : EXIT.internal }
-})
-process.exitCode = outcome?.exitCode ?? EXIT.internal
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  const outcome = await main(process.argv.slice(2)).catch((err) => {
+    reportError(err, 'ceos-lab')
+    return { exitCode: err instanceof LabError ? err.code : EXIT.internal }
+  })
+  process.exitCode = outcome?.exitCode ?? EXIT.internal
+}
