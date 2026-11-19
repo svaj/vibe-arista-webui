@@ -279,9 +279,17 @@ at runtime (2 cannot revert to 0). Consequences:
   or move it to **native Linux**. `networkingMode=NAT` (DR-145 above) fixes the *bridging* symptom
   but NOT this start-phase BPF fault — check both independently.
 - A quick check that the host is ready again, before trusting any capture:
-  `docker run --rm --privileged alpine:latest echo ready` must print `ready`; if it dies on
-  `BPF_PROG_LOAD`, every cEOS run will too. `cat /proc/sys/kernel/unprivileged_bpf_disabled` should
-  read `0` (or `1`).
+  `docker run --rm hello-world` (or `--privileged alpine:latest echo ready`) must succeed; if it dies
+  on `BPF_PROG_LOAD`, every cEOS run will too. `cat /proc/sys/kernel/unprivileged_bpf_disabled` should
+  read `0` (or `1`), never `2`.
+- **Scope of the fault (confirmed 2026-11-18): it is NOT cEOS- or privileged-specific.** On this exact
+  host (`kernel 6.18.58.1-microsoft-standard-WSL2`, docker cgroup driver `systemd`, cgroup **v2**) even
+  a bare `docker run --rm hello-world` fails with the same `BPF_PROG_LOAD: bpf: permission denied`
+  (exit 126), because cgroup-v2/runc installs a BPF device filter for **every** container. So `unprivileged_bpf_disabled=2`
+  blocks containerization wholesale here — `lab:up` (exit 8) is just the latest victim, and **no
+  container evidence of any kind can be produced until the host fixes the kernel policy** (boot
+  sysctl=0, cgroup v1, or native Linux — none reachable from non-root userland, and the sysctl write is
+  correctly refused to a non-privileged agent). Slices 2–4 therefore ship gated/verified-offline-only.
 
 ## Latest refresh cards
 
