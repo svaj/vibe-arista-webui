@@ -17,6 +17,7 @@ import { Stp } from './features/stp/Stp'
 import { Vrfs } from './features/vrfs/Vrfs'
 import { Acls } from './features/acls/Acls'
 import { StaticRoutes } from './features/routes/StaticRoutes'
+import { Routing } from './features/routing/Routing'
 import { TransactionCenter } from './features/sessions/TransactionCenter'
 import { Users } from './features/users/Users'
 import { VlanManagement } from './features/vlans/VlanManagement'
@@ -147,6 +148,14 @@ function App() {
     '/routes/static': {
       title: 'Static routes',
       element: <StaticRoutes node={node} proxyConfigured={configured} />,
+    },
+    // B2 (#87) owns `#/routing`: READ-ONLY routing status (OSPF / route maps / VRRP). The
+    // container's seam is Pick<Node, 'ospf' | 'routemaps' | 'vrrp' | 'show'> — it cannot even see a
+    // config session — and the screen ships no writes: #87 keeps every routing editor blocked
+    // behind a per-protocol blast-radius review. BGP renders the recorded double negative, not data.
+    '/routing': {
+      title: 'Routing status',
+      element: <Routing node={node} proxyConfigured={configured} />,
     },
     '/vlans/manage': {
       title: 'VLAN management',

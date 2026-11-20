@@ -403,6 +403,152 @@ export interface ShowVrfReply {
   readonly vrfs: Readonly<Record<string, ShowVrfEntry>>
 }
 
+/**
+ * One instance's bridge block inside `show spanning-tree`. Every key below appears with the same
+ * name and type in BOTH captures — the 7050TX-64 hardware inventory
+ * (`…/show-spanning-tree--hw-inventory.json`, capture `['enable','show spanning-tree']`, `result[1]`,
+ * `MST0` at priority 32768) and the configured cEOS-lab 4.28.14M live capture
+ * (`…/live/ceos-4.28.14M/show-spanning-tree.json`, `MST0` at the provisioned priority 4096).
+ */
+export interface ShowSpanningTreeBridge {
+  readonly priority: number
+  /** MAC-shaped; zeroed by capture redaction in both files (the shape, not the value, is pinned). */
+  readonly macAddress: string
+  readonly systemIdExtension: number
+  readonly forwardDelay: number
+  readonly helloTime: number
+  readonly maxAge: number
+}
+
+/**
+ * One port row of a `show spanning-tree` instance. The key set is the intersection of the two
+ * captures' rows (hw `Port-Channel10`, cEOS `Ethernet1`) — identical nine keys, so all are required.
+ * Value sets stay the device's: `state`/`role`/`linkType`/`boundaryType` are open strings.
+ */
+export interface ShowSpanningTreePortRow {
+  readonly priority: number
+  readonly linkType: string
+  /** Captured `"forwarding"`; `blocking`/`learning`/`listening`/`disabled` are device answers this floor does not enumerate. */
+  readonly state: string
+  readonly cost: number
+  /** Captured `"designated"`; `root`/`alternate`/`backup` are device answers. */
+  readonly role: string
+  readonly inconsistentFeatures: {
+    readonly loopGuard: boolean
+    readonly rootGuard: boolean
+    readonly mstPvstBorder: boolean
+    readonly bridgeAssurance: boolean
+  }
+  readonly portNumber: number
+  readonly isEdgePort: boolean
+  readonly boundaryType: string
+}
+
+/**
+ * One spanning-tree instance. `bridge`/`interfaces`/`protocol` are in both captures; `rootBridge`
+ * and `rootPort` were seen ONLY in the 7050TX hardware capture, so they are optional and no screen
+ * may treat their absence as "not root" — the cEOS answer simply does not carry them.
+ * `protocol` is the device's own spelling: captured `"mstp"` on both; the 2026-11-19 blast run
+ * (docs/evidence/stp-mode-change.ceos.json) proved a committed `spanning-tree mode rapid-pvst`
+ * answers `"rapidPvst"` (camelCase) and swaps the instance keys from `MST0` to per-VLAN `VL<n>`.
+ */
+export interface ShowSpanningTreeInstance {
+  readonly bridge: ShowSpanningTreeBridge
+  readonly interfaces: Readonly<Record<string, ShowSpanningTreePortRow>>
+  readonly protocol: string
+  /** Hardware-capture-only block; same shape as {@link ShowSpanningTreeBridge}. */
+  readonly rootBridge?: ShowSpanningTreeBridge
+  /** Hardware-capture-only; the interface name and cost of this instance's root port. */
+  readonly rootPort?: {
+    readonly portNumber: number
+    readonly interface: string
+    readonly cost: { readonly internalCost: number; readonly externalCost: number }
+  }
+}
+
+/**
+ * `show spanning-tree` — positive JSON captures on BOTH targets (see {@link ShowSpanningTreeInstance}).
+ * The instance KEY set is the device's: `MST0` in both committed captures, per-VLAN `VL<n>` after a
+ * rapid-pvst mode change (blast evidence above), so no screen may key on a literal.
+ */
+export interface ShowSpanningTreeReply {
+  readonly spanningTreeInstances: Readonly<Record<string, ShowSpanningTreeInstance>>
+}
+
+/**
+ * One OSPF instance inside `show ip ospf`'s per-VRF `instList`. The JSON shape is captured on
+ * **cEOS-lab 4.28.14M only** (`…/live/ceos-4.28.14M/show-ip-ospf.json`); the 7050TX hardware sweep
+ * captured this command in **text form with empty output**
+ * (`…/show-ip-ospf--hw-inventory.json`), so per DR-043 the container shape does not establish the
+ * switch's JSON field set — every instance key is optional and the screen renders "the answer
+ * carried no …" rather than guessing. The keys below are exactly what the one capture's instance
+ * carries that a status screen reads.
+ */
+export interface ShowIpOspfInstance {
+  readonly instanceId?: number
+  readonly vrf?: string
+  readonly routerId?: string
+  readonly shutDown?: boolean
+  readonly numAreas?: number
+  readonly numBackboneNeighbors?: number
+}
+
+/**
+ * `show ip ospf` — modelled from the single cEOS-lab JSON capture; the hardware capture is a text
+ * empty output (a different format, not a JSON negative). Unmodelled here means "no JSON capture on
+ * this target", never "the switch refuses" — the text capture proves the command RUNS on the switch.
+ */
+export interface ShowIpOspfReply {
+  readonly vrfs: Readonly<Record<string, { readonly instList?: Readonly<Record<string, ShowIpOspfInstance>> }>>
+}
+
+/**
+ * `show ip ospf neighbor` — modelled from the single cEOS-lab JSON capture
+ * (`…/live/ceos-4.28.14M/show-ip-ospf-neighbor.json`: `vrfs.default.instList['1'].ospfNeighborEntries: []`
+ * — the lab box had no adjacency at capture time). The hardware capture is text-form empty output,
+ * same standing as {@link ShowIpOspfReply}. The NEIGHBOR ENTRY shape is carried by no capture (both
+ * are empty arrays), so entries stay `unknown` — the two-node blast evidence
+ * (`docs/evidence/ospf-two-node.ceos.json`) records an entry shape from a live adjacency, but that is
+ * review evidence, not a committed fixture, so no screen reads into these elements.
+ */
+export interface ShowIpOspfNeighborReply {
+  readonly vrfs: Readonly<Record<string, { readonly instList?: Readonly<Record<string, { readonly ospfNeighborEntries?: readonly unknown[] }>> }>>
+}
+
+/**
+ * One clause of a route-map entry. Seen in both clauses (`10`, `20`) of the single populated capture
+ * (cEOS-lab `…/live/ceos-4.28.14M/show-route-map.json`); the 7050TX hardware capture's `routeMaps`
+ * is `{}` (no route-maps configured on the switch), so no hardware clause proves this shape —
+ * DR-043 floor, every key optional at the clause level.
+ */
+export interface ShowRouteMapClause {
+  readonly filterType?: string
+  readonly matchRules?: Readonly<Record<string, unknown>>
+  readonly setRules?: Readonly<Record<string, unknown>>
+  readonly subRouteMap?: { readonly name?: string; readonly invert?: boolean }
+  readonly description?: readonly unknown[]
+}
+
+/**
+ * `show route-map` — positive JSON captures on BOTH targets: the hardware capture answers
+ * `routeMaps: {}` (command runs, none configured) and the cEOS capture carries one populated map.
+ * Clause contents are cEOS-only (see {@link ShowRouteMapClause}).
+ */
+export interface ShowRouteMapReply {
+  readonly routeMaps: Readonly<Record<string, { readonly entries?: Readonly<Record<string, ShowRouteMapClause>> }>>
+}
+
+/**
+ * `show vrrp` — positive JSON captures on BOTH targets, and BOTH answer `virtualRouters: []`
+ * (hardware `…/show-vrrp--hw-inventory.json`; cEOS `…/live/ceos-4.28.14M/show-vrrp.json`). The
+ * command is proven to answer; the ELEMENT shape is carried by no capture, so elements stay
+ * `unknown` and the VRRP screen's configured-state columns come from the typed
+ * `node.vrrp.getAll()` config reader instead.
+ */
+export interface ShowVrrpReply {
+  readonly virtualRouters: readonly unknown[]
+}
+
 declare module '@devhax-heavy-industries/arista-eapi' {
   interface ShowContracts {
     version: ShowVersionReply
@@ -424,5 +570,20 @@ declare module '@devhax-heavy-industries/arista-eapi' {
     // captures on BOTH targets (hw inventory recording + cEOS live capture), same evidence standing
     // as the line above; both entries are the `default` VRF — see the contract's capture note.
     vrf: ShowVrfReply
+    // B3 (#88) step 1: the operational STP read the S15 screen's summary panel was permanently
+    // muted on. Positive JSON captures on BOTH targets since the configured-shape cEOS capture
+    // (2026-11-19 refresh, MST0/mstp/priority 4096) and the hw inventory (MST0/mstp/32768); the
+    // mode-change blast (docs/evidence/stp-mode-change.ceos.json) proved the rapidPvst spelling.
+    'spanning-tree': ShowSpanningTreeReply
+    // B2 (#87): the routing status reads. `ip ospf`/`ip ospf neighbor` are modelled from the cEOS
+    // JSON capture ONLY (the hw sweep captured text-form empty output — the command runs on the
+    // switch, its JSON field set is not established there, DR-043). `route-map` and `vrrp` are
+    // positive on BOTH targets (hw answers empty containers). `bgp summary`/`bgp neighbors` stay
+    // UNMODELLED: the double negative stands (hw `% Not supported` code 1000, cEOS `errors[]` —
+    // docs/BLOCKED-ISSUES-AUDIT.md), same standing as `lag` above.
+    'ip ospf': ShowIpOspfReply
+    'ip ospf neighbor': ShowIpOspfNeighborReply
+    'route-map': ShowRouteMapReply
+    vrrp: ShowVrrpReply
   }
 }

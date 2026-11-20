@@ -1,18 +1,19 @@
 /**
  * S15 (#85): the spanning-tree screen, offline through hand-rolled fake client seams — the
- * `Ntp.test.tsx` shape (config-backed M resource: the seam is `stp.get()` plus a soft
- * `show('version')` for the identity chip; scenario values are hand-authored config-shaped data,
- * not captured payloads). No test here contacts a device, and nothing fabricates a
- * `show spanning-tree` contract — that command has NO capture for this unit.
+ * `Ntp.test.tsx` shape (config-backed M resource: the seam is `stp.get()` plus soft
+ * `show('version')`/`show('spanning-tree')` reads; scenario values are hand-authored config-shaped
+ * data plus the verbatim cEOS `show spanning-tree` capture body). No test here contacts a device.
+ * B3 (#88) step 1 closed the capture gap the original header named: `show spanning-tree` is
+ * capture-backed on both targets, so the operational panel is now a rendered, tested half.
  *
- * The acceptance lines #85 names, pinned below:
+ * The acceptance lines #85 names, pinned below (the operational line updated by #88 step 1):
  * - "the EXACT command texts stp.ts pins" — every session `run()` argv is byte-for-byte the
  *   `stp.test.ts` batch (parent line `interface <port>` plus the enable/disable WORDS, the `no`
  *   and `default` forms, the bare/edge(+auto)/network/normal PortFast texts);
  * - "hard-confirm guard on enabling portfast" — the confirm dialog names the port and states the
  *   far end is not visible to this UI; declining it leaves `commit()` at zero calls;
- * - "summary shows configured mode only, carries 'operational STP state not yet observable —
- *   capture pending'" — verbatim copy pinned, and the operational vocabulary never reaches the DOM;
+ * - the operational panel renders the live read model verbatim when `show spanning-tree` answers,
+ *   and names its own failure (never a blank, never "unsupported") when the soft read fails;
  * - "NO global mode control renders" — no button (or staged batch) names a spanning-tree mode;
  * - the row-168 read/write asymmetry: the parsed `interface Et1` section is listed but refuses
  *   writes at ZERO sessions;
@@ -25,6 +26,7 @@ import type { Node, StpInterface, StpSettings as DeviceSettings } from '@devhax-
 
 import { TransactionProvider, useTransactionSnapshot } from '../sessions/TransactionContext'
 import type { TransactionSnapshot } from '../sessions/transaction'
+import type { ShowSpanningTreeReply } from '../../eapi/show-contracts'
 import { Stp, stpWriteGuard } from './Stp'
 
 type TestNode = NonNullable<Parameters<typeof Stp>[0]['node']>
@@ -66,10 +68,32 @@ const versionBase = {
 interface Overrides {
   readonly settings?: DeviceSettings | Error
   readonly versionFails?: boolean
+  /** B3 (#88) step 1: the soft `show spanning-tree` reply. Default: a configured MST0 shape. */
+  readonly spanningTree?: ShowSpanningTreeReply | Error
+  /** Force the soft read to fail (the operational-unavailable state). */
+  readonly spanningTreeFails?: boolean
   readonly diff?: string
   readonly diffRead?: boolean
   readonly runError?: Error
 }
+
+/** The MST0 instance the fake answers for `show spanning-tree` — the verbatim cEOS-lab capture body
+ * (`live/ceos-4.28.14M/show-spanning-tree.json`). */
+const spanningTreeFixture = (): ShowSpanningTreeReply => ({
+  spanningTreeInstances: {
+    MST0: {
+      protocol: 'mstp',
+      bridge: { priority: 4096, macAddress: '00:00:00:00:00:00', systemIdExtension: 0, forwardDelay: 15, helloTime: 2, maxAge: 20 },
+      interfaces: {
+        Ethernet1: {
+          priority: 128, linkType: 'p2p', state: 'forwarding', cost: 20000, role: 'designated',
+          inconsistentFeatures: { loopGuard: false, rootGuard: false, mstPvstBorder: false, bridgeAssurance: false },
+          portNumber: 1, isEdgePort: true, boundaryType: 'none',
+        },
+      },
+    },
+  },
+})
 
 function makeFakes(overrides: Overrides = {}) {
   const session = {
@@ -90,6 +114,11 @@ function makeFakes(overrides: Overrides = {}) {
     return overrides.settings ?? stpFixture()
   })
   const show = vi.fn(async (command: string) => {
+    if (command === 'spanning-tree') {
+      if (overrides.spanningTreeFails === true) throw new Error('SYNTHETIC show spanning-tree exploded')
+      if (overrides.spanningTree instanceof Error) throw overrides.spanningTree
+      return overrides.spanningTree ?? spanningTreeFixture()
+    }
     if (command !== 'version') throw new Error(`SYNTHETIC unexpected show: ${command}`)
     if (overrides.versionFails === true) throw new Error('SYNTHETIC show version exploded')
     return versionBase
@@ -242,16 +271,20 @@ describe('Stp — four states', () => {
     const { container } = renderScreen(fakes)
     await readyPorts()
 
-    // Ethernet1: enable line present + typed `network` token.
-    const eth1 = screen.getByRole('row', { name: /Ethernet1/u })
+    // Ethernet1: enable line present + typed `network` token. Scoped to the CONFIG table —
+    // the live operational panel also carries an Ethernet1 row once `show spanning-tree` answers.
+    const configTable = screen.getByRole('table', { name: 'Per-port spanning-tree configuration' })
+    const eth1 = within(configTable).getByRole('row', { name: /Ethernet1/u })
     expect(within(eth1).getAllByText('enabled')).toHaveLength(2)
     expect(within(eth1).getByText('network')).toBeInTheDocument()
     // Port-Channel1: the exact negation reads portfast disabled, fallback type 'normal'.
-    const pc1 = screen.getByRole('row', { name: /Port-Channel1/u })
+    const pc1 = within(configTable).getByRole('row', { name: /Port-Channel1/u })
     expect(within(pc1).getAllByText('disabled')).toHaveLength(2)
     expect(within(pc1).getByText('normal')).toBeInTheDocument()
-    // Configured mode: the device token verbatim, in a <code>, never translated.
-    expect(screen.getByText('mstp')).toBeInTheDocument()
+    // Configured mode: the device token verbatim, in a <code>, never translated. Scoped to the
+    // summary region — the operational panel renders its own protocol token separately.
+    const summary = screen.getByRole('region', { name: 'STP summary' })
+    expect(within(summary).getByText('mstp')).toBeInTheDocument()
     expect(container.querySelector('.device-identity')).not.toBeNull()
     // The pill-semantics note is on screen so "disabled" is not read as "configured disabled".
     expect(screen.getByText(/covers the disable word, the negated line, and no line at all/u)).toBeInTheDocument()
@@ -286,17 +319,39 @@ describe('Stp — four states', () => {
 // ====================================================================================================
 
 describe('Stp — summary honesty and the closed halves', () => {
-  it("the summary carries the exact 'not yet observable — capture pending' copy and NO operational vocabulary", async () => {
+  it('the operational panel renders the live read model verbatim once `show spanning-tree` answers (B3 #88 step 1)', async () => {
     const fakes = makeFakes()
-    const { container } = renderScreen(fakes)
+    renderScreen(fakes)
     await readyPorts()
 
-    expect(screen.getByText(/operational STP state not yet observable — capture pending/u)).toBeInTheDocument()
-    // None of these device-status words may be rendered as if the screen knew them.
-    expect(container.textContent).not.toMatch(/designated|root bridge|forwarding|listening|learning|blocking/iu)
-    // And no `show spanning-tree` — or any show beyond the identity read — is ever issued.
+    // The operational panel exists and carries the device's own tokens — instance key, protocol,
+    // and the port row's state/role — rendered verbatim, never translated into UI vocabulary.
+    expect(await screen.findByText('MST0')).toBeInTheDocument()
+    // 'mstp' appears twice once both panels answer: the configured-mode token (summary) and the
+    // live protocol token (operational). Both are the device's own spelling, rendered verbatim.
+    expect(screen.getAllByText('mstp').length).toBeGreaterThanOrEqual(2)
+    const liveTable = screen.getByRole('table', { name: /Live spanning-tree ports for instance MST0/u })
+    const liveRow = within(liveTable).getByRole('row', { name: /Ethernet1/u })
+    expect(within(liveRow).getByText('forwarding')).toBeInTheDocument()
+    expect(within(liveRow).getByText('designated')).toBeInTheDocument()
+    // The retired #85 sentence is gone, and the read is actually issued.
+    expect(screen.queryByText(/not yet observable — capture pending/u)).not.toBeInTheDocument()
     expect(fakes.show).toHaveBeenCalledWith('version')
-    expect(fakes.show.mock.calls.filter(([command]) => String(command).startsWith('spanning-tree'))).toHaveLength(0)
+    expect(fakes.show).toHaveBeenCalledWith('spanning-tree')
+  })
+
+  it('a FAILED soft `show spanning-tree` mutes the operational panel with the named note and never blanks the screen', async () => {
+    const fakes = makeFakes({ spanningTreeFails: true })
+    renderScreen(fakes)
+    await readyPorts()
+
+    // The config table is still ready (the hard read answered) while the operational panel names
+    // its own failure — a read failure, never a "not supported" claim.
+    expect(screen.getByText(/did not answer on this device/u)).toBeInTheDocument()
+    expect(screen.getByText(/not a claim that the command is unsupported/u)).toBeInTheDocument()
+    expect(screen.queryByText('MST0')).not.toBeInTheDocument()
+    // The config table still rendered:
+    expect(screen.getByRole('row', { name: /Ethernet3/u })).toBeInTheDocument()
   })
 
   it('NO global-mode control renders anywhere, and the static B3 (#88) note is on screen', async () => {

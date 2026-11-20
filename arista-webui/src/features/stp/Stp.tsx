@@ -10,9 +10,12 @@
  * parsed `running-config all`, so the loading/failure copy names the source, and an empty
  * interface table is a normal `ready` payload rendered with `EmptyState`, never an error. The
  * identity chip rides a soft, silent `show version` read — its failure only removes the chip,
- * because (unlike S12 #82) no write on this screen is version-conditional. `show spanning-tree`
- * has **no capture** for this device, so no contract key is fabricated and the summary panel is a
- * permanent {@link STP_OPERATIONAL_NOTE} statement, never operational fields.
+ * because (unlike S12 #82) no write on this screen is version-conditional. B3 (#88) step 1 closed
+ * the capture gap the #85 boundary named: `show spanning-tree` is now capture-backed on BOTH
+ * targets (the hw inventory plus the configured-shape cEOS refresh), so a second soft read feeds
+ * the OPERATIONAL panel below the config summary. It stays soft — the config table is the hard
+ * dependency — and a failed live read mutes the panel with
+ * {@link STP_OPERATIONAL_UNAVAILABLE_NOTE}, never a blank and never a "not supported" claim.
  *
  * ## Writes (named session; preview → device `diff()` → confirm → commit)
  *
@@ -53,7 +56,8 @@ import { TransactionScope, useTransaction, useTransactionSnapshot } from '../ses
 import { stageLines } from '../staged-batch'
 import { StpView } from './StpView'
 import type { StpViewProps } from './StpView'
-import { actionIsDestructive, stageRisks, stpPortRowView, stpWriteAction } from './stp-rules'
+import { actionIsDestructive, stageRisks, stpOperationalView, stpPortRowView, stpWriteAction } from './stp-rules'
+import type { StpOperationalInstanceView } from './stp-rules'
 
 // The typed `show('version')` overload (the F-tier extension) — same augmentation S6/S8/S12 import.
 import '../../eapi/show-contracts'
@@ -77,6 +81,10 @@ interface PendingStage {
 interface ReadData {
   readonly settings: DeviceSettings
   readonly identity?: DeviceIdentity
+  /** B3 (#88) step 1: the live read model, soft — a failure here only mutes the operational panel. */
+  readonly operational?: readonly StpOperationalInstanceView[]
+  /** Set when the soft `show spanning-tree` read failed; the panel says so instead of showing nothing. */
+  readonly operationalUnavailable?: boolean
 }
 
 const PROXY_PROMPT = 'Local proxy is not configured. Set EAPI_HOST, EAPI_USER, and EAPI_PASS in arista-webui/.env.local, then restart Vite.'
@@ -124,9 +132,14 @@ function StpWorkspace({ node, proxyConfigured = true }: StpProps) {
       const settings = await node.stp.get()
       // Identity chip only: no write here is version-conditional, so this read fails silently.
       const version = softValue(await softRead(node.show('version'), { silent: true }))
+      // B3 (#88) step 1: the operational read is capture-backed on both targets, but it stays a
+      // SOFT read — the config table is the screen's hard dependency, and a live-state read that
+      // fails must mute the operational panel with a named reason, never blank the screen.
+      const stpReply = softValue(await softRead(node.show('spanning-tree'), { silent: true }))
       return {
         settings,
         ...(version === undefined ? {} : { identity: identityFrom(version) }),
+        ...(stpReply === undefined ? { operationalUnavailable: true } : { operational: stpOperationalView(stpReply) }),
       }
     },
     [node],
@@ -214,6 +227,8 @@ function StpWorkspace({ node, proxyConfigured = true }: StpProps) {
     ...(settings === undefined || settings.mode === undefined ? {} : { mode: settings.mode }),
     portCount: settings?.interfaces.size ?? 0,
     rows,
+    ...(data?.operational === undefined ? {} : { operational: data.operational }),
+    ...(data?.operationalUnavailable === true ? { operationalUnavailable: true } : {}),
     ports,
     selectedPort: effectivePortName,
     selectedAction,

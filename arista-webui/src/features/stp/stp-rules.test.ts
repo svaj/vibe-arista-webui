@@ -12,16 +12,18 @@ import {
   CLIENT_PORTFAST_TYPES,
   STP_INSTANCES_NOTE,
   STP_MODE_EDIT_NOTE,
-  STP_OPERATIONAL_NOTE,
+  STP_OPERATIONAL_UNAVAILABLE_NOTE,
   STP_WRITE_ACTIONS,
   actionIsDestructive,
   isClientPortfastType,
   portfastLoopRisk,
   stageRisks,
+  stpOperationalView,
   stpPortRowView,
   stpWriteAction,
 } from './stp-rules'
 import type { StpWriteActionId } from './stp-rules'
+import type { ShowSpanningTreeReply } from '../../eapi/show-contracts'
 
 describe('stp-rules — the ten staged batches, byte-for-byte from stp.test.ts pins', () => {
   /** `[actionId, port, expected session batch]` — parent line first, exactly as the client frames it. */
@@ -118,7 +120,7 @@ describe('stp-rules — confirm boundaries and destructive flags', () => {
     expect(stageRisks(stpWriteAction('bpduguard-unset')!, 'Ethernet9')[1]).toMatch(/takes BPDU guard out of Ethernet9/u)
     expect(stageRisks(stpWriteAction('portfast-default')!, 'Ethernet9')[1]).toMatch(/CANNOT predict/u)
     expect(stageRisks(stpWriteAction('portfast-unset')!, 'Ethernet9')[1]).toMatch(/no spanning-tree portfast/u)
-    expect(stageRisks(stpWriteAction('bpduguard-enable')!, 'Ethernet9')[1]).toMatch(/uncaptured/u)
+    expect(stageRisks(stpWriteAction('bpduguard-enable')!, 'Ethernet9')[1]).toMatch(/live-state question/u)
   })
 })
 
@@ -140,11 +142,73 @@ describe('stp-rules — read-side display helpers and standing notes', () => {
     expect(row).toEqual({ interfaceName: 'Ethernet1', portfast: true, portfastType: 'auto', bpduguard: false })
   })
 
-  it('the standing notes carry #85\u2019s two closures verbatim', () => {
+  it('the standing notes carry #85’s closures, updated by B3 #88 step 1', () => {
     expect(STP_MODE_EDIT_NOTE).toMatch(/not offered/iu)
     expect(STP_MODE_EDIT_NOTE).toContain('B3 (#88)')
-    expect(STP_OPERATIONAL_NOTE).toBe('operational STP state not yet observable — capture pending')
+    // The #85 sentence "operational STP state not yet observable — capture pending" is RETIRED:
+    // the capture landed on both targets (#88 step 1). The remaining note is about a FAILED READ.
+    expect(STP_OPERATIONAL_UNAVAILABLE_NOTE).toMatch(/did not answer/u)
+    expect(STP_OPERATIONAL_UNAVAILABLE_NOTE).toMatch(/not a claim that the command is unsupported/u)
     expect(STP_INSTANCES_NOTE).toMatch(/return dict\(\)/u)
     expect(STP_INSTANCES_NOTE).toMatch(/not a claim/u)
+  })
+})
+
+describe('stp-rules — stpOperationalView folds the capture-backed reply (B3 #88 step 1)', () => {
+  // The MST0 instance below is the verbatim cEOS-lab capture body
+  // (`live/ceos-4.28.14M/show-spanning-tree.json` → `spanningTreeInstances.MST0`); the VL10
+  // instance is the same shape under the rapid-pvst spelling the blast evidence proved
+  // (`docs/evidence/stp-mode-change.ceos.json` flips the protocol to camelCase `rapidPvst`).
+  const reply: ShowSpanningTreeReply = {
+    spanningTreeInstances: {
+      MST0: {
+        protocol: 'mstp',
+        bridge: { priority: 4096, macAddress: '00:00:00:00:00:00', systemIdExtension: 0, forwardDelay: 15, helloTime: 2, maxAge: 20 },
+        interfaces: {
+          Ethernet1: {
+            priority: 128, linkType: 'p2p', state: 'forwarding', cost: 20000, role: 'designated',
+            inconsistentFeatures: { loopGuard: false, rootGuard: false, mstPvstBorder: false, bridgeAssurance: false },
+            portNumber: 1, isEdgePort: true, boundaryType: 'none',
+          },
+        },
+      },
+    },
+  }
+
+  it('folds instance + ports verbatim, sorted by name', () => {
+    const [instance] = stpOperationalView(reply)
+    expect(instance).toBeDefined()
+    expect(instance?.key).toBe('MST0')
+    expect(instance?.protocol).toBe('mstp')
+    expect(instance?.bridgePriority).toBe(4096)
+    expect(instance?.helloTime).toBe(2)
+    expect(instance?.rootPort).toBeUndefined()
+    expect(instance?.ports).toEqual([
+      { name: 'Ethernet1', state: 'forwarding', role: 'designated', cost: 20000, priority: 128, edgePort: true },
+    ])
+  })
+
+  it('keeps the device’s camelCase protocol and per-VLAN keys without translating them', () => {
+    const rapid: ShowSpanningTreeReply = {
+      spanningTreeInstances: {
+        VL10: { ...reply.spanningTreeInstances['MST0']!, protocol: 'rapidPvst' },
+      },
+    }
+    const [instance] = stpOperationalView(rapid)
+    expect(instance?.key).toBe('VL10')
+    expect(instance?.protocol).toBe('rapidPvst')
+  })
+
+  it('carries the hw-only rootPort when the answer has it', () => {
+    const withRoot: ShowSpanningTreeReply = {
+      spanningTreeInstances: {
+        MST0: {
+          ...reply.spanningTreeInstances['MST0']!,
+          rootPort: { portNumber: 13, interface: 'Ethernet13', cost: { internalCost: 0, externalCost: 2000 } },
+        },
+      },
+    }
+    const [instance] = stpOperationalView(withRoot)
+    expect(instance?.rootPort).toBe('Ethernet13')
   })
 })

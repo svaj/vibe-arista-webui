@@ -25,13 +25,18 @@ import type {
   ShowInterfaceStatusRow,
   ShowInterfacesStatusReply,
   ShowIpInterfaceBriefReply,
+  ShowIpOspfNeighborReply,
+  ShowIpOspfReply,
   ShowManagementApiHttpCommandsReply,
   ShowMlagReply,
   ShowPortChannelDenseReply,
+  ShowRouteMapReply,
+  ShowSpanningTreeReply,
   ShowVersionReply,
   ShowVlanEntry,
   ShowVlanReply,
   ShowVrfReply,
+  ShowVrrpReply,
 } from './show-contracts'
 
 type Exactly<A, B> =
@@ -49,6 +54,12 @@ describe('the augmentation lands on every modelled M13 literal (ARCHITECTURE §9
     // command as the route the LAG screen takes instead of the never-captured `show lag`).
     expectTypeOf<Exactly<ShowReply<'port-channel dense'>, ShowPortChannelDenseReply>>().toEqualTypeOf<true>()
     expectTypeOf<Exactly<ShowReply<'ip interface brief'>, ShowIpInterfaceBriefReply>>().toEqualTypeOf<true>()
+    // B3 (#88) step 1 + B2 (#87): the operational STP read and the routing status reads.
+    expectTypeOf<Exactly<ShowReply<'spanning-tree'>, ShowSpanningTreeReply>>().toEqualTypeOf<true>()
+    expectTypeOf<Exactly<ShowReply<'ip ospf'>, ShowIpOspfReply>>().toEqualTypeOf<true>()
+    expectTypeOf<Exactly<ShowReply<'ip ospf neighbor'>, ShowIpOspfNeighborReply>>().toEqualTypeOf<true>()
+    expectTypeOf<Exactly<ShowReply<'route-map'>, ShowRouteMapReply>>().toEqualTypeOf<true>()
+    expectTypeOf<Exactly<ShowReply<'vrrp'>, ShowVrrpReply>>().toEqualTypeOf<true>()
   })
 
   it('`show lag` stays unmodelled until a capture exists — no invented LAG shape (STATUS §3)', () => {
@@ -433,5 +444,115 @@ describe('S16 (#90): `vrf` is modelled from positive captures on BOTH targets', 
     // @ts-expect-error - `routeTargets` appears in no capture and is therefore not modelled at all
     const invented: ShowVrfReply = { vrfs: {}, routeTargets: [] }
     expect(invented.vrfs).toEqual({})
+  })
+})
+
+describe('B3 (#88) step 1: `spanning-tree` is modelled from positive JSON captures on BOTH targets', () => {
+  it('the augmentation lands on ShowReply<\'spanning-tree\'>', () => {
+    expectTypeOf<Exactly<ShowReply<'spanning-tree'>, ShowSpanningTreeReply>>().toEqualTypeOf<true>()
+  })
+
+  // Verbatim `result[1]` of the 7050TX-64 hw inventory capture (`show-spanning-tree--hw-inventory.json`)
+  // and `result` of the configured cEOS-lab capture (`live/ceos-4.28.14M/show-spanning-tree.json`,
+  // the 2026-11-19 refresh — MST0 at the provisioned priority 4096, Ethernet1 forwarding).
+  const capStpHw: ShowSpanningTreeReply = {
+    spanningTreeInstances: {
+      MST0: {
+        protocol: 'mstp',
+        bridge: { priority: 32768, macAddress: '00:00:00:00:00:00', systemIdExtension: 0, forwardDelay: 15, helloTime: 2, maxAge: 20 },
+        rootBridge: { priority: 28672, macAddress: '00:00:00:00:00:00', systemIdExtension: 4095, forwardDelay: 2, helloTime: 2, maxAge: 20 },
+        rootPort: { portNumber: 13, interface: 'Ethernet13', cost: { internalCost: 0, externalCost: 2000 } },
+        interfaces: {
+          'Port-Channel10': {
+            priority: 128, linkType: 'p2p', state: 'forwarding', cost: 1999, role: 'designated',
+            inconsistentFeatures: { loopGuard: false, rootGuard: false, mstPvstBorder: false, bridgeAssurance: false },
+            portNumber: 100, isEdgePort: true, boundaryType: 'none',
+          },
+        },
+      },
+    },
+  }
+
+  const capStpCeos: ShowSpanningTreeReply = {
+    spanningTreeInstances: {
+      MST0: {
+        protocol: 'mstp',
+        bridge: { priority: 4096, macAddress: '00:00:00:00:00:00', systemIdExtension: 0, forwardDelay: 15, helloTime: 2, maxAge: 20 },
+        interfaces: {
+          Ethernet1: {
+            priority: 128, linkType: 'p2p', state: 'forwarding', cost: 20000, role: 'designated',
+            inconsistentFeatures: { loopGuard: false, rootGuard: false, mstPvstBorder: false, bridgeAssurance: false },
+            portNumber: 1, isEdgePort: true, boundaryType: 'none',
+          },
+        },
+      },
+    },
+  }
+
+  it('both captures type verbatim, and the hw-only rootBridge/rootPort stay optional', () => {
+    expect(capStpHw.spanningTreeInstances['MST0']?.rootPort?.interface).toBe('Ethernet13')
+    expect(capStpCeos.spanningTreeInstances['MST0']?.rootBridge).toBeUndefined()
+    expect(capStpCeos.spanningTreeInstances['MST0']?.interfaces['Ethernet1']?.state).toBe('forwarding')
+    // @ts-expect-error - `protocol` is required (both captures carry it); a partial instance is a contract violation
+    const partial: ShowSpanningTreeReply = { spanningTreeInstances: { MST0: { bridge: capStpCeos.spanningTreeInstances['MST0']!.bridge, interfaces: {} } } }
+    expect(partial.spanningTreeInstances['MST0']?.protocol).toBeUndefined()
+  })
+})
+
+describe('B2 (#87): the routing status reads land on their literals with capture-honest floors', () => {
+  it('each modelled routing literal resolves to this file\'s contract', () => {
+    expectTypeOf<Exactly<ShowReply<'ip ospf'>, ShowIpOspfReply>>().toEqualTypeOf<true>()
+    expectTypeOf<Exactly<ShowReply<'ip ospf neighbor'>, ShowIpOspfNeighborReply>>().toEqualTypeOf<true>()
+    expectTypeOf<Exactly<ShowReply<'route-map'>, ShowRouteMapReply>>().toEqualTypeOf<true>()
+    expectTypeOf<Exactly<ShowReply<'vrrp'>, ShowVrrpReply>>().toEqualTypeOf<true>()
+  })
+
+  // `ip ospf` / `ip ospf neighbor`: the cEOS-lab JSON captures ONLY (the hw sweep captured these in
+  // TEXT form with empty output — the command runs on the switch, its JSON field set is not
+  // established there, DR-043). The instance literal below is the modelled-key subset of
+  // `live/ceos-4.28.14M/show-ip-ospf.json` `vrfs.default.instList['1']` (the capture carries more
+  // keys; narrowing is the floor this file's header defines).
+  const capOspfCeos: ShowIpOspfReply = {
+    vrfs: { default: { instList: { '1': { instanceId: 1, vrf: 'default', routerId: '10.0.110.1', shutDown: false, numAreas: 1, numBackboneNeighbors: 0 } } } },
+  }
+  const capOspfNbrCeos: ShowIpOspfNeighborReply = {
+    vrfs: { default: { instList: { '1': { ospfNeighborEntries: [] } } } },
+  }
+
+  // `route-map`: hw capture `result[1]` (empty — none configured on the switch) and the populated
+  // cEOS capture `result`. `vrrp`: BOTH captures answer `virtualRouters: []` verbatim.
+  const capRouteMapHw: ShowRouteMapReply = { routeMaps: {} }
+  const capRouteMapCeos: ShowRouteMapReply = {
+    routeMaps: {
+      'RM-LAB-IMPORT': {
+        entries: {
+          '10': { filterType: 'permit', matchRules: { prefixList: 'PL-LAB-STATIC' }, setRules: {}, subRouteMap: { name: '', invert: false }, description: [] },
+          '20': { filterType: 'deny', matchRules: {}, setRules: {}, subRouteMap: { name: '', invert: false }, description: [] },
+        },
+      },
+    },
+  }
+  const capVrrpHw: ShowVrrpReply = { virtualRouters: [] }
+  const capVrrpCeos: ShowVrrpReply = { virtualRouters: [] }
+
+  it('the routing captures type verbatim and the empty-container truths stay visible', () => {
+    expect(capOspfCeos.vrfs['default']?.instList?.['1']?.routerId).toBe('10.0.110.1')
+    expect(capOspfNbrCeos.vrfs['default']?.instList?.['1']?.ospfNeighborEntries).toEqual([])
+    expect(capRouteMapHw.routeMaps).toEqual({})
+    expect(capRouteMapCeos.routeMaps['RM-LAB-IMPORT']?.entries?.['10']?.filterType).toBe('permit')
+    expect(capVrrpHw.virtualRouters).toEqual([])
+    expect(capVrrpCeos.virtualRouters).toEqual([])
+    // @ts-expect-error - `vrfs` is required on the ospf reply; a bare object is a contract violation
+    const partial: ShowIpOspfReply = {}
+    expect(partial.vrfs).toBeUndefined()
+  })
+
+  it('`bgp summary`/`bgp neighbors` stay UNMODELLED — the double negative stands (audit #87)', () => {
+    // hw: `% Not supported` (code 1000, show-bgp-summary--hw-inventory.json); cEOS: `errors: ["Not
+    // supported"]` (show-bgp-summary.json). A refusal is recorded, never modelled — same standing as
+    // `lag` above. The routing screen renders this negative as copy, not as a typed read.
+    expectTypeOf<ShowReply<'bgp summary'>>().toEqualTypeOf<unknown>()
+    expectTypeOf<ShowReply<'bgp neighbors'>>().toEqualTypeOf<unknown>()
+    expectTypeOf<ShowReply<'bgp summary'>>().not.toBeAny()
   })
 })

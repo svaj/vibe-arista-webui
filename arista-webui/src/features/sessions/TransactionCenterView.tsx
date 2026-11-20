@@ -130,9 +130,12 @@ export function TransactionCenterView({
 
     <p className="notice notice-warning" role="status">
       The durable half of the transaction story (#89, B4) stays out: no startup-config writes
-      (DR-024), no <code>configure replace</code>, no rollback verbs, no commit-timer editing —
-      those wait on the captures B4 names. Everything here is view, staged review, and confirm-gated
-      abort. Persistence/rollback decisions that need per-platform evidence are tracked on #89.
+      (DR-024), no <code>configure replace</code>, no rollback verbs, no commit-timer editing. The
+      cEOS-lab timer capture (<code>docs/evidence/commit-timer-persistence.ceos.json</code>) has
+      since landed — its exits are abort-with-revert or letting the timer fire, and the physical
+      persistence verbs still wait on an owner authorization decision — so this screen stays view,
+      staged review, and confirm-gated abort. Persistence/rollback decisions that need per-platform
+      evidence are tracked on #89.
     </p>
 
     {state === 'loading' && <p className="notice" role="status">Reading <code>show configuration sessions</code>…</p>}

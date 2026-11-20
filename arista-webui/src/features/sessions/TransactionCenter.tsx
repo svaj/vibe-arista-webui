@@ -26,10 +26,12 @@
  * preview from the CLEAN config" everywhere it appears, never as pre-flight for a specific diff.
  * `unmatched` and `raw` counts are reported, never trimmed away.
  *
- * ## Out of scope (B4, #89 — evidence-blocked)
+ * ## Out of scope (B4, #89 — owner authorization pending)
  *
  * `copy run start` policy, `configure replace`, `rollback*`, commit-timer UX, name-limit editing.
- * This screen names those absences rather than half-implementing them.
+ * This screen names those absences rather than half-implementing them. The 2026-11-20 cEOS timer
+ * capture (DR-148) answered the container mechanics — the session rows below surface the armed
+ * timer with its abort-with-revert exit — but the physical persistence verbs stay fenced.
  *
  * No `useOperation` collapse on the recovery path either? It does use it — the center shows TEXT
  * results (the recovery outcome buckets), which is exactly what `run()`'s string channel serves.
