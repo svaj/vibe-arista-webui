@@ -13,7 +13,9 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
+import type { Node } from '@devhax-heavy-industries/arista-eapi'
 import { TransactionCenter } from './TransactionCenter'
+import { TransactionProvider } from './TransactionContext'
 import type { TransactionCenterClient } from './TransactionCenter'
 
 const ADDRESS = 'https://sw1.example:443/command-api'
@@ -70,7 +72,7 @@ function makeFakes(overrides: Overrides = {}) {
 }
 
 function renderScreen(fakes: ReturnType<typeof makeFakes>) {
-  return render(<TransactionCenter node={fakes.node} proxyConfigured />)
+  return render(<TransactionProvider node={fakes.node as Node}><TransactionCenter node={fakes.node} proxyConfigured /></TransactionProvider>)
 }
 
 async function readyState(fakes: ReturnType<typeof makeFakes>): Promise<void> {
@@ -81,10 +83,10 @@ async function readyState(fakes: ReturnType<typeof makeFakes>): Promise<void> {
 describe('TransactionCenter — four states and the device-reported session table', () => {
   it('no proxy: prompt, device verbs disabled — while the LOCAL journal button stays available', () => {
     const fakes = makeFakes()
-    render(<TransactionCenter node={undefined} proxyConfigured={false} />)
+    render(<TransactionProvider node={undefined}><TransactionCenter node={undefined} proxyConfigured={false} /></TransactionProvider>)
     expect(screen.getByRole('alert')).toHaveTextContent('Local proxy is not configured')
     expect(screen.getByRole('button', { name: 'Run orphan recovery' })).toBeDisabled()
-    expect(screen.getByRole('button', { name: 'Open named session, stage, read diff' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Open shared session and stage draft' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Read local journal' })).toBeEnabled()
     expect(fakes.listSessions).not.toHaveBeenCalled()
   })
@@ -112,37 +114,31 @@ describe('TransactionCenter — four states and the device-reported session tabl
   })
 })
 
-describe('TransactionCenter — staged draft review: generated name, argv pins, free refusals, and the two-step commit', () => {
-  it('preview opens a GENERATOR-named session (ui-… recoverable shape), stages argv-literal, reads the device diff; commit copy promises running-config only', async () => {
+describe('TransactionCenter — shared draft review, argv pins, free refusals, and the two-step commit', () => {
+  it('adds a manual draft to the shared generated session, renders the device diff, and confirms running-config-only commit', async () => {
     const fakes = makeFakes()
     renderScreen(fakes)
     await readyState(fakes)
 
     fireEvent.change(screen.getByLabelText(/Config lines \(one per line\)/u), { target: { value: 'interface Vlan77\ndescription tx' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Open named session, stage, read diff' }))
-    await screen.findByText(/Review the device diff/u)
+    fireEvent.click(screen.getByRole('button', { name: 'Open shared session and stage draft' }))
+    await screen.findByText(/Draft added/u)
 
-    // #79 acceptance: "Session-name generation stays sanitized — reuse it": assert the shape.
-    // (vitest's jsdom runs on Node, so the client's DR-047 name carries the p<pid> segment it
-    // emits whenever a process exists — the generator, not this screen, decides.)
     const call = fakes.configSession.mock.calls[0]?.[0] as { name?: string; description?: string }
-    expect(call.name).toMatch(/^ui-sw1-example-(p\d+-)?[0-9a-f]{8}$/u)
-    expect(call.description).toBe('webui tx center draft review')
+    expect(call.name).toBeUndefined()
+    expect(call.description).toBe('webui shared transaction')
     expect(fakes.session.run).toHaveBeenCalledWith(['interface Vlan77', 'description tx'])
-    // The device diff renders byte-preserved in a <pre> (whitespace-collapsing text queries would
-    // hide the leading '+' column alignment, so compare node content).
     expect(Array.from(document.querySelectorAll('pre')).map((n) => n.textContent)).toContain('+interface Vlan77\n+   description tx')
+    expect(screen.getByText('manual draft (2 line(s))')).toBeInTheDocument()
 
-    // Two-step commit: panel button → F4 prompt whose copy carries the DR-024 promise. Both
-    // share the label; the dialog mounts last (ConfirmProvider host after the workspace).
-    fireEvent.click(screen.getByRole('button', { name: 'Commit draft to running-config' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Commit transaction to running-config' }))
     const body = await screen.findByText(/Startup-config was not changed and never will be/u)
     expect(body).toBeInTheDocument()
-    await waitFor(() => expect(screen.getAllByRole('button', { name: 'Commit draft to running-config' })).toHaveLength(2))
-    fireEvent.click(screen.getAllByRole('button', { name: 'Commit draft to running-config' }).at(-1)!)
+    await waitFor(() => expect(screen.getAllByRole('button', { name: 'Commit transaction to running-config' })).toHaveLength(2))
+    fireEvent.click(screen.getAllByRole('button', { name: 'Commit transaction to running-config' }).at(-1)!)
     await waitFor(() => expect(fakes.session.commit).toHaveBeenCalled())
     expect(await screen.findByText(/Startup-config was not changed \(DR-024\)/u)).toBeInTheDocument()
-    expect(fakes.listSessions.mock.calls.length).toBeGreaterThan(1) // reload after commit
+    expect(fakes.listSessions.mock.calls.length).toBeGreaterThan(1)
   })
 
   it('smuggled session-control verbs are refused at ZERO configSession calls, and the textarea stays untouched', async () => {
@@ -151,35 +147,31 @@ describe('TransactionCenter — staged draft review: generated name, argv pins, 
     await readyState(fakes)
 
     fireEvent.change(screen.getByLabelText(/Config lines \(one per line\)/u), { target: { value: 'commit' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Open named session, stage, read diff' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Open shared session and stage draft' }))
     expect(await screen.findByText(/transaction center refuses/u)).toBeInTheDocument()
     expect(fakes.configSession).not.toHaveBeenCalled()
 
     fireEvent.change(screen.getByLabelText(/Config lines \(one per line\)/u), { target: { value: '   ' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Open named session, stage, read diff' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Open shared session and stage draft' }))
     expect(await screen.findByText(/at least one config line/u)).toBeInTheDocument()
     expect(fakes.configSession).not.toHaveBeenCalled()
   })
 
-  it('commit stays locked until hasDiffBeenRead, and one draft at a time owns the panel', async () => {
+  it('locks commit until hasDiffBeenRead and aborts the whole shared transaction', async () => {
     const fakes = makeFakes({ diffRead: false })
     renderScreen(fakes)
     await readyState(fakes)
 
     fireEvent.change(screen.getByLabelText(/Config lines \(one per line\)/u), { target: { value: 'interface Vlan77' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Open named session, stage, read diff' }))
-    await screen.findByText(/Review the device diff/u)
-    expect(screen.getByRole('button', { name: 'Commit draft to running-config' })).toBeDisabled()
-    // The stage button flips to its open-draft label — no second session can be opened meanwhile.
-    expect(screen.getByRole('button', { name: 'Draft open' })).toBeDisabled()
+    fireEvent.click(screen.getByRole('button', { name: 'Open shared session and stage draft' }))
+    await screen.findByText(/Draft added/u)
+    expect(screen.getByRole('button', { name: 'Commit transaction to running-config' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Add draft to transaction' })).toBeEnabled()
     expect(fakes.configSession).toHaveBeenCalledTimes(1)
 
-    // Abort the draft via the two-step confirm; session.abort fires, not commit. The panel button
-    // and the dialog's confirm share the label — the LAST mount is the dialog (ConfirmProvider
-    // hosts it after the workspace subtree).
-    fireEvent.click(screen.getByRole('button', { name: 'Abort draft session' }))
-    await waitFor(() => expect(screen.getAllByRole('button', { name: 'Abort draft session' })).toHaveLength(2))
-    fireEvent.click(screen.getAllByRole('button', { name: 'Abort draft session' }).at(-1)!)
+    fireEvent.click(screen.getByRole('button', { name: 'Abort transaction' }))
+    await waitFor(() => expect(screen.getAllByRole('button', { name: 'Abort transaction' })).toHaveLength(2))
+    fireEvent.click(screen.getAllByRole('button', { name: 'Abort transaction' }).at(-1)!)
     await waitFor(() => expect(fakes.session.abort).toHaveBeenCalled())
     expect(fakes.session.commit).not.toHaveBeenCalled()
   })

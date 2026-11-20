@@ -57,10 +57,9 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { commandBuilder, isInterfaceName, submodeCommands } from '@devhax-heavy-industries/arista-eapi'
-import type { CommandSpec, ConfigSession, ConfigSessionSummary, Interface, InterfaceStatus, Node } from '@devhax-heavy-industries/arista-eapi'
+import type { CommandSpec, ConfigSessionSummary, Interface, InterfaceStatus, Node } from '@devhax-heavy-industries/arista-eapi'
 
 import { ConnectionHeader } from '../../components/ui/ConnectionHeader'
-import { ConfigDiff } from '../../components/ui/ConfigDiff'
 import { DataTable } from '../../components/ui/DataTable'
 import type { DataTableColumn } from '../../components/ui/DataTable'
 import { EmptyState } from '../../components/ui/EmptyState'
@@ -70,6 +69,7 @@ import type { DeviceIdentity } from '../../shared/identity'
 import { softErrorText, softRead, softValue, useDeviceRead } from '../../shared/use-device-read'
 import { useOperation } from '../../shared/use-operation'
 import { ConfirmProvider, useConfirm } from '../../shared/use-confirm'
+import { TransactionScope, useTransaction, useTransactionSnapshot } from '../sessions/TransactionContext'
 import { hashLinkProps } from '../../router'
 import { stageLines } from '../staged-batch'
 import type { ShowManagementApiHttpCommandsReply } from '../../eapi/show-contracts'
@@ -79,7 +79,6 @@ import type { ShowManagementApiHttpCommandsReply } from '../../eapi/show-contrac
 import '../../eapi/show-contracts'
 
 export type InterfacesClient = Pick<Node, 'interfaces' | 'switchports' | 'ipinterfaces' | 'configSession' | 'listSessions' | 'abortSession' | 'show'>
-type Session = Pick<ConfigSession, 'name' | 'state' | 'run' | 'diff' | 'hasDiffBeenRead' | 'commit' | 'abort'>
 
 /** What the operator is asking the device to do — one intent per staged session. */
 export type InterfaceAction = 'set-description' | 'clear-description' | 'set-mtu' | 'reset-mtu' | 'shutdown' | 'no-shutdown'
@@ -115,11 +114,8 @@ type Data = {
   managementError?: string
   identity?: DeviceIdentity
 }
-type Draft = { session: Session; batch: readonly string[]; diff?: string; commitAttempted: boolean; bandPath: BandPath }
 
 const PROXY_PROMPT = 'Local proxy is not configured. Set EAPI_HOST, EAPI_USER, and EAPI_PASS in arista-webui/.env.local, then restart Vite.'
-const COMMIT_RECOVERY = 'Commit may have applied — reconnect and refresh before any further action.'
-
 const DEVICE_ORDER = (left: string, right: string) => left.localeCompare(right, undefined, { numeric: true })
 
 /**
@@ -189,18 +185,20 @@ export interface InterfacesDashboardProps {
 
 /** Hosts the single confirm dialog this screen's writes and aborts route through (#66). */
 export function InterfacesDashboard(props: InterfacesDashboardProps) {
-  return <ConfirmProvider><InterfacesWorkspace {...props} /></ConfirmProvider>
+  return <TransactionScope node={props.node}><ConfirmProvider><InterfacesWorkspace {...props} /></ConfirmProvider></TransactionScope>
 }
 
 function InterfacesWorkspace({ node, proxyConfigured = true }: InterfacesDashboardProps) {
   const confirm = useConfirm()
   const operation = useOperation()
   const { busy, notice, failure } = operation
+  const transaction = useTransaction()
+  const transactionState = useTransactionSnapshot()
+  const transactionBusy = transactionState.status === 'opening' || transactionState.status === 'staging' || transactionState.status === 'committing' || transactionState.status === 'aborting'
   const [portChoice, setPortChoice] = useState('')
   const [action, setAction] = useState<InterfaceAction>('set-description')
   const [description, setDescription] = useState('')
   const [mtu, setMtu] = useState('')
-  const [draft, setDraft] = useState<Draft>()
 
   const read = useDeviceRead<Data>(
     async () => {
@@ -268,9 +266,8 @@ function InterfacesWorkspace({ node, proxyConfigured = true }: InterfacesDashboa
   const rows = data?.rows ?? []
   const selectedRow = rows.find((row) => row.name === portChoice) ?? rows[0]
   const selected = selectedRow?.name ?? ''
-  const draftOpen = draft !== undefined && (draft.session.state === 'open' || draft.session.state === 'diffed')
-  const canAct = proxyConfigured && node !== undefined
-  const writesDisabled = selectedRow === undefined || !selectedRow.editable || draft !== undefined
+  const canAct = proxyConfigured && node !== undefined && transaction !== undefined && transactionState.status !== 'uncertain'
+  const writesDisabled = selectedRow === undefined || !selectedRow.editable
 
   /** The staged batch for the current intent, composed by the CLIENT's own builder so the literal text
    *  is the one the resource verbs use (`interface X` + one line), and the client's composer refusals
@@ -313,70 +310,24 @@ function InterfacesWorkspace({ node, proxyConfigured = true }: InterfacesDashboa
     // operator sees one kind of message with one kind of styling — and no session was opened.
     const reason = refusal()
     if (reason !== undefined) {
-      setDraft(undefined)
       await operation.run(async () => { throw new Error(reason) })
       return
     }
     const batch = stage(selected)
-    setDraft(undefined)
-    await operation.run(async () => {
-      const session = await node.configSession({ description: `webui ${action.replace(/-/gu, ' ')} on ${selected}` })
-      const handle: Session = session
-      setDraft({ session: handle, batch, commitAttempted: false, bandPath: selectedRow?.bandPath ?? 'unknown' })
-      await handle.run(batch)
-      const diff = await handle.diff()
-      setDraft({ session: handle, batch, diff, commitAttempted: false, bandPath: selectedRow?.bandPath ?? 'unknown' })
-      return diff
-    }, {
-      progress: 'Staging the change and reading the device diff…',
-      success: 'Review the device diff before committing this change.',
+    if (transaction === undefined) return
+    const shutdownRisk = action === 'shutdown'
+      ? `Management path classification for ${selected}: ${BAND_LABEL[selectedRow?.bandPath ?? 'unknown']}. A shutdown may drop this UI's eAPI path.`
+      : undefined
+    await operation.run(() => transaction.append({
+      source: '/interfaces',
+      action: `${action} on ${selected}`,
+      commands: batch,
+      display: batch,
+      risks: shutdownRisk === undefined ? [] : [shutdownRisk],
+    }), {
+      progress: 'Adding the interface change to the shared transaction…',
+      success: 'Interface change added to the transaction. Review the device diff before committing in Transaction Center.',
     })
-  }
-
-  async function abortDraft() {
-    if (busy || draft === undefined || !draftOpen) return
-    if (!await confirm({ title: 'Abort staged changes', body: `Abort staged changes in session ${draft.session.name}? Its staged ${draft.batch.join(' · ')} will be discarded.`, confirmLabel: 'Abort staged changes', destructive: true, subject: draft.session.name })) return
-    const aborted = await operation.run(async () => {
-      await draft.session.abort()
-      setDraft(undefined)
-      return draft.session.name
-    }, { success: `Session ${draft.session.name} was aborted.` })
-    if (aborted.ok) read.reload()
-  }
-
-  /** The body for the commit prompt. A `shutdown` says plainly what could drop, and says what the app
-   *  cannot know — which interface the browser's own packets took is not readable from here. */
-  function commitBody(d: Draft, port: string): string {
-    const risk = d.bandPath === 'eapi-served'
-      ? `The device reports eAPI is served on ${port}. Shutting it down will very likely drop this session mid-commit; the change may still apply.`
-      : d.bandPath === 'addressed'
-        ? `${port} carries an IP address, so it may be carrying the management path.`
-        : d.bandPath === 'unknown'
-          ? 'This app could not read where eAPI is served, so it cannot promise this port is out-of-band.'
-          : 'A shutdown can still break a dependent path (a LAG member can take an SVI down with it; that EOS behaviour is model-general reasoning, not a capture on this unit).'
-    return `Commit session ${d.session.name} to ${port}? This changes running-config only. ${risk} If the session is lost mid-commit, the change may still have applied — reconnect and refresh before any further action.`
-  }
-
-  async function commitDraft() {
-    if (busy || draft?.diff === undefined || !draft.session.hasDiffBeenRead() || draft.commitAttempted) return
-    const shuttingDown = draft.batch.includes('shutdown')
-    if (!await confirm({
-      title: shuttingDown ? 'Shut down interface' : 'Commit to running-config',
-      body: commitBody(draft, selected),
-      confirmLabel: shuttingDown ? `Shut down ${selected}` : 'Commit to running-config',
-      destructive: true,
-      subject: `${draft.session.name} · ${selected}`,
-    })) return
-    setDraft({ ...draft, commitAttempted: true })
-    const committed = await operation.run(() => draft.session.commit(), {
-      progress: 'Committing the reviewed change to running-config…',
-      success: 'Changes committed to running-config. Startup-config was not changed.',
-      failureSuffix: COMMIT_RECOVERY,
-    })
-    if (committed.ok) {
-      setDraft(undefined)
-      read.reload()
-    }
   }
 
   async function abortPending(session: ConfigSessionSummary) {
@@ -488,23 +439,11 @@ function InterfacesWorkspace({ node, proxyConfigured = true }: InterfacesDashboa
 
             {/* The value checks live in `refusal()`, not in this gate: an invalid value must produce the
                 client's reason in the failure slot, not a button that silently does nothing. */}
-            <button className="primary-button" type="submit" disabled={writesDisabled || busy}>{busy ? 'Working…' : 'Preview change'}</button>
+            <button className="primary-button" type="submit" disabled={writesDisabled || busy || transactionBusy}>{busy || transactionBusy ? 'Working…' : 'Add to transaction'}</button>
           </form>
         </section>
 
-        {draft !== undefined && <section className="review-panel" aria-labelledby="review-title">
-          <div className="panel-heading"><div><p className="eyebrow">CHANGE REVIEW</p><h3 id="review-title">Session {draft.session.name}</h3></div><span className="session-state">{draft.session.state}</span></div>
-          <p className="staged-argv">{draft.batch.map((command) => <code key={command}>{command}</code>)}</p>
-          <ConfigDiff diff={draft.diff} />
-          {draft.bandPath !== 'not-eapi-path' && draft.batch.includes('shutdown') && <p className="notice notice-warning" role="status">Management path: {BAND_LABEL[draft.bandPath]} — shutting this port down may drop the eAPI path this UI is using.</p>}
-          {draft.commitAttempted && <p className="notice notice-warning">{COMMIT_RECOVERY}</p>}
-          <div className="review-actions">
-            <button className="primary-button" type="button" onClick={() => void commitDraft()} disabled={draft.diff === undefined || !draft.session.hasDiffBeenRead() || draft.commitAttempted || busy}>Commit to running-config</button>
-            <button className="danger-button" type="button" onClick={() => void abortDraft()} disabled={!draftOpen || busy}>Abort staged changes</button>
-          </div>
-        </section>}
-
-        {data.sessions.length > 0 && <section className="session-list" aria-labelledby="sessions-title"><div className="panel-heading"><div><p className="eyebrow">DEVICE STATE</p><h3 id="sessions-title">Configuration sessions</h3></div><span className="panel-index">{data.sessions.length.toString().padStart(2, '0')}</span></div><ul>{data.sessions.map((session) => <li key={session.name}><div><strong>{session.name}</strong><span><StatePill value={session.state} />{session.description ? ` · ${session.description}` : ''}</span></div>{/pending/iu.test(session.state) && (draft === undefined || draft.session.name !== session.name) && <button className="danger-button" type="button" disabled={busy} onClick={() => void abortPending(session)}>Abort pending session</button>}</li>)}</ul></section>}
+        {data.sessions.length > 0 && <section className="session-list" aria-labelledby="sessions-title"><div className="panel-heading"><div><p className="eyebrow">DEVICE STATE</p><h3 id="sessions-title">Configuration sessions</h3></div><span className="panel-index">{data.sessions.length.toString().padStart(2, '0')}</span></div><ul>{data.sessions.map((session) => <li key={session.name}><div><strong>{session.name}</strong><span><StatePill value={session.state} />{session.description ? ` · ${session.description}` : ''}</span></div>{/pending/iu.test(session.state) && session.name !== transactionState.sessionName && <button className="danger-button" type="button" disabled={busy || transactionBusy} onClick={() => void abortPending(session)}>Abort pending session</button>}</li>)}</ul></section>}
       </>}
 
       {failure !== '' && <p className="notice notice-error operation-result" role="alert">{failure}</p>}

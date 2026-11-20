@@ -32,7 +32,6 @@
  */
 import type { FormEvent } from 'react'
 
-import { ConfigDiff } from '../../components/ui/ConfigDiff'
 import { ConnectionHeader } from '../../components/ui/ConnectionHeader'
 import type { ConnectionState } from '../../components/ui/ConnectionHeader'
 import { DataTable } from '../../components/ui/DataTable'
@@ -169,6 +168,18 @@ export type TrunkFieldKey = keyof TrunkFields
 
 export type TrunkNoticeTone = 'info' | 'success' | 'warning' | 'risk'
 
+/** @deprecated Transaction Center owns session review; retained only for old presentation-only tests. */
+export interface TrunkDraftView {
+  readonly sessionName: string
+  readonly sessionState: string
+  readonly batch: readonly string[]
+  readonly diff?: string
+  readonly commitAttempted: boolean
+  readonly diffRead: boolean
+  readonly canAbort: boolean
+  readonly risks: readonly string[]
+}
+
 /** A container-composed sentence the screen shows as-is (risk reasons, re-read confirmations, …). */
 export interface TrunkMessage {
   readonly tone: TrunkNoticeTone
@@ -176,20 +187,6 @@ export interface TrunkMessage {
 }
 
 /** The staged-but-uncommitted session, translated so this file never sees a client session object. */
-export interface TrunkDraftView {
-  readonly sessionName: string
-  readonly sessionState: string
-  /** The literal lines the container staged — the review panel echoes them verbatim. */
-  readonly batch: readonly string[]
-  readonly diff?: string
-  readonly commitAttempted: boolean
-  /** `diff()` has been read on this session (the client's `hasDiffBeenRead()` answer). */
-  readonly diffRead: boolean
-  readonly canAbort: boolean
-  /** Risk sentences naming the VLAN/port at stake; repeated here from the confirm prompt. */
-  readonly risks: readonly string[]
-}
-
 const NOTICE_CLASS: Readonly<Record<TrunkNoticeTone, string>> = {
   info: 'notice',
   success: 'notice notice-success',
@@ -204,6 +201,8 @@ export interface TrunkEditorViewProps {
   readonly fields: TrunkFields
   /** The four modes the client will write (`SWITCHPORT_MODES`), passed down as plain text. */
   readonly modes: readonly string[]
+  readonly activeSessionName?: string
+  /** @deprecated No production caller should pass this; retained for view-test compatibility. */
   readonly draft?: TrunkDraftView
   /** True while the container has a device handle and a configured proxy. */
   readonly canWrite: boolean
@@ -221,8 +220,8 @@ export interface TrunkEditorViewProps {
    */
   readonly deepLinkNotice?: string
   readonly onPreview: (event: FormEvent<HTMLFormElement>) => void
-  readonly onCommit: () => void
-  readonly onAbortDraft: () => void
+  readonly onCommit?: () => void
+  readonly onAbortDraft?: () => void
   readonly onReload: () => void
   readonly onAbortPending: (session: TrunkSessionRow) => void
   /** The groups the selected port carries, from the container's row translation — running-config text,
@@ -310,25 +309,6 @@ function PortTable({ rows }: { readonly rows: readonly TrunkPortRow[] }) {
   return <DataTable columns={columns} rows={rows} rowKey={(row) => row.name} label="Layer 2 ports" />
 }
 
-function DraftPanel({ draft, busy, onCommit, onAbortDraft }: {
-  readonly draft: TrunkDraftView
-  readonly busy: boolean
-  readonly onCommit: () => void
-  readonly onAbortDraft: () => void
-}) {
-  return <section className="review-panel" aria-labelledby="review-title">
-    <div className="panel-heading"><div><p className="eyebrow">CHANGE REVIEW</p><h3 id="review-title">Session {draft.sessionName}</h3></div><span className="session-state">{draft.sessionState}</span></div>
-    <p className="staged-argv">{draft.batch.map((command) => <code key={command}>{command}</code>)}</p>
-    <ConfigDiff diff={draft.diff} />
-    {draft.risks.length > 0 && <ul className="ref-list" aria-label="Risks named in the confirm prompt">{draft.risks.map((risk) => <li key={risk}><code>{risk}</code></li>)}</ul>}
-    {draft.commitAttempted && <p className="notice notice-warning" role="status">Commit was attempted; refresh device state before taking another action.</p>}
-    <div className="review-actions">
-      <button className="primary-button" type="button" onClick={onCommit} disabled={draft.diff === undefined || !draft.diffRead || draft.commitAttempted || busy}>Commit to running-config</button>
-      <button className="danger-button" type="button" onClick={onAbortDraft} disabled={!draft.canAbort || busy}>Abort staged changes</button>
-    </div>
-  </section>
-}
-
 function MessageList({ messages }: { readonly messages: readonly TrunkMessage[] }) {
   if (messages.length === 0) return null
   // One labelled list rather than loose paragraphs: the notices are the screen's answer for *this*
@@ -350,7 +330,7 @@ export function TrunkEditorView({
   deepLinkNotice,
   fields,
   modes,
-  draft,
+  activeSessionName,
   canWrite,
   busy,
   messages,
@@ -358,8 +338,6 @@ export function TrunkEditorView({
   notice,
   onFieldChange,
   onPreview,
-  onCommit,
-  onAbortDraft,
   onReload,
   onAbortPending,
   currentGroups,
@@ -377,7 +355,7 @@ export function TrunkEditorView({
   const needsRanges = fields.action === 'allowed-replace' || fields.action === 'allowed-add' || fields.action === 'allowed-remove'
   const needsGroupField = fields.action === 'add-trunk-group' || fields.action === 'remove-trunk-group'
   const groupWritable = needsGroupField && capability.verdict === 'available'
-  const previewDisabled = busy || !canWrite || draft !== undefined || selected === undefined || rows.length === 0 || !selected.editable
+  const previewDisabled = busy || !canWrite || selected === undefined || rows.length === 0 || !selected.editable
 
   return <>
     <div className="screen-connection">
@@ -510,18 +488,16 @@ export function TrunkEditorView({
 
             {messages !== undefined && messages.length > 0 && <MessageList messages={messages} />}
 
-            <button className="primary-button" type="submit" disabled={previewDisabled}>{busy ? 'Working…' : 'Preview change'}</button>
-            {draft !== undefined && <p className="notice notice-warning" role="status">A staged change is already open in session <code>{draft.sessionName}</code>. Commit or abort it before staging another — Preview change is disabled until then.</p>}
+            <button className="primary-button" type="submit" disabled={previewDisabled}>{busy ? 'Working…' : 'Add to transaction'}</button>
           </form>
         </section>
 
-        {draft !== undefined && <DraftPanel draft={draft} busy={busy} onCommit={onCommit} onAbortDraft={onAbortDraft} />}
 
         {data.sessions.length > 0 && <section className="session-list" aria-labelledby="sessions-title">
           <div className="panel-heading"><div><p className="eyebrow">DEVICE STATE</p><h3 id="sessions-title">Configuration sessions</h3></div><span className="panel-index">{data.sessions.length.toString().padStart(2, '0')}</span></div>
           <ul>{data.sessions.map((session) => <li key={session.name}>
             <div><strong>{session.name}</strong><span><StatePill value={session.state} />{session.description === undefined ? '' : ` · ${session.description}`}</span></div>
-            {/pending/iu.test(session.state) && (draft === undefined || draft.sessionName !== session.name) && <button className="danger-button" type="button" disabled={busy} onClick={() => onAbortPending(session)}>Abort pending session</button>}
+            {/pending/iu.test(session.state) && session.name !== activeSessionName && <button className="danger-button" type="button" disabled={busy} onClick={() => onAbortPending(session)}>Abort pending session</button>}
           </li>)}</ul>
         </section>}
       </>}

@@ -74,10 +74,9 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { commandBuilder, submodeCommands } from '@devhax-heavy-industries/arista-eapi'
-import type { ConfigSession, ConfigSessionSummary, FeatureProbeCommands, Node, Switchport, Vlan } from '@devhax-heavy-industries/arista-eapi'
+import type { ConfigSessionSummary, FeatureProbeCommands, Node, Switchport, Vlan } from '@devhax-heavy-industries/arista-eapi'
 
 import { ConnectionHeader } from '../../components/ui/ConnectionHeader'
-import { ConfigDiff } from '../../components/ui/ConfigDiff'
 import { DataTable } from '../../components/ui/DataTable'
 import type { DataTableColumn } from '../../components/ui/DataTable'
 import { EmptyState } from '../../components/ui/EmptyState'
@@ -88,6 +87,7 @@ import { ConfirmProvider, useConfirm } from '../../shared/use-confirm'
 import { useCapabilities } from '../../shared/use-capabilities'
 import type { CapabilityClient } from '../../shared/use-capabilities'
 import { managementInterfaces } from '../interfaces/InterfacesDashboard'
+import { TransactionScope, useTransaction, useTransactionSnapshot } from '../sessions/TransactionContext'
 import { hasControlOrLineBoundary, trunkGroupNameRefusal } from '../../shared/allowed-vlans'
 import { stageLines } from '../staged-batch'
 import type { ShowManagementApiHttpCommandsReply } from '../../eapi/show-contracts'
@@ -95,8 +95,6 @@ import type { ShowManagementApiHttpCommandsReply } from '../../eapi/show-contrac
 import '../../eapi/show-contracts'
 
 type InterfacesManageClient = Pick<Node, 'vlans' | 'switchports' | 'configSession' | 'listSessions' | 'abortSession' | 'show'>
-type Session = Pick<ConfigSession, 'name' | 'state' | 'run' | 'diff' | 'hasDiffBeenRead' | 'commit' | 'abort'>
-
 export type VlanAction = 'create' | 'rename' | 'clear-name' | 'set-state' | 'delete' | 'add-trunk-group' | 'remove-trunk-group'
 
 /** The two states the client's `setVlanState` accepts (`vlans.ts:327`, from pyeapi's own docstring). */
@@ -129,10 +127,7 @@ type Data = {
   managementError?: string
   managementInterfacesNamed: readonly string[]
 }
-type Draft = { session: Session; batch: readonly string[]; diff?: string; commitAttempted: boolean; references: readonly string[]; notes: readonly string[] }
-
 const PROXY_PROMPT = 'Local proxy is not configured. Set EAPI_HOST, EAPI_USER, and EAPI_PASS in arista-webui/.env.local, then restart Vite.'
-const COMMIT_RECOVERY = 'Commit was attempted; refresh device state before taking another action.'
 
 /** Does a raw `switchport trunk allowed vlan …` spelling name this VLAN? `unknown` for the keyword
  *  forms this client deliberately does not enumerate (DR-028). */
@@ -178,25 +173,27 @@ export interface VlanManagementProps {
 
 /** Hosts the single confirm dialog this screen's writes, aborts and pending-session cleanup use. */
 export function VlanManagement(props: VlanManagementProps) {
-  return <ConfirmProvider><VlanManagementWorkspace {...props} /></ConfirmProvider>
+  return <TransactionScope node={props.node}><ConfirmProvider><VlanManagementWorkspace {...props} /></ConfirmProvider></TransactionScope>
 }
 
 function VlanManagementWorkspace({ node, proxyConfigured = true }: VlanManagementProps) {
   const confirm = useConfirm()
   const operation = useOperation()
   const { busy, notice, failure } = operation
+  const transaction = useTransaction()
+  const transactionState = useTransactionSnapshot()
+  const transactionBusy = transactionState.status === 'opening' || transactionState.status === 'staging' || transactionState.status === 'committing' || transactionState.status === 'aborting'
   const [action, setAction] = useState<VlanAction>('rename')
   const [vlanChoice, setVlanChoice] = useState('')
   const [newId, setNewId] = useState('')
   const [name, setName] = useState('')
   const [state, setState] = useState<string>('active')
   const [group, setGroup] = useState('')
-  const [draft, setDraft] = useState<Draft>()
 
   // Every device interaction on this screen — the reads, the capability probe and the staged write — is
   // gated by this one condition, so an unconfigured proxy performs no eAPI I/O at all. Declared first
   // because `useCapabilities` reads it during the same pass.
-  const canAct = proxyConfigured && node !== undefined
+  const canAct = proxyConfigured && node !== undefined && transaction !== undefined && transactionState.status !== 'uncertain'
 
   const read = useDeviceRead<Data>(
     async () => {
@@ -255,7 +252,6 @@ function VlanManagementWorkspace({ node, proxyConfigured = true }: VlanManagemen
   const rows = data?.vlans ?? []
   const selectedRow = rows.find((row) => String(row.id) === vlanChoice) ?? rows.find((row) => !row.unwritable) ?? rows[0]
   const selectedId = selectedRow === undefined ? '' : String(selectedRow.id)
-  const draftOpen = draft !== undefined && (draft.session.state === 'open' || draft.session.state === 'diffed')
   const usesTargetSelect = action !== 'create'
   const usesNameField = action === 'create' || action === 'rename'
   const usesGroupField = action === 'add-trunk-group' || action === 'remove-trunk-group'
@@ -311,7 +307,6 @@ function VlanManagementWorkspace({ node, proxyConfigured = true }: VlanManagemen
     if (busy || node === undefined || !canAct) return
     const reason = refusal()
     if (reason !== undefined) {
-      setDraft(undefined)
       await operation.run(async () => { throw new Error(reason) })
       return
     }
@@ -326,63 +321,14 @@ function VlanManagementWorkspace({ node, proxyConfigured = true }: VlanManagemen
       ...(row?.managementVlan === true ? [`VLAN ${String(targetId)} is the interface the device reports serving eAPI on`] : []),
     ]
     const batch = stage()
-    setDraft(undefined)
-    await operation.run(async () => {
-      const session = await node.configSession({ description: `webui vlan ${action} ${String(targetId)}` })
-      const handle: Session = session
-      setDraft({ session: handle, batch, commitAttempted: false, references, notes })
-      await handle.run(batch)
-      const diff = await handle.diff()
-      setDraft({ session: handle, batch, diff, commitAttempted: false, references, notes })
-      return diff
-    }, { progress: 'Staging the change and reading the device diff…', success: 'Review the device diff before committing this change.' })
-  }
-
-  function confirmBody(d: Draft, id: string): string {
-    const base = `Commit session ${d.session.name} for VLAN ${id}? This changes running-config only.`
-    const parts = [base]
-    if (d.references.length > 0) {
-      parts.push(`This VLAN is referenced by ${String(d.references.length)} config line(s):\n${d.references.map((line) => `  · ${line}`).join('\n')}`)
-      parts.push('Deleting or changing it can leave those references dangling on the device. If this VLAN carries the management path, this session may drop mid-commit.')
-    }
-    if (d.notes.length > 0) parts.push(`Notes from the device read:\n${d.notes.map((line) => `  · ${line}`).join('\n')}`)
-    return parts.join(' ')
-  }
-
-  async function commitDraft() {
-    if (busy || draft?.diff === undefined || !draft.session.hasDiffBeenRead() || draft.commitAttempted) return
-    const id = action === 'create' ? newId.trim() : selectedId
-    const risky = draft.references.length > 0 || draft.notes.length > 0 || (action === 'set-state' || action === 'delete' || action === 'clear-name')
-    if (!await confirm({
-      title: risky ? `Confirm VLAN ${id} change` : 'Commit to running-config',
-      body: confirmBody(draft, id),
-      confirmLabel: action === 'delete' ? `Delete VLAN ${id}` : 'Commit to running-config',
-      destructive: true,
-      subject: `${draft.session.name} · vlan ${id}`,
-    })) return
-    setDraft({ ...draft, commitAttempted: true })
-    const committed = await operation.run(() => draft.session.commit(), {
-      progress: 'Committing the reviewed change to running-config…',
-      success: 'Changes committed to running-config. Startup-config was not changed.',
-      failureSuffix: COMMIT_RECOVERY,
-    })
-    if (committed.ok) {
-      setDraft(undefined)
-      read.reload()
-      // A committed change is exactly when a cached capability answer must be re-asked, not trusted.
-      if (usesGroupField) void capabilities.probe({ force: true })
-    }
-  }
-
-  async function abortDraft() {
-    if (busy || draft === undefined || !draftOpen) return
-    if (!await confirm({ title: 'Abort staged changes', body: `Abort staged changes in session ${draft.session.name}? Its staged ${draft.batch.join(' · ')} will be discarded.`, confirmLabel: 'Abort staged changes', destructive: true, subject: draft.session.name })) return
-    const aborted = await operation.run(async () => {
-      await draft.session.abort()
-      setDraft(undefined)
-      return draft.session.name
-    }, { success: `Session ${draft.session.name} was aborted.` })
-    if (aborted.ok) read.reload()
+    if (transaction === undefined) return
+    await operation.run(() => transaction.append({
+      source: '/vlans/manage',
+      action: `${action} VLAN ${String(targetId)}`,
+      commands: batch,
+      display: batch,
+      risks: [...references, ...notes],
+    }), { progress: 'Adding the VLAN change to the shared transaction…', success: 'VLAN change added to the transaction. Review the device diff before committing in Transaction Center.' })
   }
 
   async function abortPending(session: ConfigSessionSummary) {
@@ -500,25 +446,13 @@ function VlanManagementWorkspace({ node, proxyConfigured = true }: VlanManagemen
             {usesTargetSelect && selectedRow?.managementVlan && <p className="notice notice-warning" role="status">VLAN {String(selectedRow.id)} is the interface this device reports serving eAPI on. Changing or deleting it may drop this session.</p>}
             {selectedRow?.reserved && action === 'delete' && <p className="notice notice-warning" role="status">The client refuses <code>no vlan 1</code> too (#122), so VLAN 1 cannot be deleted from here or from the client lane — belt and braces.</p>}
 
-            <button className="primary-button" type="submit" disabled={draft !== undefined || busy || (rows.length === 0 && action !== 'create')}>{busy ? 'Working…' : 'Preview change'}</button>
+            <button className="primary-button" type="submit" disabled={busy || transactionBusy || (rows.length === 0 && action !== 'create')}>{busy || transactionBusy ? 'Working…' : 'Add to transaction'}</button>
           </form>
         </section>
 
-        {draft !== undefined && <section className="review-panel" aria-labelledby="review-title">
-          <div className="panel-heading"><div><p className="eyebrow">CHANGE REVIEW</p><h3 id="review-title">Session {draft.session.name}</h3></div><span className="session-state">{draft.session.state}</span></div>
-          <p className="staged-argv">{draft.batch.map((command) => <code key={command}>{command}</code>)}</p>
-          <ConfigDiff diff={draft.diff} />
-          {draft.references.length > 0 && <ul className="ref-list" aria-label="Config that references this VLAN">{draft.references.map((line) => <li key={line}><code>{line}</code></li>)}</ul>}
-          {draft.commitAttempted && <p className="notice notice-warning">{COMMIT_RECOVERY}</p>}
-          <div className="review-actions">
-            <button className="primary-button" type="button" onClick={() => void commitDraft()} disabled={draft.diff === undefined || !draft.session.hasDiffBeenRead() || draft.commitAttempted || busy}>Commit to running-config</button>
-            <button className="danger-button" type="button" onClick={() => void abortDraft()} disabled={!draftOpen || busy}>Abort staged changes</button>
-          </div>
-        </section>}
-
         {capabilities.view.pendingSessions.length > 0 && <section className="session-list" aria-labelledby="probe-sessions-title"><div className="panel-heading"><div><p className="eyebrow">PROBE CLEANUP</p><h3 id="probe-sessions-title">Sessions the probe found pending</h3></div><span className="panel-index">{String(capabilities.view.pendingSessions.length)}</span></div><ul>{capabilities.view.pendingSessions.map((session) => <li key={session.name}><div><strong>{session.name}</strong><span><StatePill value={session.state} />{session.description ? ` · ${session.description}` : ''}</span></div><button className="danger-button" type="button" disabled={busy} onClick={() => void abortPending(session)}>Abort pending session</button></li>)}</ul></section>}
 
-        {data.sessions.length > 0 && <section className="session-list" aria-labelledby="sessions-title"><div className="panel-heading"><div><p className="eyebrow">DEVICE STATE</p><h3 id="sessions-title">Configuration sessions</h3></div><span className="panel-index">{data.sessions.length.toString().padStart(2, '0')}</span></div><ul>{data.sessions.map((session) => <li key={session.name}><div><strong>{session.name}</strong><span><StatePill value={session.state} />{session.description ? ` · ${session.description}` : ''}</span></div>{/pending/iu.test(session.state) && (draft === undefined || draft.session.name !== session.name) && <button className="danger-button" type="button" disabled={busy} onClick={() => void abortPending(session)}>Abort pending session</button>}</li>)}</ul></section>}
+        {data.sessions.length > 0 && <section className="session-list" aria-labelledby="sessions-title"><div className="panel-heading"><div><p className="eyebrow">DEVICE STATE</p><h3 id="sessions-title">Configuration sessions</h3></div><span className="panel-index">{data.sessions.length.toString().padStart(2, '0')}</span></div><ul>{data.sessions.map((session) => <li key={session.name}><div><strong>{session.name}</strong><span><StatePill value={session.state} />{session.description ? ` · ${session.description}` : ''}</span></div>{/pending/iu.test(session.state) && session.name !== transactionState.sessionName && <button className="danger-button" type="button" disabled={busy || transactionBusy} onClick={() => void abortPending(session)}>Abort pending session</button>}</li>)}</ul></section>}
       </>}
 
       {failure !== '' && <p className="notice notice-error operation-result" role="alert">{failure}</p>}

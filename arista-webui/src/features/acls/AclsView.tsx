@@ -99,18 +99,6 @@ export interface RuleFormView {
   onCancel: () => void
 }
 
-/** The staged named session, shown between preview and commit (the same shape as `NtpDraftView`). */
-export interface AclDraftView {
-  readonly sessionName: string
-  readonly effectLabel: string
-  readonly batch: readonly string[]
-  readonly risks: readonly string[]
-  /** `undefined` while the device `diff()` has not come back yet. */
-  readonly diff?: string
-  readonly canCommit: boolean
-  readonly destructive: boolean
-}
-
 export interface AclsViewProps {
   readonly state: 'loading' | 'ready' | 'failed'
   readonly readError?: string
@@ -132,12 +120,9 @@ export interface AclsViewProps {
   readonly addRuleForm?: RuleFormView
   readonly replaceRuleForm?: RuleFormView
   readonly deletePending?: DeletePendingView
-  readonly draft?: AclDraftView
 
   readonly onAddRule: (type: AclType, name: string) => void
   readonly onDeleteAcl: (type: AclType, name: string) => void
-  readonly onCommitDraft: () => void
-  readonly onAbortDraft: () => void
   readonly onReload: () => void
 
   readonly busy: boolean
@@ -179,11 +164,8 @@ export function AclsView(props: AclsViewProps): ReactElement {
     addRuleForm,
     replaceRuleForm,
     deletePending,
-    draft,
     onAddRule,
     onDeleteAcl,
-    onCommitDraft,
-    onAbortDraft,
     onReload,
     busy,
     canAct,
@@ -221,7 +203,7 @@ export function AclsView(props: AclsViewProps): ReactElement {
       header: ENTRY_COLUMNS[7],
       cell: (row) => <>
         {/* A refused rule keeps its Edit control disabled and the reason lands in the note list below the table. */}
-        <button className="quiet-button" type="button" onClick={() => { row.onEdit(row.type, row.aclName, row.seqno) }} disabled={!canAct || busy || !row.editable || draft !== undefined}>Edit rule {row.seqno}</button>
+        <button className="quiet-button" type="button" onClick={() => { row.onEdit(row.type, row.aclName, row.seqno) }} disabled={!canAct || busy || !row.editable}>Edit rule {row.seqno}</button>
         {' '}
         <button className="danger-button" type="button" onClick={() => { row.onRemove(row.type, row.aclName, row.seqno) }} disabled={!canAct || busy}>Remove rule {row.seqno}</button>
       </>,
@@ -344,28 +326,6 @@ export function AclsView(props: AclsViewProps): ReactElement {
         hint={COUNTER_GAP}
       />
     </section>
-
-    {/* Staged review panel */}
-    {draft !== undefined && <section className="panel" aria-labelledby="acl-draft-title">
-      <div className="panel-heading">
-        <div><p className="eyebrow">NAMED SESSION {draft.sessionName}</p><h3 id="acl-draft-title">Staged: {draft.effectLabel}</h3></div>
-        <span className="panel-index">{draft.batch.length.toString().padStart(2, '0')}</span>
-      </div>
-      <p className="field-note">Staged batch: {draft.batch.map((line) => <code key={line}>{line}</code>)}</p>
-      {draft.risks.length > 0 && <ul className="ref-list" aria-label="Staged risks">
-        {draft.risks.map((risk) => <li key={risk}><span>{risk}</span></li>)}
-      </ul>}
-      {draft.diff === undefined
-        ? <EmptyState heading="Reading the device diff…" hint="Commit stays locked until the device answers its own diff()." />
-        : <pre className="diff-output">{draft.diff}</pre>}
-      <div className="review-actions">
-        <button className={draft.destructive ? 'danger-button' : 'primary-button'} type="button" onClick={onCommitDraft} disabled={!draft.canCommit || busy} aria-busy={busy}>
-          {draft.destructive ? 'Commit (risky — review above)' : 'Commit to running-config'}
-        </button>
-        {' '}
-        <button className="quiet-button" type="button" onClick={onAbortDraft} disabled={busy}>Abort staged changes</button>
-      </div>
-    </section>}
 
     {notice !== '' && <p className="notice notice-success operation-result" role="status">{notice}</p>}
     {failure !== '' && <div className="notice notice-error operation-result" role="alert"><strong>The device did not take that.</strong><p>{failure}</p></div>}

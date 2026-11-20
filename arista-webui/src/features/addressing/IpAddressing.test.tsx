@@ -20,6 +20,7 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Interface, IpInterface } from '@devhax-heavy-industries/arista-eapi'
 
+import { TransactionProvider, useTransactionSnapshot } from '../sessions/TransactionContext'
 import { IpAddressing, addressFormRefusal, isManagementInterfaceName, liveAgreement, subnetContainment } from './IpAddressing'
 
 type TestNode = NonNullable<Parameters<typeof IpAddressing>[0]['node']>
@@ -138,6 +139,17 @@ async function ready(node: TestNode | undefined, proxyConfigured?: boolean) {
   return screen.findByLabelText('Change')
 }
 
+function TransactionProbe() {
+  const snapshot = useTransactionSnapshot()
+  return <output aria-label="Shared transaction entries">{JSON.stringify(snapshot.entries)}</output>
+}
+
+async function readyWithTransaction(node: TestNode) {
+  render(<TransactionProvider node={node}><IpAddressing node={node} /><TransactionProbe /></TransactionProvider>)
+  await screen.findByRole('heading', { name: 'IP addressing' })
+  await screen.findByLabelText('Change')
+}
+
 async function chooseAction(action: string) {
   await userEvent.selectOptions(await screen.findByLabelText('Change'), action)
 }
@@ -159,11 +171,10 @@ async function stage(action: string, iface: string, address?: string) {
   await chooseAction(action)
   await chooseIface(iface)
   if (address !== undefined) await typeAddress(address)
-  press('Preview and read the diff')
-  await screen.findByText('Review the device diff before committing this change.')
+  press('Add to transaction')
+  await screen.findByText(/Addressing change added to the transaction/u)
 }
 
-const stagedArgv = () => screen.getByLabelText('Staged commands')
 const table = () => screen.getByRole('table', { name: 'IP interfaces from running-config' })
 
 afterEach(() => vi.restoreAllMocks())
@@ -172,7 +183,7 @@ describe('IpAddressing — reads and states', () => {
   it('refuses to act with no proxy, and contacts nothing', async () => {
     render(<IpAddressing node={undefined} proxyConfigured={false} />)
     expect((await screen.findAllByText(/Local proxy is not configured/u)).length).toBeGreaterThan(0)
-    expect(screen.getByRole('button', { name: 'Preview and read the diff' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Add to transaction' })).toBeDisabled()
     expect(screen.queryByRole('table', { name: 'IP interfaces from running-config' })).toBeNull()
   })
 
@@ -265,7 +276,7 @@ describe('IpAddressing — reads and states', () => {
     await chooseAction('set-address')
     await chooseIface('Vlan110')
     await typeAddress('10.0.110.5/24')
-    press('Preview and read the diff')
+    press('Add to transaction')
     expect(await screen.findByText(/only the device/u)).toBeInTheDocument()
     expect(node.configSession).not.toHaveBeenCalled()
   })
@@ -322,24 +333,22 @@ describe('addressFormRefusal / subnetContainment / management-name — client-mi
 describe('IpAddressing — staged batches match the client verbs', () => {
   const runArgv = (session: { run: { mock: { calls: unknown[][] } } }) => session.run.mock.calls[0]?.[0]
 
-  it('stages `interface <X>` + `ip address A/E` for a set-address, through ONE named session', async () => {
+  it('stages `interface <X>` + `ip address A/E` and reuses one shared session', async () => {
     const { node, session } = makeFakes()
     await ready(node)
     await stage('set-address', 'Vlan99', '10.30.0.1/24')
-    expect(node.configSession).toHaveBeenCalledWith({ description: 'webui addressing set address on Vlan99' })
+    expect(node.configSession).toHaveBeenCalledWith(expect.objectContaining({ description: 'webui shared transaction' }))
     expect(runArgv(session)).toEqual(['interface Vlan99', 'ip address 10.30.0.1/24'])
-    expect(stagedArgv()).toHaveTextContent('ip address 10.30.0.1/24')
-    expect(await screen.findByText(/\+interface Vlan99/u)).toBeInTheDocument()
-    press('Commit')
-    const dialog = await screen.findByRole('dialog')
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Commit to running-config' }))
-    await screen.findByText('Changes committed to running-config. Startup-config was not changed.')
-    expect(session.commit).toHaveBeenCalledTimes(1)
-    // The post-commit re-read starts one React flush AFTER the success text renders, so the second
-    // `getAll` may not have reached the mock at the moment of a bare expect — it read 1 on a busy
-    // node-24 CI leg (#124's run surfaced this #76-era flake; same commit, node 22 green). Await
-    // the reload like TrunkEditor/Mlag already do for their read-count assertions.
-    await vi.waitFor(() => expect((node.ipinterfaces.getAll as unknown as { mock: { calls: unknown[][] } }).mock.calls.length).toBeGreaterThan(1))
+    expect(session.diff).toHaveBeenCalledOnce()
+    expect(session.commit).not.toHaveBeenCalled()
+    expect(session.abort).not.toHaveBeenCalled()
+    expect(screen.queryByRole('button', { name: /Commit/u })).toBeNull()
+
+    press('Add to transaction')
+    await vi.waitFor(() => expect(session.run).toHaveBeenCalledTimes(2))
+    expect(node.configSession).toHaveBeenCalledTimes(1)
+    expect(session.run).toHaveBeenLastCalledWith(['interface Vlan99', 'ip address 10.30.0.1/24'])
+    expect(session.diff).toHaveBeenCalledTimes(2)
   })
 
   it('stages the secondary-suffixed line, appending the word when the operator omitted it', async () => {
@@ -379,7 +388,7 @@ describe('IpAddressing — refusals open no session at all', () => {
     await chooseAction('set-address')
     await chooseIface('Vlan99')
     await typeAddress('10.30.0.300/24')
-    press('Preview and read the diff')
+    press('Add to transaction')
     expect(await screen.findByText(/octet 300/u)).toBeInTheDocument()
     expect(node.configSession).not.toHaveBeenCalled()
     expect(session.run).not.toHaveBeenCalled()
@@ -391,7 +400,7 @@ describe('IpAddressing — refusals open no session at all', () => {
     await chooseAction('set-address')
     await chooseIface('Vlan10')
     await typeAddress('10.0.0.1/24')
-    press('Preview and read the diff')
+    press('Add to transaction')
     expect(await screen.findByText(/already carries exactly 10\.0\.0\.1\/24/u)).toBeInTheDocument()
     expect(node.configSession).not.toHaveBeenCalled()
   })
@@ -402,7 +411,7 @@ describe('IpAddressing — refusals open no session at all', () => {
     await chooseAction('add-secondary')
     await chooseIface('Vlan10')
     await typeAddress('10.9.9.9/24')
-    press('Preview and read the diff')
+    press('Add to transaction')
     expect(await screen.findByText(/already carries 10\.9\.9\.9\/24 as a secondary/u)).toBeInTheDocument()
     expect(node.configSession).not.toHaveBeenCalled()
   })
@@ -413,7 +422,7 @@ describe('IpAddressing — refusals open no session at all', () => {
     await chooseAction('set-address')
     await chooseIface('Ethernet2')
     await typeAddress('10.30.0.1/24')
-    press('Preview and read the diff')
+    press('Add to transaction')
     expect(await screen.findByText(/switching port in the parsed config/u)).toBeInTheDocument()
     expect(node.configSession).not.toHaveBeenCalled()
   })
@@ -426,7 +435,7 @@ describe('IpAddressing — refusals open no session at all', () => {
     await chooseAction('set-address')
     await chooseIface('Management1')
     await typeAddress('10.0.100.50/24')
-    press('Preview and read the diff')
+    press('Add to transaction')
     expect(await screen.findByText(/keeps MGMT-port isolation out of scope/u)).toBeInTheDocument()
     expect(node.configSession).not.toHaveBeenCalled()
   })
@@ -436,7 +445,7 @@ describe('IpAddressing — refusals open no session at all', () => {
     await ready(node)
     await chooseAction('route-port')
     await chooseIface('Ethernet3')
-    press('Preview and read the diff')
+    press('Add to transaction')
     expect(await screen.findByText(/bound to VRF cust-a/u)).toBeInTheDocument()
     expect(node.configSession).not.toHaveBeenCalled()
   })
@@ -446,7 +455,7 @@ describe('IpAddressing — refusals open no session at all', () => {
     await ready(node)
     await chooseAction('route-port')
     await chooseIface('Ethernet2')
-    press('Preview and read the diff')
+    press('Add to transaction')
     expect(await screen.findByText(/refused outright on the in-band management interface/u)).toBeInTheDocument()
     expect(node.configSession).not.toHaveBeenCalled()
   })
@@ -457,7 +466,7 @@ describe('IpAddressing — refusals open no session at all', () => {
     expect(within(table()).getByText('Ethernet49/1')).toBeInTheDocument()
     await chooseAction('route-port')
     await chooseIface('Ethernet49/1')
-    press('Preview and read the diff')
+    press('Add to transaction')
     // kind is null -> Unrecognised, refused on the kind guard with the grammar note pending.
     expect(await screen.findByText(/Only Ethernet and Port-Channel sections flip/u)).toBeInTheDocument()
     expect(node.configSession).not.toHaveBeenCalled()
@@ -468,7 +477,7 @@ describe('IpAddressing — refusals open no session at all', () => {
     await ready(node)
     await chooseAction('switchport-back')
     await chooseIface('Vlan10')
-    press('Preview and read the diff')
+    press('Add to transaction')
     expect(await screen.findByText(/return to switching here/u)).toBeInTheDocument()
     expect(node.configSession).not.toHaveBeenCalled()
   })
@@ -478,7 +487,7 @@ describe('IpAddressing — refusals open no session at all', () => {
     await ready(node)
     await chooseAction('remove-address')
     await chooseIface('Vlan10')
-    press('Preview and read the diff')
+    press('Add to transaction')
     expect(await screen.findByText(/cannot say what a negation here would remove/u)).toBeInTheDocument()
     expect(node.configSession).not.toHaveBeenCalled()
   })
@@ -486,34 +495,27 @@ describe('IpAddressing — refusals open no session at all', () => {
   it('refuses an action with no interface selected', async () => {
     const { node } = makeFakes()
     await ready(node)
-    press('Preview and read the diff')
+    press('Add to transaction')
     expect(await screen.findByText(/Pick the interface first/u)).toBeInTheDocument()
     expect(node.configSession).not.toHaveBeenCalled()
   })
 })
 
-describe('IpAddressing — in-band guard reaches the confirm', () => {
-  it('names the device-served interface in the risk list and makes the commit destructive', async () => {
-    const { node } = makeFakes()
+describe('IpAddressing — in-band warnings feed the shared transaction', () => {
+  it('names the device-served interface before staging and never commits locally', async () => {
+    const { node, session } = makeFakes()
     await ready(node)
     await stage('set-address', 'Vlan10', '10.0.0.5/24')
-    // The note renders twice on purpose: once in the form's in-band banner, once in the staged
-    // draft's risk list — both must be present before the destructive confirm can be reached.
-    expect((await screen.findAllByText(/names Vlan10 as an interface serving eAPI/u)).length).toBeGreaterThanOrEqual(2)
-    press('Commit')
-    const dialog = await screen.findByRole('dialog')
-    expect(dialog).toHaveTextContent(/serving eAPI/u)
-    expect(within(dialog).getByRole('button', { name: 'Commit despite the risk on Vlan10' })).toBeInTheDocument()
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Commit despite the risk on Vlan10' }))
-    await screen.findByText('Changes committed to running-config. Startup-config was not changed.')
+    expect(screen.getByText(/names Vlan10 as an interface serving eAPI/u)).toBeInTheDocument()
+    expect(session.run).toHaveBeenCalledWith(['interface Vlan10', 'ip address 10.0.0.5/24'])
+    expect(session.commit).not.toHaveBeenCalled()
   })
 
   it('catches an in-band row through subnet arithmetic even when the answer named nothing', async () => {
     const { node } = makeFakes({ served: [] })
-    await ready(node)
+    await readyWithTransaction(node)
     await stage('remove-address', 'Vlan10')
-    // arithmetic over the fake endpoint 10.0.0.9 and Vlan10's /24
-    expect((await screen.findAllByText(/endpoint this UI dials \(10\.0\.0\.9\) falls inside that prefix/u)).length).toBeGreaterThanOrEqual(2)
+    expect(screen.getByLabelText('Shared transaction entries')).toHaveTextContent(/endpoint this UI dials \(10\.0\.0\.9\) falls inside that prefix/u)
   })
 
   it('a DNS-named endpoint cannot be compared — it warns, never passes silently', async () => {
@@ -525,60 +527,25 @@ describe('IpAddressing — in-band guard reaches the confirm', () => {
 
   it('names the uncaptured secondary fate under a bare negation', async () => {
     const { node } = makeFakes()
-    await ready(node)
+    await readyWithTransaction(node)
     await stage('remove-address', 'Vlan10')
-    expect(await screen.findByText(/carries secondary line\(s\) 10\.9\.9\.9\/24/u)).toBeInTheDocument()
+    expect(screen.getByLabelText('Shared transaction entries')).toHaveTextContent(/carries secondary line\(s\) 10\.9\.9\.9\/24/u)
   })
 })
 
 describe('IpAddressing — session lifecycle guards', () => {
   it('ignores a second Preview pressed mid-flight', async () => {
-    const { node } = makeFakes()
+    const { node, session } = makeFakes()
     await ready(node)
     await chooseAction('set-address')
     await chooseIface('Vlan99')
     await typeAddress('10.30.0.1/24')
-    press('Preview and read the diff')
-    press('Preview and read the diff')
-    press('Preview and read the diff')
-    await screen.findByText('Review the device diff before committing this change.')
+    press('Add to transaction')
+    press('Add to transaction')
+    press('Add to transaction')
+    await screen.findByText(/Addressing change added to the transaction/u)
     expect(node.configSession).toHaveBeenCalledTimes(1)
-  })
-
-  it('keeps Commit disabled when the session reports the diff was never opened', async () => {
-    const { node, session } = makeFakes({ diffRead: false })
-    await ready(node)
-    await stage('set-address', 'Vlan99', '10.30.0.1/24')
-    // hasDiffBeenRead() false is the client-side lock: F6's review gate, independent of the
-    // diff string itself having arrived.
-    expect(session.hasDiffBeenRead).toHaveBeenCalled()
-    expect(screen.getByRole('button', { name: 'Commit' })).toBeDisabled()
-  })
-
-  it('a failed commit says the change may still have applied and disarms re-commit', async () => {
-    const { node, session } = makeFakes()
-    session.commit = vi.fn(async () => {
-      throw Object.assign(new Error('config session locked'), { code: 1006, message: 'Another config session is active' })
-    })
-    await ready(node)
-    await stage('set-address', 'Vlan99', '10.30.0.1/24')
-    press('Commit')
-    const dialog = await screen.findByRole('dialog')
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Commit to running-config' }))
-    expect(await screen.findByText(/Commit may have applied — reconnect and refresh/u)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Commit' })).toBeDisabled()
-  })
-
-  it('aborting the staged draft discards the session without committing', async () => {
-    const { node, session } = makeFakes()
-    await ready(node)
-    await stage('set-address', 'Vlan99', '10.30.0.1/24')
-    press('Abort session')
-    const dialog = await screen.findByRole('dialog')
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Abort staged changes' }))
-    await screen.findByText(/was aborted; nothing was written to the device/u)
-    expect(session.abort).toHaveBeenCalledTimes(1)
-    expect(session.commit).not.toHaveBeenCalled()
+    expect(session.run).toHaveBeenCalledTimes(1)
   })
 
   it('refuses any intent while no interface is selected', async () => {
@@ -587,7 +554,7 @@ describe('IpAddressing — session lifecycle guards', () => {
     // The select only ever holds names the table read — a name the screen did not read is
     // unreachable by construction; this pins the empty-selection arm that guards plan().
     await chooseAction('route-port')
-    press('Preview and read the diff')
+    press('Add to transaction')
     expect(await screen.findByText(/Pick the interface first/u)).toBeInTheDocument()
     expect(node.configSession).not.toHaveBeenCalled()
   })

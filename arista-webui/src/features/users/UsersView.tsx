@@ -22,7 +22,6 @@ import type { FormEvent } from 'react'
 import type { ReactElement } from 'react'
 
 import { ConnectionHeader } from '../../components/ui/ConnectionHeader'
-import { ConfigDiff } from '../../components/ui/ConfigDiff'
 import { DataTable } from '../../components/ui/DataTable'
 import type { DataTableColumn } from '../../components/ui/DataTable'
 import { EmptyState } from '../../components/ui/EmptyState'
@@ -43,21 +42,6 @@ export interface UserRowView {
   readonly admin: boolean
   /** The account is the client's built-in undeletable `admin`. */
   readonly builtInAdmin: boolean
-}
-
-export interface UsersDraftView {
-  readonly sessionName: string
-  readonly sessionState: string
-  readonly effectLabel: string
-  /** Review copy of the staged batch: already redacted by the container. */
-  readonly batch: readonly string[]
-  readonly risks: readonly string[]
-  /** `undefined` while the device `diff()` has not come back yet. */
-  readonly diff?: string
-  readonly canCommit: boolean
-  readonly commitAttempted: boolean
-  /** The account an admin-guard confirm has to name; `undefined` for an ordinary account. */
-  readonly adminAccount?: string
 }
 
 export interface UsersFieldsView {
@@ -91,7 +75,6 @@ export interface UsersViewProps {
   /** The spelling the ssh-key verbs would stage, decided from the version read; `undefined` = unknown. */
   readonly sshKeyKeyword?: string
   readonly framingNote: string
-  readonly draft?: UsersDraftView
   readonly busy: boolean
   readonly canAct: boolean
   readonly notice: string
@@ -99,8 +82,6 @@ export interface UsersViewProps {
   readonly connection: 'connected' | 'connecting' | 'error'
   readonly connectionLabel: string
   readonly onSubmitPreview: (event: FormEvent<HTMLFormElement>) => void
-  readonly onCommitDraft: () => void
-  readonly onAbortDraft: () => void
   readonly onReload: () => void
 }
 
@@ -121,7 +102,6 @@ export function UsersView({
   targetOptions,
   sshKeyKeyword,
   framingNote,
-  draft,
   busy,
   canAct,
   notice,
@@ -129,8 +109,6 @@ export function UsersView({
   connection,
   connectionLabel,
   onSubmitPreview,
-  onCommitDraft,
-  onAbortDraft,
   onReload,
 }: UsersViewProps): ReactElement {
   const columns: readonly DataTableColumn<UserRowView>[] = [
@@ -193,7 +171,6 @@ export function UsersView({
     <div className="inventory-strip" aria-label="User inventory">
       <div><span className="metric-label">Accounts read</span><strong>{adminsKnown ? String(rows.length) : '?'}</strong></div>
       <div><span className="metric-label">Admin accounts in this read</span><strong>{adminsKnown ? String(admins.length) : '?'}</strong></div>
-      <div><span className="metric-label">Staged session</span><strong>{draft === undefined ? 'none' : '1'}</strong></div>
     </div>
 
     <section className="panel" aria-labelledby="users-table-title">
@@ -302,24 +279,6 @@ export function UsersView({
         </div>
       </form>
     </section>
-
-    {draft !== undefined && <section className="review-panel" aria-labelledby="users-draft-title">
-      <div className="panel-heading">
-        <div><p className="eyebrow">NAMED SESSION {draft.sessionName}</p><h3 id="users-draft-title">Staged: {draft.effectLabel}</h3></div>
-        <span className="session-state">{draft.sessionState}</span>
-      </div>
-      <p className="staged-argv">{draft.batch.map((line) => <code key={line}>{line}</code>)}</p>
-      {draft.adminAccount !== undefined && <p className="notice notice-warning" role="status">This write clips the admin status of <strong>{draft.adminAccount}</strong>. {banner} Committing needs a second, named confirm.</p>}
-      {draft.risks.length > 0 && <ul className="ref-list" aria-label="Staged risks">{draft.risks.map((risk) => <li key={risk}><span>{risk}</span></li>)}</ul>}
-      <ConfigDiff {...(draft.diff === undefined ? {} : { diff: draft.diff })} />
-      {draft.commitAttempted && <p className="notice notice-warning" role="status">Commit was attempted; refresh device state before taking another action.</p>}
-      <div className="review-actions">
-        <button className={draft.adminAccount === undefined ? 'primary-button' : 'danger-button'} type="button" onClick={onCommitDraft} disabled={!draft.canCommit || busy} aria-busy={busy}>
-          {draft.adminAccount === undefined ? 'Commit to running-config' : 'Commit the admin-affecting change'}
-        </button>
-        <button className="quiet-button" type="button" onClick={onAbortDraft} disabled={busy}>Abort staged changes</button>
-      </div>
-    </section>}
 
     {notice !== '' && <p className="notice notice-success operation-result" role="status" aria-live="polite">{notice}</p>}
     {failure !== '' && <div className="notice notice-error operation-result" role="alert"><strong>The device refused that.</strong><p>{failure}</p></div>}

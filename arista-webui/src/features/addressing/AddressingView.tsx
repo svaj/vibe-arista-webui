@@ -24,7 +24,6 @@ import type { FormEvent } from 'react'
 import type { ReactElement } from 'react'
 
 import { ConnectionHeader } from '../../components/ui/ConnectionHeader'
-import { ConfigDiff } from '../../components/ui/ConfigDiff'
 import { DataTable } from '../../components/ui/DataTable'
 import type { DataTableColumn } from '../../components/ui/DataTable'
 import { EmptyState } from '../../components/ui/EmptyState'
@@ -84,15 +83,6 @@ export interface AddressingRow {
   readonly bandPath: BandPath
 }
 
-export interface AddressingDraftView {
-  readonly sessionName: string
-  readonly batch: readonly string[]
-  readonly risks: readonly string[]
-  readonly iface: string
-  readonly diff?: string
-  readonly canCommit: boolean
-}
-
 export type AddressingLoadState = 'loading' | 'ready' | 'failed'
 
 export interface AddressingMessage {
@@ -119,10 +109,7 @@ export interface AddressingViewProps {
   readonly fields: AddressingFields
   readonly onChange: (fields: AddressingFields) => void
   readonly onPreview: (event: FormEvent<HTMLFormElement>) => void
-  readonly onCommit: () => void
-  readonly onAbortDraft: () => void
   readonly onReload: () => void
-  readonly draft?: AddressingDraftView
   readonly messages: AddressingMessage
   readonly band: AddressingBand
   readonly busy: boolean
@@ -195,10 +182,7 @@ export function AddressingView({
   fields,
   onChange,
   onPreview,
-  onCommit,
-  onAbortDraft,
   onReload,
-  draft,
   messages,
   band,
   busy,
@@ -285,20 +269,9 @@ export function AddressingView({
           {band.note !== undefined && <p className="notice notice-warning" role="status"><strong>In-band note for {fields.iface}:</strong> {band.note}</p>}
 
           <div className="review-actions">
-            <button type="submit" disabled={busy || !canPick || draft !== undefined}>Preview and read the diff</button>
-            <button type="button" onClick={onCommit} disabled={busy || draft === undefined || !draft.canCommit}>Commit</button>
-            <button className="quiet-button" type="button" onClick={onAbortDraft} disabled={busy || draft === undefined}>Abort session</button>
+            <button type="submit" disabled={busy || !canPick}>Add to transaction</button>
           </div>
         </form>
-
-        {draft !== undefined && <section className="review-panel" aria-labelledby="addressing-review-title">
-          <div className="panel-heading"><div><p className="eyebrow">SESSION {draft.sessionName}</p><h3 id="addressing-review-title">Staged text and the device's diff</h3></div></div>
-          <div className="staged-argv" aria-label="Staged commands">{draft.batch.map((line) => <code key={line}>{line}</code>)}</div>
-          {draft.risks.length > 0 && draft.risks.map((risk) => <p key={risk} className="notice notice-warning" role="status">{risk}</p>)}
-          {draft.diff === undefined
-            ? <p className="notice" role="status" aria-busy="true">The diff has not been read from the device yet.</p>
-            : <ConfigDiff diff={draft.diff} />}
-        </section>}
 
         {messages.notice !== '' && <p className="notice notice-success operation-result" role="status">{messages.notice}</p>}
         {messages.failure !== '' && <div className="notice notice-error operation-result" role="alert"><strong>The device or this screen refused that.</strong><p>{messages.failure}</p></div>}

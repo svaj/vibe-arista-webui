@@ -43,16 +43,16 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { isInterfaceName, parseInterfaceName, submodeCommands } from '@devhax-heavy-industries/arista-eapi'
-import type { CommandSpec, ConfigSession, Node, StpSettings as DeviceSettings } from '@devhax-heavy-industries/arista-eapi'
+import type { CommandSpec, Node, StpSettings as DeviceSettings } from '@devhax-heavy-industries/arista-eapi'
 
 import { softRead, softValue, useDeviceRead } from '../../shared/use-device-read'
 import type { DeviceIdentity } from '../../shared/identity'
 import { identityFrom } from '../../shared/identity'
 import { useOperation } from '../../shared/use-operation'
-import { ConfirmProvider, useConfirm } from '../../shared/use-confirm'
+import { TransactionScope, useTransaction, useTransactionSnapshot } from '../sessions/TransactionContext'
 import { stageLines } from '../staged-batch'
 import { StpView } from './StpView'
-import type { StpDraftView, StpViewProps } from './StpView'
+import type { StpViewProps } from './StpView'
 import { actionIsDestructive, stageRisks, stpPortRowView, stpWriteAction } from './stp-rules'
 
 // The typed `show('version')` overload (the F-tier extension) — same augmentation S6/S8/S12 import.
@@ -65,8 +65,6 @@ export interface StpProps {
   readonly proxyConfigured?: boolean
 }
 
-type Session = Pick<ConfigSession, 'name' | 'state' | 'run' | 'diff' | 'hasDiffBeenRead' | 'commit' | 'abort'>
-
 interface PendingStage {
   readonly description: string
   readonly effectLabel: string
@@ -76,19 +74,12 @@ interface PendingStage {
   readonly destructive: boolean
 }
 
-interface DraftState extends PendingStage {
-  readonly session: Session
-  readonly diff?: string
-  readonly commitAttempted: boolean
-}
-
 interface ReadData {
   readonly settings: DeviceSettings
   readonly identity?: DeviceIdentity
 }
 
 const PROXY_PROMPT = 'Local proxy is not configured. Set EAPI_HOST, EAPI_USER, and EAPI_PASS in arista-webui/.env.local, then restart Vite.'
-const COMMIT_RECOVERY = 'Commit was attempted; refresh device state before taking another action.'
 
 /**
  * The screen-side mirror of the client's `assertStpPortName` (resources/stp.ts, §5 row 168): the
@@ -111,20 +102,21 @@ export function stpWriteGuard(name: string): string | undefined {
 }
 
 export function Stp(props: StpProps) {
-  return <ConfirmProvider><StpWorkspace {...props} /></ConfirmProvider>
+  return <TransactionScope node={props.node}><StpWorkspace {...props} /></TransactionScope>
 }
 
 function StpWorkspace({ node, proxyConfigured = true }: StpProps) {
-  const confirm = useConfirm()
   const operation = useOperation()
   const { busy, notice, failure } = operation
-  const canAct = proxyConfigured && node !== undefined
+  const transaction = useTransaction()
+  const transactionState = useTransactionSnapshot()
+  const transactionBusy = transactionState.status === 'opening' || transactionState.status === 'staging' || transactionState.status === 'committing' || transactionState.status === 'aborting'
+  const canAct = proxyConfigured && node !== undefined && transaction !== undefined && transactionState.status !== 'uncertain'
 
   const [selectedPort, setSelectedPort] = useState('')
   const [selectedAction, setSelectedAction] = useState('')
   const [portRefusal, setPortRefusal] = useState<string | undefined>(undefined)
   const [actionError, setActionError] = useState<string | undefined>(undefined)
-  const [draft, setDraft] = useState<DraftState | undefined>(undefined)
 
   const read = useDeviceRead<ReadData>(
     async () => {
@@ -159,28 +151,22 @@ function StpWorkspace({ node, proxyConfigured = true }: StpProps) {
   }
 
   async function preview(stage: PendingStage) {
-    if (busy || !canAct || node === undefined || draft !== undefined) return
-    await operation.run(async () => {
-      const session = await node.configSession({ description: stage.description })
-      const handle: Session = session
-      setDraft({ ...stage, session: handle, commitAttempted: false })
-      await handle.run(stage.specs)
-      const diff = await handle.diff()
-      setDraft({ ...stage, session: handle, diff, commitAttempted: false })
-      return diff
-    }, {
-      progress: 'Staging the change and reading the device diff…',
-      success: 'Review the device diff before committing this change.',
+    if (busy || transactionBusy || !canAct || transaction === undefined) return
+    await operation.run(() => transaction.append({
+      source: '/stp',
+      action: stage.effectLabel,
+      commands: stage.specs,
+      display: stage.display,
+      risks: stage.risks,
+    }), {
+      progress: 'Adding the STP change to the shared transaction…',
+      success: 'STP change added to the transaction. Review the device diff before committing in Transaction Center.',
     })
   }
 
   /** Refuse a write while another staged session owns this screen; returns true when blocked. */
   function sessionBusy(): boolean {
-    if (busy || !canAct || node === undefined) return true
-    if (draft !== undefined) {
-      operation.run(async () => { throw new Error('A staged session is already open on this screen; commit or abort it before staging another change.') }).catch(() => undefined)
-      return true
-    }
+    if (busy || transactionBusy || !canAct || node === undefined) return true
     if (settings === undefined) {
       operation.run(async () => { throw new Error('The spanning-tree read has not answered, so nothing can be compared or staged against it.') }).catch(() => undefined)
       return true
@@ -217,55 +203,6 @@ function StpWorkspace({ node, proxyConfigured = true }: StpProps) {
     })
   }
 
-  async function commitDraft() {
-    if (busy || draft === undefined || draft.diff === undefined || !draft.session.hasDiffBeenRead() || draft.commitAttempted) return
-    const risky = draft.destructive || draft.risks.length > 0
-    const label = draft.effectLabel
-    if (!await confirm({
-      title: risky ? `Confirm: ${label}` : 'Commit to running-config',
-      body: [
-        `Commit session ${draft.session.name}, which stages ${draft.display.join(' · ')}? This changes running-config only; startup-config is never written by this screen (DR-024).`,
-        ...(draft.risks.length === 0 ? [] : [`Risk named for this write:\n${draft.risks.map((risk) => `  · ${risk}`).join('\n')}`]),
-        'If this session is lost mid-commit, the change may still have applied — reconnect and refresh before any further action.',
-      ].join(' '),
-      confirmLabel: risky ? `Commit despite the risk: ${label}` : 'Commit to running-config',
-      destructive: true,
-      subject: `${draft.session.name} · ${label}`,
-    })) return
-    setDraft({ ...draft, commitAttempted: true })
-    const committed = await operation.run(() => draft.session.commit(), {
-      progress: 'Committing the reviewed change to running-config…',
-      success: 'Changes committed to running-config. Startup-config was not changed.',
-      failureSuffix: COMMIT_RECOVERY,
-    })
-    if (committed.ok) {
-      setDraft(undefined)
-      setSelectedAction('')
-      read.reload()
-    }
-  }
-
-  async function abortDraft() {
-    if (busy || draft === undefined || (draft.session.state !== 'open' && draft.session.state !== 'diffed')) return
-    if (!await confirm({ title: 'Abort staged changes', body: `Abort staged changes in session ${draft.session.name}? Its staged ${draft.display.join(' · ')} will be discarded.`, confirmLabel: 'Abort staged changes', destructive: true, subject: draft.session.name })) return
-    const aborted = await operation.run(async () => {
-      await draft.session.abort()
-      setDraft(undefined)
-      return draft.session.name
-    }, { success: `Session ${draft.session.name} was aborted; nothing was written to the device.` })
-    if (aborted.ok) read.reload()
-  }
-
-  const draftView: StpDraftView | undefined = draft === undefined ? undefined : {
-    sessionName: draft.session.name,
-    effectLabel: draft.effectLabel,
-    batch: draft.display,
-    risks: draft.risks,
-    ...(draft.diff === undefined ? {} : { diff: draft.diff }),
-    canCommit: draft.diff !== undefined && draft.session.hasDiffBeenRead() && !draft.commitAttempted,
-    destructive: draft.destructive,
-  }
-
   const state = !canAct || read.state.kind === 'error' ? 'failed' : read.state.kind === 'loading' ? 'loading' : 'ready'
 
   const viewProps: StpViewProps = {
@@ -285,12 +222,11 @@ function StpWorkspace({ node, proxyConfigured = true }: StpProps) {
     onPortChange: (name) => { setSelectedPort(name); setPortRefusal(undefined) },
     onActionChange: (id) => { setSelectedAction(id); setActionError(undefined) },
     onPreview: beginPreview,
-    ...(draftView === undefined ? {} : { draft: draftView }),
-    busy,
+    busy: busy || transactionBusy,
     canAct: canAct && state === 'ready',
     notice,
     failure,
-    connection: !canAct || state === 'failed' ? 'error' : state === 'loading' || busy ? 'connecting' : 'connected',
+    connection: !canAct || state === 'failed' ? 'error' : state === 'loading' || busy || transactionBusy ? 'connecting' : 'connected',
     connectionLabel: !canAct
       ? 'Local proxy is not configured'
       : state === 'loading'
@@ -298,8 +234,6 @@ function StpWorkspace({ node, proxyConfigured = true }: StpProps) {
         : state === 'failed'
           ? 'The spanning-tree read did not come back'
           : 'Spanning-tree config read from the parsed running-config',
-    onCommitDraft: () => void commitDraft(),
-    onAbortDraft: () => void abortDraft(),
     onReload: () => { clearErrors(); read.reload() },
   }
 

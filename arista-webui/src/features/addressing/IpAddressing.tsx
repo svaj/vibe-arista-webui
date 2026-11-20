@@ -81,17 +81,17 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { commandBuilder, isInterfaceName, submodeCommands } from '@devhax-heavy-industries/arista-eapi'
-import type { CommandSpec, ConfigSession, Node } from '@devhax-heavy-industries/arista-eapi'
+import type { CommandSpec, Node } from '@devhax-heavy-industries/arista-eapi'
 
 import { identityFrom } from '../../shared/identity'
 import type { DeviceIdentity } from '../../shared/identity'
 import { softErrorText, softRead, softValue, useDeviceRead } from '../../shared/use-device-read'
 import { useOperation } from '../../shared/use-operation'
-import { ConfirmProvider, useConfirm } from '../../shared/use-confirm'
+import { TransactionScope, useTransaction, useTransactionSnapshot } from '../sessions/TransactionContext'
 import { bandPathFor, managementInterfaces } from '../interfaces/InterfacesDashboard'
 import { stageLines } from '../staged-batch'
 import { AddressingView } from './AddressingView'
-import type { AddressingAction, AddressingDraftView, AddressingFields, AddressingRow, AddressingViewProps } from './AddressingView'
+import type { AddressingAction, AddressingFields, AddressingRow, AddressingViewProps } from './AddressingView'
 
 // The screen contracts ride this import (ARCHITECTURE §9.1 augmentation), so
 // `node.show('management api http-commands')` and `node.show('version')` type end-to-end.
@@ -105,11 +105,6 @@ export interface AddressingManagerProps {
 }
 
 const PROXY_PROMPT = 'Local proxy is not configured. Set EAPI_HOST, EAPI_USER, and EAPI_PASS in arista-webui/.env.local, then restart Vite.'
-const COMMIT_RECOVERY = 'Commit may have applied — reconnect and refresh before any further action.'
-
-type Session = Pick<ConfigSession, 'name' | 'state' | 'run' | 'diff' | 'hasDiffBeenRead' | 'commit' | 'abort'>
-
-type Draft = { session: Session; batch: readonly string[]; diff?: string; commitAttempted: boolean; risks: readonly string[]; iface: string; destructive: boolean }
 
 type Data = {
   rows: readonly AddressingRow[]
@@ -214,17 +209,18 @@ const hasControlCharacter = (value: string): boolean =>
   })
 
 export function IpAddressing(props: AddressingManagerProps) {
-  return <ConfirmProvider><AddressingWorkspace {...props} /></ConfirmProvider>
+  return <TransactionScope node={props.node}><AddressingWorkspace {...props} /></TransactionScope>
 }
 
 function AddressingWorkspace({ node, proxyConfigured = true }: AddressingManagerProps) {
-  const confirm = useConfirm()
   const operation = useOperation()
   const { busy, notice, failure } = operation
+  const transaction = useTransaction()
+  const transactionState = useTransactionSnapshot()
+  const transactionBusy = transactionState.status === 'opening' || transactionState.status === 'staging' || transactionState.status === 'committing' || transactionState.status === 'aborting'
   const [fields, setFields] = useState<AddressingFields>(DEFAULT_FIELDS)
-  const [draft, setDraft] = useState<Draft>()
 
-  const canAct = proxyConfigured && node !== undefined
+  const canAct = proxyConfigured && node !== undefined && transaction !== undefined && transactionState.status !== 'uncertain'
 
   const read = useDeviceRead<Data>(
     async () => {
@@ -405,75 +401,23 @@ function AddressingWorkspace({ node, proxyConfigured = true }: AddressingManager
 
   async function preview(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (busy || !canAct || node === undefined || draft !== undefined) return
+    if (busy || transactionBusy || !canAct || node === undefined || transaction === undefined) return
     const staged = plan()
     if ('refusal' in staged) {
-      setDraft(undefined)
       await operation.run(async () => { throw new Error(staged.refusal) })
       return
     }
-    const band = inBandFor(selectedRow)
     const risks = risksFor({ action: fields.action, iface: selectedRow, batch: staged.batch })
-    const destructive = fields.action === 'route-port' || fields.action === 'switchport-back' || band.inBand
-    setDraft(undefined)
-    await operation.run(async () => {
-      const session = await node.configSession({ description: `webui addressing ${fields.action.replace(/-/gu, ' ')} on ${fields.iface}` })
-      const handle: Session = session
-      setDraft({ session: handle, batch: staged.batch, risks, iface: fields.iface, destructive, commitAttempted: false })
-      await handle.run(staged.batch)
-      const diff = await handle.diff()
-      setDraft({ session: handle, batch: staged.batch, risks, iface: fields.iface, destructive, diff, commitAttempted: false })
-      return diff
-    }, {
-      progress: 'Staging the change and reading the device diff…',
-      success: 'Review the device diff before committing this change.',
+    await operation.run(() => transaction.append({
+      source: '/addressing',
+      action: `${fields.action} on ${fields.iface}`,
+      commands: staged.batch,
+      display: staged.batch,
+      risks,
+    }), {
+      progress: 'Adding the addressing change to the shared transaction…',
+      success: 'Addressing change added to the transaction. Review the device diff before committing in Transaction Center.',
     })
-  }
-
-  async function commitDraft() {
-    if (busy || draft === undefined || draft.diff === undefined || !draft.session.hasDiffBeenRead() || draft.commitAttempted) return
-    const risky = draft.destructive || draft.risks.length > 0
-    if (!await confirm({
-      title: risky ? `Confirm the ${fields.action.replace(/-/gu, ' ')} write on ${draft.iface}` : 'Commit to running-config',
-      body: [
-        `Commit session ${draft.session.name} for ${draft.iface}? This changes running-config only; the staged text is ${draft.batch.join(' · ')}.`,
-        ...(draft.risks.length === 0 ? [] : [`Risk named for this write:\n${draft.risks.map((risk) => `  · ${risk}`).join('\n')}`]),
-        'If this session is lost mid-commit, the change may still have applied — reconnect and refresh before any further action.',
-      ].join(' '),
-      confirmLabel: risky ? `Commit despite the risk on ${draft.iface}` : 'Commit to running-config',
-      destructive: true,
-      subject: `${draft.session.name} · ${draft.iface}`,
-    })) return
-    setDraft({ ...draft, commitAttempted: true })
-    const committed = await operation.run(() => draft.session.commit(), {
-      progress: 'Committing the reviewed change to running-config…',
-      success: 'Changes committed to running-config. Startup-config was not changed.',
-      failureSuffix: COMMIT_RECOVERY,
-    })
-    if (committed.ok) {
-      setDraft(undefined)
-      read.reload()
-    }
-  }
-
-  async function abortDraft() {
-    if (busy || draft === undefined || (draft.session.state !== 'open' && draft.session.state !== 'diffed')) return
-    if (!await confirm({ title: 'Abort staged changes', body: `Abort staged changes in session ${draft.session.name}? Its staged ${draft.batch.join(' · ')} will be discarded.`, confirmLabel: 'Abort staged changes', destructive: true, subject: draft.session.name })) return
-    const aborted = await operation.run(async () => {
-      await draft.session.abort()
-      setDraft(undefined)
-      return draft.session.name
-    }, { success: `Session ${draft.session.name} was aborted; nothing was written to the device.` })
-    if (aborted.ok) read.reload()
-  }
-
-  const draftView: AddressingDraftView | undefined = draft === undefined ? undefined : {
-    sessionName: draft.session.name,
-    batch: draft.batch,
-    risks: draft.risks,
-    iface: draft.iface,
-    ...(draft.diff === undefined ? {} : { diff: draft.diff }),
-    canCommit: draft.diff !== undefined && draft.session.hasDiffBeenRead() && !draft.commitAttempted,
   }
 
   const view: AddressingViewProps = {
@@ -482,12 +426,9 @@ function AddressingWorkspace({ node, proxyConfigured = true }: AddressingManager
     ...(proxyConfigured ? {} : { proxyPrompt: PROXY_PROMPT }),
     rows,
     fields,
-    onChange: (next) => { setFields(next); setDraft(undefined) },
+    onChange: setFields,
     onPreview: (event) => void preview(event),
-    onCommit: () => void commitDraft(),
-    onAbortDraft: () => void abortDraft(),
     onReload: () => read.reload(),
-    ...(draftView === undefined ? {} : { draft: draftView }),
     messages: {
       notice,
       failure,
@@ -501,7 +442,7 @@ function AddressingWorkspace({ node, proxyConfigured = true }: AddressingManager
       managementNamed: data?.managementNamed ?? [],
       ...(inBandFor(selectedRow).note === undefined ? {} : { note: inBandFor(selectedRow).note }),
     },
-    busy,
+    busy: busy || transactionBusy,
   }
 
   return <AddressingView {...view} />

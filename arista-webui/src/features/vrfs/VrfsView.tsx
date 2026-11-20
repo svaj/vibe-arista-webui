@@ -125,15 +125,12 @@ export interface VrfsViewProps {
   readonly deviceRows: readonly VrfsDeviceRowView[]
 
   // --- staged review ----------------------------------------------------------------------------
-  readonly draft?: VrfsDraftView
   readonly busy: boolean
   readonly canAct: boolean
   readonly notice: string
   readonly failure: string
   readonly connection: ConnectionState
   readonly connectionLabel: string
-  readonly onCommitDraft: () => void
-  readonly onAbortDraft: () => void
   readonly onReload: () => void
 }
 
@@ -179,15 +176,12 @@ export function VrfsView(props: VrfsViewProps): ReactElement {
     onUnbind,
     deviceStateKnown,
     deviceRows,
-    draft,
     busy,
     canAct,
     notice,
     failure,
     connection,
     connectionLabel,
-    onCommitDraft,
-    onAbortDraft,
     onReload,
   } = props
 
@@ -407,27 +401,6 @@ export function VrfsView(props: VrfsViewProps): ReactElement {
           ? <EmptyState heading="The device answered with no VRF entries." hint="An empty reply is shown as empty — the screen does not fall back to config text to invent rows." />
           : <DataTable columns={deviceColumns} rows={deviceRows} rowKey={(row) => row.name} label="VRF device state (show vrf)" />}
     </section>
-
-    {/* Staged review panel */}
-    {draft !== undefined && <section className="panel" aria-labelledby="vrfs-draft-title">
-      <div className="panel-heading">
-        <div><p className="eyebrow">NAMED SESSION {draft.sessionName}</p><h3 id="vrfs-draft-title">Staged: {draft.effectLabel}</h3></div>
-        <span className="panel-index">{draft.batch.length.toString().padStart(2, '0')}</span>
-      </div>
-      <p className="field-note">Staged batch: {draft.batch.map((line) => <code key={line}>{line}</code>)}</p>
-      {draft.risks.length > 0 && <ul className="ref-list" aria-label="Staged risks">
-        {draft.risks.map((risk) => <li key={risk}><span>{risk}</span></li>)}
-      </ul>}
-      {draft.diff === undefined
-        ? <EmptyState heading="Reading the device diff…" hint="Commit stays locked until the device answers its own diff()." />
-        : <pre className="diff-output">{draft.diff}</pre>}
-      <div className="review-actions">
-        <button className={draft.destructive ? 'danger-button' : 'primary-button'} type="button" onClick={onCommitDraft} disabled={!draft.canCommit || busy} aria-busy={busy}>
-          {draft.destructive ? 'Commit (risky — review above)' : 'Commit to running-config'}
-        </button>
-        <button className="quiet-button" type="button" onClick={onAbortDraft} disabled={busy}>Abort staged changes</button>
-      </div>
-    </section>}
 
     {notice !== '' && <p className="notice notice-success operation-result" role="status">{notice}</p>}
     {failure !== '' && <div className="notice notice-error operation-result" role="alert"><strong>The device did not take that.</strong><p>{failure}</p></div>}

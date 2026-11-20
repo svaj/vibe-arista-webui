@@ -35,7 +35,7 @@ import { TrunkEditor } from './TrunkEditor'
 import type { TrunkEditorClient } from './TrunkEditor'
 import { TrunkEditorView, TRUNK_ACTION_LABELS } from './TrunkEditorView'
 import type { TrunkCapabilityView } from './TrunkEditorView'
-import type { TrunkAction, TrunkDraftView, TrunkFieldKey, TrunkFields, TrunkLoadState, TrunkPortRow, TrunkReadyData } from './TrunkEditorView'
+import type { TrunkAction, TrunkFieldKey, TrunkFields, TrunkLoadState, TrunkPortRow, TrunkReadyData } from './TrunkEditorView'
 
 type TestNode = NonNullable<Parameters<typeof TrunkEditor>[0]['node']>
 type SessionFakes = { run: ReturnType<typeof vi.fn>; diff: ReturnType<typeof vi.fn>; commit: ReturnType<typeof vi.fn>; abort: ReturnType<typeof vi.fn>; hasDiffBeenRead: ReturnType<typeof vi.fn> }
@@ -261,7 +261,9 @@ async function stage(port: string, action: TrunkAction, fill?: () => Promise<voi
   await userEvent.selectOptions(await screen.findByLabelText('Interface'), port)
   await chooseAction(action)
   if (fill !== undefined) await fill()
-  await userEvent.click(screen.getByRole('button', { name: 'Preview change' }))
+  const submit = screen.getByRole('button', { name: 'Add to transaction' })
+  await userEvent.click(submit)
+  await vi.waitFor(() => expect(submit).toBeEnabled())
 }
 
 afterEach(() => vi.restoreAllMocks())
@@ -412,7 +414,7 @@ describe('TrunkEditor — device reads', () => {
     expect(screen.getByText('name this client cannot parse')).toBeInTheDocument()
     await userEvent.selectOptions(screen.getByLabelText('Interface'), 'Ethernet49/1')
     expect(within(notices()).queryByText(/No switchport line was read for this section/u)).toBeNull()
-    expect(screen.getByRole('button', { name: 'Preview change' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Add to transaction' })).toBeDisabled()
     expect(session.run).not.toHaveBeenCalled()
     expect(session.commit).not.toHaveBeenCalled()
     // A section the switchports table has no record for gets that note, because absense is not "routed".
@@ -421,80 +423,46 @@ describe('TrunkEditor — device reads', () => {
   })
 })
 
-describe('TrunkEditor — staged writes, refusals and the guards', () => {
-  it('switching mode to trunk stages exactly the pinned two lines, and a commit needs an explicit confirm', async () => {
+describe('TrunkEditor — exact shared-transaction batches and refusals', () => {
+  it('adds the pinned trunk-mode batch without committing or aborting it here', async () => {
     const { node, session } = makeFakes()
     await ready(node)
     await stage('Ethernet2', 'set-mode', async () => { await userEvent.selectOptions(screen.getByLabelText('Switchport mode'), 'trunk') })
 
-    await screen.findByText(/Review the device diff/u)
     expect(session.run).toHaveBeenCalledWith(['interface Ethernet2', 'switchport mode trunk'])
     expect(session.diff).toHaveBeenCalledOnce()
     expect(session.commit).not.toHaveBeenCalled()
-
-    await userEvent.click(screen.getByRole('button', { name: 'Commit to running-config' }))
-    const prompt = await screen.findByRole('dialog')
-    expect(within(prompt).getByText('ui-s3-session · Ethernet2')).toBeInTheDocument()
-    await userEvent.click(within(prompt).getByRole('button', { name: 'Cancel' }))
-    expect(session.commit).not.toHaveBeenCalled()
-
-    // A hard confirm gates every commit, not only the risky ones.
-    await userEvent.click(screen.getByRole('button', { name: 'Commit to running-config' }))
-    const confirmed = await screen.findByRole('dialog')
-    await userEvent.click(within(confirmed).getByRole('button', { name: 'Set trunk on Ethernet2' }))
-    expect(session.commit).toHaveBeenCalledOnce()
-    expect(await screen.findByText('Changes committed to running-config. Startup-config was not changed.')).toBeInTheDocument()
+    expect(session.abort).not.toHaveBeenCalled()
   })
 
-  it('re-reads the running-config after a commit and says so out loud', async () => {
-    const { node, session } = makeFakes()
-    await ready(node)
-    expect(node.interfaces.getAll).toHaveBeenCalledOnce()
-
-    await stage('Ethernet2', 'no-mode')
-    await screen.findByText(/Review the device diff/u)
-    expect(session.run).toHaveBeenCalledWith(['interface Ethernet2', 'no switchport mode'])
-    await userEvent.click(screen.getByRole('button', { name: 'Commit to running-config' }))
-    await userEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Clear the mode on Ethernet2' }))
-
-    expect(await screen.findByText(/re-read from the running-config after the commit/u)).toBeInTheDocument()
-    await vi.waitFor(() => expect(node.interfaces.getAll).toHaveBeenCalledTimes(2))
-  })
-
-  it('mode access, access VLAN and native VLAN each stage the client-pinned text', async () => {
+  it('reuses one config session for mode, VLAN, and negated-line batches', async () => {
     const { node, session } = makeFakes()
     await ready(node)
 
     await stage('Port-Channel1', 'set-mode', async () => { await userEvent.selectOptions(screen.getByLabelText('Switchport mode'), 'access') })
-    await screen.findByText(/Review the device diff/u)
-    expect(session.run).toHaveBeenLastCalledWith(['interface Port-Channel1', 'switchport mode access'])
-    await abortDraft(session)
-
     await stage('Ethernet1', 'access-vlan', async () => { await userEvent.type(screen.getByLabelText('Access VLAN'), '20') })
-    await screen.findByText(/Review the device diff/u)
-    expect(session.run).toHaveBeenLastCalledWith(['interface Ethernet1', 'switchport access vlan 20'])
-    await userEvent.click(screen.getByRole('button', { name: 'Commit to running-config' }))
-    await userEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Set access VLAN 20 on Ethernet1' }))
-    expect(session.commit).toHaveBeenCalledOnce()
-
     await stage('Ethernet2', 'native-vlan', async () => { await userEvent.type(screen.getByLabelText('Native VLAN'), '200') })
-    await screen.findByText(/Review the device diff/u)
-    expect(session.run).toHaveBeenLastCalledWith(['interface Ethernet2', 'switchport trunk native vlan 200'])
-    expect(session.commit).toHaveBeenCalledTimes(1)
+    await stage('Ethernet2', 'no-mode')
+
+    const writeOpens = vi.mocked(node.configSession).mock.calls.filter(([options]) => options?.noCommit !== true)
+    expect(writeOpens).toHaveLength(1)
+    expect(writeOpens[0]?.[0]).toEqual(expect.objectContaining({ description: 'webui shared transaction' }))
+    expect(session.run).toHaveBeenNthCalledWith(1, ['interface Port-Channel1', 'switchport mode access'])
+    expect(session.run).toHaveBeenNthCalledWith(2, ['interface Ethernet1', 'switchport access vlan 20'])
+    expect(session.run).toHaveBeenNthCalledWith(3, ['interface Ethernet2', 'switchport trunk native vlan 200'])
+    expect(session.run).toHaveBeenNthCalledWith(4, ['interface Ethernet2', 'no switchport mode'])
+    expect(session.commit).not.toHaveBeenCalled()
+    expect(session.abort).not.toHaveBeenCalled()
   })
 
-  it('clearing a native VLAN sends the negated line and names it in the confirm', async () => {
+  it('clearing a native VLAN sends the exact negated batch', async () => {
     const { node, session } = makeFakes()
     await ready(node)
 
     await stage('Ethernet2', 'no-native-vlan')
-    await screen.findByText(/Review the device diff/u)
     expect(session.run).toHaveBeenLastCalledWith(['interface Ethernet2', 'no switchport trunk native vlan'])
-    await userEvent.click(screen.getByRole('button', { name: 'Commit to running-config' }))
-    const prompt = await screen.findByRole('dialog')
-    expect(within(prompt).getByText(/is what the device answered as staged/u)).toBeInTheDocument()
-    await userEvent.click(within(prompt).getByRole('button', { name: 'Clear the native VLAN on Ethernet2' }))
-    expect(session.commit).toHaveBeenCalledOnce()
+    expect(session.commit).not.toHaveBeenCalled()
+    expect(session.abort).not.toHaveBeenCalled()
   })
 
   it('the allowed-VLAN editor adds, removes and replaces by recomputing the whole list', async () => {
@@ -502,19 +470,16 @@ describe('TrunkEditor — staged writes, refusals and the guards', () => {
     await ready(node)
 
     await stage('Ethernet2', 'allowed-add', async () => { await userEvent.type(screen.getByLabelText('Allowed VLAN ranges'), '23,30-31') })
-    await screen.findByText(/Review the device diff/u)
-    expect(session.run).toHaveBeenLastCalledWith(['interface Ethernet2', 'switchport trunk allowed vlan 10-12,20,23,30-31'])
-    await abortDraft(session)
+    expect(session.run).toHaveBeenNthCalledWith(1, ['interface Ethernet2', 'switchport trunk allowed vlan 10-12,20,23,30-31'])
 
     await stage('Ethernet2', 'allowed-remove', async () => { await userEvent.type(screen.getByLabelText('Allowed VLAN ranges'), '11-12') })
-    await screen.findByText(/Review the device diff/u)
-    expect(session.run).toHaveBeenLastCalledWith(['interface Ethernet2', 'switchport trunk allowed vlan 10,20'])
-    await abortDraft(session)
+    expect(session.run).toHaveBeenNthCalledWith(2, ['interface Ethernet2', 'switchport trunk allowed vlan 10,20'])
 
-    // A keyword spelling is writeable by explicit replacement only — its members are never assumed.
     await stage('Port-Channel10', 'allowed-replace', async () => { await userEvent.type(screen.getByLabelText('Allowed VLAN ranges'), '5-6,9') })
-    await screen.findByText(/Review the device diff/u)
-    expect(session.run).toHaveBeenLastCalledWith(['interface Port-Channel10', 'switchport trunk allowed vlan 5-6,9'])
+    expect(session.run).toHaveBeenNthCalledWith(3, ['interface Port-Channel10', 'switchport trunk allowed vlan 5-6,9'])
+    expect(vi.mocked(node.configSession).mock.calls.filter(([options]) => options?.noCommit !== true)).toHaveLength(1)
+    expect(session.commit).not.toHaveBeenCalled()
+    expect(session.abort).not.toHaveBeenCalled()
   })
 
   it('clearing the allowed list sends the negated form instead of an empty list', async () => {
@@ -522,11 +487,9 @@ describe('TrunkEditor — staged writes, refusals and the guards', () => {
     await ready(node)
 
     await stage('Ethernet2', 'no-allowed')
-    await screen.findByText(/Review the device diff/u)
     expect(session.run).toHaveBeenLastCalledWith(['interface Ethernet2', 'no switchport trunk allowed vlan'])
-    await userEvent.click(screen.getByRole('button', { name: 'Commit to running-config' }))
-    await userEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Clear the allowed VLAN list on Ethernet2' }))
-    expect(session.commit).toHaveBeenCalledOnce()
+    expect(session.commit).not.toHaveBeenCalled()
+    expect(session.abort).not.toHaveBeenCalled()
   })
 
   it('adding onto a port with no allowed line writes the list, and refuses an unreadable current spelling', async () => {
@@ -537,9 +500,7 @@ describe('TrunkEditor — staged writes, refusals and the guards', () => {
 
     // "No line" is an empty set, so an add is a plain write — the screen says so through the argv.
     await stage('Ethernet3', 'allowed-add', async () => { await userEvent.type(screen.getByLabelText('Allowed VLAN ranges'), '5') })
-    await screen.findByText(/Review the device diff/u)
     expect(session.run).toHaveBeenLastCalledWith(['interface Ethernet3', 'switchport trunk allowed vlan 5'])
-    await abortDraft(session)
 
     // A current spelling the client would never write is refused by name: no members are inferred from it.
     await stage('Ethernet7', 'allowed-add', async () => { await userEvent.type(screen.getByLabelText('Allowed VLAN ranges'), '20') })
@@ -548,20 +509,19 @@ describe('TrunkEditor — staged writes, refusals and the guards', () => {
     expect(session.run).toHaveBeenLastCalledWith(['interface Ethernet3', 'switchport trunk allowed vlan 5'])
   })
 
-  it('hard-confirms writing the eAPI VLAN as a new native VLAN, naming the id being written', async () => {
+  it('names the eAPI VLAN risk before staging the native-VLAN batch', async () => {
     const { node, session } = makeFakes()
     await ready(node)
 
-    await stage('Port-Channel10', 'native-vlan', async () => { await userEvent.type(screen.getByLabelText('Native VLAN'), '100') })
-    await screen.findByText(/Review the device diff/u)
+    await userEvent.selectOptions(screen.getByLabelText('Interface'), 'Port-Channel10')
+    await chooseAction('native-vlan')
+    await userEvent.type(screen.getByLabelText('Native VLAN'), '100')
     expect(within(notices()).getByText(/The native VLAN you are writing, VLAN 100/u)).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Add to transaction' }))
 
-    await userEvent.click(screen.getByRole('button', { name: 'Commit to running-config' }))
-    const prompt = await screen.findByRole('dialog')
-    expect(within(prompt).getByText(/native VLAN you are writing, VLAN 100/u)).toBeInTheDocument()
-    await userEvent.click(within(prompt).getByRole('button', { name: 'Commit despite the VLAN 100 risk' }))
-    expect(session.run).toHaveBeenLastCalledWith(['interface Port-Channel10', 'switchport trunk native vlan 100'])
-    expect(session.commit).toHaveBeenCalledOnce()
+    await vi.waitFor(() => expect(session.run).toHaveBeenLastCalledWith(['interface Port-Channel10', 'switchport trunk native vlan 100']))
+    expect(session.commit).not.toHaveBeenCalled()
+    expect(session.abort).not.toHaveBeenCalled()
   })
 
   it('an add/remove over a keyword spelling is refused pre-wire, and no session is opened', async () => {
@@ -599,11 +559,11 @@ describe('TrunkEditor — staged writes, refusals and the guards', () => {
     await chooseAction('allowed-replace')
     await userEvent.clear(screen.getByLabelText('Allowed VLAN ranges'))
     await userEvent.type(screen.getByLabelText('Allowed VLAN ranges'), '10-12,20')
-    await userEvent.click(screen.getByRole('button', { name: 'Preview change' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Add to transaction' }))
     expect(await screen.findByRole('alert')).toHaveTextContent(/Nothing would change, so no config session was opened/u)
 
     await userEvent.clear(screen.getByLabelText('Allowed VLAN ranges'))
-    await userEvent.click(screen.getByRole('button', { name: 'Preview change' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Add to transaction' }))
     expect(await screen.findByRole('alert')).toHaveTextContent(/needs a value/u)
     expect(session.run).not.toHaveBeenCalled()
     expect(session.run).not.toHaveBeenCalled()
@@ -621,7 +581,7 @@ describe('TrunkEditor — staged writes, refusals and the guards', () => {
       // fireEvent rather than userEvent: an empty string is not a keystroke, and the guard must be the
       // only thing standing between this value and the device.
       fireEvent.change(field, { target: { value: bad } })
-      await userEvent.click(screen.getByRole('button', { name: 'Preview change' }))
+      await userEvent.click(screen.getByRole('button', { name: 'Add to transaction' }))
       const alerts = await screen.findAllByRole('alert')
       const message = alerts.map((alert) => alert.textContent ?? '').join(' ')
       expect(/outside the 1\.\.4094 write range|is not a whole VLAN id/u.test(message), bad).toBe(true)
@@ -632,89 +592,40 @@ describe('TrunkEditor — staged writes, refusals and the guards', () => {
     expect(session.commit).not.toHaveBeenCalled()
   })
 
-  it('hard-confirms a native-VLAN change on the trunk whose native VLAN serves eAPI, naming the VLAN', async () => {
+  it('names the native-VLAN management risk and still only stages the batch', async () => {
     const { node, session } = makeFakes()
     await ready(node)
 
     await stage('Port-Channel1', 'native-vlan', async () => { await userEvent.type(screen.getByLabelText('Native VLAN'), '200') })
-    await screen.findByText(/Review the device diff/u)
-    // The pre-stage warning is visible before anything is staged, exactly like S1/S2's in-before-you-delete rule.
-    expect(within(notices()).getByText(/VLAN 100 is the trunk native VLAN on Port-Channel1/u)).toBeInTheDocument()
-
-    await userEvent.click(screen.getByRole('button', { name: 'Commit to running-config' }))
-    const prompt = await screen.findByRole('dialog')
-    expect(within(prompt).getByText(/Confirm management-path risk on Port-Channel1/u)).toBeInTheDocument()
-    expect(within(prompt).getByText(/VLAN 100 is the trunk native VLAN/u)).toBeInTheDocument()
-    expect(within(prompt).getByText(/may drop the management path this UI is using/u)).toBeInTheDocument()
-    await userEvent.click(within(prompt).getByRole('button', { name: 'Cancel' }))
+    expect(session.run).toHaveBeenLastCalledWith(['interface Port-Channel1', 'switchport trunk native vlan 200'])
     expect(session.commit).not.toHaveBeenCalled()
-
-    await userEvent.click(screen.getByRole('button', { name: 'Commit to running-config' }))
-    const again = await screen.findByRole('dialog')
-    await userEvent.click(within(again).getByRole('button', { name: 'Commit despite the VLAN 100 risk' }))
-    expect(session.commit).toHaveBeenCalledOnce()
     expect(session.abort).not.toHaveBeenCalled()
   })
 
-  it('hard-confirms a trunk-mode write on the access port sitting in the eAPI VLAN', async () => {
+  it('names the eAPI access-VLAN risk and still only stages the trunk-mode batch', async () => {
     const { node, session } = makeFakes()
     await ready(node)
 
-    await stage('Ethernet1', 'set-mode', async () => { await userEvent.selectOptions(screen.getByLabelText('Switchport mode'), 'trunk') })
-    await screen.findByText(/Review the device diff/u)
+    await userEvent.selectOptions(screen.getByLabelText('Interface'), 'Ethernet1')
+    await chooseAction('set-mode')
+    await userEvent.selectOptions(screen.getByLabelText('Switchport mode'), 'trunk')
     const notice = within(notices()).getByText(/is currently an access port in VLAN 100/u)
     expect(notice).toHaveTextContent('unproven on this box (no hardware pin)')
+    await userEvent.click(screen.getByRole('button', { name: 'Add to transaction' }))
 
-    await userEvent.click(screen.getByRole('button', { name: 'Commit to running-config' }))
-    const prompt = await screen.findByRole('dialog')
-    expect(within(prompt).getByText(/access port in VLAN 100/u)).toBeInTheDocument()
-    await userEvent.click(within(prompt).getByRole('button', { name: 'Commit despite the VLAN 100 risk' }))
-    expect(session.run).toHaveBeenLastCalledWith(['interface Ethernet1', 'switchport mode trunk'])
-    expect(session.commit).toHaveBeenCalledOnce()
+    await vi.waitFor(() => expect(session.run).toHaveBeenLastCalledWith(['interface Ethernet1', 'switchport mode trunk']))
+    expect(session.commit).not.toHaveBeenCalled()
+    expect(session.abort).not.toHaveBeenCalled()
   })
 
-  it('a port with no management-VLAN signal gets the ordinary confirm, and its risks say nothing was claimed', async () => {
-    const { node } = makeFakes()
+  it('stages an action with no management-VLAN signal and does not invent a feature-level confirm', async () => {
+    const { node, session } = makeFakes()
     await ready(node)
 
     await stage('Ethernet2', 'allowed-add', async () => { await userEvent.type(screen.getByLabelText('Allowed VLAN ranges'), '300') })
-    await screen.findByText(/Review the device diff/u)
-    await userEvent.click(screen.getByRole('button', { name: 'Commit to running-config' }))
-    const prompt = await screen.findByRole('dialog')
-    expect(within(prompt).getByRole('button', { name: 'Write the allowed VLAN list on Ethernet2' })).toBeInTheDocument()
-    expect(within(prompt).getByText(/which keyword forms/u)).toBeInTheDocument()
-    await userEvent.click(within(prompt).getByRole('button', { name: 'Cancel' }))
-  })
-
-  it('a staged session blocks another preview and aborts only after a confirm', async () => {
-    const { node, session } = makeFakes()
-    await ready(node)
-
-    await stage('Ethernet2', 'no-allowed')
-    await screen.findByText(/Review the device diff/u)
-    expect(screen.getByRole('button', { name: 'Preview change' })).toBeDisabled()
-    expect(screen.getByText(/A staged change is already open in session/u)).toBeInTheDocument()
-
-    await userEvent.click(screen.getByRole('button', { name: 'Abort staged changes' }))
-    const prompt = await screen.findByRole('dialog')
-    expect(within(prompt).getByText(/no switchport trunk allowed vlan/u)).toBeInTheDocument()
-    await userEvent.click(within(prompt).getByRole('button', { name: 'Cancel' }))
-    expect(session.abort).not.toHaveBeenCalled()
-
-    await userEvent.click(screen.getByRole('button', { name: 'Abort staged changes' }))
-    await userEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Abort staged changes' }))
-    expect(session.abort).toHaveBeenCalledOnce()
-    expect(await screen.findByRole('button', { name: 'Preview change' })).toBeEnabled()
-  })
-
-  it('a commit with no diff read cannot be armed, and a failed commit stays marked attempted', async () => {
-    const { node, session } = makeFakes({}, false)
-    await ready(node)
-
-    await stage('Ethernet2', 'set-mode', async () => { await userEvent.selectOptions(screen.getByLabelText('Switchport mode'), 'trunk') })
-    await screen.findByText(/Review the device diff/u)
-    expect(screen.getByRole('button', { name: 'Commit to running-config' })).toBeDisabled()
+    expect(session.run).toHaveBeenLastCalledWith(['interface Ethernet2', 'switchport trunk allowed vlan 10-12,20,300'])
     expect(session.commit).not.toHaveBeenCalled()
+    expect(session.abort).not.toHaveBeenCalled()
   })
 
   it('switching the port discards unstaged edits so they can never be staged against another port', async () => {
@@ -731,8 +642,8 @@ describe('TrunkEditor — staged writes, refusals and the guards', () => {
     expect(within(notices()).getByText(/Edits for Ethernet2 were cleared without being staged/u)).toBeInTheDocument()
 
     await userEvent.type(screen.getByLabelText('Allowed VLAN ranges'), '40')
-    await userEvent.click(screen.getByRole('button', { name: 'Preview change' }))
-    await screen.findByText(/Review the device diff/u)
+    await userEvent.click(screen.getByRole('button', { name: 'Add to transaction' }))
+    await vi.waitFor(() => expect(session.run).toHaveBeenCalled())
     // The recomputed list belongs to the newly selected port, never to the abandoned one — and it is the
     // canonical collapsed form, with no trace of the 777 typed for the other port.
     expect(session.run).toHaveBeenLastCalledWith(['interface Port-Channel1', 'switchport trunk allowed vlan 1-7,40'])
@@ -745,7 +656,7 @@ describe('TrunkEditor — staged writes, refusals and the guards', () => {
 
     await userEvent.selectOptions(screen.getByLabelText('Interface'), 'Ethernet49/1')
     expect(await screen.findByText(/is listed but not writable here/u)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Preview change' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Add to transaction' })).toBeDisabled()
     expect(session.run).not.toHaveBeenCalled()
     expect(session.commit).not.toHaveBeenCalled()
   })
@@ -765,13 +676,6 @@ describe('TrunkEditor — staged writes, refusals and the guards', () => {
     expect(node.abortSession).toHaveBeenCalledWith('stale-pending')
   })
 })
-
-async function abortDraft(session: ConfigSession & SessionFakes) {
-  await userEvent.click(screen.getByRole('button', { name: 'Abort staged changes' }))
-  await userEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Abort staged changes' }))
-  await screen.findByText(/was aborted; nothing was written to the device/u)
-  expect(session.abort).toHaveBeenCalled()
-}
 
 describe('TrunkEditor — the trunk-group capability gate (#67 F5, #73\u2019s probe question)', () => {
   it('asks with exactly this screen\u2019s candidates, in a session that validates and aborts, never commits', async () => {
@@ -805,7 +709,7 @@ describe('TrunkEditor — the trunk-group capability gate (#67 F5, #73\u2019s pr
     const field = screen.getByLabelText('Trunk group') as HTMLInputElement
     expect(field).toBeDisabled()
     await userEvent.type(field, 'LAB')
-    await userEvent.click(screen.getByRole('button', { name: 'Preview change' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Add to transaction' }))
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Trunk-group changes are probe-gated')
     // The gate is the write path itself: nothing was staged, and the only session opened is the probe's.
@@ -824,7 +728,7 @@ describe('TrunkEditor — the trunk-group capability gate (#67 F5, #73\u2019s pr
     expect(probe.abort).toHaveBeenCalledOnce()
 
     await chooseAction('remove-trunk-group')
-    await userEvent.click(screen.getByRole('button', { name: 'Preview change' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Add to transaction' }))
     expect((await screen.findAllByRole('alert')).some((n) => /probe-gated/u.test(n.textContent ?? ''))).toBe(true)
     expect(session.run).not.toHaveBeenCalled()
   })
@@ -849,24 +753,20 @@ describe('TrunkEditor — the trunk-group capability gate (#67 F5, #73\u2019s pr
     const field = screen.getByLabelText('Trunk group')
     expect(field).toBeEnabled()
     await userEvent.type(field, 'LABGRP')
-    await userEvent.click(screen.getByRole('button', { name: 'Preview change' }))
-    await screen.findByText(/Review the device diff/u)
-    expect(session.run).toHaveBeenLastCalledWith(['interface Ethernet2', 'switchport trunk group LABGRP'])
-
-    await userEvent.click(screen.getByRole('button', { name: 'Abort staged changes' }))
-    await userEvent.click(within(await screen.findByRole('dialog', { name: 'Abort staged changes' })).getByRole('button', { name: 'Abort staged changes' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Add to transaction' }))
+    await vi.waitFor(() => expect(session.run).toHaveBeenCalledTimes(1))
+    expect(session.run).toHaveBeenNthCalledWith(1, ['interface Ethernet2', 'switchport trunk group LABGRP'])
 
     await chooseAction('remove-trunk-group')
     const refilled = screen.getByLabelText('Trunk group') as HTMLInputElement
-    expect(refilled.value).toBe('LABGRP') // the field is not silently wiped
-    await userEvent.clear(refilled)
-    await userEvent.type(refilled, 'LABGRP')
-    await userEvent.click(screen.getByRole('button', { name: 'Preview change' }))
-    await screen.findByText(/Review the device diff/u)
-    expect(session.run).toHaveBeenLastCalledWith(['interface Ethernet2', 'no switchport trunk group LABGRP'])
+    expect(refilled.value).toBe('LABGRP')
+    await userEvent.click(screen.getByRole('button', { name: 'Add to transaction' }))
+    await vi.waitFor(() => expect(session.run).toHaveBeenCalledTimes(2))
+    expect(session.run).toHaveBeenNthCalledWith(2, ['interface Ethernet2', 'no switchport trunk group LABGRP'])
 
-    // Selecting the intent itself re-asks the question (a fresh answer after the sweep of edits),
-    // bounded by the client's throttle/cache — every run here went through the same probe session.
+    expect(vi.mocked(node.configSession).mock.calls.filter(([options]) => options?.noCommit !== true)).toHaveLength(1)
+    expect(session.commit).not.toHaveBeenCalled()
+    expect(session.abort).not.toHaveBeenCalled()
     expect(probe.abort).toHaveBeenCalledOnce()
   })
 
@@ -891,10 +791,10 @@ describe('TrunkEditor — the trunk-group capability gate (#67 F5, #73\u2019s pr
     await userEvent.selectOptions(screen.getByLabelText('Interface'), 'Ethernet2')
     await chooseAction('add-trunk-group')
 
-    await userEvent.click(screen.getByRole('button', { name: 'Preview change' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Add to transaction' }))
     expect(await screen.findByRole('alert')).toHaveTextContent('A trunk-group name is empty (assertTrunkGroupName)')
     await userEvent.type(screen.getByLabelText('Trunk group'), 'two words')
-    await userEvent.click(screen.getByRole('button', { name: 'Preview change' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Add to transaction' }))
     await screen.findByRole('alert')
     expect((await screen.findAllByRole('alert')).some((n) => /single token/u.test(n.textContent ?? ''))).toBe(true)
     expect(session.run).not.toHaveBeenCalled()
@@ -1106,8 +1006,6 @@ describe('TrunkEditorView — presentation only', () => {
     notice: '',
     onFieldChange: noop,
     onPreview: noop,
-    onCommit: noop,
-    onAbortDraft: noop,
     onReload: noop,
     onAbortPending: noop,
     currentGroups: [],
@@ -1262,7 +1160,7 @@ describe('TrunkEditorView — presentation only', () => {
     render(<TrunkEditorView {...props({ load: { kind: 'ready', data: { ...data, rows: [], vlanOptions: [], sessions: [] } } })} />)
 
     expect(screen.getByText('The device configured no Ethernet or Port-Channel switchport section.')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Preview change' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Add to transaction' })).toBeDisabled()
     expect(screen.queryByRole('table')).not.toBeInTheDocument()
     expect(screen.getByText(/The VLAN table came back empty/u)).toBeInTheDocument()
   })
@@ -1283,70 +1181,32 @@ describe('TrunkEditorView — presentation only', () => {
     expect(within(second).getAllByText('Not configured')).toHaveLength(3)
   })
 
-  it('surfaces container messages by tone, aria-live, and names the risks in a draft', () => {
-    const draft: TrunkDraftView = {
-      sessionName: 'ui-s3-session',
-      sessionState: 'diffed',
-      batch: ['interface Port-Channel1', 'switchport trunk native vlan 200'],
-      diff: '+interface Port-Channel1\n+ switchport trunk native vlan 200',
-      commitAttempted: false,
-      diffRead: true,
-      canAbort: true,
-      risks: ['VLAN 100 is the trunk native VLAN on Port-Channel1'],
-    }
-    render(<TrunkEditorView {...props({ fields: { ...baseFields, port: 'Port-Channel1', action: 'native-vlan', nativeVlan: '200' }, draft, messages: [{ tone: 'risk', text: 'VLAN 100 is the trunk native VLAN on Port-Channel1' }, { tone: 'success', text: 'Device state was re-read from the running-config after the commit.' }] })} />)
+  it('surfaces container messages by tone and aria-live without a local commit panel', () => {
+    render(<TrunkEditorView {...props({ fields: { ...baseFields, port: 'Port-Channel1', action: 'native-vlan', nativeVlan: '200' }, messages: [{ tone: 'risk', text: 'VLAN 100 is the trunk native VLAN on Port-Channel1' }, { tone: 'success', text: 'Trunk change added to the transaction.' }] })} />)
 
-    expect(screen.getByRole('list', { name: 'Risks named in the confirm prompt' })).toHaveTextContent('VLAN 100 is the trunk native VLAN on Port-Channel1')
-    const staged = screen.getByText('interface Port-Channel1')
-    expect(within(staged.parentElement as HTMLElement).getByText('switchport trunk native vlan 200')).toBeInTheDocument()
     expect(screen.getByLabelText('Native VLAN')).toHaveValue('200')
-
     const stack = screen.getByRole('list', { name: 'What this screen knows about the current selection' })
-    const live = within(stack).getByText('Device state was re-read from the running-config after the commit.')
+    const live = within(stack).getByText('Trunk change added to the transaction.')
     expect(live).toHaveAttribute('aria-live', 'polite')
     expect(live).toHaveClass('notice-success')
     expect(within(stack).getByText('VLAN 100 is the trunk native VLAN on Port-Channel1')).toHaveClass('notice-warning')
+    expect(screen.queryByRole('button', { name: /Commit to running-config/u })).toBeNull()
+    expect(screen.queryByRole('button', { name: /Abort staged changes/u })).toBeNull()
   })
 
-  it('gates commit on the diff, its read, and an attempted commit, and abort on the session state', () => {
-    const unstaged: TrunkDraftView = { sessionName: 's', sessionState: 'open', batch: ['interface Ethernet2'], commitAttempted: false, diffRead: false, canAbort: true, risks: [] }
-    const first = render(<TrunkEditorView {...props({ draft: unstaged })} />)
-    expect(screen.getByRole('button', { name: 'Commit to running-config' })).toBeDisabled()
-    expect(screen.getByText(/A diff is required before commit/u)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Preview change' })).toBeDisabled()
-    expect(screen.getByText(/A staged change is already open in session/u)).toBeInTheDocument()
-    first.unmount()
-
-    const attempted: TrunkDraftView = { ...unstaged, diff: '+x', diffRead: true, commitAttempted: true }
-    const second = render(<TrunkEditorView {...props({ draft: attempted })} />)
-    expect(screen.getByRole('button', { name: 'Commit to running-config' })).toBeDisabled()
-    expect(screen.getByText(/Commit was attempted; refresh device state/u)).toBeInTheDocument()
-    second.unmount()
-
-    const sealed: TrunkDraftView = { ...unstaged, diff: '+x', diffRead: true, canAbort: false, sessionState: 'aborted' }
-    render(<TrunkEditorView {...props({ draft: sealed })} />)
-    expect(screen.getByRole('button', { name: 'Abort staged changes' })).toBeDisabled()
-  })
-
-  it('fires the callbacks the container wired, for fields, sessions and the operation result slots', async () => {
+  it('fires the callbacks the container wired for fields, sessions and operation results', async () => {
     const onFieldChange = vi.fn()
-    const onCommit = vi.fn()
-    const onAbortDraft = vi.fn()
     const onAbortPending = vi.fn()
-    const draft: TrunkDraftView = { sessionName: 's', sessionState: 'diffed', batch: ['interface Ethernet2', 'no switchport mode'], diff: '+x', commitAttempted: false, diffRead: true, canAbort: true, risks: [] }
-    render(<TrunkEditorView {...props({ draft, onFieldChange, onCommit, onAbortDraft, onAbortPending, failure: 'Preview failed: 1006 config locked', notice: 'Session s was aborted.' })} />)
+    render(<TrunkEditorView {...props({ onFieldChange, onAbortPending, failure: 'Staging failed: 1006 config locked', notice: 'Trunk change added to the transaction.' })} />)
 
     await userEvent.selectOptions(screen.getByLabelText('Interface'), 'Ethernet1')
     expect(onFieldChange).toHaveBeenCalledWith('port', 'Ethernet1')
-    await userEvent.click(screen.getByRole('button', { name: 'Commit to running-config' }))
-    expect(onCommit).toHaveBeenCalledOnce()
-    expect(onAbortDraft).not.toHaveBeenCalled()
 
     await userEvent.click(screen.getByRole('button', { name: 'Abort pending session' }))
     expect(onAbortPending).toHaveBeenCalledWith({ name: 'ui-s3-session', state: 'pending', description: 'webui trunk set mode' })
 
-    expect(screen.getByRole('alert')).toHaveTextContent('Preview failed: 1006 config locked')
-    const live = screen.getByText('Session s was aborted.')
+    expect(screen.getByRole('alert')).toHaveTextContent('Staging failed: 1006 config locked')
+    const live = screen.getByText('Trunk change added to the transaction.')
     expect(live).toHaveAttribute('role', 'status')
     expect(live).toHaveAttribute('aria-live', 'polite')
   })
@@ -1354,7 +1214,7 @@ describe('TrunkEditorView — presentation only', () => {
   it('shuts the write affordances without a device handle, and while an operation is in flight', () => {
     const first = render(<TrunkEditorView {...props({ canWrite: false })} />)
     expect(screen.getByRole('button', { name: 'Refresh state' })).toBeDisabled()
-    expect(screen.getByRole('button', { name: 'Preview change' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Add to transaction' })).toBeDisabled()
     first.unmount()
 
     render(<TrunkEditorView {...props({ busy: true })} />)

@@ -11,9 +11,9 @@
  *   loud that the keyword is the client convention, not device evidence;
  * - guards mirror the client refusals in-form at ZERO sessions (name grammar, rd one-token,
  *   description round-trip incl. the quote rule, create-existing, no-op set/clear/routing/bind);
- * - run-9 honesty: a device refusal raised by `run()` surfaces as the device's own error and the
- *   commit stays locked behind the unread diff;
- * - delete lists the config-assigned members, is destructive-confirmed, and declining sends nothing;
+ * - run-9 honesty: a device refusal raised by `run()` surfaces as the device's own error;
+ * - delete and assignment stage through the shared transaction without feature-local commit/abort;
+ * - repeated actions reuse one shared config session;
  * - four states + soft-read degradation (a failed `show vrf` costs only the device columns).
  */
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
@@ -72,7 +72,6 @@ interface Overrides {
   readonly diff?: string
   readonly diffRead?: boolean
   readonly runError?: Error
-  readonly commitError?: Error
 }
 
 const defaultVrfs: readonly Vrf[] = [
@@ -96,10 +95,7 @@ function makeFakes(overrides: Overrides = {}) {
     }),
     diff: vi.fn(async () => overrides.diff ?? '+vrf instance GREEN'),
     hasDiffBeenRead: vi.fn(() => overrides.diffRead ?? true),
-    commit: vi.fn(async () => {
-      if (overrides.commitError !== undefined) throw overrides.commitError
-      return []
-    }),
+    commit: vi.fn(async () => []),
     abort: vi.fn(async () => []),
   }
   const getAllVrfs = vi.fn(async () => {
@@ -138,11 +134,10 @@ async function readyVrfs(): Promise<void> {
 
 async function stageReady(fakes: ReturnType<typeof makeFakes>): Promise<void> {
   await waitFor(() => expect(fakes.session.run).toHaveBeenCalled())
-  await screen.findByText(/Review the device diff before committing/u)
+  await screen.findByText(/VRF change added to the transaction/u)
 }
 
 async function manage(name: string): Promise<void> {
-  // a reload (after commit/abort) lands on the loading arm, so wait for the row to exist
   fireEvent.click(await screen.findByRole('button', { name: `Manage ${name}` }))
 }
 
@@ -267,7 +262,7 @@ describe('Vrfs — four states, nothing contacted unless asked', () => {
 // ====================================================================================================
 
 describe('Vrfs — create stages the run-9-proven composition', () => {
-  it('name + rd + description: one named session, header-first batch byte-exact, risky-free commit flow', async () => {
+  it('name + rd + description: one shared session, header-first batch byte-exact, feature never commits', async () => {
     const fakes = makeFakes()
     renderScreen(fakes)
     await readyVrfs()
@@ -278,14 +273,12 @@ describe('Vrfs — create stages the run-9-proven composition', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Stage create VRF' }))
     await stageReady(fakes)
 
-    expect(fakes.configSession).toHaveBeenCalledWith({ description: 'webui vrf create' })
+    expect(fakes.configSession).toHaveBeenCalledWith(expect.objectContaining({ description: 'webui shared transaction' }))
     expect(fakes.session.run).toHaveBeenCalledWith(['vrf instance GREEN', 'rd 65000:1', 'description leaf'])
-
-    fireEvent.click(screen.getByRole('button', { name: 'Commit to running-config' }))
-    fireEvent.click(await screen.findByRole('button', { name: /Commit despite the risk: vrf instance GREEN/u }))
-    await waitFor(() => expect(fakes.session.commit).toHaveBeenCalled())
-    await waitFor(() => expect(fakes.getAllVrfs).toHaveBeenCalledTimes(2))
-    expect(screen.getByText(/Startup-config was not changed/u)).toBeInTheDocument()
+    expect(fakes.session.commit).not.toHaveBeenCalled()
+    expect(fakes.session.abort).not.toHaveBeenCalled()
+    expect(screen.queryByRole('button', { name: /Commit/u })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Abort/u })).not.toBeInTheDocument()
   })
 
   it('name only: a bare header line with no trailing empties', async () => {
@@ -333,7 +326,7 @@ describe('Vrfs — create stages the run-9-proven composition', () => {
     expect(fakes.configSession).not.toHaveBeenCalled()
   })
 
-  it('a definition-only config stages `vrf definition` — and the batch note cites the run-9 deprecation', async () => {
+  it('a definition-only config stages `vrf definition` in the exact existing batch', async () => {
     const fakes = makeFakes({ vrfs: [vrfFixture({ name: 'OLD', definitionForm: 'definition' })] })
     renderScreen(fakes)
     await screen.findByRole('button', { name: 'Manage OLD' })
@@ -343,10 +336,9 @@ describe('Vrfs — create stages the run-9-proven composition', () => {
     await stageReady(fakes)
 
     expect(fakes.session.run).toHaveBeenCalledWith(['vrf definition GREEN'])
-    expect(screen.getByText(/refusing `vrf definition` as deprecated/u)).toBeInTheDocument()
   })
 
-  it('a device refusal raised by run() stays THE DEVICE verdict: failure copy, commit locked behind the diff', async () => {
+  it('a device refusal raised by run() stays THE DEVICE verdict and the feature never commits or aborts', async () => {
     const fakes = makeFakes({ runError: new Error('SYNTHETIC (1002): % Command entered is wrong syntax') })
     renderScreen(fakes)
     await readyVrfs()
@@ -356,9 +348,9 @@ describe('Vrfs — create stages the run-9-proven composition', () => {
 
     expect(await screen.findByText(/The device did not take that/u)).toBeInTheDocument()
     expect(screen.getByText(/wrong syntax/u)).toBeInTheDocument()
-    expect(screen.getByText(/Reading the device diff/u)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Commit to running-config' })).toBeDisabled()
     expect(fakes.session.commit).not.toHaveBeenCalled()
+    expect(fakes.session.abort).not.toHaveBeenCalled()
+    expect(screen.queryByRole('button', { name: /Commit|Abort/u })).not.toBeInTheDocument()
   })
 })
 
@@ -380,7 +372,7 @@ describe('Vrfs — per-VRF section writes stay inside the header, exactly like t
     fireEvent.change(editRdField(), { target: { value: '1:9' } })
     fireEvent.click(screen.getByRole('button', { name: 'Set rd' }))
     await stageReady(fakes)
-    expect(fakes.configSession).toHaveBeenCalledWith({ description: 'webui vrf set rd' })
+    expect(fakes.configSession).toHaveBeenCalledWith(expect.objectContaining({ description: 'webui shared transaction' }))
     expect(fakes.session.run).toHaveBeenCalledWith(['vrf instance BLUE', 'rd 1:9'])
   })
 
@@ -410,7 +402,7 @@ describe('Vrfs — per-VRF section writes stay inside the header, exactly like t
     expect(fakes.session.run).toHaveBeenCalledWith(['vrf instance BLUE', 'description ops net-vrf'])
   })
 
-  it('the six routing arms stage the six bare top-level lines, with no-op arms disabled', async () => {
+  it('the routing arms stage bare top-level lines in one shared session, with no-op arms disabled', async () => {
     const fakes = makeFakes()
     renderScreen(fakes)
     await readyVrfs()
@@ -421,51 +413,22 @@ describe('Vrfs — per-VRF section writes stay inside the header, exactly like t
 
     fireEvent.click(screen.getByRole('button', { name: 'Disable IPv4 routing' }))
     await stageReady(fakes)
-    expect(fakes.configSession).toHaveBeenCalledWith({ description: 'webui vrf disable ipv4 routing' })
-    expect(fakes.session.run).toHaveBeenCalledWith(['no ip routing vrf BLUE'])
-
-    fireEvent.click(screen.getByRole('button', { name: 'Abort staged changes' }))
-    await waitFor(() => expect(screen.getAllByRole('button', { name: 'Abort staged changes' })).toHaveLength(2))
-    fireEvent.click(screen.getAllByRole('button', { name: 'Abort staged changes' }).at(-1)!)
-    await waitFor(() => expect(fakes.session.abort).toHaveBeenCalled())
-    await manage('BLUE')
+    expect(fakes.configSession).toHaveBeenCalledWith(expect.objectContaining({ description: 'webui shared transaction' }))
+    expect(fakes.session.run).toHaveBeenNthCalledWith(1, ['no ip routing vrf BLUE'])
 
     fireEvent.click(screen.getByRole('button', { name: 'Enable IPv6 routing' }))
-    await stageReady(fakes)
-    expect(fakes.session.run).toHaveBeenCalledWith(['ipv6 unicast-routing vrf BLUE'])
-    fireEvent.click(screen.getByRole('button', { name: 'Abort staged changes' }))
-    await waitFor(() => expect(screen.getAllByRole('button', { name: 'Abort staged changes' })).toHaveLength(2))
-    fireEvent.click(screen.getAllByRole('button', { name: 'Abort staged changes' }).at(-1)!)
-    await waitFor(() => expect(fakes.session.abort).toHaveBeenCalledTimes(2))
-    await manage('BLUE')
+    await waitFor(() => expect(fakes.session.run).toHaveBeenCalledTimes(2))
+    expect(fakes.session.run).toHaveBeenNthCalledWith(2, ['ipv6 unicast-routing vrf BLUE'])
 
     fireEvent.click(screen.getByRole('button', { name: 'Default IPv4 routing' }))
-    await stageReady(fakes)
-    expect(fakes.session.run).toHaveBeenCalledWith(['default ip routing vrf BLUE'])
-  })
-
-  it('delete: destructive batch naming the config-assigned members; declining sends nothing', async () => {
-    const fakes = makeFakes()
-    renderScreen(fakes)
-    await readyVrfs()
-    await manage('BLUE')
-
-    fireEvent.click(screen.getByRole('button', { name: 'Delete BLUE' }))
-    await stageReady(fakes)
-    expect(fakes.configSession).toHaveBeenCalledWith({ description: 'webui vrf delete' })
-    expect(fakes.session.run).toHaveBeenCalledWith(['no vrf instance BLUE'])
-    expect(screen.getByText(/Ports the config still assigns to it: Ethernet1/u)).toBeInTheDocument()
-
-    // the panel button OPENED the confirm — declining it (the dialog's Cancel) sends nothing
-    fireEvent.click(screen.getByRole('button', { name: 'Commit (risky — review above)' }))
-    fireEvent.click(await screen.findByRole('button', { name: 'Cancel' }))
-    await waitFor(() => expect(screen.queryByRole('button', { name: 'Cancel' })).toBeNull())
-
+    await waitFor(() => expect(fakes.session.run).toHaveBeenCalledTimes(3))
+    expect(fakes.session.run).toHaveBeenNthCalledWith(3, ['default ip routing vrf BLUE'])
+    expect(fakes.configSession).toHaveBeenCalledTimes(1)
     expect(fakes.session.commit).not.toHaveBeenCalled()
-    expect(fakes.configSession).toHaveBeenCalledTimes(1)
+    expect(fakes.session.abort).not.toHaveBeenCalled()
   })
 
-  it('delete + commit clears the selection and re-reads', async () => {
+  it('delete stages the exact negation batch without committing or aborting from the feature', async () => {
     const fakes = makeFakes()
     renderScreen(fakes)
     await readyVrfs()
@@ -473,15 +436,14 @@ describe('Vrfs — per-VRF section writes stay inside the header, exactly like t
 
     fireEvent.click(screen.getByRole('button', { name: 'Delete BLUE' }))
     await stageReady(fakes)
-    fireEvent.click(screen.getByRole('button', { name: 'Commit (risky — review above)' }))
-    fireEvent.click(await screen.findByRole('button', { name: /Commit despite the risk: no vrf instance BLUE/u }))
-    await waitFor(() => expect(fakes.session.commit).toHaveBeenCalled())
-
-    expect(screen.getByText('no selection')).toBeInTheDocument()
-    await waitFor(() => expect(fakes.getAllVrfs).toHaveBeenCalledTimes(2))
+    expect(fakes.configSession).toHaveBeenCalledWith(expect.objectContaining({ description: 'webui shared transaction' }))
+    expect(fakes.session.run).toHaveBeenCalledWith(['no vrf instance BLUE'])
+    expect(fakes.session.commit).not.toHaveBeenCalled()
+    expect(fakes.session.abort).not.toHaveBeenCalled()
+    expect(fakes.configSession).toHaveBeenCalledTimes(1)
   })
 
-  it('while a draft is open, every other write refuses instead of stacking sessions', async () => {
+  it('a second action appends to the same shared config session', async () => {
     const fakes = makeFakes()
     renderScreen(fakes)
     await readyVrfs()
@@ -490,26 +452,12 @@ describe('Vrfs — per-VRF section writes stay inside the header, exactly like t
     fireEvent.click(screen.getByRole('button', { name: 'Stage create VRF' }))
     await stageReady(fakes)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Manage BLUE' }))
+    await manage('BLUE')
     fireEvent.click(screen.getByRole('button', { name: 'Delete BLUE' }))
-    expect(await screen.findByText(/staged session is already open/u)).toBeInTheDocument()
+    await waitFor(() => expect(fakes.session.run).toHaveBeenCalledTimes(2))
+    expect(fakes.session.run).toHaveBeenNthCalledWith(1, ['vrf instance GREEN'])
+    expect(fakes.session.run).toHaveBeenNthCalledWith(2, ['no vrf instance BLUE'])
     expect(fakes.configSession).toHaveBeenCalledTimes(1)
-  })
-
-  it('commit failure keeps the recovery copy and never re-arms the button', async () => {
-    const fakes = makeFakes({ commitError: new Error('SYNTHETIC commit exploded') })
-    renderScreen(fakes)
-    await readyVrfs()
-
-    fireEvent.change(nameField(), { target: { value: 'GREEN' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Stage create VRF' }))
-    await stageReady(fakes)
-
-    fireEvent.click(screen.getByRole('button', { name: 'Commit to running-config' }))
-    fireEvent.click(await screen.findByRole('button', { name: /Commit despite the risk: vrf instance GREEN/u }))
-    expect(await screen.findByText(/refresh device state before taking another action/u)).toBeInTheDocument()
-    expect(screen.getByText(/Transaction Center/u)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Commit to running-config' })).toBeDisabled()
   })
 })
 
@@ -518,7 +466,7 @@ describe('Vrfs — per-VRF section writes stay inside the header, exactly like t
 // ====================================================================================================
 
 describe('Vrfs — port assignment pins both keyword arms and the no-op guards', () => {
-  it('bind pins [interface, vrf NAME] on this box (the run-9 pair), destructive-confirmed', async () => {
+  it('bind pins [interface, vrf NAME] on this box (the run-9 pair) without a local commit', async () => {
     const fakes = makeFakes()
     renderScreen(fakes)
     await readyVrfs()
@@ -528,15 +476,10 @@ describe('Vrfs — port assignment pins both keyword arms and the no-op guards',
     fireEvent.click(screen.getByRole('button', { name: 'Assign port to VRF' }))
     await stageReady(fakes)
 
-    expect(fakes.configSession).toHaveBeenCalledWith({ description: 'webui vrf assign interface' })
+    expect(fakes.configSession).toHaveBeenCalledWith(expect.objectContaining({ description: 'webui shared transaction' }))
     expect(fakes.session.run).toHaveBeenCalledWith(['interface Ethernet2', 'vrf BLUE'])
-    // the staged risk cites the run-9 verdict (the panel note also carries the captured refusal —
-    // this asserts the risk copy itself, which is the unique phrasing)
-    expect(screen.getByText(/checks VRF existence when the assignment line RUNS/u)).toBeInTheDocument()
-
-    fireEvent.click(screen.getByRole('button', { name: 'Commit (risky — review above)' }))
-    fireEvent.click(await screen.findByRole('button', { name: /Commit despite the risk: Ethernet2/u }))
-    await waitFor(() => expect(fakes.session.commit).toHaveBeenCalled())
+    expect(fakes.session.commit).not.toHaveBeenCalled()
+    expect(fakes.session.abort).not.toHaveBeenCalled()
   })
 
   it('bind is disabled when the port already carries that VRF in config; unbind is disabled for an unassigned port', async () => {
@@ -563,7 +506,7 @@ describe('Vrfs — port assignment pins both keyword arms and the no-op guards',
     fireEvent.change(ifaceSelect(), { target: { value: 'Ethernet1' } })
     fireEvent.click(screen.getByRole('button', { name: 'Unassign (return to default VRF)' }))
     await stageReady(fakes)
-    expect(fakes.configSession).toHaveBeenCalledWith({ description: 'webui vrf unassign interface' })
+    expect(fakes.configSession).toHaveBeenCalledWith(expect.objectContaining({ description: 'webui shared transaction' }))
     expect(fakes.session.run).toHaveBeenCalledWith(['interface Ethernet1', 'no vrf'])
   })
 
@@ -582,7 +525,7 @@ describe('Vrfs — port assignment pins both keyword arms and the no-op guards',
     expect(fakes.session.run).toHaveBeenCalledWith(['interface Ethernet9', 'vrf forwarding OLD'])
   })
 
-  it('Management1 is offered, and the risk copy names the in-band platform fact plainly', async () => {
+  it('Management1 is offered and stages the exact shared-transaction batch', async () => {
     const fakes = makeFakes()
     renderScreen(fakes)
     await readyVrfs()
@@ -591,7 +534,9 @@ describe('Vrfs — port assignment pins both keyword arms and the no-op guards',
     fireEvent.change(targetSelect(), { target: { value: 'BLUE' } })
     fireEvent.click(screen.getByRole('button', { name: 'Assign port to VRF' }))
     await stageReady(fakes)
-    expect(screen.getByText(/Management1 is the usual in-band port on this platform/u)).toBeInTheDocument()
+    expect(fakes.session.run).toHaveBeenCalledWith(['interface Management1', 'vrf BLUE'])
+    expect(fakes.session.commit).not.toHaveBeenCalled()
+    expect(fakes.session.abort).not.toHaveBeenCalled()
   })
 
   it('the empty-state copy promises no fabricated state: nothing device-shaped renders from config alone', async () => {

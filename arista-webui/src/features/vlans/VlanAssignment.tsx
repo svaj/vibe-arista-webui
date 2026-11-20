@@ -24,10 +24,9 @@
  */
 import { useState } from 'react'
 import type { FormEvent } from 'react'
-import type { ConfigSession, ConfigSessionSummary, InterfaceStatus, Node, Switchport, Vlan } from '@devhax-heavy-industries/arista-eapi'
+import type { ConfigSessionSummary, InterfaceStatus, Node, Switchport, Vlan } from '@devhax-heavy-industries/arista-eapi'
 
 import { ConnectionHeader } from '../../components/ui/ConnectionHeader'
-import { ConfigDiff } from '../../components/ui/ConfigDiff'
 import { DataTable } from '../../components/ui/DataTable'
 import type { DataTableColumn } from '../../components/ui/DataTable'
 import { EmptyState } from '../../components/ui/EmptyState'
@@ -40,6 +39,7 @@ import { useOperation } from '../../shared/use-operation'
 // Device writes are gated behind an accessible native-<dialog> prompt instead of the blocking,
 // unstyled `window.confirm` (#66): the awaiting flow only reaches eAPI after an explicit click.
 import { ConfirmProvider, useConfirm } from '../../shared/use-confirm'
+import { TransactionScope, useTransaction, useTransactionSnapshot } from '../sessions/TransactionContext'
 
 // The M13 screen contracts ride this file into the compilation (ARCHITECTURE §9.1 augmentation), so
 // `node.show('version')` types end-to-end through `ShowContracts['version']`. The module is
@@ -48,7 +48,6 @@ import '../../eapi/show-contracts'
 
 /** The client seam, unchanged from `SwitchManager`: only the handles this screen touches. */
 export type VlanAssignmentClient = Pick<Node, 'vlans' | 'switchports' | 'interfaces' | 'configSession' | 'listSessions' | 'abortSession' | 'show'>
-type Session = Pick<ConfigSession, 'name' | 'state' | 'run' | 'diff' | 'hasDiffBeenRead' | 'commit' | 'abort'>
 
 type Data = {
   vlans: readonly Vlan[]
@@ -58,7 +57,6 @@ type Data = {
   statusError?: string
   identity?: DeviceIdentity
 }
-type Draft = { session: Session; diff?: string; commitAttempted: boolean }
 
 const PHYSICAL_ETHERNET = /^Ethernet[0-9]+$/u
 const PROXY_PROMPT = 'Local proxy is not configured. Set EAPI_HOST, EAPI_USER, and EAPI_PASS in arista-webui/.env.local, then restart Vite.'
@@ -73,16 +71,17 @@ export interface VlanAssignmentProps {
 
 /** Hosts the single confirm dialog used by this screen's three device-writing actions (#66). */
 export function VlanAssignment(props: VlanAssignmentProps) {
-  return <ConfirmProvider><VlanAssignmentWorkspace {...props} /></ConfirmProvider>
+  return <TransactionScope node={props.node}><ConfirmProvider><VlanAssignmentWorkspace {...props} /></ConfirmProvider></TransactionScope>
 }
 
 function VlanAssignmentWorkspace({ node, proxyConfigured = true }: VlanAssignmentProps) {
   const confirm = useConfirm()
   const operation = useOperation()
   const { busy, notice, failure } = operation
+  const transaction = useTransaction()
+  const transactionState = useTransactionSnapshot()
   const [portChoice, setPortChoice] = useState('')
   const [vlanChoice, setVlanChoice] = useState('')
-  const [draft, setDraft] = useState<Draft>()
 
   const read = useDeviceRead<Data>(
     async () => {
@@ -125,51 +124,24 @@ function VlanAssignmentWorkspace({ node, proxyConfigured = true }: VlanAssignmen
   const selectedPort = ports.includes(portChoice) ? portChoice : (ports[0] ?? '')
   const selectedVlan = vlans.some((vlan) => String(vlan.id) === vlanChoice) ? vlanChoice : String(vlans[0]?.id ?? '')
   const currentPort = data?.ports.get(selectedPort)
-  const draftOpen = draft !== undefined && (draft.session.state === 'open' || draft.session.state === 'diffed')
-  const canAct = proxyConfigured && node !== undefined
+  const canAct = proxyConfigured && node !== undefined && transaction !== undefined
+  const transactionBusy = transactionState.status === 'opening' || transactionState.status === 'staging' || transactionState.status === 'committing' || transactionState.status === 'aborting'
+  const transactionBlocked = transactionState.status === 'uncertain'
 
   async function preview(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (busy || node === undefined || selectedPort === '' || selectedVlan === '') return
-    setDraft(undefined)
-    await operation.run(async () => {
-      const session = await node.configSession({ description: `webui access vlan ${selectedVlan} on ${selectedPort}` })
-      const handle: Session = session
-      setDraft({ session: handle, commitAttempted: false })
-      await handle.run([`interface ${selectedPort}`, 'switchport mode access', `switchport access vlan ${selectedVlan}`])
-      const diff = await handle.diff()
-      setDraft({ session: handle, diff, commitAttempted: false })
-      return diff
-    }, {
-      progress: 'Staging the change and reading the device diff…',
-      success: 'Review the device diff before committing this change.',
+    if (busy || transaction === undefined || transactionBusy || transactionBlocked || selectedPort === '' || selectedVlan === '') return
+    const commands = [`interface ${selectedPort}`, 'switchport mode access', `switchport access vlan ${selectedVlan}`]
+    await operation.run(() => transaction.append({
+      source: '/vlans',
+      action: `assign VLAN ${selectedVlan} to ${selectedPort}`,
+      commands,
+      display: commands,
+      risks: [],
+    }), {
+      progress: 'Adding the change to the shared transaction and reading the device diff…',
+      success: 'Change added to the transaction. Review the combined diff in Transaction Center.',
     })
-  }
-
-  async function abortDraft() {
-    if (busy || draft === undefined || !draftOpen) return
-    if (!await confirm({ title: 'Abort staged changes', body: `Abort staged changes in session ${draft.session.name}?`, confirmLabel: 'Abort staged changes', destructive: true, subject: draft.session.name })) return
-    const aborted = await operation.run(async () => {
-      await draft.session.abort()
-      setDraft(undefined)
-      return draft.session.name
-    }, { success: `Session ${draft.session.name} was aborted.` })
-    if (aborted.ok) read.reload()
-  }
-
-  async function commitDraft() {
-    if (busy || draft?.diff === undefined || !draft.session.hasDiffBeenRead() || draft.commitAttempted) return
-    if (!await confirm({ title: 'Commit to running-config', body: `Commit session ${draft.session.name}? This changes running-config only.`, confirmLabel: 'Commit to running-config', destructive: true, subject: draft.session.name })) return
-    setDraft({ ...draft, commitAttempted: true })
-    const committed = await operation.run(() => draft.session.commit(), {
-      progress: 'Committing the reviewed change to running-config…',
-      success: 'Changes committed to running-config. Startup-config was not changed.',
-      failureSuffix: 'Commit was attempted; refresh device state before taking another action.',
-    })
-    if (committed.ok) {
-      setDraft(undefined)
-      read.reload()
-    }
   }
 
   async function abortPending(session: ConfigSessionSummary) {
@@ -211,7 +183,7 @@ function VlanAssignmentWorkspace({ node, proxyConfigured = true }: VlanAssignmen
               <label htmlFor="port-select">Interface</label><select id="port-select" value={selectedPort} onChange={(event) => setPortChoice(event.target.value)} disabled={ports.length === 0}>{ports.map((name) => <option key={name}>{name}</option>)}</select>
               <div className="current-state"><span>Current mode <strong>{currentPort?.mode ?? 'Not configured'}</strong></span><span>Current access VLAN <strong>{currentPort?.accessVlan ?? 'Not configured'}</strong></span>{data.statuses.get(selectedPort)?.status !== undefined && <span>Link state <strong>{data.statuses.get(selectedPort)?.status}</strong></span>}</div>
               <label htmlFor="vlan-select">New access VLAN</label><select id="vlan-select" value={selectedVlan} onChange={(event) => setVlanChoice(event.target.value)} disabled={vlans.length === 0}>{vlans.map((vlan) => <option key={vlan.id} value={vlan.id}>{vlan.id} · {vlan.name ?? 'Unnamed VLAN'}</option>)}</select>
-              <button className="primary-button" type="submit" disabled={ports.length === 0 || vlans.length === 0 || draft !== undefined || busy}>{busy ? 'Working…' : 'Preview change'}</button>
+              <button className="primary-button" type="submit" disabled={ports.length === 0 || vlans.length === 0 || busy || transactionBusy || transactionBlocked || transaction === undefined}>{busy || transactionBusy ? 'Working…' : 'Add to transaction'}</button>
             </form>
           </section>
           <section className="panel vlan-panel" aria-labelledby="vlan-title">
@@ -221,9 +193,9 @@ function VlanAssignmentWorkspace({ node, proxyConfigured = true }: VlanAssignmen
               : <DataTable columns={vlanColumns} rows={data.vlans} rowKey={(vlan) => vlan.id} label="VLAN inventory" />}
           </section>
         </div>
-        {data.sessions.length > 0 && <section className="session-list" aria-labelledby="sessions-title"><div className="panel-heading"><div><p className="eyebrow">DEVICE STATE</p><h3 id="sessions-title">Configuration sessions</h3></div><span className="panel-index">{data.sessions.length.toString().padStart(2, '0')}</span></div><ul>{data.sessions.map((session) => <li key={session.name}><div><strong>{session.name}</strong><span><StatePill value={session.state} />{session.description ? ` · ${session.description}` : ''}</span></div>{session.state === 'pending' && (draft === undefined || draft.session.name !== session.name) && <button className="danger-button" type="button" disabled={busy} onClick={() => void abortPending(session)}>Abort pending session</button>}</li>)}</ul></section>}
+        {data.sessions.length > 0 && <section className="session-list" aria-labelledby="sessions-title"><div className="panel-heading"><div><p className="eyebrow">DEVICE STATE</p><h3 id="sessions-title">Configuration sessions</h3></div><span className="panel-index">{data.sessions.length.toString().padStart(2, '0')}</span></div><ul>{data.sessions.map((session) => <li key={session.name}><div><strong>{session.name}</strong><span><StatePill value={session.state} />{session.description ? ` · ${session.description}` : ''}</span></div>{session.state === 'pending' && session.name !== transactionState.sessionName && <button className="danger-button" type="button" disabled={busy || transactionBusy} onClick={() => void abortPending(session)}>Abort pending session</button>}</li>)}</ul></section>}
       </>}
-      {draft !== undefined && <section className="review-panel" aria-labelledby="review-title"><div className="panel-heading"><div><p className="eyebrow">CHANGE REVIEW</p><h3 id="review-title">Session {draft.session.name}</h3></div><span className="session-state">{draft.session.state}</span></div><ConfigDiff diff={draft.diff} />{draft.commitAttempted && <p className="notice notice-warning">Commit was attempted. Refresh device state before taking another action.</p>}<div className="review-actions"><button className="primary-button" type="button" onClick={() => void commitDraft()} disabled={draft.diff === undefined || !draft.session.hasDiffBeenRead() || draft.commitAttempted || busy}>Commit to running-config</button><button className="danger-button" type="button" onClick={() => void abortDraft()} disabled={!draftOpen || busy}>Abort staged changes</button></div></section>}
+      {transactionBlocked && <div className="notice notice-error" role="alert"><strong>The transaction outcome is uncertain.</strong><p>{transactionState.uncertainReason}</p></div>}
       {failure !== '' && <p className="notice notice-error operation-result" role="alert">{failure}</p>}{notice !== '' && <p className="notice notice-success operation-result" role="status" aria-live="polite">{notice}</p>}
     </section>
   </>

@@ -21,8 +21,10 @@
  */
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
-import type { StpInterface, StpSettings as DeviceSettings } from '@devhax-heavy-industries/arista-eapi'
+import type { Node, StpInterface, StpSettings as DeviceSettings } from '@devhax-heavy-industries/arista-eapi'
 
+import { TransactionProvider, useTransactionSnapshot } from '../sessions/TransactionContext'
+import type { TransactionSnapshot } from '../sessions/transaction'
 import { Stp, stpWriteGuard } from './Stp'
 
 type TestNode = NonNullable<Parameters<typeof Stp>[0]['node']>
@@ -65,9 +67,8 @@ interface Overrides {
   readonly settings?: DeviceSettings | Error
   readonly versionFails?: boolean
   readonly diff?: string
-  readonly diffPending?: boolean
   readonly diffRead?: boolean
-  readonly commitError?: Error
+  readonly runError?: Error
 }
 
 function makeFakes(overrides: Overrides = {}) {
@@ -75,15 +76,13 @@ function makeFakes(overrides: Overrides = {}) {
     name: 'ui-s15-session',
     state: 'diffed',
     isOpen: false,
-    run: vi.fn(async () => []),
-    diff: overrides.diffPending === true
-      ? vi.fn(() => new Promise<string>(() => undefined))
-      : vi.fn(async () => overrides.diff ?? '+interface Ethernet1\n+ spanning-tree bpduguard enable'),
-    hasDiffBeenRead: vi.fn(() => overrides.diffRead ?? true),
-    commit: vi.fn(async () => {
-      if (overrides.commitError !== undefined) throw overrides.commitError
+    run: vi.fn(async () => {
+      if (overrides.runError !== undefined) throw overrides.runError
       return []
     }),
+    diff: vi.fn(async () => overrides.diff ?? '+interface Ethernet1\n+ spanning-tree bpduguard enable'),
+    hasDiffBeenRead: vi.fn(() => overrides.diffRead ?? true),
+    commit: vi.fn(async () => []),
     abort: vi.fn(async () => []),
   }
   const get = vi.fn(async () => {
@@ -100,8 +99,22 @@ function makeFakes(overrides: Overrides = {}) {
   return { node, session, get, show, configSession }
 }
 
+function SnapshotProbe() {
+  const snapshot = useTransactionSnapshot()
+  return <output data-testid="transaction-snapshot">{JSON.stringify(snapshot)}</output>
+}
+
 function renderScreen(fakes: ReturnType<typeof makeFakes>) {
-  return render(<Stp node={fakes.node} proxyConfigured />)
+  return render(
+    <TransactionProvider node={fakes.node as Node}>
+      <Stp node={fakes.node} proxyConfigured />
+      <SnapshotProbe />
+    </TransactionProvider>,
+  )
+}
+
+function snapshot(): TransactionSnapshot {
+  return JSON.parse(screen.getByTestId('transaction-snapshot').textContent ?? '{}') as TransactionSnapshot
 }
 
 /** Readiness probe: the parsed port table only lands after `stp.get()` resolves. */
@@ -111,7 +124,7 @@ async function readyPorts(): Promise<void> {
 
 async function stageReady(fakes: ReturnType<typeof makeFakes>): Promise<void> {
   await waitFor(() => expect(fakes.session.run).toHaveBeenCalled())
-  await screen.findByText(/Review the device diff before committing/u)
+  await screen.findByText(/STP change added to the transaction/u)
 }
 
 const portSelect = () => screen.getByLabelText('Port')
@@ -128,12 +141,6 @@ function choose(action: string, port?: string): void {
 async function stage(fakes: ReturnType<typeof makeFakes>, action: string, port?: string): Promise<void> {
   choose(action, port)
   await stageReady(fakes)
-}
-
-/** Click through the panel commit button into the F4 confirm dialog. */
-async function openConfirm(destructive: boolean): Promise<void> {
-  fireEvent.click(screen.getByRole('button', { name: destructive ? 'Commit (risky — review above)' : 'Commit to running-config' }))
-  await screen.findByRole('dialog')
 }
 
 // ====================================================================================================
@@ -163,7 +170,7 @@ describe('Stp — every verb stages the stp.test.ts-pinned batch in a named sess
 
       await stage(fakes, action, port)
 
-      expect(fakes.configSession).toHaveBeenCalledWith({ description: `webui stp ${action}` })
+      expect(fakes.configSession).toHaveBeenCalledWith(expect.objectContaining({ description: 'webui shared transaction' }))
       expect(fakes.session.run).toHaveBeenCalledWith(batch)
       expect(fakes.configSession).toHaveBeenCalledTimes(1)
     })
@@ -176,36 +183,33 @@ describe('Stp — every verb stages the stp.test.ts-pinned batch in a named sess
 
     await stage(fakes, 'portfast-type-edge', 'Port-Channel1')
 
-    expect(screen.getByText('interface Port-Channel1')).toBeInTheDocument()
-    expect(screen.getByText('spanning-tree portfast edge')).toBeInTheDocument()
-    expect(screen.getByText('spanning-tree portfast auto')).toBeInTheDocument()
+    expect(snapshot().entries[0]?.display).toEqual([
+      'interface Port-Channel1',
+      'spanning-tree portfast edge',
+      'spanning-tree portfast auto',
+    ])
   })
 
-  it('a full commit cycle: risky dialog, commit called, success copy, re-read (get twice)', async () => {
+  it('staging a risky verb leaves commit and re-read to Transaction Center', async () => {
     const fakes = makeFakes()
     renderScreen(fakes)
     await readyPorts()
 
     await stage(fakes, 'bpduguard-unset', 'Ethernet1')
-    await openConfirm(true)
-    fireEvent.click(await screen.findByRole('button', { name: /Commit despite the risk: no spanning-tree bpduguard on Ethernet1/u }))
 
-    await waitFor(() => expect(fakes.session.commit).toHaveBeenCalled())
-    await waitFor(() => expect(fakes.get).toHaveBeenCalledTimes(2))
-    expect(screen.getByText(/Startup-config was not changed/u)).toBeInTheDocument()
+    expect(fakes.session.commit).not.toHaveBeenCalled()
+    expect(fakes.get).toHaveBeenCalledTimes(1)
+    expect(screen.queryByRole('button', { name: /Commit/u })).not.toBeInTheDocument()
   })
 
-  it('the NON-destructive verbs (bpduguard-enable, portfast-unset) use the plain commit button, then still confirm', async () => {
+  it('ordinary verbs also stage without a feature-local commit', async () => {
     const fakes = makeFakes()
     renderScreen(fakes)
     await readyPorts()
 
     await stage(fakes, 'bpduguard-enable', 'Ethernet2')
-    expect(screen.getByRole('button', { name: 'Commit to running-config' })).toBeEnabled()
-    expect(screen.queryByRole('button', { name: 'Commit (risky — review above)' })).toBeNull()
-    await openConfirm(false)
-    fireEvent.click(await screen.findByRole('button', { name: /Commit despite the risk: spanning-tree bpduguard enable on Ethernet2/u }))
-    await waitFor(() => expect(fakes.session.commit).toHaveBeenCalled())
+    expect(fakes.session.commit).not.toHaveBeenCalled()
+    expect(screen.queryByRole('button', { name: /Commit/u })).not.toBeInTheDocument()
   })
 })
 
@@ -350,50 +354,42 @@ describe('Stp — summary honesty and the closed halves', () => {
 // The PortFast hard-confirm — #85's loop guard
 // ====================================================================================================
 
-describe('Stp — the PortFast hard-confirm names the port and admits the far end is invisible', () => {
-  it('enabling PortFast on Ethernet2: staged risk AND the confirm dialog name the port + the far-end sentence', async () => {
+describe('Stp — PortFast risk metadata names the port and admits the far end is invisible', () => {
+  it('enabling PortFast carries the port and loop-risk sentence into the transaction', async () => {
     const fakes = makeFakes()
     renderScreen(fakes)
     await readyPorts()
 
     await stage(fakes, 'portfast-enable', 'Ethernet2')
 
-    // The staged panel lists the loop risk before the commit button is even reachable…
-    expect(screen.getByText(/PortFast is being set on Ethernet2/u)).toBeInTheDocument()
-    // …and it is destructive, so the commit button uses the risky verb.
-    await openConfirm(true)
-    const dialog = screen.getByRole('dialog', { name: 'Confirm: spanning-tree portfast on Ethernet2' })
-    expect(dialog.textContent).toContain('CANNOT see what is connected on the far end of Ethernet2')
-    expect(dialog.textContent).toContain('loop the bridged network')
-
-    fireEvent.click(screen.getByRole('button', { name: /Commit despite the risk: spanning-tree portfast on Ethernet2/u }))
-    await waitFor(() => expect(fakes.session.commit).toHaveBeenCalled())
+    const risks = snapshot().entries[0]?.risks.join('\n') ?? ''
+    expect(risks).toMatch(/PortFast is being set on Ethernet2/u)
+    expect(risks).toMatch(/CANNOT see what is connected on the far end of Ethernet2/u)
+    expect(risks).toMatch(/loop the bridged network/u)
+    expect(fakes.session.commit).not.toHaveBeenCalled()
   })
 
-  it('declining the PortFast confirm sends nothing: commit() never fires, still one session', async () => {
+  it('network PortFast stays in one staged session without a local confirm', async () => {
     const fakes = makeFakes()
     renderScreen(fakes)
     await readyPorts()
 
     await stage(fakes, 'portfast-type-network', 'Ethernet1')
-    await openConfirm(true)
-    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
 
     expect(fakes.session.commit).not.toHaveBeenCalled()
+    expect(fakes.session.abort).not.toHaveBeenCalled()
     expect(fakes.session.run).toHaveBeenCalledTimes(1)
     expect(fakes.configSession).toHaveBeenCalledTimes(1)
   })
 
-  it('the `default spanning-tree portfast` arm confirms too: the screen cannot predict the device default', async () => {
+  it('the default PortFast arm carries the unpredictable-device-default warning', async () => {
     const fakes = makeFakes()
     renderScreen(fakes)
     await readyPorts()
 
     await stage(fakes, 'portfast-default', 'Ethernet1')
-    expect(screen.getByText(/cannot predict|CANNOT predict/u)).toBeInTheDocument()
-    await openConfirm(true)
-    fireEvent.click(screen.getByRole('button', { name: /Commit despite the risk: default spanning-tree portfast on Ethernet1/u }))
-    await waitFor(() => expect(fakes.session.commit).toHaveBeenCalled())
+    expect(snapshot().entries[0]?.risks.join('\n')).toMatch(/cannot predict|CANNOT predict/u)
+    expect(fakes.session.commit).not.toHaveBeenCalled()
   })
 })
 
@@ -402,53 +398,40 @@ describe('Stp — the PortFast hard-confirm names the port and admits the far en
 // ====================================================================================================
 
 describe('Stp — staging discipline and device-error surfacing', () => {
-  it('a second write while a session is staged is refused (one transaction at a time)', async () => {
+  it('a second action reuses the shared transaction', async () => {
     const fakes = makeFakes()
     renderScreen(fakes)
     await readyPorts()
 
     await stage(fakes, 'bpduguard-enable', 'Ethernet1')
     choose('bpduguard-unset', 'Ethernet2')
-    expect(await screen.findByText(/A staged session is already open/u)).toBeInTheDocument()
+    await waitFor(() => expect(fakes.session.run).toHaveBeenCalledTimes(2))
+
     expect(fakes.configSession).toHaveBeenCalledTimes(1)
+    expect(snapshot().entries).toHaveLength(2)
   })
 
-  it('commit stays locked until the device diff has been read (hasDiffBeenRead false)', async () => {
+  it('the coordinator exposes the diff-read gate without a feature-local commit', async () => {
     const fakes = makeFakes({ diffRead: false })
     renderScreen(fakes)
     await readyPorts()
 
     await stage(fakes, 'bpduguard-enable', 'Ethernet1')
-    expect(screen.getByRole('button', { name: /Commit to running-config/u })).toBeDisabled()
+    expect(snapshot().canCommit).toBe(false)
+    expect(screen.queryByRole('button', { name: /Commit/u })).not.toBeInTheDocument()
     expect(fakes.session.commit).not.toHaveBeenCalled()
   })
 
-  it('aborting the staged session writes nothing (the dialog is destructive-true, so take the LAST button)', async () => {
+  it('feature staging never commits or aborts the shared session', async () => {
     const fakes = makeFakes()
     renderScreen(fakes)
     await readyPorts()
 
     await stage(fakes, 'portfast-unset', 'Ethernet2')
-    fireEvent.click(screen.getByRole('button', { name: 'Abort staged changes' }))
-    await waitFor(() => expect(screen.getAllByRole('button', { name: 'Abort staged changes' })).toHaveLength(2))
-    fireEvent.click(screen.getAllByRole('button', { name: 'Abort staged changes' }).at(-1)!)
-
-    await waitFor(() => expect(fakes.session.abort).toHaveBeenCalled())
     expect(fakes.session.commit).not.toHaveBeenCalled()
+    expect(fakes.session.abort).not.toHaveBeenCalled()
+    expect(screen.queryByRole('button', { name: /Commit|Abort/u })).not.toBeInTheDocument()
   })
-
-  it('commit stays locked on the empty diff STATE too: diff() pending shows the reading-diff EmptyState', async () => {
-    const fakes = makeFakes({ diffPending: true })
-    renderScreen(fakes)
-    await readyPorts()
-
-    choose('bpduguard-enable', 'Ethernet1')
-    await waitFor(() => expect(fakes.session.run).toHaveBeenCalled())
-
-    expect(await screen.findByText('Reading the device diff…')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /Commit to running-config/u })).toBeDisabled()
-    expect(fakes.session.commit).not.toHaveBeenCalled()
-  }, 8000)
 
   it('Reload device state re-runs the read', async () => {
     const fakes = makeFakes()
@@ -460,32 +443,27 @@ describe('Stp — staging discipline and device-error surfacing', () => {
     await readyPorts()
   })
 
-  it('a write the device rejects surfaces the device text plus the commit-recovery warning (never a false success)', async () => {
-    const fakes = makeFakes({ commitError: new Error('Command rejected: spanning-tree not valid here') })
+  it('a command the device rejects surfaces the device text and never commits', async () => {
+    const fakes = makeFakes({ runError: new Error('Command rejected: spanning-tree not valid here') })
+    renderScreen(fakes)
+    await readyPorts()
+
+    choose('bpduguard-enable', 'Ethernet1')
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/Command rejected: spanning-tree not valid here/u)
+    expect(snapshot().status).toBe('uncertain')
+    expect(fakes.session.commit).not.toHaveBeenCalled()
+  })
+
+  it('the coordinator stores the device diff without rendering a local review', async () => {
+    const fakes = makeFakes({ diff: '+interface Ethernet1\n+  spanning-tree bpduguard enable' })
     renderScreen(fakes)
     await readyPorts()
 
     await stage(fakes, 'bpduguard-enable', 'Ethernet1')
-    await openConfirm(false)
-    fireEvent.click(screen.getByRole('button', { name: /Commit despite the risk: spanning-tree bpduguard enable on Ethernet1/u }))
 
-    const alert = await screen.findByText(/Command rejected: spanning-tree not valid here/u)
-    expect(alert.textContent).toContain('Commit was attempted; refresh device state')
-    expect(screen.queryByText(/Startup-config was not changed/u)).toBeNull()
-  })
-
-  it('the staged review renders the device diff inside a real <pre> (untrusted text, not HTML)', async () => {
-    const fakes = makeFakes({ diff: '+interface Ethernet1\n+  spanning-tree bpduguard enable' })
-    const { container } = renderScreen(fakes)
-    await readyPorts()
-
-    await stage(fakes, 'bpduguard-enable', 'Ethernet1')
-
-    const pre = container.querySelector('pre.diff-output')
-    expect(pre).not.toBeNull()
-    expect(pre?.tagName).toBe('PRE')
-    expect(screen.getByText(/\+ spanning-tree bpduguard enable/u)) // substring of the <pre> body
-      .toBeInTheDocument()
+    expect(snapshot().diff).toBe('+interface Ethernet1\n+  spanning-tree bpduguard enable')
+    expect(screen.queryByText(/\+  spanning-tree bpduguard enable/u)).not.toBeInTheDocument()
   })
 
   it('a failed show-version read only drops the chip — no write here is version-conditional', async () => {
@@ -496,7 +474,7 @@ describe('Stp — staging discipline and device-error surfacing', () => {
     expect(container.querySelector('.device-identity')).toBeNull()
     await stage(fakes, 'bpduguard-enable', 'Ethernet1')
     expect(fakes.session.run).toHaveBeenCalledWith(['interface Ethernet1', 'spanning-tree bpduguard enable'])
-    expect(screen.getByText(/Review the device diff before committing/u)).toBeInTheDocument()
+    expect(screen.getByText(/STP change added to the transaction/u)).toBeInTheDocument()
   })
 })
 

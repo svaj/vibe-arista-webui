@@ -55,7 +55,7 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { commandBuilder, isInterfaceName, submodeCommands } from '@devhax-heavy-industries/arista-eapi'
-import type { ConfigSession, FeatureProbeCommands, Interface, Node } from '@devhax-heavy-industries/arista-eapi'
+import type { FeatureProbeCommands, Interface, Node } from '@devhax-heavy-industries/arista-eapi'
 
 import { identityFrom } from '../../shared/identity'
 import type { DeviceIdentity } from '../../shared/identity'
@@ -65,9 +65,10 @@ import { ConfirmProvider, useConfirm } from '../../shared/use-confirm'
 import { candidateList, useCapabilities } from '../../shared/use-capabilities'
 import type { CapabilityClient } from '../../shared/use-capabilities'
 import { managementInterfaces } from '../interfaces/InterfacesDashboard'
+import { TransactionScope, useTransaction, useTransactionSnapshot } from '../sessions/TransactionContext'
 import { stageLines } from '../staged-batch'
 import { LagManagerView } from './LagManagerView'
-import type { LagAction, LagCapabilityView, LagDraftView, LagFields, LagLiveCheck, LagManagerViewProps, LagRow, LagSessionRow, PortRow } from './LagManagerView'
+import type { LagAction, LagCapabilityView, LagFields, LagLiveCheck, LagManagerViewProps, LagRow, LagSessionRow, PortRow } from './LagManagerView'
 import type { ShowManagementApiHttpCommandsReply, ShowPortChannelDenseAggregator } from '../../eapi/show-contracts'
 
 // The screen contracts ride this import (ARCHITECTURE §9.1 augmentation), so
@@ -103,11 +104,6 @@ export interface LagManagerProps {
 }
 
 const PROXY_PROMPT = 'Local proxy is not configured. Set EAPI_HOST, EAPI_USER, and EAPI_PASS in arista-webui/.env.local, then restart Vite.'
-const COMMIT_RECOVERY = 'Commit may have applied — reconnect and refresh before any further action.'
-
-type Session = Pick<ConfigSession, 'name' | 'state' | 'run' | 'diff' | 'hasDiffBeenRead' | 'commit' | 'abort'>
-
-type Draft = { session: Session; batch: readonly string[]; diff?: string; commitAttempted: boolean; risks: readonly string[]; lag: string; destructive: boolean }
 
 type Data = {
   rows: readonly LagRow[]
@@ -156,23 +152,25 @@ function bandValueRefusal(value: string, label: string): string | undefined {
 const configMembers = (row: LagRow | undefined): readonly string[] => row?.members ?? []
 
 export function LagManager(props: LagManagerProps) {
-  return <ConfirmProvider><LagWorkspace {...props} /></ConfirmProvider>
+  return <TransactionScope node={props.node}><ConfirmProvider><LagWorkspace {...props} /></ConfirmProvider></TransactionScope>
 }
 
 function LagWorkspace({ node, proxyConfigured = true }: LagManagerProps) {
   const confirm = useConfirm()
   const operation = useOperation()
   const { busy, notice, failure } = operation
+  const transaction = useTransaction()
+  const transactionState = useTransactionSnapshot()
+  const transactionBusy = transactionState.status === 'opening' || transactionState.status === 'staging' || transactionState.status === 'committing' || transactionState.status === 'aborting'
   const [fields, setFields] = useState<LagFields>(DEFAULT_FIELDS)
   const [selected, setSelected] = useState('')
   // The membership checkboxes start as the truth of the selected bundle (synced below); this flag says
   // when the operator has edited them, so a first-visit auto-selection never reads as "the desired set
   // is empty" and stage a delete-everything diff.
   const [membershipEdited, setMembershipEdited] = useState(false)
-  const [draft, setDraft] = useState<Draft>()
   const [live, setLive] = useState<readonly LagLiveCheck[]>()
 
-  const canAct = proxyConfigured && node !== undefined
+  const canAct = proxyConfigured && node !== undefined && transaction !== undefined && transactionState.status !== 'uncertain'
 
   const capabilities = useCapabilities({
     ...(node === undefined ? { node: undefined } : { node: node as Client }),
@@ -451,71 +449,24 @@ function LagWorkspace({ node, proxyConfigured = true }: LagManagerProps) {
 
   async function preview(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (busy || !canAct || node === undefined || draft !== undefined) return
+    if (busy || transactionBusy || !canAct || node === undefined || transaction === undefined) return
     const staged = plan()
     if ('refusal' in staged) {
-      setDraft(undefined)
       await operation.run(async () => { throw new Error(staged.refusal) })
       return
     }
     const lagAtStage = fields.action === 'create-lag' ? `Port-Channel${fields.group.trim()}` : lagName
     const risks = risksFor({ action: fields.action, lag: lagAtStage, batch: staged.batch })
-    const destructive = fields.action === 'delete-lag' || fields.action === 'set-lacp-mode' || (fields.action === 'set-min-links' && Number(fields.minLinks) < configMembers(selectedRow).length)
-    setDraft(undefined)
-    await operation.run(async () => {
-      const session = await node.configSession({ description: `webui lag ${fields.action.replace(/-/gu, ' ')} on ${lagAtStage === '' ? 'new' : lagAtStage}` })
-      const handle: Session = session
-      setDraft({ session: handle, batch: staged.batch, risks, lag: lagAtStage, destructive, commitAttempted: false })
-      await handle.run(staged.batch)
-      const diff = await handle.diff()
-      setDraft({ session: handle, batch: staged.batch, risks, lag: lagAtStage, destructive, diff, commitAttempted: false })
-      return diff
-    }, {
-      progress: 'Staging the change and reading the device diff…',
-      success: 'Review the device diff before committing this change.',
+    await operation.run(() => transaction.append({
+      source: '/lags',
+      action: `${fields.action} on ${lagAtStage || 'new LAG'}`,
+      commands: staged.batch,
+      display: staged.batch,
+      risks,
+    }), {
+      progress: 'Adding the LAG change to the shared transaction…',
+      success: 'LAG change added to the transaction. Review the device diff before committing in Transaction Center.',
     })
-  }
-
-  async function commitDraft() {
-    if (busy || draft === undefined || draft.diff === undefined || !draft.session.hasDiffBeenRead() || draft.commitAttempted) return
-    const risky = draft.destructive || draft.risks.length > 0
-    if (!await confirm({
-      title: risky ? `Confirm the ${fields.action.replace(/-/gu, ' ')} write on ${draft.lag}` : 'Commit to running-config',
-      body: [
-        `Commit session ${draft.session.name} for ${draft.lag}? This changes running-config only; the staged text is ${draft.batch.join(' · ')}.`,
-        ...(draft.risks.length === 0 ? [] : [`Risk named for this write:\n${draft.risks.map((risk) => `  · ${risk}`).join('\n')}`]),
-        'If this session is lost mid-commit, the change may still have applied — reconnect and refresh before any further action.',
-      ].join(' '),
-      confirmLabel: risky ? `Commit despite the risk on ${draft.lag}` : 'Commit to running-config',
-      destructive: true,
-      subject: `${draft.session.name} · ${draft.lag}`,
-    })) return
-    setDraft({ ...draft, commitAttempted: true })
-    const committed = await operation.run(() => draft.session.commit(), {
-      progress: 'Committing the reviewed change to running-config…',
-      success: 'Changes committed to running-config. Startup-config was not changed.',
-      failureSuffix: COMMIT_RECOVERY,
-    })
-    if (committed.ok) {
-      setDraft(undefined)
-      setLive(undefined)
-      setMembershipEdited(false)
-      read.reload()
-      // A commit that may have re-formed the LAG invalidates any verdict recorded before it for the
-      // gated vocabulary — the next read re-asks rather than trusting a stale probe.
-      if (gatedAction) void capabilities.probe({ force: true })
-    }
-  }
-
-  async function abortDraft() {
-    if (busy || draft === undefined || (draft.session.state !== 'open' && draft.session.state !== 'diffed')) return
-    if (!await confirm({ title: 'Abort staged changes', body: `Abort staged changes in session ${draft.session.name}? Its staged ${draft.batch.join(' · ')} will be discarded.`, confirmLabel: 'Abort staged changes', destructive: true, subject: draft.session.name })) return
-    const aborted = await operation.run(async () => {
-      await draft.session.abort()
-      setDraft(undefined)
-      return draft.session.name
-    }, { success: `Session ${draft.session.name} was aborted; nothing was written to the device.` })
-    if (aborted.ok) read.reload()
   }
 
   async function abortPending(session: LagSessionRow) {
@@ -552,8 +503,6 @@ function LagWorkspace({ node, proxyConfigured = true }: LagManagerProps) {
     read.reload()
   }
 
-  const draftView: LagDraftView | undefined = draft === undefined ? undefined : { session: draft.session.name, batch: draft.batch, ...(draft.diff === undefined ? {} : { diff: draft.diff }) }
-
   const view: LagManagerViewProps = {
     state: read.state.kind === 'loading' ? 'loading' : read.state.kind === 'error' ? 'failed' : 'ready',
     ...(data?.identity === undefined ? {} : { identity: data.identity }),
@@ -572,12 +521,9 @@ function LagWorkspace({ node, proxyConfigured = true }: LagManagerProps) {
     selected: lagName,
     onSelect: selectLag,
     onPreview: (event) => void preview(event),
-    onCommit: () => void commitDraft(),
-    onAbortDraft: () => void abortDraft(),
     onAbortPending: (session) => void abortPending(session),
     onVerify: () => void verify(),
     ...(live === undefined ? {} : { live }),
-    ...(draftView === undefined ? {} : { draft: draftView }),
     messages: {
       notice,
       failure,
@@ -585,7 +531,7 @@ function LagWorkspace({ node, proxyConfigured = true }: LagManagerProps) {
       ...(data?.denseError === undefined ? {} : { denseError: data.denseError }),
       ...(data?.managementError === undefined ? {} : { managementError: data.managementError }),
     },
-    busy,
+    busy: busy || transactionBusy,
     gate: {
       open: gateOpen,
       blocked: gateFeature === undefined

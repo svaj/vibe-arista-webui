@@ -95,7 +95,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import { commandBuilder, isInterfaceName, isSwitchportMode, submodeCommands, SWITCHPORT_MODES } from '@devhax-heavy-industries/arista-eapi'
-import type { ConfigSession, ConfigSessionSummary, FeatureProbeCommands, Interface, IpInterface, Node, Switchport, Vlan } from '@devhax-heavy-industries/arista-eapi'
+import type { ConfigSessionSummary, FeatureProbeCommands, Interface, IpInterface, Node, Switchport, Vlan } from '@devhax-heavy-industries/arista-eapi'
 
 import { identityFrom } from '../../shared/identity'
 import type { DeviceIdentity } from '../../shared/identity'
@@ -108,9 +108,10 @@ import { candidateList, useCapabilities } from '../../shared/use-capabilities'
 import type { CapabilityClient } from '../../shared/use-capabilities'
 import { managementInterfaces } from './InterfacesDashboard'
 import { useHashParam } from '../../router'
+import { TransactionScope, useTransaction, useTransactionSnapshot } from '../sessions/TransactionContext'
 import { stageLines } from '../staged-batch'
 import { TrunkEditorView } from './TrunkEditorView'
-import type { TrunkAction, TrunkCapabilityView, TrunkDraftView, TrunkFields, TrunkLoadState, TrunkMessage, TrunkPortRow, TrunkSessionRow, TrunkVlanOption } from './TrunkEditorView'
+import type { TrunkAction, TrunkCapabilityView, TrunkFields, TrunkLoadState, TrunkMessage, TrunkPortRow, TrunkSessionRow, TrunkVlanOption } from './TrunkEditorView'
 import type { ShowManagementApiHttpCommandsReply } from '../../eapi/show-contracts'
 
 // The screen contracts ride this import (ARCHITECTURE §9.1 augmentation), so
@@ -139,11 +140,7 @@ export const TRUNK_GROUP_PROBE: FeatureProbeCommands = {
     'switchport trunk group webui-probe',
   ],
 }
-type Session = Pick<ConfigSession, 'name' | 'state' | 'run' | 'diff' | 'hasDiffBeenRead' | 'commit' | 'abort'>
-
 const PROXY_PROMPT = 'Local proxy is not configured. Set EAPI_HOST, EAPI_USER, and EAPI_PASS in arista-webui/.env.local, then restart Vite.'
-const COMMIT_RECOVERY = 'Commit was attempted; refresh device state before taking another action.'
-const REREAD_NOTICE = 'Device state was re-read from the running-config after the commit. The values above are the device’s answer again, not what this form staged.'
 const LOCAL_EDIT_NOTICE = 'These edits are local. Nothing has been staged or committed: Preview change opens a named config session, and the device diff is what decides what a commit would do.'
 const NO_SWITCHPORT_RECORD_NOTE = 'No switchport line was read for this section. The client skips a section whose block carries a bare `no switchport` (divergence 8 in resources/switchports.ts), so whether this port is routed or simply unconfigured is the device’s answer — unproven on this box (no hardware pin).'
 
@@ -163,18 +160,6 @@ interface TrunkData {
   readonly allowed: ReadonlyMap<string, AllowedVlanParse>
   readonly managementError?: string
   readonly identity?: DeviceIdentity
-}
-
-interface Draft {
-  readonly session: Session
-  readonly batch: readonly string[]
-  readonly risks: readonly string[]
-  readonly port: string
-  /** The VLAN a hard confirm has to name, decided from the device read **at staging time** — re-reading
-   *  the fields at commit time could name a different port's VLAN than the staged batch touches. */
-  readonly riskVlan?: number
-  readonly diff?: string
-  readonly commitAttempted: boolean
 }
 
 type Plan = { readonly batch: readonly string[] } | { readonly refusal: string }
@@ -214,19 +199,20 @@ export interface TrunkEditorProps {
 
 /** Hosts the single confirm dialog this screen's writes, aborts and pending-session cleanup use. */
 export function TrunkEditor(props: TrunkEditorProps) {
-  return <ConfirmProvider><TrunkEditorWorkspace {...props} /></ConfirmProvider>
+  return <TransactionScope node={props.node}><ConfirmProvider><TrunkEditorWorkspace {...props} /></ConfirmProvider></TransactionScope>
 }
 
 function TrunkEditorWorkspace({ node, proxyConfigured = true }: TrunkEditorProps) {
   const confirm = useConfirm()
   const operation = useOperation()
   const { busy, notice, failure } = operation
+  const transaction = useTransaction()
+  const transactionState = useTransactionSnapshot()
+  const transactionBusy = transactionState.status === 'opening' || transactionState.status === 'staging' || transactionState.status === 'committing' || transactionState.status === 'aborting'
   const [fields, setFields] = useState<TrunkFields>(INITIAL_FIELDS)
-  const [draft, setDraft] = useState<Draft>()
-  const [rereadNotice, setRereadNotice] = useState('')
   const [portSwitchNotice, setPortSwitchNotice] = useState('')
 
-  const canAct = proxyConfigured && node !== undefined
+  const canAct = proxyConfigured && node !== undefined && transaction !== undefined && transactionState.status !== 'uncertain'
 
   // F5 seam, same discipline as S2 (#72): the auto-probe (one cached, throttled config session the
   // client always aborts, DR-063) rides the same gate as the reads, so an unconfigured proxy performs
@@ -338,17 +324,6 @@ function TrunkEditorWorkspace({ node, proxyConfigured = true }: TrunkEditorProps
   })
 
   const selectedRow = rows.find((row) => row.name === port)
-  const draftView: TrunkDraftView | undefined = draft === undefined ? undefined : {
-    sessionName: draft.session.name,
-    sessionState: draft.session.state,
-    batch: draft.batch,
-    ...(draft.diff === undefined ? {} : { diff: draft.diff }),
-    commitAttempted: draft.commitAttempted,
-    diffRead: draft.session.hasDiffBeenRead(),
-    canAbort: draft.session.state === 'open' || draft.session.state === 'diffed',
-    risks: draft.risks,
-  }
-
   /** One guard for every text field: changing the port discards the typed edits, because a value typed
    *  for `Ethernet1` must never be staged against a different port. Nothing reached the device. */
   function changeField(field: keyof TrunkFields, value: string): void {
@@ -472,10 +447,9 @@ function TrunkEditorWorkspace({ node, proxyConfigured = true }: TrunkEditorProps
 
   async function preview(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (busy || !canAct || node === undefined || draft !== undefined || selectedRow === undefined) return
+    if (busy || transactionBusy || !canAct || node === undefined || transaction === undefined || selectedRow === undefined) return
     const staged = plan()
     if ('refusal' in staged) {
-      setDraft(undefined)
       // A client-side refusal rides the same failure slot as a device error — and no session was opened.
       await operation.run(async () => { throw new Error(staged.refusal) })
       return
@@ -483,82 +457,16 @@ function TrunkEditorWorkspace({ node, proxyConfigured = true }: TrunkEditorProps
     const portAtStage = selectedRow.name
     const risks = risksFor(selectedRow, fields.action)
     const riskVlan = riskVlanFor(selectedRow, fields.action, data?.managementVlanIds ?? [], Number(fields.nativeVlan))
-    setRereadNotice('')
-    setDraft(undefined)
-    await operation.run(async () => {
-      const session = await node.configSession({ description: `webui trunk ${fields.action.replace(/-/gu, ' ')} on ${portAtStage}` })
-      const handle: Session = session
-      setDraft({ session: handle, batch: staged.batch, risks, port: portAtStage, ...(riskVlan === undefined ? {} : { riskVlan }), commitAttempted: false })
-      await handle.run(staged.batch)
-      const diff = await handle.diff()
-      setDraft({ session: handle, batch: staged.batch, risks, port: portAtStage, ...(riskVlan === undefined ? {} : { riskVlan }), diff, commitAttempted: false })
-      return diff
-    }, {
-      progress: 'Staging the change and reading the device diff…',
-      success: 'Review the device diff before committing this change.',
+    await operation.run(() => transaction.append({
+      source: '/switches/manage',
+      action: `${fields.action} on ${portAtStage}`,
+      commands: staged.batch,
+      display: staged.batch,
+      risks: riskVlan === undefined ? risks : [...risks, `Risk VLAN: ${String(riskVlan)}`],
+    }), {
+      progress: 'Adding the trunk change to the shared transaction…',
+      success: 'Trunk change added to the transaction. Review the device diff before committing in Transaction Center.',
     })
-  }
-
-  function confirmLabelFor(row: TrunkPortRow, action: TrunkAction): string {
-    const risky = row.name
-    switch (action) {
-      case 'native-vlan': return `Set native VLAN ${String(row.nativeVlan ?? fields.nativeVlan)} on ${risky}`
-      case 'no-native-vlan': return `Clear the native VLAN on ${risky}`
-      case 'set-mode': return `Set ${fields.mode} on ${risky}`
-      case 'no-mode': return `Clear the mode on ${risky}`
-      case 'access-vlan': return `Set access VLAN ${fields.accessVlan} on ${risky}`
-      case 'no-allowed': return `Clear the allowed VLAN list on ${risky}`
-      case 'allowed-replace':
-      case 'allowed-add':
-      case 'allowed-remove': return `Write the allowed VLAN list on ${risky}`
-      case 'add-trunk-group': return `Add trunk group ${fields.trunkGroup.trim()} on ${risky}`
-      case 'remove-trunk-group': return `Remove trunk group ${fields.trunkGroup.trim()} on ${risky}`
-    }
-  }
-
-  function confirmBody(d: Draft, label: string): string {
-    const parts = [`Commit session ${d.session.name} to ${d.port}? This changes running-config only, and ${label} is what the device answered as staged.`]
-    if (d.risks.length > 0) parts.push(`Risk named by the device read:\n${d.risks.map((risk) => `  · ${risk}`).join('\n')}`)
-    if (d.batch.some((line) => /allowed vlan/u.test(line))) parts.push('The device keeps the vocabulary question: which keyword forms (all / except … / forward all) it accepts is unclaimed here (DR-028), which is why this write carries an explicit id list.')
-    parts.push('If this session is lost mid-commit, the change may still have applied — reconnect and refresh before any further action.')
-    return parts.join(' ')
-  }
-
-  async function commitDraft() {
-    if (busy || draft === undefined || draft.diff === undefined || !draft.session.hasDiffBeenRead() || draft.commitAttempted) return
-    const row = rows.find((candidate) => candidate.name === draft.port)
-    const hard = draft.risks.length > 0
-    const label = row === undefined ? 'Commit to running-config' : confirmLabelFor(row, fields.action)
-    const confirmLabel = hard && draft.riskVlan !== undefined ? `Commit despite the VLAN ${String(draft.riskVlan)} risk` : label
-    if (!await confirm({
-      title: hard ? `Confirm management-path risk on ${draft.port}` : 'Commit to running-config',
-      body: confirmBody(draft, label),
-      confirmLabel,
-      destructive: true,
-      subject: `${draft.session.name} · ${draft.port}`,
-    })) return
-    setDraft({ ...draft, commitAttempted: true })
-    const committed = await operation.run(() => draft.session.commit(), {
-      progress: 'Committing the reviewed change to running-config…',
-      success: 'Changes committed to running-config. Startup-config was not changed.',
-      failureSuffix: COMMIT_RECOVERY,
-    })
-    if (committed.ok) {
-      setDraft(undefined)
-      setRereadNotice(REREAD_NOTICE)
-      read.reload()
-    }
-  }
-
-  async function abortDraft() {
-    if (busy || draft === undefined || draftView?.canAbort !== true) return
-    if (!await confirm({ title: 'Abort staged changes', body: `Abort staged changes in session ${draft.session.name}? Its staged ${draft.batch.join(' · ')} will be discarded.`, confirmLabel: 'Abort staged changes', destructive: true, subject: draft.session.name })) return
-    const aborted = await operation.run(async () => {
-      await draft.session.abort()
-      setDraft(undefined)
-      return draft.session.name
-    }, { success: `Session ${draft.session.name} was aborted; nothing was written to the device.` })
-    if (aborted.ok) read.reload()
   }
 
   async function abortPending(session: TrunkSessionRow) {
@@ -572,7 +480,6 @@ function TrunkEditorWorkspace({ node, proxyConfigured = true }: TrunkEditorProps
   }
 
   const messages: readonly TrunkMessage[] = selectedRow === undefined || data === undefined ? [] : [
-    ...(rereadNotice === '' ? [] : [{ tone: 'success' as const, text: rereadNotice }]),
     ...(portSwitchNotice === '' ? [] : [{ tone: 'info' as const, text: portSwitchNotice }]),
     ...(!selectedRow.hasSwitchportRecord ? [{ tone: 'warning' as const, text: NO_SWITCHPORT_RECORD_NOTE }] : []),
     ...(selectedRow.allowedRaw !== undefined && !selectedRow.allowedEnumerable ? [{ tone: 'warning' as const, text: `The allowed-VLAN spelling on ${selectedRow.name} is not enumerable here (DR-028): ${selectedRow.allowedNote ?? selectedRow.allowedRaw}. A write here must name the ids explicitly.` }] : []),
@@ -621,16 +528,14 @@ function TrunkEditorWorkspace({ node, proxyConfigured = true }: TrunkEditorProps
     {...(deepLinkNotice === '' ? {} : { deepLinkNotice })}
     fields={{ ...fields, port }}
     modes={SWITCHPORT_MODES}
-    {...(draftView === undefined ? {} : { draft: draftView })}
+    {...(transactionState.sessionName === undefined ? {} : { activeSessionName: transactionState.sessionName })}
     canWrite={canAct}
-    busy={busy}
+    busy={busy || transactionBusy}
     messages={messages}
     failure={failure}
     notice={notice}
     onFieldChange={changeField}
     onPreview={preview}
-    onCommit={() => void commitDraft()}
-    onAbortDraft={() => void abortDraft()}
     onReload={read.reload}
     onAbortPending={(session) => void abortPending(session)}
     currentGroups={selectedRow?.trunkGroups ?? []}

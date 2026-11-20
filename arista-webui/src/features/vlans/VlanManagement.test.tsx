@@ -232,7 +232,7 @@ describe('VlanManagement — the trunk-group capability gate (#67 F5)', () => {
     await chooseAction('add-trunk-group')
     expect(await screen.findByLabelText('Trunk group')).toBeDisabled()
 
-    await userEvent.click(screen.getByRole('button', { name: 'Preview change' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Add to transaction' }))
     expect(await screen.findByRole('alert')).toHaveTextContent(/probe-gated/u)
     // The gate guards the write path, not only the disabled input: nothing was run or committed, and the
     // only session this screen opened is the probe's own.
@@ -278,13 +278,13 @@ describe('VlanManagement — the trunk-group capability gate (#67 F5)', () => {
     expect(await screen.findByText(/^Verdict:/u)).toHaveTextContent('unavailable')
 
     await chooseAction('remove-trunk-group')
-    await userEvent.click(screen.getByRole('button', { name: 'Preview change' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Add to transaction' }))
 
     expect((await screen.findAllByRole('alert')).some((n) => /probe-gated/u.test(n.textContent ?? ''))).toBe(true)
     // Nothing was staged, so there is no draft to review and no session ran a command.
     expect(session.run).not.toHaveBeenCalled()
     expect(session.commit).not.toHaveBeenCalled()
-    expect(screen.queryByText(/Review the device diff/u)).toBeNull()
+    expect(screen.queryByText(/VLAN change added to the transaction/u)).toBeNull()
   })
 
   it('after an available verdict, group adds and removals stage the vlan-submode forms the client pins', async () => {
@@ -292,24 +292,21 @@ describe('VlanManagement — the trunk-group capability gate (#67 F5)', () => {
     await ready(node)
     await screen.findByText(/The device accepted the probe commands/u)
 
+    expect(node.configSession).toHaveBeenCalledTimes(1)
     await chooseAction('add-trunk-group')
     await userEvent.type(await screen.findByLabelText('Trunk group'), 'LABGRP')
-    await userEvent.click(screen.getByRole('button', { name: 'Preview change' }))
-    await screen.findByText(/Review the device diff/u)
+    await userEvent.click(screen.getByRole('button', { name: 'Add to transaction' }))
+    await screen.findByText(/VLAN change added to the transaction/u)
     expect(session.run).toHaveBeenLastCalledWith(['vlan 1', 'trunk group LABGRP'])
 
-    await userEvent.click(screen.getByRole('button', { name: 'Abort staged changes' }))
-    const abortPrompt = await screen.findByRole('dialog', { name: 'Abort staged changes' })
-    await userEvent.click(within(abortPrompt).getByRole('button', { name: 'Abort staged changes' }))
-
-    // `type` appends (the earlier click already put a name in a field the abort does not clear), and the
-    // value is asserted below through the staged argv rather than through the input.
     await chooseAction('remove-trunk-group')
     await userEvent.clear(await screen.findByLabelText('Trunk group'))
     await userEvent.type(screen.getByLabelText('Trunk group'), 'LABGRP')
-    await userEvent.click(screen.getByRole('button', { name: 'Preview change' }))
-    await screen.findByText(/Review the device diff/u)
+    await userEvent.click(screen.getByRole('button', { name: 'Add to transaction' }))
+    await screen.findByText(/VLAN change added to the transaction/u)
     expect(session.run).toHaveBeenLastCalledWith(['vlan 1', 'no trunk group LABGRP'])
+    expect(node.configSession).toHaveBeenCalledTimes(2)
+    expect(session.commit).not.toHaveBeenCalled()
   })
 
   it('multi-word trunk-group names are refused before a write, naming the client rule', async () => {
@@ -319,7 +316,7 @@ describe('VlanManagement — the trunk-group capability gate (#67 F5)', () => {
 
     await chooseAction('add-trunk-group')
     await userEvent.type(await screen.findByLabelText('Trunk group'), 'two words')
-    await userEvent.click(screen.getByRole('button', { name: 'Preview change' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Add to transaction' }))
 
     expect(await screen.findByRole('alert')).toHaveTextContent(/single token/u)
     expect(session.run).not.toHaveBeenCalled()
@@ -335,9 +332,9 @@ describe('VlanManagement — staged writes and the in-use guard', () => {
     await userEvent.type(screen.getByLabelText('New VLAN id'), '40')
     await userEvent.type(screen.getByLabelText('Name'), 'LAB40')
     await userEvent.selectOptions(screen.getByLabelText('State'), 'active')
-    await userEvent.click(screen.getByRole('button', { name: 'Preview change' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Add to transaction' }))
 
-    await screen.findByText(/Review the device diff/u)
+    await screen.findByText(/VLAN change added to the transaction/u)
     expect(session.run).toHaveBeenCalledWith(['vlan 40', 'name LAB40', 'state active'])
     expect(session.diff).toHaveBeenCalledOnce()
   })
@@ -348,77 +345,55 @@ describe('VlanManagement — staged writes and the in-use guard', () => {
 
     await userEvent.selectOptions(screen.getByLabelText('VLAN'), '20')
     await userEvent.type(screen.getByLabelText('Name'), 'TELEPHONY')
-    await userEvent.click(screen.getByRole('button', { name: 'Preview change' }))
-    await screen.findByText(/Review the device diff/u)
+    await userEvent.click(screen.getByRole('button', { name: 'Add to transaction' }))
+    await screen.findByText(/VLAN change added to the transaction/u)
     expect(session.run).toHaveBeenLastCalledWith(['vlan 20', 'name TELEPHONY'])
 
-    await userEvent.click(screen.getByRole('button', { name: 'Abort staged changes' }))
-    await userEvent.click(within(await screen.findByRole('dialog', { name: 'Abort staged changes' })).getByRole('button', { name: 'Abort staged changes' }))
-
     await chooseAction('clear-name')
-    await userEvent.click(screen.getByRole('button', { name: 'Preview change' }))
-    await screen.findByText(/Review the device diff/u)
+    await userEvent.click(screen.getByRole('button', { name: 'Add to transaction' }))
+    await screen.findByText(/VLAN change added to the transaction/u)
     expect(session.run).toHaveBeenLastCalledWith(['vlan 20', 'no name'])
-
-    await userEvent.click(screen.getByRole('button', { name: 'Abort staged changes' }))
-    await userEvent.click(within(await screen.findByRole('dialog', { name: 'Abort staged changes' })).getByRole('button', { name: 'Abort staged changes' }))
 
     await chooseAction('set-state')
     await userEvent.selectOptions(screen.getByLabelText('State'), 'suspend')
-    await userEvent.click(screen.getByRole('button', { name: 'Preview change' }))
-    await screen.findByText(/Review the device diff/u)
+    await userEvent.click(screen.getByRole('button', { name: 'Add to transaction' }))
+    await screen.findByText(/VLAN change added to the transaction/u)
     expect(session.run).toHaveBeenLastCalledWith(['vlan 20', 'state suspend'])
 
-    await userEvent.click(screen.getByRole('button', { name: 'Abort staged changes' }))
-    await userEvent.click(within(await screen.findByRole('dialog', { name: 'Abort staged changes' })).getByRole('button', { name: 'Abort staged changes' }))
-
     await chooseAction('delete')
-    await userEvent.click(screen.getByRole('button', { name: 'Preview change' }))
-    await screen.findByText(/Review the device diff/u)
+    await userEvent.click(screen.getByRole('button', { name: 'Add to transaction' }))
+    await screen.findByText(/VLAN change added to the transaction/u)
     expect(session.run).toHaveBeenLastCalledWith(['no vlan 20'])
+    expect(node.configSession).toHaveBeenCalledTimes(2)
+    expect(session.run).toHaveBeenCalledTimes(4)
   })
 
-  it('deleting a VLAN in use shows the referencing lines in the panel and repeats them in the confirm', async () => {
+  it('deleting a VLAN in use names its referencing lines before staging and never commits locally', async () => {
     const { node, session } = makeFakes()
     await ready(node)
 
     await userEvent.selectOptions(screen.getByLabelText('VLAN'), '20')
     await chooseAction('delete')
-    // In-before-you-delete: the reference warning is visible before the change is even staged.
     expect(screen.getByText(/is referenced by 2 config line\(s\)/u)).toBeInTheDocument()
 
-    await userEvent.click(screen.getByRole('button', { name: 'Preview change' }))
-    await screen.findByRole('list', { name: 'Config that references this VLAN' })
-    expect(within(screen.getByRole('list', { name: 'Config that references this VLAN' })).getByText('Ethernet1 switchport access vlan 20')).toBeInTheDocument()
-
-    await userEvent.click(screen.getByRole('button', { name: 'Commit to running-config' }))
-    const prompt = await screen.findByRole('dialog', { name: 'Confirm VLAN 20 change' })
-    expect(within(prompt).getByText('ui-s2-session · vlan 20')).toBeInTheDocument()
-    expect(within(prompt).getByText(/referenced by 2 config line/iu)).toBeInTheDocument()
-    await userEvent.click(within(prompt).getByRole('button', { name: 'Cancel' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Add to transaction' }))
+    await screen.findByText(/VLAN change added to the transaction/u)
+    expect(session.run).toHaveBeenCalledWith(['no vlan 20'])
     expect(session.commit).not.toHaveBeenCalled()
-
-    await userEvent.click(screen.getByRole('button', { name: 'Commit to running-config' }))
-    const confirm2 = await screen.findByRole('dialog', { name: 'Confirm VLAN 20 change' })
-    await userEvent.click(within(confirm2).getByRole('button', { name: 'Delete VLAN 20' }))
-    expect(session.commit).toHaveBeenCalledOnce()
-    expect(await screen.findByText('Changes committed to running-config. Startup-config was not changed.')).toBeInTheDocument()
   })
 
-  it('the management VLAN is named as such in the warning and the confirm', async () => {
-    const { node } = makeFakes()
+  it('the management VLAN is named as such before staging the deletion', async () => {
+    const { node, session } = makeFakes()
     await ready(node)
 
     await userEvent.selectOptions(screen.getByLabelText('VLAN'), '100')
     await chooseAction('delete')
     expect(screen.getByText(/is the interface this device reports serving eAPI on/u)).toBeInTheDocument()
 
-    await userEvent.click(screen.getByRole('button', { name: 'Preview change' }))
-    await userEvent.click(await screen.findByRole('button', { name: 'Commit to running-config' }))
-    const prompt = await screen.findByRole('dialog', { name: 'Confirm VLAN 100 change' })
-    // The management fact came from the device's own answer, and it rides into the confirm as a note.
-    expect(within(prompt).getByText(/the device reports serving eAPI on/u)).toBeInTheDocument()
-    await userEvent.click(within(prompt).getByRole('button', { name: 'Cancel' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Add to transaction' }))
+    await screen.findByText(/VLAN change added to the transaction/u)
+    expect(session.run).toHaveBeenCalledWith(['no vlan 100'])
+    expect(session.commit).not.toHaveBeenCalled()
   })
 
   it('refuses to delete VLAN 1 and names the client refusal too — both lanes guard (#122)', async () => {
@@ -429,7 +404,7 @@ describe('VlanManagement — staged writes and the in-use guard', () => {
     await chooseAction('delete')
     expect(screen.getByText(/the client refuses/i)).toBeInTheDocument()
 
-    await userEvent.click(screen.getByRole('button', { name: 'Preview change' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Add to transaction' }))
     expect(await screen.findByRole('alert')).toHaveTextContent(/refused on this screen/u)
     expect(session.run).not.toHaveBeenCalled()
   })
@@ -447,7 +422,7 @@ describe('VlanManagement — staged writes and the in-use guard', () => {
       fireEvent.change(nameField, { target: { value: `VOICE${point}LAB` } })
       // The field kept the character, so nothing but the guard stands between this value and the device.
       expect(nameField.value).toContain(point)
-      await userEvent.click(screen.getByRole('button', { name: 'Preview change' }))
+      await userEvent.click(screen.getByRole('button', { name: 'Add to transaction' }))
       expect((await screen.findAllByRole('alert')).some((n) => /control character, line break or line separator/u.test(n.textContent ?? ''))).toBe(true)
       expect(session.run).not.toHaveBeenCalled()
       expect(session.commit).not.toHaveBeenCalled()
@@ -460,13 +435,13 @@ describe('VlanManagement — staged writes and the in-use guard', () => {
     const { node, session } = makeFakes()
     await ready(node)
 
-    await userEvent.click(screen.getByRole('button', { name: 'Preview change' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Add to transaction' }))
     expect(await screen.findByRole('alert')).toHaveTextContent(/A name needs a value/u)
 
     await chooseAction('create')
     await userEvent.type(screen.getByLabelText('New VLAN id'), '9999')
     await userEvent.type(screen.getByLabelText('Name'), 'TOOBIG')
-    await userEvent.click(screen.getByRole('button', { name: 'Preview change' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Add to transaction' }))
     expect(await screen.findByRole('alert')).toHaveTextContent(/outside the 1\.\.4094 write range/u)
     expect(session.run).not.toHaveBeenCalled()
   })
@@ -479,30 +454,9 @@ describe('VlanManagement — staged writes and the in-use guard', () => {
 
     expect(screen.getByText('not writable here')).toBeInTheDocument()
     await chooseAction('delete')
-    await userEvent.click(screen.getByRole('button', { name: 'Preview change' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Add to transaction' }))
     expect(await screen.findByRole('alert')).toHaveTextContent(/outside the 1\.\.4094 write range/u)
     expect(session.run).not.toHaveBeenCalled()
-  })
-
-  it('a commit that fails keeps the session marked attempted and repeats the refresh warning', async () => {
-    const { node, session } = makeFakes()
-    await ready(node)
-
-    session.commit.mockRejectedValueOnce(new Error('socket hang up'))
-    await userEvent.selectOptions(screen.getByLabelText('VLAN'), '10')
-    await chooseAction('set-state')
-    await userEvent.selectOptions(screen.getByLabelText('State'), 'suspend')
-    await userEvent.click(screen.getByRole('button', { name: 'Preview change' }))
-    await screen.findByText(/Review the device diff/u)
-    await userEvent.click(screen.getByRole('button', { name: 'Commit to running-config' }))
-    const prompt = await screen.findByRole('dialog')
-    await userEvent.click(within(prompt).getByRole('button', { name: 'Commit to running-config' }))
-
-    const alert = (await screen.findAllByRole('alert')).find((n) => /socket hang up/u.test(n.textContent ?? ''))
-    expect(alert).toBeDefined()
-    expect(alert).toHaveTextContent('Commit was attempted; refresh device state before taking another action.')
-    expect(screen.getAllByText(/Commit was attempted/u).length).toBe(2)
-    expect(screen.getByRole('button', { name: 'Commit to running-config' })).toBeDisabled()
   })
 
   it('a pending session offers the config-lock cleanup and writes nothing until it is confirmed', async () => {

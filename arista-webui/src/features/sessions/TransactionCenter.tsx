@@ -35,31 +35,22 @@
  * results (the recovery outcome buckets), which is exactly what `run()`'s string channel serves.
  */
 import { useMemo, useState } from 'react'
-import { createWebStorageJournal, generateSessionName } from '@devhax-heavy-industries/arista-eapi'
-import type { ConfigSession, Node, SessionJournal, VerifyConfigOutcome } from '@devhax-heavy-industries/arista-eapi'
+import { createWebStorageJournal } from '@devhax-heavy-industries/arista-eapi'
+import type { Node, SessionJournal, VerifyConfigOutcome } from '@devhax-heavy-industries/arista-eapi'
 
 import { useDeviceRead } from '../../shared/use-device-read'
 import { useOperation } from '../../shared/use-operation'
 import { ConfirmProvider, useConfirm } from '../../shared/use-confirm'
-import { stageDisplay } from '../staged-batch'
 import { TransactionCenterView } from './TransactionCenterView'
+import { useTransaction, useTransactionSnapshot } from './TransactionContext'
 import type { DraftView, JournalRowView, SessionRowView, VerifyEntryView } from './TransactionCenterView'
 import { describeRecovery, describeSessionRow, draftBatchRefusal, parseDraftLines, VERIFY_LABEL } from './session-rules'
 
-export type TransactionCenterClient = Pick<Node, 'listSessions' | 'abortSession' | 'recoverOrphans' | 'configSession' | 'verifyConfig' | 'connection'>
+export type TransactionCenterClient = Pick<Node, 'listSessions' | 'abortSession' | 'recoverOrphans' | 'verifyConfig' | 'connection'>
 
 export interface TransactionCenterProps {
   readonly node: TransactionCenterClient | undefined
   readonly proxyConfigured?: boolean
-}
-
-type Session = Pick<ConfigSession, 'name' | 'state' | 'run' | 'diff' | 'hasDiffBeenRead' | 'commit' | 'abort'>
-
-interface DraftState {
-  readonly session: Session
-  readonly batch: readonly string[]
-  readonly diff?: string
-  readonly commitAttempted: boolean
 }
 
 const PROXY_PROMPT = 'Local proxy is not configured. Set EAPI_HOST, EAPI_USER, and EAPI_PASS in arista-webui/.env.local, then restart Vite.'
@@ -73,11 +64,13 @@ function TransactionWorkspace({ node, proxyConfigured = true }: TransactionCente
   const confirm = useConfirm()
   const operation = useOperation()
   const { busy, notice, failure } = operation
-  const canAct = proxyConfigured && node !== undefined
+  const transaction = useTransaction()
+  const transactionState = useTransactionSnapshot()
+  const canAct = proxyConfigured && node !== undefined && transaction !== undefined
+  const transactionBusy = transactionState.status === 'opening' || transactionState.status === 'staging' || transactionState.status === 'committing' || transactionState.status === 'aborting'
 
   const [draftText, setDraftText] = useState('')
   const [verifyText, setVerifyText] = useState('')
-  const [draft, setDraft] = useState<DraftState | undefined>(undefined)
   const [recoveryLines, setRecoveryLines] = useState<readonly string[]>([])
   const [verify, setVerify] = useState<{ outcome: VerifyConfigOutcome; label: string } | undefined>(undefined)
 
@@ -127,12 +120,8 @@ function TransactionWorkspace({ node, proxyConfigured = true }: TransactionCente
   )
   const data = read.state.kind === 'ready' ? read.state.data : undefined
 
-  function clearDraft() {
-    setDraft(undefined)
-  }
-
   async function previewDraft() {
-    if (busy || !canAct || node === undefined || draft !== undefined) return
+    if (busy || transactionBusy || !canAct || transaction === undefined || node === undefined || transactionState.status === 'uncertain') return
     const lines = parseDraftLines(draftText)
     const refusal = draftBatchRefusal(lines)
     if (refusal !== undefined) {
@@ -140,52 +129,52 @@ function TransactionWorkspace({ node, proxyConfigured = true }: TransactionCente
       await operation.run(async () => { throw new Error(refusal) })
       return
     }
-    const name = generateSessionName(node.connection.address)
-    await operation.run(async () => {
-      const session = await node.configSession({ name, description: 'webui tx center draft review' })
-      const handle: Session = session
-      setDraft({ session: handle, batch: lines, commitAttempted: false })
-      await handle.run(lines)
-      const diff = await handle.diff()
-      setDraft({ session: handle, batch: lines, diff, commitAttempted: false })
-      return diff
-    }, {
-      progress: `Opening named session ${name}, staging, and reading the device diff…`,
-      success: 'Review the device diff; commit and abort are the two exits from this draft.',
+    await operation.run(() => transaction.append({
+      source: '/sessions',
+      action: `manual draft (${String(lines.length)} line(s))`,
+      commands: lines,
+      display: lines,
+      risks: [],
+    }), {
+      progress: 'Adding the draft to the shared transaction and reading the device diff…',
+      success: 'Draft added; review the combined device diff before committing the transaction.',
     })
   }
 
   async function commitDraft() {
-    if (busy || draft === undefined || draft.diff === undefined || !draft.session.hasDiffBeenRead() || draft.commitAttempted) return
+    if (busy || transactionBusy || transaction === undefined || transactionState.entries.length === 0 || transactionState.diff === undefined || transactionState.status !== 'ready') return
+    const sessionName = transactionState.sessionName ?? 'shared transaction'
+    const summary = transactionState.entries.map((entry) => `${entry.source}: ${entry.action}`).join(' · ')
     if (!await confirm({
-      title: `Commit draft ${draft.session.name}`,
-      body: `Commit config session ${draft.session.name} (${draft.batch.length} staged line(s): ${stageDisplay(draft.batch).join(' · ')})? This writes RUNNING-CONFIG only — Startup-config was not changed and never will be from this screen (DR-024). ${COMMIT_RECOVERY_NOTE}`,
-      confirmLabel: 'Commit draft to running-config',
+      title: `Commit transaction ${sessionName}`,
+      body: `Commit config session ${sessionName} (${String(transactionState.entries.length)} staged action(s): ${summary})? This writes RUNNING-CONFIG only — Startup-config was not changed and never will be from this screen (DR-024). ${COMMIT_RECOVERY_NOTE}`,
+      confirmLabel: 'Commit transaction to running-config',
       destructive: true,
-      subject: draft.session.name,
+      subject: sessionName,
     })) return
-    setDraft({ ...draft, commitAttempted: true })
-    const done = await operation.run(async () => {
-      await draft.session.commit()
-      setDraft(undefined)
-      return draft.session.name
-    }, {
-      progress: 'Committing the reviewed draft…',
-      success: 'Draft committed to running-config. Startup-config was not changed (DR-024).',
+    const extraConfirmations = transactionState.entries.flatMap((entry) => entry.confirmations)
+    for (const extra of extraConfirmations) {
+      if (!await confirm({
+        title: extra.title,
+        body: extra.body,
+        confirmLabel: extra.label,
+        destructive: true,
+        subject: extra.subject,
+      })) return
+    }
+    const done = await operation.run(() => transaction.commit(), {
+      progress: 'Committing the reviewed transaction…',
+      success: 'Transaction committed to running-config. Startup-config was not changed (DR-024).',
       failureSuffix: COMMIT_RECOVERY_NOTE,
     })
     if (done.ok) read.reload()
   }
 
   async function abortDraft() {
-    if (busy || draft === undefined || (draft.session.state !== 'open' && draft.session.state !== 'diffed')) return
-    if (!await confirm({ title: 'Abort this draft session', body: `Abort config session ${draft.session.name} and discard its ${String(draft.batch.length)} staged line(s)?`, confirmLabel: 'Abort draft session', destructive: true, subject: draft.session.name })) return
-    const done = await operation.run(async () => {
-      await draft.session.abort()
-      const name = draft.session.name
-      setDraft(undefined)
-      return name
-    }, { success: `Session ${draft.session.name} was aborted; nothing was written to the device.` })
+    if (busy || transactionBusy || transaction === undefined || transactionState.entries.length === 0 || transactionState.status === 'uncertain') return
+    const sessionName = transactionState.sessionName ?? 'shared transaction'
+    if (!await confirm({ title: 'Abort this transaction', body: `Abort config session ${sessionName} and discard all ${String(transactionState.entries.length)} staged action(s)?`, confirmLabel: 'Abort transaction', destructive: true, subject: sessionName })) return
+    const done = await operation.run(() => transaction.abort(), { success: `Session ${sessionName} was aborted; nothing was written to the device.` })
     if (done.ok) read.reload()
   }
 
@@ -237,11 +226,12 @@ function TransactionWorkspace({ node, proxyConfigured = true }: TransactionCente
     }, { progress: 'Asking the device to normalise the configlet…', success: 'Preview answered — labelled below as clean-config normalisation, never as pre-flight for a specific diff (DR-061).' })
   }
 
-  const draftView: DraftView | undefined = draft === undefined ? undefined : {
-    sessionName: draft.session.name,
-    batch: stageDisplay(draft.batch),
-    ...(draft.diff === undefined ? {} : { diff: draft.diff }),
-    canCommit: draft.diff !== undefined && draft.session.hasDiffBeenRead() && !draft.commitAttempted,
+  const draftView: DraftView | undefined = transactionState.sessionName === undefined ? undefined : {
+    sessionName: transactionState.sessionName,
+    entries: transactionState.entries,
+    ...(transactionState.diff === undefined ? {} : { diff: transactionState.diff }),
+    ...(transactionState.uncertainReason === undefined ? {} : { uncertainReason: transactionState.uncertainReason }),
+    canCommit: transactionState.status === 'ready' && transactionState.canCommit,
   }
 
   const verifyUnmatched = verify?.outcome.unmatched.length
@@ -283,6 +273,6 @@ function TransactionWorkspace({ node, proxyConfigured = true }: TransactionCente
     canAct={canAct}
     notice={notice}
     failure={failure}
-    onReload={() => { clearDraft(); operation.clear(); read.reload(); loadJournal() }}
+    onReload={() => { operation.clear(); read.reload(); loadJournal() }}
   />
 }

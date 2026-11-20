@@ -19,11 +19,17 @@ export type ConnectionStatusTone = 'ok' | 'warn' | 'error'
 /** Presentational props for the status strip: text plus which dot colour to show. Never fetched here. */
 export type ConnectionStatus = { readonly label: string; readonly detail?: string; readonly tone?: ConnectionStatusTone }
 
+export type TransactionIndicator = {
+  readonly count: number
+  readonly status: string
+}
+
 export type AppShellProps = {
   readonly routes: RouteRegistry
   readonly homePath: string
   readonly status?: ConnectionStatus
   readonly navLabel?: string
+  readonly transaction?: TransactionIndicator
 }
 
 const toneClass = (tone: ConnectionStatusTone | undefined): string =>
@@ -34,7 +40,7 @@ function StatusStrip({ status }: { readonly status: ConnectionStatus }): ReactEl
   return <p className="connection-state shell-status"><span className={toneClass(status.tone)} />{status.label}{detail}</p>
 }
 
-export function AppShell({ routes, homePath, status, navLabel = 'Switch workspace sections' }: AppShellProps): ReactElement {
+export function AppShell({ routes, homePath, status, navLabel = 'Switch workspace sections', transaction }: AppShellProps): ReactElement {
   const current = resolveRoutePath(useHashRoute(), homePath)
   return <>
     <a className="skip-link" href="#workspace">Skip to switch workspace</a>
@@ -55,6 +61,7 @@ export function AppShell({ routes, homePath, status, navLabel = 'Switch workspac
           ))}
         </ul>
       </nav>
+      {transaction === undefined || transaction.count === 0 ? null : <a className="shell-transaction" {...hashLinkProps('/sessions')} aria-label={`Open transaction: ${String(transaction.count)} staged change(s), ${transaction.status}`}><strong>{String(transaction.count)}</strong><span>staged</span></a>}
       {status === undefined ? null : <StatusStrip status={status} />}
     </header>
     <div className="shell-outlet" id="workspace">

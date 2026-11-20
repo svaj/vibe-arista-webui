@@ -20,8 +20,10 @@
  */
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
-import type { User } from '@devhax-heavy-industries/arista-eapi'
+import type { Node, User } from '@devhax-heavy-industries/arista-eapi'
 
+import { TransactionProvider, useTransactionSnapshot } from '../sessions/TransactionContext'
+import type { TransactionSnapshot } from '../sessions/transaction'
 import { Users, SECRET_ENCODINGS, loginLabelFor } from './Users'
 import { LOCKOUT_BANNER } from './users-rules'
 
@@ -113,18 +115,35 @@ function makeFakes(overrides: Overrides = {}) {
   return { node, session, getAll, show, configSession, order }
 }
 
+function SnapshotProbe() {
+  const snapshot = useTransactionSnapshot()
+  const visible = {
+    ...snapshot,
+    entries: snapshot.entries.map((entry) => ({ ...entry, commands: entry.display })),
+  }
+  return <output data-testid="transaction-snapshot">{JSON.stringify(visible)}</output>
+}
+
 async function ready(fakes: Fakes) {
-  const view = render(<Users node={fakes.node} proxyConfigured />)
+  const view = render(
+    <TransactionProvider node={fakes.node as Node}>
+      <Users node={fakes.node} proxyConfigured />
+      <SnapshotProbe />
+    </TransactionProvider>,
+  )
   await screen.findByRole('heading', { level: 2, name: 'Users & roles' })
   return view
 }
 
-/** Stage a write and wait until the device has answered its own diff. `sessions` is how many
- *  `configSession()` calls the test expects by then, which is what makes a re-staged test honest about
- *  the session it is pinning. */
-async function staged(fakes: Fakes, sessions = 1) {
-  await waitFor(() => expect(fakes.configSession).toHaveBeenCalledTimes(sessions))
-  await screen.findByText(/Review the device diff before committing/u)
+function snapshot(): TransactionSnapshot {
+  return JSON.parse(screen.getByTestId('transaction-snapshot').textContent ?? '{}') as TransactionSnapshot
+}
+
+/** Stage a write and wait until the shared coordinator has appended and diffed the entry. */
+async function staged(fakes: Fakes, entries = 1) {
+  await waitFor(() => expect(fakes.configSession).toHaveBeenCalledTimes(1))
+  await waitFor(() => expect(snapshot().entries).toHaveLength(entries))
+  await screen.findByText(/User change added to the transaction/u)
 }
 
 function chooseAction(action: string) {
@@ -141,33 +160,6 @@ function type(field: RegExp, value: string) {
 
 function preview() {
   fireEvent.click(screen.getByRole('button', { name: 'Preview and read the device diff' }))
-}
-
-/** The prompt's controls share names with the review panel's, and the dialog mounts after the workspace
- *  subtree — so the LAST match is the prompt's button (the S8 idiom). */
-function clickPrompt(name: RegExp) {
-  const matches = screen.getAllByRole('button', { name })
-  fireEvent.click(matches.at(-1)!)
-}
-
-/** An ordinary (non-guarded) commit: the panel control opens the prompt, and the prompt’s own verb of
- * the same name is what reaches the device. */
-async function ordinaryCommit(fakes: Fakes) {
-  clickPrompt(/^Commit to running-config$/u)
-  await waitFor(() => expect(screen.getAllByRole('button', { name: /^Commit to running-config$/u })).toHaveLength(2))
-  clickPrompt(/^Commit to running-config$/u)
-  await waitFor(() => expect(fakes.session.commit).toHaveBeenCalledTimes(1))
-}
-
-async function abortDraft(fakes: Fakes) {
-  clickPrompt(/^Abort staged changes$/u)
-  await waitFor(() => expect(screen.getAllByRole('button', { name: 'Abort staged changes' })).toHaveLength(2))
-  clickPrompt(/^Abort staged changes$/u)
-  await screen.findByText(/was aborted; nothing was written to the device/u)
-  // The draft is cleared only once the abort task settles, so a re-staging test must wait for the
-  // review panel to go away rather than racing it.
-  await waitFor(() => expect(screen.queryByRole('button', { name: /^Abort staged changes$/u })).toBeNull())
-  expect(fakes.session.abort).toHaveBeenCalled()
 }
 
 /** Wait until a refusal has landed in one of the screen's alert slots (an in-form field error, the
@@ -275,16 +267,17 @@ describe('Users \u2014 every staged command is the client\u2019s own text, pinne
     preview()
     await staged(fakes)
 
-    expect(fakes.configSession).toHaveBeenCalledWith({ description: 'webui users create-secret' })
+    expect(fakes.configSession).toHaveBeenCalledWith(expect.objectContaining({ description: 'webui shared transaction' }))
     // The exact create text (users.py:198 through ENCRYPTION_MAP :58) and the exact set_privilege text
     // (users.py:262 through command_builder), as users.test.ts pins them.
     expect(fakes.session.run).toHaveBeenCalledWith([
       'username newadmin secret sha512 materialtheuihasneverseen',
       'username newadmin privilege 15',
     ])
-    // The review copy shows the placeholder instead, in the staged copy and in the echoed diff.
-    expect(screen.getByText('username newadmin secret sha512 [secret redacted by this UI]')).toBeInTheDocument()
-    expect(screen.getByText('username newadmin privilege 15')).toBeInTheDocument()
+    expect(snapshot().entries[0]?.display).toEqual([
+      'username newadmin secret sha512 [secret redacted by this UI]',
+      'username newadmin privilege 15',
+    ])
     expect(document.body.textContent).not.toContain('materialtheuihasneverseen')
   })
 
@@ -297,14 +290,13 @@ describe('Users \u2014 every staged command is the client\u2019s own text, pinne
     preview()
     await staged(fakes)
     expect(fakes.session.run).toHaveBeenLastCalledWith(['username svc secret *'])
-    await abortDraft(fakes)
 
     chooseAction('create-nopassword')
     type(/New username/u, 'svc2')
     preview()
     await staged(fakes, 2)
     expect(fakes.session.run).toHaveBeenLastCalledWith(['username svc2 nopassword'])
-    await abortDraft(fakes)
+    expect(fakes.configSession).toHaveBeenCalledTimes(1)
   })
 
   it('the create form’s optional privilege is held to the same pin, so nothing stages when it fails', async () => {
@@ -337,21 +329,19 @@ describe('Users \u2014 every staged command is the client\u2019s own text, pinne
     preview()
     await staged(fakes)
     expect(fakes.session.run).toHaveBeenLastCalledWith(['username ops privilege 7'])
-    await abortDraft(fakes)
 
     chooseAction('unset-privilege')
     chooseAccount('ops')
     preview()
     await staged(fakes, 2)
     expect(fakes.session.run).toHaveBeenLastCalledWith(['no username ops privilege'])
-    await abortDraft(fakes)
 
     chooseAction('default-privilege')
     chooseAccount('ops')
     preview()
     await staged(fakes, 3)
     expect(fakes.session.run).toHaveBeenLastCalledWith(['default username ops privilege'])
-    await abortDraft(fakes)
+    expect(fakes.configSession).toHaveBeenCalledTimes(1)
   })
 
   it('role set / clear / default stage the trio pyeapi\u2019s own suite pins, and the vocabulary stays the device\u2019s', async () => {
@@ -364,21 +354,19 @@ describe('Users \u2014 every staged command is the client\u2019s own text, pinne
     preview()
     await staged(fakes)
     expect(fakes.session.run).toHaveBeenLastCalledWith(['username test3 role network-operator'])
-    await abortDraft(fakes)
 
     chooseAction('unset-role')
     chooseAccount('test3')
     preview()
     await staged(fakes, 2)
     expect(fakes.session.run).toHaveBeenLastCalledWith(['no username test3 role'])
-    await abortDraft(fakes)
 
     chooseAction('default-role')
     chooseAccount('test3')
     preview()
     await staged(fakes, 3)
     expect(fakes.session.run).toHaveBeenLastCalledWith(['default username test3 role'])
-    await abortDraft(fakes)
+    expect(fakes.configSession).toHaveBeenCalledTimes(1)
   })
 
   it('the ssh-key family is one INLINE line, spelled by the version read: 4.28 answers the dashed form', async () => {
@@ -395,21 +383,19 @@ describe('Users \u2014 every staged command is the client\u2019s own text, pinne
     expect(fakes.session.run).toHaveBeenLastCalledWith(['username ops ssh-key ssh-ed25519 AAAA3 noc@rack'])
     expect(container.textContent).toMatch(/not a `\{cmd, input\}` pair/u)
     expect(container.textContent).toMatch(/Staged spelling: ssh-key/u)
-    await abortDraft(fakes)
 
     chooseAction('unset-ssh-key')
     chooseAccount('ops')
     preview()
     await staged(fakes, 2)
     expect(fakes.session.run).toHaveBeenLastCalledWith(['no username ops ssh-key'])
-    await abortDraft(fakes)
 
     chooseAction('default-ssh-key')
     chooseAccount('ops')
     preview()
     await staged(fakes, 3)
     expect(fakes.session.run).toHaveBeenLastCalledWith(['default username ops ssh-key'])
-    await abortDraft(fakes)
+    expect(fakes.configSession).toHaveBeenCalledTimes(1)
   })
 
   it('a pre-4.23 release is handed the undashed spelling (the client\u2019s numeric floor, DR-078)', async () => {
@@ -420,7 +406,6 @@ describe('Users \u2014 every staged command is the client\u2019s own text, pinne
     preview()
     await staged(old)
     expect(old.session.run).toHaveBeenLastCalledWith(['no username ops sshkey'])
-    await abortDraft(old)
   })
 
   it('a version read that answers nothing refuses the ssh-key action instead of guessing a spelling', async () => {
@@ -439,7 +424,7 @@ describe('Users \u2014 every staged command is the client\u2019s own text, pinne
     expect(unknown.session.run).not.toHaveBeenCalled()
   })
 
-  it('delete and default of an ordinary account stage the two bare verbs, run-then-diff-then-commit', async () => {
+  it('delete and default of an ordinary account append the two bare verbs to one session', async () => {
     const fakes = makeFakes({ diff: '-username ops privilege 5\n-username ops role ops\n-username ops secret sha512 materialtheuihasneverseen' })
     await ready(fakes)
 
@@ -448,37 +433,29 @@ describe('Users \u2014 every staged command is the client\u2019s own text, pinne
     preview()
     await staged(fakes)
     expect(fakes.session.run).toHaveBeenLastCalledWith(['no username ops'])
-    expect(screen.getByRole('button', { name: 'Commit to running-config' })).toBeEnabled()
-
-    // Two steps: the panel control opens the prompt, and only the prompt’s own verb commits.
-    await ordinaryCommit(fakes)
-    await waitFor(() => expect(fakes.session.commit).toHaveBeenCalledTimes(1))
-    // Success is claimed only after the transport answered, in this exact order.
-    expect(fakes.order).toEqual(['run[no username ops]', 'diff', 'commit'])
-    expect(await screen.findByText(/Startup-config was not changed/u)).toBeInTheDocument()
-    // A re-read follows the commit, so the table is the device's answer again, not what was staged.
-    await waitFor(() => expect(fakes.getAll).toHaveBeenCalledTimes(2))
+    expect(fakes.session.commit).not.toHaveBeenCalled()
+    expect(screen.queryByRole('button', { name: /Commit/u })).not.toBeInTheDocument()
 
     chooseAction('default-user')
     chooseAccount('ops')
     preview()
-    await waitFor(() => expect(fakes.configSession).toHaveBeenCalledTimes(2))
+    await staged(fakes, 2)
     expect(fakes.session.run).toHaveBeenLastCalledWith(['default username ops'])
+    expect(fakes.configSession).toHaveBeenCalledTimes(1)
+    expect(fakes.order).toEqual(['run[no username ops]', 'diff', 'run[default username ops]', 'diff'])
   })
 
-  it('a device diff that echoes a secret shows the placeholder there too, and stays <pre> text', async () => {
+  it('a device diff that echoes a secret is redacted in the coordinator snapshot', async () => {
     const fakes = makeFakes({ diff: '+username ops secret sha512 materialtheuihasneverseen' })
-    const { container } = await ready(fakes)
+    await ready(fakes)
     chooseAction('set-privilege')
     chooseAccount('ops')
     type(/Privilege level/u, '9')
     preview()
     await staged(fakes)
 
-    const diffBlock = container.querySelector('pre.diff-output[aria-label="Configuration diff"]')
-    expect(diffBlock?.tagName).toBe('PRE')
-    expect(diffBlock?.textContent).toBe('+username ops secret sha512 [secret redacted by this UI]')
-    await abortDraft(fakes)
+    expect(snapshot().diff).toBe('+username ops secret sha512 [secret redacted by this UI]')
+    expect(document.body.textContent).not.toContain('materialtheuihasneverseen')
   })
 
   it('the login markers a re-read can report, in the client\u2019s own vocabulary (DR-089 never hands back a value)', () => {
@@ -563,10 +540,9 @@ describe('Users \u2014 the self-lockout guards refuse before a session is paid f
       'username newadmin secret sha512 materialtheuihasneverseen',
       'username newadmin privilege 5',
     ])
-    await abortDraft(fakes)
   })
 
-  it('an admin-affecting write with a second admin present needs the destructive confirm twice, the second naming the account', async () => {
+  it('an admin-affecting write carries named confirmation metadata into the shared transaction', async () => {
     const fakes = makeFakes()
     await ready(fakes)
     chooseAction('delete-user')
@@ -574,24 +550,18 @@ describe('Users \u2014 the self-lockout guards refuse before a session is paid f
     preview()
     await staged(fakes)
 
-    // The review panel states the guard, in the banner\u2019s own words, before any prompt opens.
-    expect(document.body.textContent).toMatch(/This write clips the admin status of test15\./u)
-    expect(screen.getByText(LOCKOUT_BANNER)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Commit the admin-affecting change' })).toBeEnabled()
-
-    // The two-step contract: the panel control opens the first prompt, and only a prompt's own verb
-    // commits. The second prompt names the account, which is what #81's double confirm requires.
-    clickPrompt(/^Commit the admin-affecting change$/u)
-    await waitFor(() => expect(screen.getByRole('button', { name: /Commit despite test15 being an admin/u })).toBeInTheDocument())
-    clickPrompt(/Commit despite test15 being an admin/u)
-    await waitFor(() => expect(screen.getByRole('button', { name: /I verified another admin: commit for test15/u })).toBeInTheDocument())
-    expect(screen.getByText(/This browser cannot see which account the local proxy signs eAPI requests with/u)).toBeInTheDocument()
-    clickPrompt(/I verified another admin: commit for test15/u)
-    await waitFor(() => expect(fakes.session.commit).toHaveBeenCalledTimes(1))
-    expect(fakes.order).toEqual(['run[no username test15]', 'diff', 'commit'])
+    const entry = snapshot().entries[0]
+    expect(entry?.risks.join('\n')).toMatch(/This read does show another admin/u)
+    expect(entry?.confirmations).toHaveLength(1)
+    expect(entry?.confirmations[0]?.title).toBe('Second confirm: test15')
+    expect(entry?.confirmations[0]?.label).toBe('I verified another admin: commit for test15')
+    expect(entry?.confirmations[0]?.subject).toMatch(/test15/u)
+    expect(entry?.confirmations[0]?.body).toMatch(/cannot see which account the local proxy signs eAPI requests with/u)
+    expect(fakes.session.commit).not.toHaveBeenCalled()
+    expect(fakes.order).toEqual(['run[no username test15]', 'diff'])
   })
 
-  it('the first confirm can be declined instead: declining either prompt leaves commit at zero calls', async () => {
+  it('an admin role change keeps confirmation metadata and never commits locally', async () => {
     const fakes = makeFakes()
     await ready(fakes)
     chooseAction('set-role')
@@ -599,19 +569,14 @@ describe('Users \u2014 the self-lockout guards refuse before a session is paid f
     type(/^Role token/u, 'network-operator')
     preview()
     await staged(fakes)
-    // Down-roleing an admin account is guarded exactly like a demote, and the review panel says so.
-    expect(document.body.textContent).toMatch(/This write clips the admin status of test15\./u)
-    clickPrompt(/^Commit the admin-affecting change$/u)
-    await waitFor(() => expect(screen.getByRole('button', { name: /Commit despite test15 being an admin/u })).toBeInTheDocument())
-    clickPrompt(/^Cancel$/u)
 
-    await waitFor(() => expect(fakes.session.commit).not.toHaveBeenCalled())
     expect(fakes.session.run).toHaveBeenLastCalledWith(['username test15 role network-operator'])
-    await abortDraft(fakes)
-    expect(fakes.order).toEqual(['run[username test15 role network-operator]', 'diff', 'abort'])
+    expect(snapshot().entries[0]?.confirmations[0]?.label).toBe('I verified another admin: commit for test15')
+    expect(fakes.session.commit).not.toHaveBeenCalled()
+    expect(fakes.session.abort).not.toHaveBeenCalled()
   })
 
-  it('cancel performs no `no username` at all: the staged delete is aborted and never committed', async () => {
+  it('an ordinary delete stages without feature-local cancel, commit, or abort', async () => {
     const fakes = makeFakes()
     await ready(fakes)
     chooseAction('delete-user')
@@ -619,17 +584,13 @@ describe('Users \u2014 the self-lockout guards refuse before a session is paid f
     preview()
     await staged(fakes)
 
-    clickPrompt(/^Commit to running-config$/u)
-    await waitFor(() => expect(screen.getAllByRole('button', { name: /^Commit to running-config$/u })).toHaveLength(2))
-    clickPrompt(/^Cancel$/u)
-    await waitFor(() => expect(fakes.session.commit).not.toHaveBeenCalled())
-    await abortDraft(fakes)
-    expect(fakes.session.abort).toHaveBeenCalledTimes(1)
-    expect(fakes.order).toEqual(['run[no username eapi]', 'diff', 'abort'])
-    expect(await screen.findByText(/was aborted; nothing was written to the device/u)).toBeInTheDocument()
+    expect(fakes.session.run).toHaveBeenLastCalledWith(['no username eapi'])
+    expect(fakes.session.commit).not.toHaveBeenCalled()
+    expect(fakes.session.abort).not.toHaveBeenCalled()
+    expect(screen.queryByRole('button', { name: /Commit|Abort|Cancel/u })).not.toBeInTheDocument()
   })
 
-  it('a diff the session has not read back keeps commit locked: the commit control never reaches the device', async () => {
+  it('a diff the session has not read back keeps the coordinator commit gate closed', async () => {
     const fakes = makeFakes({ diffRead: false })
     await ready(fakes)
     chooseAction('set-privilege')
@@ -638,25 +599,9 @@ describe('Users \u2014 the self-lockout guards refuse before a session is paid f
     preview()
     await staged(fakes)
 
-    // The gate is the session\u2019s own flag, not whether a diff string happened to come back.
     expect(fakes.session.hasDiffBeenRead).toHaveBeenCalled()
-    expect(screen.getByRole('button', { name: 'Commit to running-config' })).toBeDisabled()
-    expect(fakes.session.commit).not.toHaveBeenCalled()
-    await abortDraft(fakes)
-  })
-
-  it('while the device diff is still in flight the review panel says a diff is required before commit', async () => {
-    const fakes = makeFakes({ diff: 'pending' })
-    await ready(fakes)
-    chooseAction('set-privilege')
-    chooseAccount('ops')
-    type(/Privilege level/u, '5')
-    preview()
-    await waitFor(() => expect(fakes.configSession).toHaveBeenCalledTimes(1))
-    await waitFor(() => expect(fakes.session.run).toHaveBeenCalled())
-
-    expect(await screen.findByText(/A diff is required before commit/u)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Commit to running-config' })).toBeDisabled()
+    expect(snapshot().canCommit).toBe(false)
+    expect(screen.queryByRole('button', { name: /Commit/u })).not.toBeInTheDocument()
     expect(fakes.session.commit).not.toHaveBeenCalled()
   })
 })
@@ -686,8 +631,7 @@ describe('Users \u2014 no AAA vocabulary is reachable, and a secret reaches the 
   async function secretSplit(encryption: string, marker: string) {
     const typed = 'materialtheuihasneverseen'
     const fakes = makeFakes({ table: NO_ADMINS, diff: `+username svc secret ${marker} ${typed}` })
-    const { container } = render(<Users node={fakes.node} proxyConfigured />)
-    await screen.findByRole('heading', { level: 2, name: 'Users & roles' })
+    const { container } = await ready(fakes)
 
     type(/New username/u, 'svc')
     type(/Secret encoding to send/u, encryption)
@@ -695,19 +639,14 @@ describe('Users \u2014 no AAA vocabulary is reachable, and a secret reaches the 
     preview()
     await staged(fakes)
 
-    // The honest split #81 asks for: the command the device receives carries the real value…
     expect(fakes.session.run).toHaveBeenLastCalledWith([`username svc secret ${marker} ${typed}`])
-    // …and the staged copy and the device diff carry the placeholder instead.
+    expect(snapshot().entries[0]?.display).toEqual([
+      `username svc secret ${marker} [secret redacted by this UI]`,
+    ])
+    expect(snapshot().diff).toBe(`+username svc secret ${marker} [secret redacted by this UI]`)
     expect(container.textContent).not.toContain(typed)
-    expect(container.textContent).toContain('[secret redacted by this UI]')
-    expect(container.querySelector('pre.diff-output[aria-label="Configuration diff"]')?.textContent)
-      .toBe(`+username svc secret ${marker} [secret redacted by this UI]`)
-    // The field is one the operator can retype but this screen never reads back, and the risk copy says
-    // where the value does live after this commit: the device\u2019s own running-config output.
     expect(screen.getByLabelText(/Secret \(typed once/u)).toHaveAttribute('type', 'password')
     await screen.findByText(/the only place it is displayed after this commit/u)
-    await abortDraft(fakes)
-    expect(container.textContent).not.toContain(typed)
   }
 
   it('a sha512 secret reaches the fake transport in full and appears nowhere in the rendered page', async () => {
@@ -730,13 +669,12 @@ describe('Users \u2014 no AAA vocabulary is reachable, and a secret reaches the 
 
     expect((await screen.findByRole('alert')).textContent).toMatch(/Invalid input \(permission denied\) at the privilege keyword/u)
     expect(fakes.session.commit).not.toHaveBeenCalled()
-
-    // The diff never arrived, so commit is not offered and the recovery copy is up.
-    expect(screen.getByRole('button', { name: 'Commit to running-config' })).toBeDisabled()
+    expect(snapshot().status).toBe('uncertain')
+    expect(screen.queryByRole('button', { name: /Commit/u })).not.toBeInTheDocument()
   })
 })
 
-describe('Users \u2014 in-form refusals cost zero sessions, and one draft owns the screen', () => {
+describe('Users \u2014 in-form refusals cost zero sessions, and one shared transaction owns repeated actions', () => {
   it('a malformed username, privilege, role or key is refused in-form, naming the client rule it mirrors', async () => {
     const fakes = makeFakes()
     await ready(fakes)
@@ -797,7 +735,7 @@ describe('Users \u2014 in-form refusals cost zero sessions, and one draft owns t
     expect(fakes.configSession).not.toHaveBeenCalled()
   })
 
-  it('one transaction at a time: a second staging while a draft is open is refused, staying at one session', async () => {
+  it('a second action appends to the one shared session without committing locally', async () => {
     const fakes = makeFakes()
     await ready(fakes)
     chooseAction('set-privilege')
@@ -806,10 +744,12 @@ describe('Users \u2014 in-form refusals cost zero sessions, and one draft owns t
     preview()
     await staged(fakes)
 
+    type(/Privilege level/u, '6')
     preview()
-    expect((await screen.findByRole('alert')).textContent).toMatch(/staged session is already open/u)
+    await staged(fakes, 2)
+    expect(fakes.session.run).toHaveBeenLastCalledWith(['username ops privilege 6'])
     expect(fakes.configSession).toHaveBeenCalledTimes(1)
-    await abortDraft(fakes)
     expect(fakes.session.commit).not.toHaveBeenCalled()
+    expect(fakes.session.abort).not.toHaveBeenCalled()
   })
 })

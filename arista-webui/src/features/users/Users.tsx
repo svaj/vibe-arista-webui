@@ -35,9 +35,9 @@
  *
  * ## The secrets rule (DR-089's UI half)
  *
- * A secret is typed once into a `type="password"` field and never rendered again: the staged review
- * copy, the device `diff()` and both confirm bodies go through {@link redactSecrets}, and
- * {@link preview} drops a draft whose display copy still contains the typed value. The transport keeps
+ * A secret is typed once into a `type="password"` field and never rendered again: the transaction
+ * display, the device `diff()` and confirmation metadata go through {@link redactSecrets} or secret-free
+ * copy, and {@link preview} drops an entry whose display copy still contains the typed value. The transport keeps
  * the honest line — `session.run(['username bob secret sha512 hunter2'])` is what the device needs —
  * and the screen copy says plainly that the value's afterlife is the device's own
  * `show running-config` output, not anything this page keeps.
@@ -50,8 +50,8 @@
  * parsed read (all of it pure logic in ./users-rules.ts, unit-tested there):
  * - deleting or demoting a `privilege 15` / `role network-admin` / built-in `admin` account is refused
  *   outright when it is the only admin this read found ({@link lastAdminRefusal});
- * - with another admin present, that same write needs the destructive confirm **twice**, the second one
- *   naming the account ({@link commitDraft});
+ * - with another admin present, that same write carries named destructive-confirm metadata for
+ *   Transaction Center, so the final commit still names the account;
  * - creating a new account at `privilege 15` is refused unless another admin already exists
  *   ({@link privilegedCreateRule});
  * - `no username admin` is refused in-form, mirroring the client's own guard (`UsersResource.delete`,
@@ -67,15 +67,15 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { commandBuilder } from '@devhax-heavy-industries/arista-eapi'
-import type { ConfigSession, Node, User, UserEncryption } from '@devhax-heavy-industries/arista-eapi'
+import type { Node, User, UserEncryption } from '@devhax-heavy-industries/arista-eapi'
 
 import { softRead, softValue, useDeviceRead } from '../../shared/use-device-read'
 import type { DeviceIdentity } from '../../shared/identity'
 import { identityFrom } from '../../shared/identity'
 import { useOperation } from '../../shared/use-operation'
-import { ConfirmProvider, useConfirm } from '../../shared/use-confirm'
+import { TransactionScope, useTransaction, useTransactionSnapshot } from '../sessions/TransactionContext'
 import { UsersView } from './UsersView'
-import type { UserRowView, UsersDraftView, UsersFieldsView } from './UsersView'
+import type { UserRowView, UsersFieldsView } from './UsersView'
 import {
   ADMIN_ROLE,
   BUILT_IN_ADMIN,
@@ -120,22 +120,6 @@ export interface UsersProps {
   readonly proxyConfigured?: boolean
 }
 
-type Session = Pick<ConfigSession, 'name' | 'state' | 'run' | 'diff' | 'hasDiffBeenRead' | 'commit' | 'abort'>
-
-interface Draft {
-  readonly session: Session
-  /** What the transport receives — honest command text, secret included. Never rendered. */
-  readonly transport: readonly string[]
-  /** What the operator reads, with every secret tail replaced by {@link SECRET_PLACEHOLDER}. */
-  readonly display: readonly string[]
-  readonly effectLabel: string
-  readonly risks: readonly string[]
-  /** Set when an admin-guarded write needs a second, named confirm at commit time. */
-  readonly adminAccount?: string
-  readonly diff?: string
-  readonly commitAttempted: boolean
-}
-
 interface Data {
   readonly users: readonly User[]
   readonly admins: readonly string[]
@@ -152,9 +136,8 @@ interface Plan {
 }
 
 const PROXY_PROMPT = 'Local proxy is not configured. Set EAPI_HOST, EAPI_USER, and EAPI_PASS in arista-webui/.env.local, then restart Vite.'
-const COMMIT_RECOVERY = 'Commit was attempted; refresh device state before taking another action.'
 const NO_TARGET = 'No account is selected, and this action needs one the read answered. Reload, or pick a create action.'
-const ONE_SESSION = 'A staged session is already open on this screen; commit or abort it before staging another change.'
+const ONE_SESSION = 'A shared transaction write is already in flight; wait for it to finish before staging another action.'
 const NO_READ = 'The user read has not answered, so no account can be named or guarded. Staging blind is refused.'
 const SSH_VERBS: readonly UserAction[] = ['set-ssh-key', 'unset-ssh-key', 'default-ssh-key']
 
@@ -176,18 +159,19 @@ const INITIAL_FIELDS: UsersFieldsView = {
 }
 
 export function Users(props: UsersProps) {
-  return <ConfirmProvider><UsersWorkspace {...props} /></ConfirmProvider>
+  return <TransactionScope node={props.node}><UsersWorkspace {...props} /></TransactionScope>
 }
 
 function UsersWorkspace({ node, proxyConfigured = true }: UsersProps) {
-  const confirm = useConfirm()
   const operation = useOperation()
   const { busy, notice, failure } = operation
-  const canAct = proxyConfigured && node !== undefined
+  const transaction = useTransaction()
+  const transactionState = useTransactionSnapshot()
+  const transactionBusy = transactionState.status === 'opening' || transactionState.status === 'staging' || transactionState.status === 'committing' || transactionState.status === 'aborting'
+  const canAct = proxyConfigured && node !== undefined && transaction !== undefined && transactionState.status !== 'uncertain'
 
   const [fields, setFields] = useState<UsersFieldsView>(INITIAL_FIELDS)
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<keyof UsersFieldsView, string>>>({})
-  const [draft, setDraft] = useState<Draft | undefined>(undefined)
 
   const read = useDeviceRead<Data>(
     async () => {
@@ -381,9 +365,9 @@ function UsersWorkspace({ node, proxyConfigured = true }: UsersProps) {
 
   async function preview(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault()
-    if (busy || !canAct || node === undefined) return
+    if (busy || !canAct || node === undefined || transaction === undefined) return
     setFieldErrors({})
-    if (draft !== undefined) {
+    if (transactionBusy) {
       operation.run(async () => { throw new Error(ONE_SESSION) }).catch(() => undefined)
       return
     }
@@ -407,90 +391,29 @@ function UsersWorkspace({ node, proxyConfigured = true }: UsersProps) {
     }
     const display = staged.specs.map(redactSecrets)
     if (usesSecretField(action) && display.some((line) => line.includes(fields.secret))) {
-      // Defensive and loud: had redaction ever missed the typed value, this draft is dropped rather
-      // than displayed, and no commit can follow because no draft exists.
+      // Defensive and loud: had redaction ever missed the typed value, the transaction entry is
+      // never appended, so Transaction Center cannot display the secret.
       operation.run(async () => { throw new Error('Redaction did not strip the secret from the review copy, so this staged draft was dropped instead of shown. Reload device state before trying again.') }).catch(() => undefined)
       return
     }
-    await operation.run(async () => {
-      const session = await node.configSession({ description: `webui users ${action}` })
-      const handle: Session = session
-      setDraft({
-        session: handle,
-        transport: staged.specs,
-        display,
-        effectLabel: staged.effectLabel,
-        risks: staged.risks,
-        commitAttempted: false,
-        ...(staged.adminAccount === undefined ? {} : { adminAccount: staged.adminAccount }),
-      })
-      await handle.run(staged.specs)
-      const diffText = await handle.diff()
-      setDraft((current) => current === undefined ? current : { ...current, diff: redactSecrets(diffText) })
-      return diffText
-    }, {
-      progress: 'Staging the change and reading the device diff\u2026',
-      success: 'Review the device diff before committing. The staged copy above is redacted; the transport kept the real command line.',
+    const confirmations = staged.adminAccount === undefined ? [] : [{
+      title: `Second confirm: ${staged.adminAccount}`,
+      body: `${LOCKOUT_BANNER} This transaction changes the admin status of ${staged.adminAccount}. This browser cannot see which account the local proxy signs eAPI requests with, so verify another admin by a path that does not depend on this page.`,
+      label: `I verified another admin: commit for ${staged.adminAccount}`,
+      subject: `${staged.adminAccount} · ${staged.effectLabel}`,
+    }]
+    await operation.run(() => transaction.append({
+      source: '/users',
+      action: staged.effectLabel,
+      commands: staged.specs,
+      display,
+      risks: staged.risks,
+      confirmations,
+      redactDiff: redactSecrets,
+    }), {
+      progress: 'Adding the user change to the shared transaction…',
+      success: 'User change added to the transaction. Review the device diff before committing in Transaction Center; the copy and diff stay redacted.',
     })
-  }
-
-  async function commitDraft(): Promise<void> {
-    if (busy || draft === undefined || draft.diff === undefined || !draft.session.hasDiffBeenRead() || draft.commitAttempted) return
-    const named = draft.adminAccount
-    if (!await confirm({
-      title: named === undefined ? 'Commit to running-config' : `Confirm: ${named} is an admin account`,
-      body: [
-        `Commit session ${draft.session.name}, which stages ${draft.display.join(' \u00b7 ')}? This changes running-config only; startup-config is never written by this screen (DR-024).`,
-        ...(draft.risks.length === 0 ? [] : [`Risks named for this write:\n${draft.risks.map((risk) => `  \u00b7 ${risk}`).join('\n')}`]),
-        'If this session is lost mid-commit, the change may still have applied — reconnect and refresh before any further action.',
-      ].join(' '),
-      confirmLabel: named === undefined ? 'Commit to running-config' : `Commit despite ${named} being an admin`,
-      destructive: true,
-      subject: `${draft.session.name} \u00b7 ${draft.effectLabel}`,
-    })) return
-    // The second, named destructive confirm (#81: deleting or demoting an admin account needs a double
-    // destructive confirm). Declining either prompt means `commit()` is never called at all.
-    if (named !== undefined && !await confirm({
-      title: `Second confirm: ${named}`,
-      body: `${LOCKOUT_BANNER} This session stages ${draft.display.join(' \u00b7 ')}, and that changes the admin status of ${named}. This browser cannot see which account the local proxy signs eAPI requests with, so it cannot tell you whether ${named} is the account you are riding. Confirm once more only if another admin has been verified by a path that does not depend on this page.`,
-      confirmLabel: `I verified another admin: commit for ${named}`,
-      destructive: true,
-      subject: `${draft.session.name} \u00b7 ${named}`,
-    })) return
-    setDraft({ ...draft, commitAttempted: true })
-    const committed = await operation.run(() => draft.session.commit(), {
-      progress: 'Committing the reviewed change to running-config\u2026',
-      success: 'Changes committed to running-config. Startup-config was not changed.',
-      failureSuffix: COMMIT_RECOVERY,
-    })
-    if (committed.ok) {
-      setDraft(undefined)
-      setFields((current) => ({ ...current, name: '', secret: '', sshKey: '', role: '', privilege: '' }))
-      read.reload()
-    }
-  }
-
-  async function abortDraft(): Promise<void> {
-    if (busy || draft === undefined || (draft.session.state !== 'open' && draft.session.state !== 'diffed')) return
-    if (!await confirm({ title: 'Abort staged changes', body: `Abort staged changes in session ${draft.session.name}? Its staged ${draft.display.join(' \u00b7 ')} will be discarded and nothing will be written to the device.`, confirmLabel: 'Abort staged changes', destructive: true, subject: draft.session.name })) return
-    const aborted = await operation.run(async () => {
-      await draft.session.abort()
-      setDraft(undefined)
-      return draft.session.name
-    }, { success: `Session ${draft.session.name} was aborted; nothing was written to the device.` })
-    if (aborted.ok) read.reload()
-  }
-
-  const draftView: UsersDraftView | undefined = draft === undefined ? undefined : {
-    sessionName: draft.session.name,
-    sessionState: draft.session.state,
-    effectLabel: draft.effectLabel,
-    batch: draft.display,
-    risks: draft.risks,
-    ...(draft.diff === undefined ? {} : { diff: draft.diff }),
-    canCommit: draft.diff !== undefined && draft.session.hasDiffBeenRead() && !draft.commitAttempted,
-    commitAttempted: draft.commitAttempted,
-    ...(draft.adminAccount === undefined ? {} : { adminAccount: draft.adminAccount }),
   }
 
   const viewRows: readonly UserRowView[] = rows.map((user) => ({
@@ -522,8 +445,7 @@ function UsersWorkspace({ node, proxyConfigured = true }: UsersProps) {
     targetOptions={rows.map((user) => user.name)}
     {...('keyword' in keywordForm ? { sshKeyKeyword: keywordForm.keyword } : {})}
     framingNote={SSH_KEY_FRAMING_NOTE}
-    {...(draftView === undefined ? {} : { draft: draftView })}
-    busy={busy}
+    busy={busy || transactionBusy}
     canAct={canAct && state === 'ready'}
     notice={notice}
     failure={failure}
@@ -536,8 +458,6 @@ function UsersWorkspace({ node, proxyConfigured = true }: UsersProps) {
           ? 'The user read did not come back'
           : 'Local users read from the parsed running-config'}
     onSubmitPreview={(event) => { void preview(event) }}
-    onCommitDraft={() => void commitDraft()}
-    onAbortDraft={() => void abortDraft()}
     onReload={() => { setFieldErrors({}); operation.clear(); read.reload() }}
   />
 }

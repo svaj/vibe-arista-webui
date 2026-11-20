@@ -21,8 +21,10 @@
  */
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
-import type { Acl, AclEntry, AclType } from '@devhax-heavy-industries/arista-eapi'
+import type { Acl, AclEntry, AclType, Node } from '@devhax-heavy-industries/arista-eapi'
 
+import { TransactionProvider, useTransactionSnapshot } from '../sessions/TransactionContext'
+import type { TransactionSnapshot } from '../sessions/transaction'
 import { Acls } from './Acls'
 import { COUNTER_GAP, REFERENCE_GAP } from './acl-rules'
 import { ENTRY_COLUMNS } from './AclsView'
@@ -69,31 +71,21 @@ interface Overrides {
   readonly extended?: readonly Acl[] | Error
   readonly diff?: string
   readonly diffRead?: boolean
-  readonly commitError?: Error
-  /** The client session's state at review time; `committed` is the one the abort guard refuses. */
-  readonly sessionState?: 'open' | 'diffed' | 'committed'
-  /** A `diff()` that has not answered: the review panel must show a wait, not a commit affordance. */
-  readonly diffPending?: boolean
+  readonly runError?: Error
 }
-
-/** Set while a case is exercising a `diff()` the device has not answered yet. */
-let pendingDiffResolve: ((value: string) => void) | undefined
 
 function makeFakes(overrides: Overrides = {}) {
   const session = {
     name: 'ui-s13-session',
-    state: overrides.sessionState ?? 'diffed',
+    state: 'diffed',
     isOpen: false,
-    run: vi.fn(async () => []),
-    diff: vi.fn(overrides.diffPending === true
-      // Deliberately unresolved; the test below releases it so nothing outlives the case.
-      ? () => new Promise<string>((resolve) => { pendingDiffResolve = resolve })
-      : async () => overrides.diff ?? '+ip access-list standard test'),
-    hasDiffBeenRead: vi.fn(() => overrides.diffRead ?? true),
-    commit: vi.fn(async () => {
-      if (overrides.commitError !== undefined) throw overrides.commitError
+    run: vi.fn(async () => {
+      if (overrides.runError !== undefined) throw overrides.runError
       return []
     }),
+    diff: vi.fn(async () => overrides.diff ?? '+ip access-list standard test'),
+    hasDiffBeenRead: vi.fn(() => overrides.diffRead ?? true),
+    commit: vi.fn(async () => []),
     abort: vi.fn(async () => []),
   }
   const standardGetAll = vi.fn(async () => {
@@ -109,8 +101,22 @@ function makeFakes(overrides: Overrides = {}) {
   return { node, session, standardGetAll, extendedGetAll, configSession }
 }
 
+function SnapshotProbe() {
+  const snapshot = useTransactionSnapshot()
+  return <output data-testid="transaction-snapshot">{JSON.stringify(snapshot)}</output>
+}
+
 function renderScreen(fakes: ReturnType<typeof makeFakes>) {
-  return render(<Acls node={fakes.node} proxyConfigured />)
+  return render(
+    <TransactionProvider node={fakes.node as Node}>
+      <Acls node={fakes.node} proxyConfigured />
+      <SnapshotProbe />
+    </TransactionProvider>,
+  )
+}
+
+function snapshot(): TransactionSnapshot {
+  return JSON.parse(screen.getByTestId('transaction-snapshot').textContent ?? '{}') as TransactionSnapshot
 }
 
 /** Readiness probe: the ready payload only lands after BOTH kind reads resolve. */
@@ -120,12 +126,7 @@ async function readyScreen(): Promise<void> {
 
 async function stageReady(fakes: ReturnType<typeof makeFakes>): Promise<void> {
   await waitFor(() => expect(fakes.session.run).toHaveBeenCalled())
-  await screen.findByText(/Review the device diff before committing this change/u)
-}
-
-/** The confirm dialog's body text, which is where a promise about the device has to be true. */
-function confirmBody(): string {
-  return document.getElementById('confirm-dialog-body')?.textContent ?? ''
+  await screen.findByText(/ACL change added to the transaction/u)
 }
 
 const nameField = () => screen.getByLabelText('ACL name')
@@ -247,7 +248,7 @@ describe('Acls — four states', () => {
 // ====================================================================================================
 
 describe('Acls — section verbs stage the client-pinned argv', () => {
-  it('create standard: session `webui acl create` runs exactly `ip access-list standard test` (acl.test.ts:524)', async () => {
+  it('create standard: the shared session runs exactly `ip access-list standard test` (acl.test.ts:524)', async () => {
     // The name `test` is free here: the client's pin text is what this asserts, and a name the read
     // already lists is refused (the clash test below), so this leg starts from one standard section.
     const fakes = makeFakes({ standard: [STANDARD_EMPTY] })
@@ -258,11 +259,11 @@ describe('Acls — section verbs stage the client-pinned argv', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Create ACL' }))
     await stageReady(fakes)
 
-    expect(fakes.configSession).toHaveBeenCalledWith({ description: 'webui acl create' })
+    expect(fakes.configSession).toHaveBeenCalledWith(expect.objectContaining({ description: 'webui shared transaction' }))
     expect(fakes.session.run).toHaveBeenCalledWith(['ip access-list standard test'])
   })
 
-  it('create extended: `ip access-list exttest` (acl.test.ts:525) in the same named-session shape', async () => {
+  it('create extended: `ip access-list exttest` (acl.test.ts:525) stages without committing locally', async () => {
     const fakes = makeFakes()
     renderScreen(fakes)
     await readyScreen()
@@ -273,11 +274,9 @@ describe('Acls — section verbs stage the client-pinned argv', () => {
     await stageReady(fakes)
 
     expect(fakes.session.run).toHaveBeenCalledWith(['ip access-list brandnew'])
-    fireEvent.click(screen.getByRole('button', { name: 'Commit to running-config' }))
-    fireEvent.click(await screen.findByRole('button', { name: /Commit despite the risk: ip access-list brandnew/u }))
-    await waitFor(() => expect(fakes.session.commit).toHaveBeenCalled())
-    await waitFor(() => expect(fakes.standardGetAll).toHaveBeenCalledTimes(2))
-    expect(screen.getByText(/Startup-config was not changed/u)).toBeInTheDocument()
+    expect(fakes.session.commit).not.toHaveBeenCalled()
+    expect(fakes.session.abort).not.toHaveBeenCalled()
+    expect(screen.queryByRole('button', { name: /Commit/u })).not.toBeInTheDocument()
   })
 
   it('delete: the gap text is up front and Preview stays locked until the acknowledgement', async () => {
@@ -295,11 +294,11 @@ describe('Acls — section verbs stage the client-pinned argv', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Preview deletion of test' }))
     await stageReady(fakes)
 
-    expect(fakes.configSession).toHaveBeenCalledWith({ description: 'webui acl delete' })
+    expect(fakes.configSession).toHaveBeenCalledWith(expect.objectContaining({ description: 'webui shared transaction' }))
     expect(fakes.session.run).toHaveBeenCalledWith(['no ip access-list standard test'])
   })
 
-  it('delete is ALWAYS destructive and its confirm repeats the gap text verbatim', async () => {
+  it('delete metadata keeps the always-destructive gap statement verbatim', async () => {
     const fakes = makeFakes()
     renderScreen(fakes)
     await readyScreen()
@@ -309,16 +308,14 @@ describe('Acls — section verbs stage the client-pinned argv', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Preview deletion of quiet' }))
     await stageReady(fakes)
 
-    // the risk list carries the gap statement as its own bullet…
-    expect(screen.getAllByText(REFERENCE_GAP).length).toBeGreaterThan(0)
-    // …and so does the diff-less review before the confirm
-    fireEvent.click(screen.getByRole('button', { name: 'Commit (risky — review above)' }))
-    await screen.findByRole('button', { name: /Commit despite the risk: no ip access-list standard quiet/u })
-    expect(confirmBody()).toContain('no ip access-list standard quiet')
-    expect(confirmBody()).toContain(REFERENCE_GAP)
+    const entry = snapshot().entries[0]
+    expect(entry?.action).toBe('no ip access-list standard quiet')
+    expect(entry?.risks).toContain(REFERENCE_GAP)
+    expect(fakes.session.commit).not.toHaveBeenCalled()
+    expect(fakes.session.abort).not.toHaveBeenCalled()
   })
 
-  it('declining the delete confirm writes nothing: commit() and abort() stay at zero, one session only', async () => {
+  it('staging delete leaves commit and abort to Transaction Center', async () => {
     const fakes = makeFakes()
     renderScreen(fakes)
     await readyScreen()
@@ -328,11 +325,9 @@ describe('Acls — section verbs stage the client-pinned argv', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Preview deletion of test' }))
     await stageReady(fakes)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Commit (risky — review above)' }))
-    fireEvent.click(await screen.findByRole('button', { name: 'Cancel' }))
-
     expect(fakes.session.commit).not.toHaveBeenCalled()
     expect(fakes.session.abort).not.toHaveBeenCalled()
+    expect(screen.queryByRole('button', { name: /Commit|Abort/u })).not.toBeInTheDocument()
     expect(fakes.configSession).toHaveBeenCalledTimes(1)
   })
 
@@ -391,11 +386,11 @@ describe('Acls — entry verbs stage the client-pinned argv', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Remove rule 10' }))
     await stageReady(fakes)
 
-    expect(fakes.configSession).toHaveBeenCalledWith({ description: 'webui acl remove entry' })
+    expect(fakes.configSession).toHaveBeenCalledWith(expect.objectContaining({ description: 'webui shared transaction' }))
     expect(fakes.session.run).toHaveBeenCalledWith(['ip access-list standard test', 'no 10', 'exit'])
     // The refusal copy never claims an interface check happened.
-    expect(screen.getByText(/no client read covers `ip access-group`/u)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Commit (risky — review above)' })).toBeEnabled()
+    expect(snapshot().entries[0]?.risks.join('\n')).toMatch(/no client read covers `ip access-group`/u)
+    expect(screen.queryByRole('button', { name: /Commit/u })).not.toBeInTheDocument()
   })
 
   it('add rule with a sequence number (acl.test.ts:605): header, numbered line, exit', async () => {
@@ -412,7 +407,7 @@ describe('Acls — entry verbs stage the client-pinned argv', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Preview add rule to test' }))
     await stageReady(fakes)
 
-    expect(fakes.configSession).toHaveBeenCalledWith({ description: 'webui acl add entry' })
+    expect(fakes.configSession).toHaveBeenCalledWith(expect.objectContaining({ description: 'webui shared transaction' }))
     expect(fakes.session.run).toHaveBeenCalledWith(['ip access-list standard test', '40 deny 172.16.0.0/16', 'exit'])
   })
 
@@ -472,10 +467,10 @@ describe('Acls — entry verbs stage the client-pinned argv', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Preview replace rule 20' }))
     await stageReady(fakes)
 
-    expect(fakes.configSession).toHaveBeenCalledWith({ description: 'webui acl replace entry' })
+    expect(fakes.configSession).toHaveBeenCalledWith(expect.objectContaining({ description: 'webui shared transaction' }))
     expect(fakes.session.run).toHaveBeenCalledWith(['ip access-list standard test', 'no 20', '20 permit 10.20.0.0 0.0.255.255', 'exit'])
-    // a replace is a negation first, so it confirms as a risky write
-    expect(screen.getByRole('button', { name: 'Commit (risky — review above)' })).toBeEnabled()
+    expect(snapshot().entries[0]?.risks.join('\n')).toMatch(/negates 20 before writing the replacement/u)
+    expect(screen.queryByRole('button', { name: /Commit/u })).not.toBeInTheDocument()
   })
 
   it('cancel rule form stages nothing and clears the panel', async () => {
@@ -617,51 +612,35 @@ describe('Acls — refusals happen in-form', () => {
 // ====================================================================================================
 
 describe('Acls — staging discipline and device-error surfacing', () => {
-  it('a second write while a session is staged is refused (one transaction at a time)', async () => {
+  it('a second action reuses the shared transaction and appends another entry', async () => {
     const fakes = makeFakes()
     renderScreen(fakes)
     await readyScreen()
 
     fireEvent.click(screen.getByRole('button', { name: 'Remove rule 10' }))
     await stageReady(fakes)
-
-    // A second line for the same ACL is its own transaction, so the container refuses it by name rather
-    // than opening a second session — the review panel stays up with the first diff.
     fireEvent.click(screen.getByRole('button', { name: 'Remove rule 20' }))
-    expect(await screen.findByText(/A staged session is already open/u)).toBeInTheDocument()
+
+    await waitFor(() => expect(fakes.session.run).toHaveBeenCalledTimes(2))
     expect(fakes.configSession).toHaveBeenCalledTimes(1)
-    expect(fakes.session.run).toHaveBeenCalledTimes(1)
+    expect(snapshot().entries).toHaveLength(2)
   })
 
-  it('commit stays locked until the device diff has been read', async () => {
-    const fakes = makeFakes({ diffRead: false })
+  it('the shared coordinator exposes the diff-read gate without a local commit panel', async () => {
+    const fakes = makeFakes({ diffRead: false, diff: '-   10 permit host 1.2.3.4 log' })
     renderScreen(fakes)
     await readyScreen()
 
     fireEvent.click(screen.getByRole('button', { name: 'Remove rule 10' }))
     await stageReady(fakes)
 
-    // An entry removal is a risky write, so the review panel offers the risky verb — and it is locked.
-    expect(screen.getByRole('button', { name: 'Commit (risky — review above)' })).toBeDisabled()
-    expect(fakes.session.commit).not.toHaveBeenCalled()
+    expect(snapshot().canCommit).toBe(false)
+    expect(snapshot().diff).toBe('-   10 permit host 1.2.3.4 log')
+    expect(screen.queryByText('-   10 permit host 1.2.3.4 log')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Commit/u })).not.toBeInTheDocument()
   })
 
-  it('the staged review renders the device diff inside a real <pre> (untrusted text, not HTML)', async () => {
-    const fakes = makeFakes({ diff: '-   10 permit host 1.2.3.4 log' })
-    const { container } = renderScreen(fakes)
-    await readyScreen()
-
-    fireEvent.click(screen.getByRole('button', { name: 'Remove rule 10' }))
-    await stageReady(fakes)
-
-    const pre = container.querySelector('pre.diff-output')
-    expect(pre).not.toBeNull()
-    expect(pre?.tagName).toBe('PRE')
-    // The device's own text, leading whitespace and all — the diff is rendered, not normalised.
-    expect(pre?.textContent).toBe('-   10 permit host 1.2.3.4 log')
-  })
-
-  it('abort discards the staged line and writes nothing', async () => {
+  it('feature staging never commits or aborts the shared session', async () => {
     const fakes = makeFakes()
     renderScreen(fakes)
     await readyScreen()
@@ -669,61 +648,21 @@ describe('Acls — staging discipline and device-error surfacing', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Remove rule 10' }))
     await stageReady(fakes)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Abort staged changes' }))
-    await waitFor(() => expect(screen.getAllByRole('button', { name: 'Abort staged changes' })).toHaveLength(2))
-    fireEvent.click(screen.getAllByRole('button', { name: 'Abort staged changes' }).at(-1)!)
-
-    await waitFor(() => expect(fakes.session.abort).toHaveBeenCalled())
     expect(fakes.session.commit).not.toHaveBeenCalled()
-  })
-
-  it('a write the device rejects surfaces the device text plus the commit-recovery warning (never a false success)', async () => {
-    const fakes = makeFakes({ commitError: new Error('Command rejected: 40 deny 172.16.0.0/16 not valid here') })
-    renderScreen(fakes)
-    await readyScreen()
-
-    fireEvent.click(screen.getByRole('button', { name: 'Remove rule 10' }))
-    await stageReady(fakes)
-    // Taking a configured rule out is a destructive write, so the review panel offers the risky verb.
-    fireEvent.click(screen.getByRole('button', { name: 'Commit (risky — review above)' }))
-    fireEvent.click(await screen.findByRole('button', { name: /Commit despite the risk: no 10 in test/u }))
-
-    const alert = await screen.findByText(/Command rejected: 40 deny 172\.16\.0\.0\/16 not valid here/u)
-    expect(alert.textContent).toContain('Commit was attempted; refresh device state')
-    expect(screen.queryByText(/Startup-config was not changed/u)).toBeNull()
-  })
-
-  it('an abort is refused once the session is no longer open, and sends nothing', async () => {
-    const fakes = makeFakes({ sessionState: 'committed' })
-    renderScreen(fakes)
-    await readyScreen()
-
-    fireEvent.click(screen.getByRole('button', { name: 'Remove rule 10' }))
-    await stageReady(fakes)
-    // The client's session is `committed`, so there is nothing left to discard: the screen refuses
-    // before even asking, and neither device verb is sent.
-    fireEvent.click(screen.getByRole('button', { name: 'Abort staged changes' }))
-    await waitFor(() => expect(screen.getAllByRole('button', { name: 'Abort staged changes' })).toHaveLength(1))
     expect(fakes.session.abort).not.toHaveBeenCalled()
-    expect(fakes.session.commit).not.toHaveBeenCalled()
+    expect(screen.queryByRole('button', { name: /Commit|Abort/u })).not.toBeInTheDocument()
   })
 
-  it('commit stays locked while the device has not answered its own diff', async () => {
-    const fakes = makeFakes({ diffPending: true })
+  it('a command the device rejects surfaces the device text and never commits', async () => {
+    const fakes = makeFakes({ runError: new Error('Command rejected: 40 deny 172.16.0.0/16 not valid here') })
     renderScreen(fakes)
     await readyScreen()
 
     fireEvent.click(screen.getByRole('button', { name: 'Remove rule 10' }))
-    await waitFor(() => expect(fakes.session.run).toHaveBeenCalled())
 
-    // The staged batch is up, the diff is not: review says it is waiting and offers no commit.
-    expect(await screen.findByText('Reading the device diff…')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Commit (risky — review above)' })).toBeDisabled()
+    expect(await screen.findByRole('alert')).toHaveTextContent(/Command rejected: 40 deny 172\.16\.0\.0\/16 not valid here/u)
     expect(fakes.session.commit).not.toHaveBeenCalled()
-
-    // Release the device so the case leaves nothing in flight.
-    pendingDiffResolve?.('+ip access-list standard test')
-    pendingDiffResolve = undefined
+    expect(snapshot().status).toBe('uncertain')
   })
 
   it('a standard rule can be staged with the wildcard arm, kept exactly as typed', async () => {
@@ -756,25 +695,6 @@ describe('Acls — staging discipline and device-error surfacing', () => {
     expect(screen.getByRole('button', { name: 'Edit rule 80' })).toBeDisabled()
     // Nothing in that cell is a number: it is the tail the reader kept, never a counter.
     expect(screen.getByText('log urg ttl eq 24 fragments tracked').textContent).not.toMatch(/^\d+$/u)
-  })
-
-  it('declining the abort confirm leaves the staged session exactly where it was', async () => {
-    const fakes = makeFakes()
-    renderScreen(fakes)
-    await readyScreen()
-
-    fireEvent.click(screen.getByRole('button', { name: 'Remove rule 10' }))
-    await stageReady(fakes)
-
-    fireEvent.click(screen.getByRole('button', { name: 'Abort staged changes' }))
-    await waitFor(() => expect(screen.getAllByRole('button', { name: 'Abort staged changes' })).toHaveLength(2))
-    // The dialog's own Cancel: neither device verb is sent and the diff stays under review.
-    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
-
-    expect(fakes.session.abort).not.toHaveBeenCalled()
-    expect(fakes.session.commit).not.toHaveBeenCalled()
-    expect(screen.getByRole('button', { name: 'Commit (risky — review above)' })).toBeEnabled()
-    expect(fakes.configSession).toHaveBeenCalledTimes(1)
   })
 
   it('a read that fails on reload takes the controls away instead of leaving a stale listing editable', async () => {
