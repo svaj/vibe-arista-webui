@@ -20,8 +20,9 @@
  */
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
-import type { SystemSettings as DeviceSettings } from '@devhax-heavy-industries/arista-eapi'
+import type { Node, SystemSettings as DeviceSettings } from '@devhax-heavy-industries/arista-eapi'
 
+import { TransactionProvider } from '../sessions/TransactionContext'
 import { SystemSettings } from './SystemSettings'
 
 type TestNode = NonNullable<Parameters<typeof SystemSettings>[0]['node']>
@@ -61,23 +62,23 @@ function makeFakes(overrides: Overrides = {}) {
     throw new Error(`SYNTHETIC unexpected show: ${command}`)
   })
   const configSession = vi.fn(async () => session)
-  const node = { system: { get }, show, configSession } as unknown as TestNode
+  const node = { connection: { address: 'https://sw1.example/command-api' }, system: { get }, show, configSession } as unknown as TestNode
   return { node, session, get, show, configSession }
 }
 
-function renderScreen(fakes: ReturnType<typeof makeFakes>) {
-  return render(<SystemSettings node={fakes.node} proxyConfigured />)
+function renderScreen(fakes: ReturnType<typeof makeFakes>, proxyConfigured = true) {
+  return render(<TransactionProvider node={fakes.node as Node}><SystemSettings node={fakes.node} proxyConfigured={proxyConfigured} /></TransactionProvider>)
 }
 
 async function stageTo(fakes: ReturnType<typeof makeFakes>): Promise<void> {
   await waitFor(() => expect(fakes.configSession).toHaveBeenCalled())
-  await screen.findByText(/Review the device diff before committing/u)
+  await screen.findByText(/added to the transaction/u)
 }
 
 describe('SystemSettings — four states, nothing contacted without the operator asking', () => {
   it('no proxy: prompt, all controls disabled, and system.get()/show()/configSession() stay at zero calls', () => {
     const fakes = makeFakes()
-    render(<SystemSettings node={fakes.node} proxyConfigured={false} />)
+    renderScreen(fakes, false)
 
     expect(screen.getByRole('alert')).toHaveTextContent('Local proxy is not configured')
     expect(screen.getByRole('button', { name: 'Update hostname' })).toBeDisabled()
@@ -128,7 +129,7 @@ describe('SystemSettings — four states, nothing contacted without the operator
 })
 
 describe('SystemSettings — writes stage a named session, pin argvs byte-for-byte, and the banner carries the EOF payload literal', () => {
-  it('set hostname: session naming, staged text, diff review, risk-bearing confirm, and a re-read after commit', async () => {
+  it('adds a hostname change to the shared transaction without committing locally', async () => {
     const fakes = makeFakes()
     renderScreen(fakes)
     await screen.findByText(/^Current running-config hostname: /u)
@@ -137,20 +138,13 @@ describe('SystemSettings — writes stage a named session, pin argvs byte-for-by
     fireEvent.click(screen.getByRole('button', { name: 'Update hostname' }))
     await stageTo(fakes)
 
-    expect(fakes.configSession).toHaveBeenCalledWith({ description: 'webui system set hostname' })
+    expect(fakes.configSession).toHaveBeenCalledWith(expect.objectContaining({ description: 'webui shared transaction' }))
     expect(fakes.session.run).toHaveBeenCalledWith(['hostname sw2'])
-    expect(screen.getByText('+hostname sw2')).toBeInTheDocument()
-
-    // Two-step contract: the review panel's commit button opens the F4 prompt, and ONLY the
-    // prompt's own verb commits (#66: the device action is never the page's first responder).
-    fireEvent.click(screen.getByRole('button', { name: 'Commit to running-config' }))
-    fireEvent.click(await screen.findByRole('button', { name: /Commit despite the risk: hostname/u }))
-    await waitFor(() => expect(fakes.session.commit).toHaveBeenCalled())
-    await waitFor(() => expect(fakes.get).toHaveBeenCalledTimes(2)) // #78: identity refreshes after commit
-    expect(screen.getByText(/Startup-config was not changed/u)).toBeInTheDocument()
+    expect(fakes.session.commit).not.toHaveBeenCalled()
+    expect(fakes.session.abort).not.toHaveBeenCalled()
   })
 
-  it('remove hostname: `no hostname` argv, and the unset (vs pyeapi\u2019s localhost) divergence rides the risk copy', async () => {
+  it('appends remove hostname and reuses the same session for another action', async () => {
     const fakes = makeFakes()
     renderScreen(fakes)
     await screen.findByText(/^Current running-config hostname: /u)
@@ -158,10 +152,13 @@ describe('SystemSettings — writes stage a named session, pin argvs byte-for-by
     fireEvent.click(screen.getByRole('button', { name: 'Remove hostname' }))
     await stageTo(fakes)
     expect(fakes.session.run).toHaveBeenCalledWith(['no hostname'])
-    expect(screen.getByText(/pyeapi would invent 'localhost'/u)).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Disable ip routing' }))
+    await waitFor(() => expect(fakes.session.run).toHaveBeenCalledTimes(2))
+    expect(fakes.configSession).toHaveBeenCalledTimes(1)
   })
 
-  it('ip routing: the enable path is refused at zero sessions when already on; disable stages `no ip routing` with the in-band IF-not-IS risk and a destructive commit', async () => {
+  it('refuses enabling routing at zero sessions, then appends the disable command', async () => {
     const fakes = makeFakes()
     renderScreen(fakes)
     await screen.findByText(/^Current running-config hostname: /u)
@@ -173,13 +170,7 @@ describe('SystemSettings — writes stage a named session, pin argvs byte-for-by
     fireEvent.click(screen.getByRole('button', { name: 'Disable ip routing' }))
     await stageTo(fakes)
     expect(fakes.session.run).toHaveBeenCalledWith(['no ip routing'])
-    // #78's guard graded hard: the staged risk panel repeats the eAPI-path warning (matched on the
-    // RISK's wording, not the panel note, which says the same in its own voice), and the confirm
-    // verb states the risk.
-    expect(screen.getByText(/no ip routing can drop routed reachability/u)).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Commit (risky — review above)' }))
-    fireEvent.click(await screen.findByRole('button', { name: /Commit despite the risk: no ip routing/u }))
-    await waitFor(() => expect(fakes.session.commit).toHaveBeenCalled())
+    expect(fakes.session.commit).not.toHaveBeenCalled()
   })
 
   it('the banner write is the byte-for-byte payload #78 names: text + the client-owned \\nEOF\\n, displayed as a digest not an inlined body', async () => {
@@ -193,9 +184,7 @@ describe('SystemSettings — writes stage a named session, pin argvs byte-for-by
 
     // Byte-for-byte: one trailing newline folded (DR-056) and the exact terminator (DR-015).
     expect(fakes.session.run).toHaveBeenCalledWith([{ cmd: 'banner login', input: 'Authorized only.\nEOF\n' }])
-    expect(fakes.configSession).toHaveBeenCalledWith({ description: 'webui system set login banner' })
-    // The review panel shows the framing as a digest — never the raw body inlined into a command line.
-    expect(screen.getByText(/banner login \(multiline input: 1 line\(s\), EOF-terminated\)/u)).toBeInTheDocument()
+    expect(fakes.configSession).toHaveBeenCalledWith(expect.objectContaining({ description: 'webui shared transaction' }))
   })
 
   it('remove banner: `no banner <kind>` stays a line string; the unset kind is refused in-form at zero sessions', async () => {
@@ -237,7 +226,7 @@ describe('SystemSettings — in-form refusals cost zero sessions, and one draft 
     expect(fakes.configSession).not.toHaveBeenCalled()
   })
 
-  it('a declined commit and an accepted abort are exact: commit() never fires on decline; abort() stages nothing', async () => {
+  it('allows a later action to reuse the shared transaction without local commit or abort', async () => {
     const fakes = makeFakes()
     renderScreen(fakes)
     await screen.findByText(/^Current running-config hostname: /u)
@@ -245,36 +234,11 @@ describe('SystemSettings — in-form refusals cost zero sessions, and one draft 
     fireEvent.change(screen.getByLabelText(/New hostname/u), { target: { value: 'sw2' } })
     fireEvent.click(screen.getByRole('button', { name: 'Update hostname' }))
     await stageTo(fakes)
-    // Decline the risk confirm: the draft survives with commit never called.
-    fireEvent.click(screen.getByRole('button', { name: 'Commit to running-config' }))
-    fireEvent.click(await screen.findByRole('button', { name: 'Cancel' }))
-    expect(fakes.session.commit).not.toHaveBeenCalled()
 
-    // While a draft is open, a second staging is refused (one transaction at a time).
     fireEvent.click(screen.getByRole('button', { name: 'Remove hostname' }))
-    expect(await screen.findByText(/A staged session is already open/u)).toBeInTheDocument()
+    await waitFor(() => expect(fakes.session.run).toHaveBeenCalledTimes(2))
     expect(fakes.configSession).toHaveBeenCalledTimes(1)
-
-    // The view button and the dialog's confirm share the label; while the dialog is open both
-    // exist — the LAST one is the dialog's (dialogs mount at the ConfirmProvider host, after the
-    // workspace subtree).
-    fireEvent.click(screen.getByRole('button', { name: 'Abort staged changes' }))
-    await waitFor(() => expect(screen.getAllByRole('button', { name: 'Abort staged changes' })).toHaveLength(2))
-    fireEvent.click(screen.getAllByRole('button', { name: 'Abort staged changes' }).at(-1)!)
-    await waitFor(() => expect(fakes.session.abort).toHaveBeenCalled())
     expect(fakes.session.commit).not.toHaveBeenCalled()
-    expect(screen.getByText(/was aborted; nothing was written/u)).toBeInTheDocument()
-  })
-
-  it('commit stays locked until the device diff has been read (hasDiffBeenRead false)', async () => {
-    const fakes = makeFakes({ diffRead: false })
-    renderScreen(fakes)
-    await screen.findByText(/^Current running-config hostname: /u)
-
-    fireEvent.change(screen.getByLabelText(/New hostname/u), { target: { value: 'sw2' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Update hostname' }))
-    await stageTo(fakes)
-    expect(screen.getByRole('button', { name: /Commit to running-config/u })).toBeDisabled()
-    expect(fakes.session.commit).not.toHaveBeenCalled()
+    expect(fakes.session.abort).not.toHaveBeenCalled()
   })
 })

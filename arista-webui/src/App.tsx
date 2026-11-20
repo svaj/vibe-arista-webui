@@ -22,6 +22,7 @@ import { Users } from './features/users/Users'
 import { VlanManagement } from './features/vlans/VlanManagement'
 import { VlanAssignment } from './features/vlans/VlanAssignment'
 import { Connect } from './features/connect/Connect'
+import { TransactionProvider, useTransactionSnapshot } from './features/sessions/TransactionContext'
 import type { RouteRegistry } from './router'
 
 /** The only route registered so far; empty hashes redirect here and nav/deep links share the path. */
@@ -188,7 +189,12 @@ function App() {
   // are the F3 `ConnectionHeader`, fed from the screen's own read state. The shell supplies chrome
   // once — skip link, brand topbar, nav, `#workspace` outlet — and never claims a connection the
   // device reads have not confirmed.
-  return <AppShell homePath={HOME_PATH} routes={routes} />
+  return <TransactionProvider node={node}><RoutedShell routes={routes} /></TransactionProvider>
+}
+
+function RoutedShell({ routes }: { readonly routes: RouteRegistry }) {
+  const transaction = useTransactionSnapshot()
+  return <AppShell homePath={HOME_PATH} routes={routes} transaction={{ count: transaction.entries.length, status: transaction.status }} />
 }
 
 export default App

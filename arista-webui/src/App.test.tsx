@@ -75,7 +75,7 @@ describe('App composition (F6 chrome)', () => {
     // With no proxy the screen idles on the prompt: registering the route must not warm anything up.
     fireEvent.click(addressing)
     expect(screen.getByRole('heading', { level: 2, name: 'IP addressing' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Preview and read the diff' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Add to transaction' })).toBeDisabled()
   })
 
   it('puts the S9 (#79) transaction center in the nav on #/sessions', () => {
@@ -86,9 +86,9 @@ describe('App composition (F6 chrome)', () => {
     expect(sessions).not.toHaveAttribute('aria-current', 'page')
     fireEvent.click(sessions)
     expect(screen.getByRole('heading', { level: 2, name: 'Transaction center' })).toBeInTheDocument()
-    // Unconfigured: every device verb idles disabled; the LOCAL journal button is still offered
-    // (reading localStorage contacts nothing).
-    expect(screen.getByRole('button', { name: 'Open named session, stage, read diff' })).toBeDisabled()
+    // Unconfigured: shared staging and orphan recovery idle disabled; the LOCAL journal button is
+    // still offered (reading localStorage contacts nothing).
+    expect(screen.getByRole('button', { name: 'Open shared session and stage draft' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Run orphan recovery' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Read local journal' })).toBeEnabled()
   })
@@ -118,7 +118,7 @@ describe('App composition (F6 chrome)', () => {
     fireEvent.click(staticRoutes)
     expect(screen.getByRole('heading', { level: 2, name: 'Static routes' })).toBeInTheDocument()
     expect(screen.getByRole('alert')).toHaveTextContent('EAPI_HOST')
-    expect(screen.getByRole('button', { name: 'Preview and read the device diff' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Add to transaction' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Reload static routes' })).toBeDisabled()
   })
 

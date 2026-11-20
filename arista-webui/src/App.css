@@ -103,6 +103,10 @@ tbody tr:last-child td { border-bottom: 0; }
 .shell-nav-link:hover { color: var(--ink); background: var(--surface-muted); border-color: var(--line); }
 .shell-nav-link:focus-visible { outline: 3px solid #22735f; outline-offset: 3px; }
 .shell-nav-link[aria-current='page'] { color: var(--accent-dark); border-color: #e2b9b1; background: var(--accent-soft); }
+.shell-transaction { display: inline-flex; min-width: 82px; min-height: 42px; align-items: center; justify-content: center; gap: 7px; color: var(--ink); border: 1px solid #d6ad62; border-radius: 5px; background: var(--warning-soft); font-size: 12px; font-weight: 650; text-decoration: none; }
+.shell-transaction strong { font-variant-numeric: tabular-nums; font-size: 15px; }
+.shell-transaction:hover { border-color: var(--warning); background: #fff1d3; }
+.shell-transaction:focus-visible { outline: 3px solid #22735f; outline-offset: 3px; }
 .shell-status { gap: 9px; }
 .shell-status-detail { color: var(--ink); font-variant-numeric: tabular-nums; }
 .shell-outlet { display: block; }
@@ -188,6 +192,11 @@ tbody tr:last-child td { border-bottom: 0; }
 .field-note code { font-family: var(--mono); font-size: 11px; }
 .staged-argv { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 12px; }
 .staged-argv code { padding: 4px 8px; color: var(--ink); border: 1px solid var(--line); border-radius: 3px; background: var(--surface-muted); font-family: var(--mono); font-size: 12px; overflow-wrap: anywhere; }
+.transaction-entries { display: grid; gap: 12px; margin: 12px 0 18px; padding-left: 24px; }
+.transaction-entries li { display: grid; gap: 5px; padding-left: 5px; overflow-wrap: anywhere; }
+.transaction-entries strong { color: var(--ink); }
+.transaction-entries span { color: var(--muted); font-size: 12px; }
+.transaction-entries code { padding: 4px 7px; border: 1px solid var(--line); border-radius: 3px; background: var(--surface-muted); font-family: var(--mono); font-size: 11px; overflow-wrap: anywhere; }
 .band-flag { display: inline-block; padding: 3px 7px; border: 1px solid var(--line); border-radius: 3px; font-size: 11px; font-weight: 650; overflow-wrap: anywhere; }
 /* The device itself named this interface as the eAPI listener: the one state that is a fact, not a hint. */
 .band-flag-eapi-served { color: var(--danger); border-color: #e2b9b1; background: #fff5f2; }

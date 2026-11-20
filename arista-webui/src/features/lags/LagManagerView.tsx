@@ -29,7 +29,6 @@ import type { FormEvent } from 'react'
 import type { ReactElement } from 'react'
 
 import { ConnectionHeader } from '../../components/ui/ConnectionHeader'
-import { ConfigDiff } from '../../components/ui/ConfigDiff'
 import { DataTable } from '../../components/ui/DataTable'
 import type { DataTableColumn } from '../../components/ui/DataTable'
 import { EmptyState } from '../../components/ui/EmptyState'
@@ -136,12 +135,6 @@ export interface LagCapabilityView {
   readonly candidates: readonly string[]
 }
 
-export interface LagDraftView {
-  readonly session: string
-  readonly batch: readonly string[]
-  readonly diff?: string
-}
-
 export interface LagFields {
   readonly action: LagAction
   /** Group number for `create-lag` (digits only). */
@@ -172,12 +165,9 @@ export interface LagManagerViewProps {
   readonly selected: string
   readonly onSelect: (name: string) => void
   readonly onPreview: (event: FormEvent<HTMLFormElement>) => void
-  readonly onCommit: () => void
-  readonly onAbortDraft: () => void
   readonly onAbortPending: (session: LagSessionRow) => void
   readonly onVerify: () => void
   readonly live?: readonly LagLiveCheck[]
-  readonly draft?: LagDraftView
   readonly messages: LagMessage
   readonly busy: boolean
   readonly gate: LagGate
@@ -288,12 +278,9 @@ export function LagManagerView({
   selected,
   onSelect,
   onPreview,
-  onCommit,
-  onAbortDraft,
   onAbortPending,
   onVerify,
   live,
-  draft,
   messages,
   busy,
   gate,
@@ -449,21 +436,10 @@ export function LagManagerView({
               {/* S3's gate shape: the controls stay visible and the Preview button stays live for gated
                   intents, so the refusal comes through `plan()` as an explained message — the write-layer
                   gate — rather than a silently dead button. */}
-              <button className="primary-button" type="submit" disabled={state !== 'ready' || busy || draft !== undefined}>Preview on the device (config session)</button>
-              {draft !== undefined && <>
-                <button className="danger-button" type="button" onClick={onAbortDraft} disabled={busy}>Abort staged session</button>
-                <button className="primary-button" type="button" onClick={onCommit} disabled={busy || draft.diff === undefined}>Commit to running-config</button>
-              </>}
+              <button className="primary-button" type="submit" disabled={state !== 'ready' || busy}>Add to transaction</button>
             </div>
           </form>
 
-          {draft !== undefined && <section className="review-panel" aria-labelledby="lag-review-title">
-            <div className="panel-heading"><div><p className="eyebrow">SESSION {draft.session}</p><h3 id="lag-review-title">Staged text and the device's diff</h3></div></div>
-            <div className="staged-argv" aria-label="Staged commands">{draft.batch.map((line) => <code key={line}>{line}</code>)}</div>
-            {draft.diff === undefined
-              ? <p className="notice" role="status" aria-busy="true">The diff has not been read from the device yet.</p>
-              : <ConfigDiff diff={draft.diff} />}
-          </section>}
 
           {messages.notice !== '' && <p className="notice notice-success operation-result" role="status">{messages.notice}</p>}
           {messages.failure !== '' && <div className="notice notice-error operation-result" role="alert"><strong>The device or this screen refused that.</strong><p>{messages.failure}</p></div>}

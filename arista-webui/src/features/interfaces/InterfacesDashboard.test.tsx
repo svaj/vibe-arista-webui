@@ -18,6 +18,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createFakeNode } from '@devhax-heavy-industries/arista-eapi/testing'
 import type { ConfigSession, Interface, InterfaceStatus, IpInterface, Switchport } from '@devhax-heavy-industries/arista-eapi'
 
+import { TransactionProvider, useTransactionSnapshot } from '../sessions/TransactionContext'
 import { InterfacesDashboard, bandPathFor, managementInterfaces } from './InterfacesDashboard'
 import type { InterfacesClient } from './InterfacesDashboard'
 import statusRowsCapture from './fixtures/show-interfaces-status--ceos-4.28.14M.json?raw'
@@ -97,10 +98,21 @@ function makeClient(overrides: Record<string, unknown> = {}, diffRead = true) {
  * Render and wait for the read batch to LAND, not merely for the shell to mount: the heading renders
  * while the reads are in flight, so a test that drives the form must wait for the form itself.
  */
+function TransactionProbe() {
+  const snapshot = useTransactionSnapshot()
+  return <output aria-label="Shared transaction entries">{JSON.stringify(snapshot.entries)}</output>
+}
+
 async function ready(node: InterfacesClient | undefined, proxyConfigured?: boolean) {
   render(<InterfacesDashboard node={node} {...(proxyConfigured === undefined ? {} : { proxyConfigured })} />)
   await screen.findByRole('heading', { name: 'Interfaces dashboard' })
   return screen.findByLabelText('Interface')
+}
+
+async function readyWithTransaction(node: InterfacesClient) {
+  render(<TransactionProvider node={node}><InterfacesDashboard node={node} /><TransactionProbe /></TransactionProvider>)
+  await screen.findByRole('heading', { name: 'Interfaces dashboard' })
+  await screen.findByLabelText('Interface')
 }
 
 afterEach(() => vi.restoreAllMocks())
@@ -160,7 +172,7 @@ describe('InterfacesDashboard — reads', () => {
     expect(screen.getByText('Ethernet49/1')).toBeInTheDocument()
     await user.selectOptions(screen.getByLabelText('Interface'), 'Ethernet49/1')
     expect(screen.getByText(/cannot be edited here/u)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Preview change' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Add to transaction' })).toBeDisabled()
     expect(node.configSession).not.toHaveBeenCalled()
   })
 
@@ -255,12 +267,13 @@ describe('InterfacesDashboard — staged writes', () => {
     await user.selectOptions(screen.getByLabelText('Change'), 'set-description')
     await user.clear(screen.getByLabelText('Description'))
     await user.type(screen.getByLabelText('Description'), 'uplink-to-dist')
-    await user.click(screen.getByRole('button', { name: 'Preview change' }))
+    await user.click(screen.getByRole('button', { name: 'Add to transaction' }))
 
-    expect(await screen.findByText(/Review the device diff/u)).toBeInTheDocument()
+    expect(await screen.findByText(/Interface change added to the transaction/u)).toBeInTheDocument()
     expect(session.run).toHaveBeenCalledWith(['interface Ethernet2', 'description uplink-to-dist'])
     expect(session.diff).toHaveBeenCalledOnce()
-    expect(screen.getByRole('button', { name: 'Commit to running-config' })).toBeEnabled()
+    expect(session.commit).not.toHaveBeenCalled()
+    expect(screen.queryByRole('button', { name: /Commit to running-config/u })).toBeNull()
   })
 
   it('clears and sets MTU with the no-form and the set-form pinned separately', async () => {
@@ -271,19 +284,15 @@ describe('InterfacesDashboard — staged writes', () => {
     await user.selectOptions(screen.getByLabelText('Interface'), 'Ethernet22')
     await user.selectOptions(screen.getByLabelText('Change'), 'set-mtu')
     await user.type(screen.getByLabelText('MTU'), '1500')
-    await user.click(screen.getByRole('button', { name: 'Preview change' }))
-    await screen.findByText(/Review the device diff/u)
+    await user.click(screen.getByRole('button', { name: 'Add to transaction' }))
+    await screen.findByText(/Interface change added to the transaction/u)
     expect(session.run).toHaveBeenLastCalledWith(['interface Ethernet22', 'mtu 1500'])
 
-    await user.click(screen.getByRole('button', { name: 'Abort staged changes' }))
-    const abortPrompt = await screen.findByRole('dialog', { name: 'Abort staged changes' })
-    await user.click(within(abortPrompt).getByRole('button', { name: 'Abort staged changes' }))
-
-    // An abort reloads device state, so the screen passes through loading before the form returns.
-    await user.selectOptions(await screen.findByLabelText('Change'), 'reset-mtu')
-    await user.click(screen.getByRole('button', { name: 'Preview change' }))
-    await screen.findByText(/Review the device diff/u)
+    await user.selectOptions(screen.getByLabelText('Change'), 'reset-mtu')
+    await user.click(screen.getByRole('button', { name: 'Add to transaction' }))
+    await screen.findByText(/Interface change added to the transaction/u)
     expect(session.run).toHaveBeenLastCalledWith(['interface Ethernet22', 'no mtu'])
+    expect(node.configSession).toHaveBeenCalledTimes(1)
   })
 
   it('stages no description and no shutdown as their own negation forms', async () => {
@@ -292,97 +301,42 @@ describe('InterfacesDashboard — staged writes', () => {
     await ready(node)
 
     await user.selectOptions(screen.getByLabelText('Change'), 'clear-description')
-    await user.click(screen.getByRole('button', { name: 'Preview change' }))
-    await screen.findByText(/Review the device diff/u)
+    await user.click(screen.getByRole('button', { name: 'Add to transaction' }))
+    await screen.findByText(/Interface change added to the transaction/u)
     expect(session.run).toHaveBeenLastCalledWith(['interface Ethernet1', 'no description'])
 
-    await user.click(screen.getByRole('button', { name: 'Abort staged changes' }))
-    const abortPrompt = await screen.findByRole('dialog', { name: 'Abort staged changes' })
-    await user.click(within(abortPrompt).getByRole('button', { name: 'Abort staged changes' }))
-
-    // Same loading pass as above: the next control is awaited, not assumed present.
-    await user.selectOptions(await screen.findByLabelText('Change'), 'no-shutdown')
-    await user.click(screen.getByRole('button', { name: 'Preview change' }))
-    await screen.findByText(/Review the device diff/u)
-    expect(session.run).toHaveBeenLastCalledWith(['interface Ethernet1', 'no shutdown'])
-  })
-
-  it('never commits before the displayed diff has been read by the device', async () => {
-    const user = userEvent.setup()
-    const { node } = makeClient({}, false)
-    await ready(node)
-
-    // `no shutdown` carries no value, so the form cannot be intercepted by a value refusal first.
     await user.selectOptions(screen.getByLabelText('Change'), 'no-shutdown')
-    await user.click(screen.getByRole('button', { name: 'Preview change' }))
-    await screen.findByText(/Review the device diff/u)
-    expect(screen.getByRole('button', { name: 'Commit to running-config' })).toBeDisabled()
+    await user.click(screen.getByRole('button', { name: 'Add to transaction' }))
+    await screen.findByText(/Interface change added to the transaction/u)
+    expect(session.run).toHaveBeenLastCalledWith(['interface Ethernet1', 'no shutdown'])
+    expect(node.configSession).toHaveBeenCalledTimes(1)
   })
 
-  it('a shutdown goes through its own confirm naming the port, and cancelling writes nothing', async () => {
+  it('stages a shutdown with its management-path risk and never commits locally', async () => {
     const user = userEvent.setup()
     const { node, session } = makeClient()
-    await ready(node)
+    await readyWithTransaction(node)
 
     await user.selectOptions(screen.getByLabelText('Interface'), 'Ethernet22')
     await user.selectOptions(screen.getByLabelText('Change'), 'shutdown')
-    await user.click(screen.getByRole('button', { name: 'Preview change' }))
-    await screen.findByText(/Review the device diff/u)
+    await user.click(screen.getByRole('button', { name: 'Add to transaction' }))
+    await screen.findByText(/Interface change added to the transaction/u)
     expect(session.run).toHaveBeenLastCalledWith(['interface Ethernet22', 'shutdown'])
-    // One interface per session: the batch never spans ports.
-    const staged = await screen.findAllByText('interface Ethernet22')
-    expect(staged).toHaveLength(1)
-
-    await user.click(screen.getByRole('button', { name: 'Commit to running-config' }))
-    const prompt = await screen.findByRole('dialog', { name: 'Shut down interface' })
-    // The prompt names both the session and the port it will shut down (the subject element).
-    expect(within(prompt).getByText('ui-s1-session · Ethernet22')).toBeInTheDocument()
-    // Ethernet22 is not the eAPI interface but the guard still says what it cannot promise.
-    expect(within(prompt).getByText(/dependent path/iu)).toBeInTheDocument()
-    expect(within(prompt).getByRole('button', { name: 'Cancel' })).toHaveFocus()
-    await user.click(within(prompt).getByRole('button', { name: 'Cancel' }))
-
+    expect(screen.getByLabelText('Shared transaction entries')).toHaveTextContent(/Management path classification for Ethernet22/u)
     expect(session.commit).not.toHaveBeenCalled()
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 
-  it('names the management risk in the confirm when the device itself reports eAPI on that port', async () => {
+  it('carries the device-reported management risk in the shared transaction', async () => {
     const user = userEvent.setup()
     const { node, session } = makeClient()
-    await ready(node)
+    await readyWithTransaction(node)
 
     await user.selectOptions(screen.getByLabelText('Interface'), 'Management1')
     await user.selectOptions(screen.getByLabelText('Change'), 'shutdown')
-    await user.click(screen.getByRole('button', { name: 'Preview change' }))
-    await screen.findByText(/may drop the eAPI path/u)
-
-    await user.click(screen.getByRole('button', { name: 'Commit to running-config' }))
-    const prompt = await screen.findByRole('dialog', { name: 'Shut down interface' })
-    expect(within(prompt).getByText(/eAPI is served on Management1/u)).toBeInTheDocument()
-    await user.click(within(prompt).getByRole('button', { name: 'Shut down Management1' }))
-    expect(session.commit).toHaveBeenCalledOnce()
-  })
-
-  it('a lost commit reports the reconnect-and-refresh recovery and keeps the draft marked attempted', async () => {
-    const user = userEvent.setup()
-    const { node, session } = makeClient()
-    await ready(node)
-
-    vi.mocked(session.commit).mockRejectedValueOnce(new Error('socket hang up'))
-    await user.selectOptions(screen.getByLabelText('Change'), 'no-shutdown')
-    await user.click(screen.getByRole('button', { name: 'Preview change' }))
-    await screen.findByText(/Review the device diff/u)
-    await user.click(screen.getByRole('button', { name: 'Commit to running-config' }))
-    const prompt = await screen.findByRole('dialog', { name: 'Commit to running-config' })
-    await user.click(within(prompt).getByRole('button', { name: 'Commit to running-config' }))
-
-    const alert = await screen.findByRole('alert')
-    expect(alert).toHaveTextContent('socket hang up')
-    expect(alert).toHaveTextContent('Commit may have applied — reconnect and refresh before any further action.')
-    // The recovery text appears twice on purpose: in the failure alert and in the still-open draft panel,
-    // because the draft itself stays marked attempted so a second commit cannot be re-armed by accident.
-    expect(screen.getAllByText(/Commit may have applied/u)).toHaveLength(2)
-    expect(screen.getByRole('button', { name: 'Commit to running-config' })).toBeDisabled()
+    await user.click(screen.getByRole('button', { name: 'Add to transaction' }))
+    await screen.findByText(/Interface change added to the transaction/u)
+    expect(screen.getByLabelText('Shared transaction entries')).toHaveTextContent(/A shutdown may drop this UI's eAPI path/u)
+    expect(session.commit).not.toHaveBeenCalled()
   })
 
   it('surfaces the client-side description refusal and opens no session to do it', async () => {
@@ -392,7 +346,7 @@ describe('InterfacesDashboard — staged writes', () => {
 
     await user.clear(screen.getByLabelText('Description'))
     await user.type(screen.getByLabelText('Description'), 'say "hi"')
-    await user.click(screen.getByRole('button', { name: 'Preview change' }))
+    await user.click(screen.getByRole('button', { name: 'Add to transaction' }))
 
     const alert = await screen.findByRole('alert')
     expect(alert).toHaveTextContent(/cannot read a description containing a double quote/u)
@@ -408,7 +362,7 @@ describe('InterfacesDashboard — staged writes', () => {
     // value is U+2028 rather than `\n`, because an `<input>`'s value sanitization strips CR/LF — this
     // is the character class the client's own line-boundary guard (row 74 / DR-015) refuses.
     fireEvent.change(screen.getByLabelText('Description'), { target: { value: 'uplink\u2028to-dist' } })
-    await user.click(screen.getByRole('button', { name: 'Preview change' }))
+    await user.click(screen.getByRole('button', { name: 'Add to transaction' }))
 
     expect(await screen.findByRole('alert')).toHaveTextContent(/may not contain a line break or line separator/u)
     expect(node.configSession).not.toHaveBeenCalled()
@@ -421,29 +375,26 @@ describe('InterfacesDashboard — staged writes', () => {
 
     await user.selectOptions(screen.getByLabelText('Change'), 'set-mtu')
     await user.type(screen.getByLabelText('MTU'), '0')
-    await user.click(screen.getByRole('button', { name: 'Preview change' }))
+    await user.click(screen.getByRole('button', { name: 'Add to transaction' }))
 
     expect(await screen.findByRole('alert')).toHaveTextContent('MTU must be a positive whole number')
     expect(screen.getByText(/Client-side bound, device keeps authority/u)).toBeInTheDocument()
     expect(node.configSession).not.toHaveBeenCalled()
   })
 
-  it('commits once and says plainly that startup-config was not touched', async () => {
+  it('adds a description batch to the coordinator without committing locally', async () => {
     const user = userEvent.setup()
     const { node, session } = makeClient()
     await ready(node)
 
     await user.clear(screen.getByLabelText('Description'))
     await user.type(screen.getByLabelText('Description'), 'desk-12')
-    await user.click(screen.getByRole('button', { name: 'Preview change' }))
-    await screen.findByText(/Review the device diff/u)
-    await user.click(screen.getByRole('button', { name: 'Commit to running-config' }))
-    const prompt = await screen.findByRole('dialog', { name: 'Commit to running-config' })
-    expect(within(prompt).getByText(/running-config only/u)).toBeInTheDocument()
-    await user.click(within(prompt).getByRole('button', { name: 'Commit to running-config' }))
+    await user.click(screen.getByRole('button', { name: 'Add to transaction' }))
+    await screen.findByText(/Interface change added to the transaction/u)
 
-    expect(session.commit).toHaveBeenCalledOnce()
-    expect(await screen.findByRole('status')).toHaveTextContent('Startup-config was not changed.')
+    expect(session.run).toHaveBeenCalledWith(['interface Ethernet1', 'description desk-12'])
+    expect(session.commit).not.toHaveBeenCalled()
+    expect(screen.queryByRole('button', { name: /Commit/u })).toBeNull()
   })
 
   it('offers the pending-session abort a 1006 needs, and writes nothing until it is confirmed', async () => {

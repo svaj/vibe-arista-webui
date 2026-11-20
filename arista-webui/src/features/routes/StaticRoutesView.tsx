@@ -26,7 +26,6 @@ import type { ReactElement } from 'react'
 
 import { ConnectionHeader } from '../../components/ui/ConnectionHeader'
 import type { ConnectionState } from '../../components/ui/ConnectionHeader'
-import { ConfigDiff } from '../../components/ui/ConfigDiff'
 import { DataTable } from '../../components/ui/DataTable'
 import type { DataTableColumn } from '../../components/ui/DataTable'
 import { EmptyState } from '../../components/ui/EmptyState'
@@ -43,19 +42,6 @@ export interface StaticRouteRowView extends RouteRow {
   readonly guard?: RouteGuard
 }
 
-export interface StaticRoutesDraftView {
-  readonly sessionName: string
-  /** The intent in operator words, e.g. `removes 10.9.0.0/16 via 192.68.1.254`. */
-  readonly effectLabel: string
-  /** Exactly one staged line per session — this screen never batches a delete. */
-  readonly batch: readonly string[]
-  readonly risks: readonly string[]
-  /** `undefined` while the device `diff()` has not come back; commit stays locked until it has. */
-  readonly diff?: string
-  readonly canCommit: boolean
-  readonly destructive: boolean
-}
-
 export interface StaticRoutesViewProps {
   readonly state: 'loading' | 'ready' | 'failed'
   readonly readError?: string
@@ -67,8 +53,6 @@ export interface StaticRoutesViewProps {
   readonly fields: RouteFields
   readonly onFieldsChange: (fields: RouteFields) => void
   readonly onPreview: (event: FormEvent<HTMLFormElement>) => void
-  readonly onCommit: () => void
-  readonly onAbortDraft: () => void
   readonly onReload: () => void
   /** The in-band acknowledgement: required before Preview whenever the selected removal is guarded. */
   readonly ack: boolean
@@ -77,7 +61,6 @@ export interface StaticRoutesViewProps {
   /** The guard note for the current selection (removal of a default or shared-gateway route). */
   readonly guardNote?: string
   readonly formError?: string
-  readonly draft?: StaticRoutesDraftView
   readonly busy: boolean
   readonly canAct: boolean
   readonly notice: string
@@ -111,15 +94,12 @@ export function StaticRoutesView({
   fields,
   onFieldsChange,
   onPreview,
-  onCommit,
-  onAbortDraft,
   onReload,
   ack,
   onAckChange,
   ackRequired,
   guardNote,
   formError,
-  draft,
   busy,
   canAct,
   notice,
@@ -307,29 +287,10 @@ export function StaticRoutesView({
         {formError !== undefined && <p className="notice notice-error" role="alert">{formError}</p>}
 
         <div className="review-actions">
-          <button className="primary-button" type="submit" disabled={!canAct || busy || draft !== undefined || (ackRequired && !ack)}>Preview and read the device diff</button>
+          <button className="primary-button" type="submit" disabled={!canAct || busy || (ackRequired && !ack)}>Add to transaction</button>
         </div>
       </form>
 
-      {draft !== undefined && <section className="review-panel" aria-labelledby="static-routes-review-title">
-        <div className="panel-heading">
-          <div><p className="eyebrow">SESSION {draft.sessionName}</p><h3 id="static-routes-review-title">Staged: {draft.effectLabel}</h3></div>
-          <span className="panel-index">{draft.batch.length.toString().padStart(2, '0')}</span>
-        </div>
-        <div className="staged-argv" aria-label="Staged commands">{draft.batch.map((line) => <code key={line}>{line}</code>)}</div>
-        {draft.risks.length > 0 && <ul className="ref-list" aria-label="Staged risks">
-          {draft.risks.map((risk) => <li key={risk}><span>{risk}</span></li>)}
-        </ul>}
-        {draft.diff === undefined
-          ? <EmptyState heading="Reading the device diff…" hint="Commit stays locked until the device answers its own diff()." />
-          : <ConfigDiff diff={draft.diff} />}
-        <div className="review-actions">
-          <button className={draft.destructive ? 'danger-button' : 'primary-button'} type="button" onClick={onCommit} disabled={!draft.canCommit || busy} aria-busy={busy}>
-            {draft.destructive ? 'Commit (guarded — review above)' : 'Commit to running-config'}
-          </button>
-          <button className="quiet-button" type="button" onClick={onAbortDraft} disabled={busy}>Abort staged changes</button>
-        </div>
-      </section>}
     </section>
 
     {notice !== '' && <p className="notice notice-success operation-result" role="status">{notice}</p>}

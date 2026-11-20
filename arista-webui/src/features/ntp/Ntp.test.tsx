@@ -97,7 +97,7 @@ async function readyServers(): Promise<void> {
 
 async function stageReady(fakes: ReturnType<typeof makeFakes>): Promise<void> {
   await waitFor(() => expect(fakes.session.run).toHaveBeenCalled())
-  await screen.findByText(/Review the device diff before committing/u)
+  await screen.findByText(/NTP change added to the transaction/u)
 }
 
 const addField = () => screen.getByLabelText(/Add NTP server/u)
@@ -180,14 +180,10 @@ describe('Ntp — server add/remove/remove-all stage the exact client-composed l
     fireEvent.click(screen.getByRole('button', { name: 'Add server' }))
     await stageReady(fakes)
 
-    expect(fakes.configSession).toHaveBeenCalledWith({ description: 'webui ntp add server' })
+    expect(fakes.configSession).toHaveBeenCalledWith(expect.objectContaining({ description: 'webui shared transaction' }))
     expect(fakes.session.run).toHaveBeenCalledWith(['ntp server 10.0.0.9'])
-
-    fireEvent.click(screen.getByRole('button', { name: 'Commit to running-config' }))
-    fireEvent.click(await screen.findByRole('button', { name: /Commit despite the risk: ntp server 10\.0\.0\.9/u }))
-    await waitFor(() => expect(fakes.session.commit).toHaveBeenCalled())
-    await waitFor(() => expect(fakes.get).toHaveBeenCalledTimes(2)) // re-read after commit
-    expect(screen.getByText(/Startup-config was not changed/u)).toBeInTheDocument()
+    expect(fakes.session.commit).not.toHaveBeenCalled()
+    expect(screen.queryByRole('button', { name: /Commit/u })).not.toBeInTheDocument()
   })
 
   it('add server with Prefer: the `prefer` folded into the value line exactly like the client (`ntp server 5.5.5.5 prefer`)', async () => {
@@ -210,7 +206,7 @@ describe('Ntp — server add/remove/remove-all stage the exact client-composed l
 
     fireEvent.click(screen.getByRole('button', { name: 'Remove server 1.2.3.4' }))
     await stageReady(fakes)
-    expect(fakes.configSession).toHaveBeenCalledWith({ description: 'webui ntp remove server' })
+    expect(fakes.configSession).toHaveBeenCalledWith(expect.objectContaining({ description: 'webui shared transaction' }))
     expect(fakes.session.run).toHaveBeenCalledWith(['no ntp server 1.2.3.4'])
   })
 
@@ -222,27 +218,19 @@ describe('Ntp — server add/remove/remove-all stage the exact client-composed l
     fireEvent.click(screen.getByRole('button', { name: 'Remove all servers' }))
     await stageReady(fakes)
 
-    expect(fakes.configSession).toHaveBeenCalledWith({ description: 'webui ntp remove all servers' })
+    expect(fakes.configSession).toHaveBeenCalledWith(expect.objectContaining({ description: 'webui shared transaction' }))
     expect(fakes.session.run).toHaveBeenCalledWith(['no ntp'])
-    // the risk copy names the exact configured set it would take out
-    expect(screen.getByText(/1\.2\.3\.4 \(preferred\), 10\.0\.0\.1/u)).toBeInTheDocument()
-    // destructive → risky commit verb
-    fireEvent.click(screen.getByRole('button', { name: 'Commit (risky — review above)' }))
-    fireEvent.click(await screen.findByRole('button', { name: /Commit despite the risk: no ntp/u }))
-    await waitFor(() => expect(fakes.session.commit).toHaveBeenCalled())
+    expect(fakes.session.commit).not.toHaveBeenCalled()
   })
 
-  it('declining a confirm sends nothing: commit() never fires, no second session opens (#82)', async () => {
+  it('keeps staged remove-all changes in one shared session without committing', async () => {
     const fakes = makeFakes()
     renderScreen(fakes)
     await readyServers()
 
     fireEvent.click(screen.getByRole('button', { name: 'Remove all servers' }))
     await stageReady(fakes)
-    fireEvent.click(screen.getByRole('button', { name: 'Commit (risky — review above)' }))
-    fireEvent.click(await screen.findByRole('button', { name: 'Cancel' }))
     expect(fakes.session.commit).not.toHaveBeenCalled()
-    // staged (run) but nothing committed; still exactly one session
     expect(fakes.session.run).toHaveBeenCalledTimes(1)
     expect(fakes.configSession).toHaveBeenCalledTimes(1)
   })
@@ -278,14 +266,9 @@ describe('Ntp — the source verbs use the client-picked form and hard-confirm',
     fireEvent.click(screen.getByRole('button', { name: 'Set source interface' }))
     await stageReady(fakes)
 
-    expect(fakes.configSession).toHaveBeenCalledWith({ description: 'webui ntp set source' })
+    expect(fakes.configSession).toHaveBeenCalledWith(expect.objectContaining({ description: 'webui shared transaction' }))
     expect(fakes.session.run).toHaveBeenCalledWith(['ntp local-interface Vlan50'])
-    expect(screen.getByText(/currently configured is `Management1`/u)).toBeInTheDocument()
-    expect(screen.getByText(/not observable from this screen/u)).toBeInTheDocument()
-
-    fireEvent.click(screen.getByRole('button', { name: 'Commit (risky — review above)' }))
-    fireEvent.click(await screen.findByRole('button', { name: /Commit despite the risk: ntp local-interface Vlan50/u }))
-    await waitFor(() => expect(fakes.session.commit).toHaveBeenCalled())
+    expect(fakes.session.commit).not.toHaveBeenCalled()
   })
 
   it('pre-4.23 device: the same write composes the OLD form `ntp source Vlan50`', async () => {
@@ -309,12 +292,7 @@ describe('Ntp — the source verbs use the client-picked form and hard-confirm',
     await stageReady(fakes)
     expect(fakes.session.run).toHaveBeenCalledWith(['no ntp local-interface'])
 
-    // One session at a time: the abort confirm is destructive-true, so the panel button and the
-    // dialog confirm share the label — the LAST one is the dialog's.
-    fireEvent.click(screen.getByRole('button', { name: 'Abort staged changes' }))
-    await waitFor(() => expect(screen.getAllByRole('button', { name: 'Abort staged changes' })).toHaveLength(2))
-    fireEvent.click(screen.getAllByRole('button', { name: 'Abort staged changes' }).at(-1)!)
-    await waitFor(() => expect(fakes.session.abort).toHaveBeenCalled())
+    expect(fakes.session.abort).not.toHaveBeenCalled()
     expect(fakes.session.commit).not.toHaveBeenCalled()
   })
 
@@ -413,31 +391,17 @@ describe('Ntp — sync state is not-captured, and the device diff renders in a P
     expect(fakes.show.mock.calls.filter(([c]) => String(c).startsWith('ntp'))).toHaveLength(0)
   })
 
-  it('the staged review renders the device diff inside a real <pre> (untrusted text, not HTML)', async () => {
+  it('reads the device diff in the shared transaction without rendering a local review', async () => {
     const fakes = makeFakes({ diff: '+ntp server 10.0.0.9' })
-    const { container } = renderScreen(fakes)
-    await readyServers()
-
-    fireEvent.change(addField(), { target: { value: '10.0.0.9' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Add server' }))
-    await stageReady(fakes)
-
-    const pre = container.querySelector('pre.diff-output')
-    expect(pre).not.toBeNull()
-    expect(pre?.tagName).toBe('PRE')
-    expect(screen.getByText('+ntp server 10.0.0.9')).toBeInTheDocument()
-  })
-
-  it('commit stays locked until the device diff has been read (hasDiffBeenRead false)', async () => {
-    const fakes = makeFakes({ diffRead: false })
     renderScreen(fakes)
     await readyServers()
 
     fireEvent.change(addField(), { target: { value: '10.0.0.9' } })
     fireEvent.click(screen.getByRole('button', { name: 'Add server' }))
     await stageReady(fakes)
-    expect(screen.getByRole('button', { name: /Commit to running-config/u })).toBeDisabled()
-    expect(fakes.session.commit).not.toHaveBeenCalled()
+
+    expect(fakes.session.diff).toHaveBeenCalledTimes(1)
+    expect(screen.queryByText('+ntp server 10.0.0.9')).not.toBeInTheDocument()
   })
 })
 
@@ -447,7 +411,7 @@ describe('Ntp — sync state is not-captured, and the device diff renders in a P
 // ====================================================================================================
 
 describe('Ntp — staging discipline and device-error surfacing', () => {
-  it('a second write while a session is staged is refused (one transaction at a time)', async () => {
+  it('a second action reuses the shared transaction', async () => {
     const fakes = makeFakes()
     renderScreen(fakes)
     await readyServers()
@@ -458,7 +422,7 @@ describe('Ntp — staging discipline and device-error surfacing', () => {
 
     fireEvent.change(addField(), { target: { value: '10.0.0.10' } })
     fireEvent.click(screen.getByRole('button', { name: 'Add server' }))
-    expect(await screen.findByText(/A staged session is already open/u)).toBeInTheDocument()
+    await waitFor(() => expect(fakes.session.run).toHaveBeenCalledTimes(2))
     expect(fakes.configSession).toHaveBeenCalledTimes(1)
   })
 
@@ -472,11 +436,11 @@ describe('Ntp — staging discipline and device-error surfacing', () => {
     await stageReady(fakes)
 
     expect(fakes.session.run).toHaveBeenCalledWith(['ntp server 1.2.3.4'])
-    expect(screen.getByText(/already appears in the parsed config/u)).toBeInTheDocument()
+    expect(fakes.session.commit).not.toHaveBeenCalled()
   })
 
-  it('a write the device rejects surfaces the device text plus the commit-recovery warning (never a false success)', async () => {
-    const fakes = makeFakes({ commitError: new Error('Command rejected: ntp server not valid here') })
+  it('does not expose commit failure handling on the feature screen', async () => {
+    const fakes = makeFakes()
     renderScreen(fakes)
     await readyServers()
 
@@ -484,11 +448,7 @@ describe('Ntp — staging discipline and device-error surfacing', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Add server' }))
     await stageReady(fakes)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Commit to running-config' }))
-    fireEvent.click(await screen.findByRole('button', { name: /Commit despite the risk: ntp server 10\.0\.0\.9/u }))
-
-    const alert = await screen.findByText(/Command rejected: ntp server not valid here/u)
-    expect(alert.textContent).toContain('Commit was attempted; refresh device state')
-    expect(screen.queryByText(/Startup-config was not changed/u)).toBeNull()
+    expect(fakes.session.commit).not.toHaveBeenCalled()
+    expect(screen.queryByRole('button', { name: /Commit/u })).not.toBeInTheDocument()
   })
 })

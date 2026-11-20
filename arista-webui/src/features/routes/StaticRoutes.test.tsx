@@ -125,11 +125,7 @@ function fill(fields: { prefix?: string, nextHop?: string, distance?: string, ta
 }
 
 async function staged(): Promise<void> {
-  await screen.findByText(/Review the device diff before committing/u)
-}
-
-async function confirmDialog(name?: string): Promise<HTMLElement> {
-  return await (name === undefined ? screen.findByRole('dialog') : screen.findByRole('dialog', { name }))
+  await screen.findByText(/Static-route change added to the transaction/u)
 }
 
 afterEach(() => vi.restoreAllMocks())
@@ -140,7 +136,7 @@ describe('StaticRoutes — the four states, and nothing contacted unasked', () =
     render(<StaticRoutes node={fakes.node} proxyConfigured={false} />)
 
     expect(screen.getByRole('alert')).toHaveTextContent('Local proxy is not configured')
-    expect(screen.getByRole('button', { name: 'Preview and read the device diff' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Add to transaction' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Reload static routes' })).toBeDisabled()
     expect(fakes.getAll).not.toHaveBeenCalled()
     expect(fakes.show).not.toHaveBeenCalled()
@@ -165,7 +161,7 @@ describe('StaticRoutes — the four states, and nothing contacted unasked', () =
     expect(await screen.findByRole('alert')).toHaveTextContent('ECONNREFUSED 10.0.100.1')
     expect(screen.getByText('The table is unread — the read failure is above, and nothing below is inferred from it.')).toBeInTheDocument()
     expect(screen.queryByRole('table')).toBeNull()
-    expect(screen.getByRole('button', { name: 'Preview and read the device diff' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Add to transaction' })).toBeDisabled()
     expect(fakes.configSession).not.toHaveBeenCalled()
   })
 
@@ -178,7 +174,7 @@ describe('StaticRoutes — the four states, and nothing contacted unasked', () =
     expect(screen.getAllByText(/none this client can read/u).length).toBeGreaterThan(0)
     expect(screen.queryByRole('table')).toBeNull()
     expect(screen.getByText('00')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Preview and read the device diff' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Add to transaction' })).toBeEnabled()
     // A selection-based action with no rows is refused by the disabled select plus its own note.
     await chooseAction('remove-route')
     expect(screen.getByRole('combobox', { name: 'Route from the read table' })).toBeDisabled()
@@ -237,136 +233,65 @@ describe('StaticRoutes — the four states, and nothing contacted unasked', () =
   })
 })
 
-describe('StaticRoutes — one staged line per session, pinned against the client\u2019s command text', () => {
-  it('add-route stages the client\u2019s fixed segment order, reviews the diff in a <pre>, and re-reads after commit', async () => {
+describe('StaticRoutes — exact shared-transaction batches', () => {
+  it('adds the client\u2019s fixed segment order to the shared transaction', async () => {
     const fakes = makeFakes()
     renderScreen(fakes)
-    await screen.findByRole('table', { name: 'Static routes read from running-config' })
+    await ready()
 
     fill({ prefix: '11.111.11.0/24', nextHop: 'Ethernet2', distance: '5', tag: '42', routeName: 'netB' })
-    fireEvent.click(screen.getByRole('button', { name: 'Preview and read the device diff' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add to transaction' }))
     await staged()
 
-    expect(fakes.configSession).toHaveBeenCalledWith({ description: 'webui static-route add' })
+    expect(fakes.configSession).toHaveBeenCalledWith(expect.objectContaining({ description: 'webui shared transaction' }))
     expect(fakes.session.run).toHaveBeenCalledTimes(1)
     expect(fakes.session.run).toHaveBeenCalledWith(['ip route 11.111.11.0/24 Ethernet2 5 tag 42 name netB'])
     expect(fakes.session.diff).toHaveBeenCalledTimes(1)
-
-    // The device's own diff bytes, in a real <pre> — the #80 `<pre>` pin.
-    const pre = screen.getByText(DIFF_TEXT)
-    expect(pre.tagName).toBe('PRE')
-    expect(pre).toHaveAttribute('aria-label', 'Configuration diff')
-    expect(screen.getByRole('button', { name: 'Commit to running-config' })).toBeEnabled()
-
-    fireEvent.click(screen.getByRole('button', { name: 'Commit to running-config' }))
-    fireEvent.click(await within(await confirmDialog()).getByRole('button', { name: 'Commit to running-config' }))
-    await waitFor(() => expect(fakes.session.commit).toHaveBeenCalledTimes(1))
-    // The success claim is earned by the wire order, not by the copy: open the named session, stage the
-    // line, read the device diff, and only then commit — one call each, in that sequence.
-    const opened = fakes.configSession.mock.invocationCallOrder[0]
-    const ran = fakes.session.run.mock.invocationCallOrder[0]
-    const diffed = fakes.session.diff.mock.invocationCallOrder[0]
-    const committed = fakes.session.commit.mock.invocationCallOrder[0]
-    expect(opened).toBeDefined()
-    expect(opened).toBeLessThan(ran)
-    expect(ran).toBeLessThan(diffed)
-    expect(diffed).toBeLessThan(committed)
-    await waitFor(() => expect(fakes.getAll).toHaveBeenCalledTimes(2))
-    expect(screen.getByText(/Startup-config was not changed/u)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Preview and read the device diff' })).toBeEnabled()
+    expect(fakes.session.commit).not.toHaveBeenCalled()
+    expect(fakes.session.abort).not.toHaveBeenCalled()
   })
 
-  it('remove-route stages the exact-match negation of the whole read line, alone, with no acknowledgement asked', async () => {
+  it('removes with the exact-match negation of the whole read line', async () => {
     const fakes = makeFakes()
-    const { container } = renderScreen(fakes)
-    await screen.findByRole('table', { name: 'Static routes read from running-config' })
+    renderScreen(fakes)
+    await ready()
 
     await chooseAction('remove-route')
     await chooseRoute(SECOND_ROW)
     expect(screen.queryByRole('checkbox')).toBeNull()
-    fireEvent.click(screen.getByRole('button', { name: 'Preview and read the device diff' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add to transaction' }))
     await staged()
 
-    expect(fakes.configSession).toHaveBeenCalledWith({ description: 'webui static-route remove' })
     expect(fakes.session.run).toHaveBeenCalledWith(['no ip route 1.2.3.0/24 Ethernet1 10.1.1.1 20 tag 1 name test1'])
-    // Never batched: exactly one staged line in the argv and in the review panel, and the panel's own
-    // counter says so. No `default ip route …` form is staged by this screen at all.
     expect(fakes.session.run.mock.calls[0]?.[0]).toHaveLength(1)
-    expect(container.querySelectorAll('.staged-argv code')).toHaveLength(1)
-    expect(container.querySelectorAll('.staged-argv')).toHaveLength(1)
     expect(screen.getByText(/default ip route/u)).toBeInTheDocument()
     expect(fakes.session.run.mock.calls[0]?.[0]?.every((line) => line.startsWith('no ip route '))).toBe(true)
+    expect(fakes.session.commit).not.toHaveBeenCalled()
+    expect(fakes.session.abort).not.toHaveBeenCalled()
   })
 
-  it('the delete confirm repeats the exact route string, and declining it commits nothing at all', async () => {
+  it('reuses one config session for whole-line tag and name replacements', async () => {
     const fakes = makeFakes()
     renderScreen(fakes)
-    await screen.findByRole('table', { name: 'Static routes read from running-config' })
-
-    await chooseAction('remove-route')
-    await chooseRoute(NAMED_ROW)
-    fireEvent.click(screen.getByRole('button', { name: 'Preview and read the device diff' }))
-    await staged()
-    fireEvent.click(screen.getByRole('button', { name: 'Commit to running-config' }))
-
-    const dialog = await confirmDialog('Commit to running-config')
-    expect(within(dialog).getByText(/^Commit session ui-s10-session/u)).toHaveTextContent('no ip route 1.2.3.0/24 Ethernet1 1.1.1.1 1 tag 1 name test1')
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }))
-
-    await waitFor(() => expect(fakes.session.commit).not.toHaveBeenCalled())
-    expect(fakes.session.commit).not.toHaveBeenCalled()
-    // The staged line is still inside the open session, so the honest teardown discards it.
-    fireEvent.click(screen.getByRole('button', { name: 'Abort staged changes' }))
-    fireEvent.click(await within(await confirmDialog('Abort staged changes')).getByRole('button', { name: 'Abort staged changes' }))
-    await waitFor(() => expect(fakes.session.abort).toHaveBeenCalledTimes(1))
-    expect(fakes.session.commit).not.toHaveBeenCalled()
-  })
-
-  it('set-tag and set-name stage a whole-line replacement that restates what the read saw', async () => {
-    const fakes = makeFakes()
-    renderScreen(fakes)
-    await screen.findByRole('table', { name: 'Static routes read from running-config' })
+    await ready()
 
     await chooseAction('set-tag')
     await chooseRoute(BLACKHOLE_ROW)
     fill({ tag: '99' })
-    fireEvent.click(screen.getByRole('button', { name: 'Preview and read the device diff' }))
-    await staged()
-    expect(fakes.configSession).toHaveBeenCalledWith({ description: 'webui static-route set-tag' })
-    expect(fakes.session.run).toHaveBeenCalledWith(['ip route 192.168.7.0/24 Null0 5 tag 99'])
-    fireEvent.click(screen.getByRole('button', { name: 'Abort staged changes' }))
-    fireEvent.click(await within(await confirmDialog('Abort staged changes')).getByRole('button', { name: 'Abort staged changes' }))
-    await waitFor(() => expect(fakes.session.abort).toHaveBeenCalledTimes(1))
-    // An abort re-reads the table (the candidate set is table data, so a discarded write must not leave
-    // stale rows on screen), and the form is locked while that read is in flight.
-    await screen.findByRole('table', { name: 'Static routes read from running-config' })
+    fireEvent.click(screen.getByRole('button', { name: 'Add to transaction' }))
+    await waitFor(() => expect(fakes.session.run).toHaveBeenCalledTimes(1))
+    expect(fakes.session.run).toHaveBeenNthCalledWith(1, ['ip route 192.168.7.0/24 Null0 5 tag 99'])
 
     await chooseAction('set-name')
     await chooseRoute(SECOND_ROW)
     fill({ routeName: 'newname' })
-    fireEvent.click(screen.getByRole('button', { name: 'Preview and read the device diff' }))
-    await staged()
-    expect(fakes.configSession).toHaveBeenLastCalledWith({ description: 'webui static-route set-name' })
-    // The tag this client read is restated — staging the sparse line would let EOS reset it.
-    expect(fakes.session.run).toHaveBeenLastCalledWith(['ip route 1.2.3.0/24 Ethernet1 10.1.1.1 20 tag 1 name newname'])
-    expect(screen.getByText(/EOS replaces the whole leaf line/u)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Add to transaction' }))
+    await waitFor(() => expect(fakes.session.run).toHaveBeenCalledTimes(2))
+
+    expect(fakes.configSession).toHaveBeenCalledTimes(1)
+    expect(fakes.session.run).toHaveBeenNthCalledWith(2, ['ip route 1.2.3.0/24 Ethernet1 10.1.1.1 20 tag 1 name newname'])
     expect(fakes.session.commit).not.toHaveBeenCalled()
-  })
-
-  it('commit stays locked until the device diff has been read, and a declined abort leaves the session alone', async () => {
-    const fakes = makeFakes({ diffRead: false })
-    renderScreen(fakes)
-    await screen.findByRole('table', { name: 'Static routes read from running-config' })
-
-    fill({ prefix: '10.30.0.0/16', nextHop: 'Ethernet3', distance: '10' })
-    fireEvent.click(screen.getByRole('button', { name: 'Preview and read the device diff' }))
-    await staged()
-    expect(screen.getByRole('button', { name: 'Commit to running-config' })).toBeDisabled()
-
-    fireEvent.click(screen.getByRole('button', { name: 'Abort staged changes' }))
-    fireEvent.click(await within(await confirmDialog('Abort staged changes')).getByRole('button', { name: 'Cancel' }))
     expect(fakes.session.abort).not.toHaveBeenCalled()
-    expect(fakes.session.commit).not.toHaveBeenCalled()
   })
 
   it('a device refusal mid-stage renders the device\u2019s own sentence and never claims success', async () => {
@@ -374,94 +299,63 @@ describe('StaticRoutes — one staged line per session, pinned against the clien
       runFailure: new Error("CLI command 3 of 3 'ip route 1.2.3.0/24 Ethernet1' failed: % Invalid input (interpreted by the device)"),
     })
     renderScreen(fakes)
-    await screen.findByRole('table', { name: 'Static routes read from running-config' })
+    await ready()
 
     await chooseAction('remove-route')
     await chooseRoute(NAMED_ROW)
-    fireEvent.click(screen.getByRole('button', { name: 'Preview and read the device diff' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add to transaction' }))
 
     expect(await screen.findByText(/Invalid input \(interpreted by the device\)/u)).toBeInTheDocument()
-    expect(screen.queryByText(/Review the device diff before committing/u)).toBeNull()
+    expect(screen.queryByText(/Static-route change added to the transaction/u)).toBeNull()
     expect(fakes.session.commit).not.toHaveBeenCalled()
-  })
-
-  it('one transaction at a time: a second staging while a session is open costs no extra session', async () => {
-    const fakes = makeFakes()
-    renderScreen(fakes)
-    await screen.findByRole('table', { name: 'Static routes read from running-config' })
-
-    fill({ prefix: '10.30.0.0/16', nextHop: 'Ethernet3', distance: '10' })
-    fireEvent.click(screen.getByRole('button', { name: 'Preview and read the device diff' }))
-    await staged()
-
-    // The gate is structural, not a message the operator has to read: with a session open, Preview is
-    // disabled, so a second `configSession()` can never be paid for.
-    expect(screen.getByRole('button', { name: 'Preview and read the device diff' })).toBeDisabled()
-    fireEvent.click(screen.getByRole('button', { name: 'Preview and read the device diff' }))
-    expect(fakes.configSession).toHaveBeenCalledTimes(1)
-    expect(fakes.session.run).toHaveBeenCalledTimes(1)
-    expect(fakes.session.commit).not.toHaveBeenCalled()
+    expect(fakes.session.abort).not.toHaveBeenCalled()
   })
 })
 
 describe('StaticRoutes — the guard set #80 grades as hard', () => {
-  it('guard (a): removing the default route needs the acknowledgement, names the risk, and a cancelled commit performs no commit of `no ip route 0.0.0.0/0 …`', async () => {
+  it('guard (a): removing the default route needs acknowledgement before staging its exact negation', async () => {
     const fakes = makeFakes()
     renderScreen(fakes)
-    await screen.findByRole('table', { name: 'Static routes read from running-config' })
+    await ready()
 
-    await chooseAction('remove-route') // the auto-selection is the default-route row
+    await chooseAction('remove-route')
     expect(screen.getByText(/In-band guard:/u)).toBeInTheDocument()
     expect(screen.getByText(/is the default route in the table the device just answered/u)).toBeInTheDocument()
     expect(screen.getByText(/cannot promise the path survives/u)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Add to transaction' })).toBeDisabled()
 
-    // The acknowledgement gates Preview: unchecked, no session opens.
-    expect(screen.getByRole('button', { name: 'Preview and read the device diff' })).toBeDisabled()
     fireEvent.click(screen.getByRole('checkbox'))
-    fireEvent.click(screen.getByRole('button', { name: 'Preview and read the device diff' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add to transaction' }))
     await staged()
 
     expect(fakes.session.run).toHaveBeenCalledWith(['no ip route 0.0.0.0/0 192.68.1.254 1 tag 0'])
-    expect(screen.getByRole('button', { name: 'Commit (guarded — review above)' })).toBeInTheDocument()
-
-    fireEvent.click(screen.getByRole('button', { name: 'Commit (guarded — review above)' }))
-    const dialog = await confirmDialog('Confirm: remove 0.0.0.0/0 via 192.68.1.254')
-    expect(within(dialog).getByText(/^Commit session ui-s10-session/u)).toHaveTextContent('no ip route 0.0.0.0/0 192.68.1.254 1 tag 0')
-    expect(within(dialog).getByText(/^Commit session ui-s10-session/u)).toHaveTextContent('Guard repeated:')
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }))
-
-    // Declining the destructive variant leaves the staged negation uncommitted — it never reaches
-    // running-config, and the session is torn down instead.
-    await waitFor(() => expect(fakes.session.commit).not.toHaveBeenCalled())
     expect(fakes.session.commit).not.toHaveBeenCalled()
-    fireEvent.click(screen.getByRole('button', { name: 'Abort staged changes' }))
-    fireEvent.click(await within(await confirmDialog('Abort staged changes')).getByRole('button', { name: 'Abort staged changes' }))
-    await waitFor(() => expect(fakes.session.abort).toHaveBeenCalledTimes(1))
-    expect(fakes.session.commit).not.toHaveBeenCalled()
+    expect(fakes.session.abort).not.toHaveBeenCalled()
   })
 
-  it('guard (b): a route riding the gateway the read table itself spells is treated as possibly in-band', async () => {
+  it('guard (b): a route riding the read table gateway is treated as possibly in-band', async () => {
     const fakes = makeFakes()
     renderScreen(fakes)
-    await screen.findByRole('table', { name: 'Static routes read from running-config' })
+    await ready()
 
     await chooseAction('remove-route')
     await chooseRoute(SHARED_ROW)
     expect(screen.getByText(/is the same value this device spells behind its own/u)).toHaveTextContent('192.68.1.254')
     expect(screen.getByText(/not a claim about where eAPI is served/u)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Preview and read the device diff' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Add to transaction' })).toBeDisabled()
+
     fireEvent.click(screen.getByRole('checkbox'))
-    fireEvent.click(screen.getByRole('button', { name: 'Preview and read the device diff' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add to transaction' }))
     await staged()
+
     expect(fakes.session.run).toHaveBeenCalledWith(['no ip route 10.9.0.0/16 192.68.1.254 20'])
-    fireEvent.click(screen.getByRole('button', { name: 'Commit (guarded — review above)' }))
-    fireEvent.click(await within(await confirmDialog('Confirm: remove 10.9.0.0/16 via 192.68.1.254')).getByRole('button', { name: 'Commit despite the guard: remove 10.9.0.0/16 via 192.68.1.254' }))
-    await waitFor(() => expect(fakes.session.commit).toHaveBeenCalledTimes(1))
+    expect(fakes.session.commit).not.toHaveBeenCalled()
+    expect(fakes.session.abort).not.toHaveBeenCalled()
   })
 
   it('changing the selection or action withdraws an acknowledgement, so consent cannot be reused', async () => {
     renderScreen(makeFakes())
-    await screen.findByRole('table', { name: 'Static routes read from running-config' })
+    await ready()
 
     await chooseAction('remove-route')
     fireEvent.click(screen.getByRole('checkbox'))
@@ -472,20 +366,18 @@ describe('StaticRoutes — the guard set #80 grades as hard', () => {
     expect(screen.getByRole('checkbox')).not.toBeChecked()
   })
 
-  it('adding a second default route is guarded the same way', async () => {
+  it('adding a second default route is staged with its guard risk and never committed here', async () => {
     const fakes = makeFakes()
     renderScreen(fakes)
-    await screen.findByRole('table', { name: 'Static routes read from running-config' })
+    await ready()
 
     fill({ prefix: '0.0.0.0/0', nextHop: '192.68.1.9', distance: '3' })
-    fireEvent.click(screen.getByRole('button', { name: 'Preview and read the device diff' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add to transaction' }))
     await staged()
+
     expect(fakes.session.run).toHaveBeenCalledWith(['ip route 0.0.0.0/0 192.68.1.9 3'])
-    expect(screen.getByText(/Adding another 0\.0\.0\.0\/0 line changes which next hop/u)).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Commit (guarded — review above)' }))
-    const dialog = await confirmDialog('Confirm: add')
-    expect(within(dialog).getByRole('button', { name: 'Commit despite the guard: add' })).toBeInTheDocument()
     expect(fakes.session.commit).not.toHaveBeenCalled()
+    expect(fakes.session.abort).not.toHaveBeenCalled()
   })
 })
 
@@ -493,37 +385,35 @@ describe('StaticRoutes — refusals are the client\u2019s, and they cost zero se
   it('the prefix and next-hop guards surface the client\u2019s own reasons in the form', async () => {
     const fakes = makeFakes()
     renderScreen(fakes)
-    await screen.findByRole('table', { name: 'Static routes read from running-config' })
+    await ready()
 
     fill({ prefix: '2001:db8::/32', nextHop: 'Ethernet1', distance: '5' })
-    fireEvent.click(screen.getByRole('button', { name: 'Preview and read the device diff' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add to transaction' }))
     expect(await screen.findByText(/IPv6 static routes are outside this module/u)).toBeInTheDocument()
 
     fill({ prefix: '10.0.0.0' })
-    fireEvent.click(screen.getByRole('button', { name: 'Preview and read the device diff' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add to transaction' }))
     expect(await screen.findByText(/dotted A\.B\.C\.D\/E shape this client and pyeapi both READ back/u)).toBeInTheDocument()
 
     fill({ prefix: '10.0.0.0/8', nextHop: 'has space' })
-    fireEvent.click(screen.getByRole('button', { name: 'Preview and read the device diff' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add to transaction' }))
     expect(await screen.findByText(/inner whitespace splits the line the writer sends/u)).toBeInTheDocument()
 
     fill({ nextHop: '2001:db8::1' })
-    fireEvent.click(screen.getByRole('button', { name: 'Preview and read the device diff' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add to transaction' }))
     expect(await screen.findByText(/This screen refuses the IPv6-shaped next hop/u)).toBeInTheDocument()
     expect(await screen.findByText(/client's token guard would let the token ride/u)).toBeInTheDocument()
 
-    // The distance field must be emptied on purpose: earlier steps filled it, and vitest keeps the
-    // form state between fills.
     fill({ nextHop: 'Ethernet1', distance: '' })
-    fireEvent.click(screen.getByRole('button', { name: 'Preview and read the device diff' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add to transaction' }))
     expect(await screen.findByText(/This screen requires a distance on a new route/u)).toBeInTheDocument()
 
     fill({ distance: '5', tag: '9 9' })
-    fireEvent.click(screen.getByRole('button', { name: 'Preview and read the device diff' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add to transaction' }))
     expect(await screen.findByText(/must be an unsigned integer the \\d\+ group can read back/u)).toBeInTheDocument()
 
     fill({ tag: '', routeName: 'two words' })
-    fireEvent.click(screen.getByRole('button', { name: 'Preview and read the device diff' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add to transaction' }))
     expect(await screen.findByText(/the reader captures one \\S\+ token/u)).toBeInTheDocument()
 
     expect(fakes.configSession).not.toHaveBeenCalled()
@@ -533,10 +423,10 @@ describe('StaticRoutes — refusals are the client\u2019s, and they cost zero se
   it('the untouched add form is refused by the guard, not by a disabled button, at zero sessions', async () => {
     const fakes = makeFakes()
     renderScreen(fakes)
-    await screen.findByRole('table', { name: 'Static routes read from running-config' })
+    await ready()
 
-    expect(screen.getByRole('button', { name: 'Preview and read the device diff' })).toBeEnabled()
-    fireEvent.click(screen.getByRole('button', { name: 'Preview and read the device diff' }))
+    expect(screen.getByRole('button', { name: 'Add to transaction' })).toBeEnabled()
+    fireEvent.click(screen.getByRole('button', { name: 'Add to transaction' }))
     expect(await screen.findByText(/empty static-route destination/u)).toBeInTheDocument()
     expect(fakes.configSession).not.toHaveBeenCalled()
     expect(fakes.session.run).not.toHaveBeenCalled()
@@ -545,26 +435,26 @@ describe('StaticRoutes — refusals are the client\u2019s, and they cost zero se
   it('no-op writes are refused before a session is paid for, for all four actions', async () => {
     const fakes = makeFakes()
     renderScreen(fakes)
-    await screen.findByRole('table', { name: 'Static routes read from running-config' })
+    await ready()
 
     fill({ prefix: '10.9.0.0/16', nextHop: '192.68.1.254', distance: '20' })
-    fireEvent.click(screen.getByRole('button', { name: 'Preview and read the device diff' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add to transaction' }))
     expect(await screen.findByText(/is already one of the lines this read answered/u)).toBeInTheDocument()
 
     await chooseAction('set-tag')
     await chooseRoute(NAMED_ROW)
     fill({ tag: '1' })
-    fireEvent.click(screen.getByRole('button', { name: 'Preview and read the device diff' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add to transaction' }))
     expect(await screen.findByText(/already carries tag 1/u)).toBeInTheDocument()
 
     await chooseAction('set-name')
     fill({ routeName: 'test1' })
-    fireEvent.click(screen.getByRole('button', { name: 'Preview and read the device diff' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add to transaction' }))
     expect(await screen.findByText(/already carries name test1/u)).toBeInTheDocument()
 
     await chooseAction('set-tag')
     fill({ tag: '' })
-    fireEvent.click(screen.getByRole('button', { name: 'Preview and read the device diff' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add to transaction' }))
     expect(await screen.findByText(/no verb that clears a route tag/u)).toBeInTheDocument()
 
     expect(fakes.configSession).not.toHaveBeenCalled()
@@ -573,19 +463,15 @@ describe('StaticRoutes — refusals are the client\u2019s, and they cost zero se
   it('the forms #80 leaves out are stated as out of scope, not silently available', async () => {
     const fakes = makeFakes()
     renderScreen(fakes)
-    await screen.findByRole('table', { name: 'Static routes read from running-config' })
+    await ready()
 
-    // The screen prints the omission list rather than merely obeying it: the client's `default ip
-    // route …` form stays unoffered because its equivalence to the negation is an uncaptured device
-    // question, and no tag/name-clearing verb exists in this client.
     expect(screen.getByText(/default ip route/u)).toBeInTheDocument()
     expect(screen.getByText(/currently equivalent to/u)).toBeInTheDocument()
     expect(screen.getByText(/no tag- or name-clearing verb in/u)).toBeInTheDocument()
-    // And nothing staged by a removal ever uses the default-prefixed verb: the removal argv below is
-    // the negation form only.
+
     await chooseAction('remove-route')
     await chooseRoute(BLACKHOLE_ROW)
-    fireEvent.click(screen.getByRole('button', { name: 'Preview and read the device diff' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add to transaction' }))
     await staged()
     expect(fakes.session.run).toHaveBeenCalledWith(['no ip route 192.168.7.0/24 Null0 5'])
     expect(fakes.session.run.mock.calls.every((call) => call[0].every((line) => !line.startsWith('default ip route')))).toBe(true)

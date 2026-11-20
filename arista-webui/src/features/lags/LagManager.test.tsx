@@ -223,6 +223,10 @@ function press(name: string) {
   fireEvent.click(screen.getByRole('button', { name }))
 }
 
+function addToTransaction() {
+  press('Add to transaction')
+}
+
 const portTable = () => screen.getByRole('table', { name: 'Ethernet membership' })
 
 afterEach(() => vi.restoreAllMocks())
@@ -285,9 +289,9 @@ describe('LagManager — reads', () => {
     // view deliberately does not re-render it as a "device state could not be read" duplicate.
     expect(screen.getAllByRole('alert')).toHaveLength(1)
     expect(screen.getByRole('heading', { name: 'Port-Channel manager' })).toBeInTheDocument()
-    // No node, no reads, no staging form at all — the panel (session controls included) stays unrendered.
+    // No node, no reads, no staging form at all — the panel stays unrendered.
     expect(screen.queryByLabelText('Change')).toBeNull()
-    expect(screen.queryByRole('button', { name: 'Preview on the device (config session)' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Add to transaction' })).toBeNull()
   })
 
   it('offers the live membership check as the SEPARATE verb and reports its answer per bundle', async () => {
@@ -304,213 +308,174 @@ describe('LagManager — reads', () => {
   })
 })
 
-describe('LagManager — staged text is the client verb\u2019s text, in the client\u2019s order', () => {
-  it('diffs a membership change into removals-then-adds interface pairs and previews it in one named session', async () => {
+describe('LagManager — exact shared-transaction batches', () => {
+  it('diffs membership into removals-then-adds and never commits or aborts here', async () => {
     const { node, session } = makeFakes()
     await ready(node)
-    // Po1 opens with its truth checked: Ethernet1+Ethernet2. Uncheck the addressed member, add a free one.
-    // (FireEvent on the input directly: the picker's labels nest the state notes, so click-by-role is the
-    // stable query, and the change event is what the container's onMemberToggle reads.)
     fireEvent.click(screen.getByRole('checkbox', { name: /Ethernet2configured here/u }))
     fireEvent.click(screen.getByRole('checkbox', { name: /Ethernet3currently in Port-Channel5/u }))
-    press('Preview on the device (config session)')
+    addToTransaction()
 
-    await screen.findByText('Review the device diff before committing this change.')
+    await vi.waitFor(() => expect(session.run).toHaveBeenCalledTimes(1))
     expect(session.run).toHaveBeenCalledWith(['interface Ethernet2', 'no channel-group 1', 'interface Ethernet3', 'channel-group 1 mode active'])
     expect(session.diff).toHaveBeenCalledTimes(1)
+    expect(session.commit).not.toHaveBeenCalled()
+    expect(session.abort).not.toHaveBeenCalled()
   })
 
-  it('a no-change membership selection stages NOTHING and opens no session', async () => {
+  it('a no-change membership selection stages nothing and opens no write session', async () => {
     const { node, session } = makeFakes()
     await ready(node)
-    press('Preview on the device (config session)')
+    addToTransaction()
     expect(await screen.findByRole('alert')).toHaveTextContent('no config session was opened')
     expect(session.run).not.toHaveBeenCalled()
+    expect(vi.mocked(node.configSession).mock.calls.filter(([options]) => options?.noCommit !== true)).toHaveLength(0)
   })
 
-  it('refuses to join ports when no mode is readable rather than writing pyeapi\u2019s mode None (DR-077)', async () => {
+  it('refuses a join without a readable mode, then stages the explicit mode once supplied', async () => {
     const { node, session } = makeFakes()
     await ready(node)
     await chooseLag('Port-Channel7')
     fireEvent.click(screen.getByRole('checkbox', { name: /Ethernet49\/1not a member/u }))
-    press('Preview on the device (config session)')
-
+    addToTransaction()
     expect(await screen.findByRole('alert')).toHaveTextContent(/Joining a port needs a mode/u)
     expect(session.run).not.toHaveBeenCalled()
-    // Picking the mode explicitly opens the same intent up, with the mode in the composed line.
+
     await userEvent.selectOptions(screen.getByLabelText(/Mode for joining ports/u), 'active')
-    press('Preview on the device (config session)')
-    await screen.findByText('Review the device diff before committing this change.')
-    expect(session.run).toHaveBeenLastCalledWith(['interface Ethernet49/1', 'channel-group 7 mode active'])
+    addToTransaction()
+    await vi.waitFor(() => expect(session.run).toHaveBeenCalledWith(['interface Ethernet49/1', 'channel-group 7 mode active']))
   })
 
-  it('re-forming the LACP mode stages every removal before every add (DR-080 order)', async () => {
+  it('reuses one session for exact mode and keyword batches', async () => {
     const { node, session } = makeFakes()
     await ready(node)
+
     await chooseAction('set-lacp-mode')
     await userEvent.selectOptions(screen.getByLabelText('New mode for every current member'), 'passive')
-    press('Preview on the device (config session)')
+    addToTransaction()
+    await vi.waitFor(() => expect(session.run).toHaveBeenCalledTimes(1))
 
-    await screen.findByText('Review the device diff before committing this change.')
-    expect(session.run).toHaveBeenCalledWith([
+    await chooseAction('set-min-links')
+    await userEvent.type(screen.getByLabelText('Minimum links'), '4')
+    addToTransaction()
+    await vi.waitFor(() => expect(session.run).toHaveBeenCalledTimes(2))
+
+    await chooseAction('clear-min-links')
+    addToTransaction()
+    await vi.waitFor(() => expect(session.run).toHaveBeenCalledTimes(3))
+
+    await chooseAction('default-min-links')
+    addToTransaction()
+    await vi.waitFor(() => expect(session.run).toHaveBeenCalledTimes(4))
+
+    expect(vi.mocked(node.configSession).mock.calls.filter(([options]) => options?.noCommit !== true)).toHaveLength(1)
+    expect(session.run).toHaveBeenNthCalledWith(1, [
       'interface Ethernet1', 'no channel-group 1',
       'interface Ethernet2', 'no channel-group 1',
       'interface Ethernet1', 'channel-group 1 mode passive',
       'interface Ethernet2', 'channel-group 1 mode passive',
     ])
+    expect(session.run).toHaveBeenNthCalledWith(2, ['interface Port-Channel1', 'port-channel min-links 4'])
+    expect(session.run).toHaveBeenNthCalledWith(3, ['interface Port-Channel1', 'no port-channel min-links'])
+    expect(session.run).toHaveBeenNthCalledWith(4, ['interface Port-Channel1', 'default port-channel min-links'])
+    expect(session.commit).not.toHaveBeenCalled()
+    expect(session.abort).not.toHaveBeenCalled()
   })
 
-  it('refuses a full-mode rewrite of a memberless bundle instead of opening an empty transaction', async () => {
+  it('refuses a full-mode rewrite of a memberless bundle at zero sessions', async () => {
     const { node, session } = makeFakes()
     await ready(node)
     await chooseLag('Port-Channel7')
     await chooseAction('set-lacp-mode')
     await userEvent.selectOptions(screen.getByLabelText('New mode for every current member'), 'on')
-    press('Preview on the device (config session)')
+    addToTransaction()
 
     expect(await screen.findByRole('alert')).toHaveTextContent(/nothing to re-form/u)
     expect(session.run).not.toHaveBeenCalled()
   })
 
-  it('composes the port-channel keyword trio exactly as the client does, and guards the number first', async () => {
+  it('guards non-numeric min-links before staging the exact keyword batch', async () => {
     const { node, session } = makeFakes()
     await ready(node)
     await chooseAction('set-min-links')
     await userEvent.type(screen.getByLabelText('Minimum links'), '2.5')
-    press('Preview on the device (config session)')
+    addToTransaction()
     expect(await screen.findByRole('alert')).toHaveTextContent(/whole number/u)
     expect(session.run).not.toHaveBeenCalled()
 
     await userEvent.clear(screen.getByLabelText('Minimum links'))
     await userEvent.type(screen.getByLabelText('Minimum links'), '4')
-    press('Preview on the device (config session)')
-    await screen.findByText('Review the device diff before committing this change.')
-    expect(session.run).toHaveBeenCalledWith(['interface Port-Channel1', 'port-channel min-links 4'])
+    addToTransaction()
+    await vi.waitFor(() => expect(session.run).toHaveBeenCalledWith(['interface Port-Channel1', 'port-channel min-links 4']))
   })
 
-  it('creates only the interface line for an empty bundle and the description arm through commandBuilder framing', async () => {
+  it('creates the interface and description lines in commandBuilder order', async () => {
     const { node, session } = makeFakes()
     await ready(node)
     await chooseAction('create-lag')
     await userEvent.type(screen.getByLabelText('Group number'), '1')
-    press('Preview on the device (config session)')
+    addToTransaction()
     expect(await screen.findByRole('alert')).toHaveTextContent(/already exists in the running-config/u)
+
     await userEvent.clear(screen.getByLabelText('Group number'))
     await userEvent.type(screen.getByLabelText('Group number'), '12')
     await userEvent.type(screen.getByLabelText('Description (optional)'), 'lab bundle')
-    press('Preview on the device (config session)')
-    await screen.findByText('Review the device diff before committing this change.')
-    expect(session.run).toHaveBeenCalledWith(['interface Port-Channel12', 'description lab bundle'])
+    addToTransaction()
+    await vi.waitFor(() => expect(session.run).toHaveBeenCalledWith(['interface Port-Channel12', 'description lab bundle']))
   })
 
-  it('stages the delete line verbatim and names the still-configured members as risk', async () => {
+  it('stages the delete line verbatim without taking over its commit path', async () => {
     const { node, session } = makeFakes()
     await ready(node)
     await chooseAction('delete-lag')
-    press('Preview on the device (config session)')
-    await screen.findByText('Review the device diff before committing this change.')
-    expect(session.run).toHaveBeenCalledWith(['no interface Port-Channel1'])
-    press('Commit to running-config')
-    const dialog = await screen.findByRole('dialog')
-    expect(dialog).toHaveTextContent(/still names members \(Ethernet1, Ethernet2\)/u)
-    expect(dialog).toHaveTextContent(/uncaptured/u)
+    addToTransaction()
+
+    await vi.waitFor(() => expect(session.run).toHaveBeenCalledWith(['no interface Port-Channel1']))
+    expect(session.commit).not.toHaveBeenCalled()
+    expect(session.abort).not.toHaveBeenCalled()
   })
 
-  it('stages the clear and default arms of the min-links trio as one line each', async () => {
-    const { node, session } = makeFakes()
-    await ready(node)
-    await chooseAction('clear-min-links')
-    press('Preview on the device (config session)')
-    await screen.findByText('Review the device diff before committing this change.')
-    expect(session.run).toHaveBeenLastCalledWith(['interface Port-Channel1', 'no port-channel min-links'])
-
-    // Close the draft (abort path, pinned in its own test too) so the SAME screen can stage the next
-    // intent without a reload between the two argv pins.
-    press('Abort staged session')
-    const abortDialog = await screen.findByRole('dialog')
-    fireEvent.click(within(abortDialog).getByRole('button', { name: 'Abort staged changes' }))
-    await screen.findByText('Session ui-s5-session was aborted; nothing was written to the device.')
-
-    await chooseAction('default-min-links')
-    press('Preview on the device (config session)')
-    await screen.findByText('Review the device diff before committing this change.')
-    expect(session.run).toHaveBeenLastCalledWith(['interface Port-Channel1', 'default port-channel min-links'])
-  })
-
-  it('clears the fallback via the negation line, never a mode string (DR-037/DR-077 split)', async () => {
+  it('clears the fallback via the negation line, never a mode string', async () => {
     const { node, session } = makeFakes()
     await ready(node)
     await chooseAction('clear-lacp-fallback')
-    press('Preview on the device (config session)')
-    await screen.findByText('Review the device diff before committing this change.')
-    expect(session.run).toHaveBeenCalledWith(['interface Port-Channel1', 'no port-channel lacp fallback'])
+    addToTransaction()
+    await vi.waitFor(() => expect(session.run).toHaveBeenCalledWith(['interface Port-Channel1', 'no port-channel lacp fallback']))
   })
 
-  it('composes the timeout line under the same gate, and refuses a non-numeric value first', async () => {
+  it('composes the timeout line under the same gate and refuses invalid values first', async () => {
     const { node, session } = makeFakes()
     await ready(node)
     await chooseAction('set-lacp-timeout')
     await userEvent.type(screen.getByLabelText('Fallback timeout (seconds)'), 'soon')
-    press('Preview on the device (config session)')
+    addToTransaction()
     expect(await screen.findByRole('alert')).toHaveTextContent(/whole number/u)
     expect(session.run).not.toHaveBeenCalled()
 
     await userEvent.clear(screen.getByLabelText('Fallback timeout (seconds)'))
     await userEvent.type(screen.getByLabelText('Fallback timeout (seconds)'), '0')
-    press('Preview on the device (config session)')
+    addToTransaction()
     expect(await screen.findByRole('alert')).toHaveTextContent(/positive whole number/u)
 
     await userEvent.clear(screen.getByLabelText('Fallback timeout (seconds)'))
     await userEvent.type(screen.getByLabelText('Fallback timeout (seconds)'), '90')
-    press('Preview on the device (config session)')
-    await screen.findByText('Review the device diff before committing this change.')
-    expect(session.run).toHaveBeenLastCalledWith(['interface Port-Channel1', 'port-channel lacp fallback timeout 90'])
+    addToTransaction()
+    await vi.waitFor(() => expect(session.run).toHaveBeenCalledWith(['interface Port-Channel1', 'port-channel lacp fallback timeout 90']))
   })
 
-  it('creates a bare bundle as exactly the interface line, and refuses a name already in the table', async () => {
+  it('creates a bare bundle as exactly the interface line after refusing an existing name', async () => {
     const { node, session } = makeFakes()
     await ready(node)
     await chooseAction('create-lag')
     await userEvent.type(screen.getByLabelText('Group number'), '1')
-    press('Preview on the device (config session)')
+    addToTransaction()
     expect(await screen.findByRole('alert')).toHaveTextContent(/already exists in the running-config/u)
     expect(session.run).not.toHaveBeenCalled()
 
     await userEvent.clear(screen.getByLabelText('Group number'))
     await userEvent.type(screen.getByLabelText('Group number'), '40')
-    press('Preview on the device (config session)')
-    await screen.findByText('Review the device diff before committing this change.')
-    expect(session.run).toHaveBeenCalledWith(['interface Port-Channel40'])
-  })
-
-  it('aborts a staged session through a destructive confirm and says nothing was written', async () => {
-    const { node, session } = makeFakes()
-    await ready(node)
-    await chooseAction('clear-min-links')
-    press('Preview on the device (config session)')
-    await screen.findByText('Review the device diff before committing this change.')
-    press('Abort staged session')
-    const dialog = await screen.findByRole('dialog')
-    expect(dialog).toHaveTextContent(/will be discarded/u)
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Abort staged changes' }))
-    await screen.findByText('Session ui-s5-session was aborted; nothing was written to the device.')
-    expect(session.abort).toHaveBeenCalledTimes(1)
-    expect(session.commit).not.toHaveBeenCalled()
-  })
-
-  it('carries the DR-080 detach warning into the mode-change commit, and commits through the risky label', async () => {
-    const { node, session } = makeFakes()
-    await ready(node)
-    await chooseAction('set-lacp-mode')
-    await userEvent.selectOptions(screen.getByLabelText('New mode for every current member'), 'passive')
-    press('Preview on the device (config session)')
-    await screen.findByText('Review the device diff before committing this change.')
-    press('Commit to running-config')
-    const dialog = await screen.findByRole('dialog')
-    expect(dialog).toHaveTextContent(/detached and re-attached/u)
-    fireEvent.click(within(dialog).getByRole('button', { name: /Commit despite the risk on Port-Channel1/u }))
-    await screen.findByText('Changes committed to running-config. Startup-config was not changed.')
-    expect(session.commit).toHaveBeenCalledTimes(1)
+    addToTransaction()
+    await vi.waitFor(() => expect(session.run).toHaveBeenCalledWith(['interface Port-Channel40']))
   })
 })
 
@@ -523,12 +488,12 @@ describe('LagManager — the capability gate on LACP fallback vocabulary', () =>
     // The auto-probe (enabled with canAct, like S3) answers `available` from the scripted rows.
     const verdict = await screen.findByText('portChannelLacpFallback')
     expect(verdict.closest('li')).toHaveTextContent('available')
-    // The candidates the screen asked with are echoed verbatim — the question on the record (F5 rule).
     expect(verdict.closest('li')).toHaveTextContent('candidates: interface Port-Channel999')
     await userEvent.selectOptions(await screen.findByLabelText('Fallback mode'), 'static')
-    press('Preview on the device (config session)')
-    await screen.findByText('Review the device diff before committing this change.')
-    expect(session.run).toHaveBeenCalledWith(['interface Port-Channel1', 'port-channel lacp fallback static'])
+    addToTransaction()
+    await vi.waitFor(() => expect(session.run).toHaveBeenCalledWith(['interface Port-Channel1', 'port-channel lacp fallback static']))
+    expect(session.commit).not.toHaveBeenCalled()
+    expect(session.abort).not.toHaveBeenCalled()
   })
 
   it('refuses a gated action outright when the probe says the grammar is 1002-absent, and never opens a write session', async () => {
@@ -542,7 +507,7 @@ describe('LagManager — the capability gate on LACP fallback vocabulary', () =>
     // when reached (S3's rule — the write path refuses, not just the markup), so no gated command text
     // can reach a config session.
     expect(screen.getByLabelText('Fallback mode')).toBeDisabled()
-    press('Preview on the device (config session)')
+    addToTransaction()
     expect(await screen.findByRole('alert')).toHaveTextContent(/refused before anything is staged/u)
     expect(screen.getByRole('alert')).toHaveTextContent('unavailable')
     expect(session.run).not.toHaveBeenCalled()
@@ -557,53 +522,13 @@ describe('LagManager — the capability gate on LACP fallback vocabulary', () =>
     // list renders at all, and every gated control stays shut — an inconclusive run is not evidence.
     expect(await screen.findByText(/No capability answer has been recorded for this screen yet/u)).toBeInTheDocument()
     expect(screen.getByLabelText('Fallback timeout (seconds)')).toBeDisabled()
-    press('Preview on the device (config session)')
+    addToTransaction()
     expect(await screen.findByRole('alert')).toHaveTextContent(/refused before anything is staged/u)
     expect(session.run).not.toHaveBeenCalled()
   })
 })
 
-describe('LagManager — guards reach the confirm', () => {
-  it('names the addressed member and the general-flap honesty in the membership confirm', async () => {
-    const { node } = makeFakes()
-    await ready(node)
-    fireEvent.click(screen.getByRole('checkbox', { name: /Ethernet2configured here/u }))
-    press('Preview on the device (config session)')
-    await screen.findByText('Review the device diff before committing this change.')
-    press('Commit to running-config')
-    const dialog = await screen.findByRole('dialog')
-    expect(dialog).toHaveTextContent(/Ethernet2 carries an ip address/u)
-    expect(dialog).toHaveTextContent(/not captured/u)
-    expect(dialog).toHaveTextContent(/composes a `shutdown` command/u)
-    fireEvent.click(within(dialog).getByRole('button', { name: /Commit despite the risk/u }))
-    await screen.findByText('Changes committed to running-config. Startup-config was not changed.')
-  })
-
-  it('collapsing min-links below the current member count is labelled destructive and named', async () => {
-    const { node } = makeFakes()
-    await ready(node)
-    await chooseAction('set-min-links')
-    await userEvent.type(screen.getByLabelText('Minimum links'), '1')
-    press('Preview on the device (config session)')
-    await screen.findByText('Review the device diff before committing this change.')
-    press('Commit to running-config')
-    const dialog = await screen.findByRole('dialog')
-    expect(dialog).toHaveTextContent(/below the 2 members/u)
-    expect(within(dialog).getByRole('button', { name: /Commit despite the risk on Port-Channel1/u })).toBeInTheDocument()
-  })
-
-  it('surfaces the device refusal of a bad line from run(), not a success claim', async () => {
-    const { node, session } = makeFakes()
-    session.run = vi.fn(async () => { throw new Error("Error [1002]: invalid command [% Invalid input (at token 0: 'port-channel')]") })
-    const fakes = { node, session }
-    await ready(fakes.node)
-    await chooseAction('set-min-links')
-    await userEvent.type(screen.getByLabelText('Minimum links'), '4')
-    press('Preview on the device (config session)')
-    expect(await screen.findByRole('alert')).toHaveTextContent("Invalid input (at token 0: 'port-channel')")
-    expect(session.commit).not.toHaveBeenCalled()
-  })
-
+describe('LagManager — orphan cleanup', () => {
   it('lists a pending device session and aborts it only through a destructive confirm', async () => {
     const { node } = makeFakes({ listSessions: async () => ({ sessions: [{ name: 'capiVerify-77', state: 'pending' }] }) })
     await ready(node)

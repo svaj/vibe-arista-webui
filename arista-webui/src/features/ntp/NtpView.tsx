@@ -31,18 +31,6 @@ export interface NtpServerRowView {
   onRemove: (address: string) => void
 }
 
-export interface NtpDraftView {
-  readonly sessionName: string
-  readonly effectLabel: string
-  /** Review copy of the staged batch (all plain lines for NTP — no multiline spec in this verb set). */
-  readonly batch: readonly string[]
-  readonly risks: readonly string[]
-  /** `undefined` while the device `diff()` has not come back yet. */
-  readonly diff?: string
-  readonly canCommit: boolean
-  readonly destructive: boolean
-}
-
 export interface NtpViewProps {
   readonly state: 'loading' | 'ready' | 'failed'
   readonly readError?: string
@@ -81,15 +69,12 @@ export interface NtpViewProps {
   // --- synchronisation (uncaptured) -----------------------------------------------------------
   // Rendered from a fixed panel, no device data — there is nothing to feed.
 
-  readonly draft?: NtpDraftView
   readonly busy: boolean
   readonly canAct: boolean
   readonly notice: string
   readonly failure: string
   readonly connection: ConnectionState
   readonly connectionLabel: string
-  readonly onCommitDraft: () => void
-  readonly onAbortDraft: () => void
   readonly onReload: () => void
 }
 
@@ -119,15 +104,12 @@ export function NtpView(props: NtpViewProps): ReactElement {
     onSetSource,
     onUnsetSource,
     onDefaultSource,
-    draft,
     busy,
     canAct,
     notice,
     failure,
     connection,
     connectionLabel,
-    onCommitDraft,
-    onAbortDraft,
     onReload,
   } = props
 
@@ -269,27 +251,6 @@ export function NtpView(props: NtpViewProps): ReactElement {
         hint={'This device has no `show ntp status` / `show ntp associations` capture yet (the CAPTURES gate on issue #82), so clock level, time offset and peer state are not shown and are never guessed. The section lights up only once those captures exist.'}
       />
     </section>
-
-    {/* Staged review panel */}
-    {draft !== undefined && <section className="panel" aria-labelledby="ntp-draft-title">
-      <div className="panel-heading">
-        <div><p className="eyebrow">NAMED SESSION {draft.sessionName}</p><h3 id="ntp-draft-title">Staged: {draft.effectLabel}</h3></div>
-        <span className="panel-index">{draft.batch.length.toString().padStart(2, '0')}</span>
-      </div>
-      <p className="field-note">Staged batch: {draft.batch.map((line) => <code key={line}>{line}</code>)}</p>
-      {draft.risks.length > 0 && <ul className="ref-list" aria-label="Staged risks">
-        {draft.risks.map((risk) => <li key={risk}><span>{risk}</span></li>)}
-      </ul>}
-      {draft.diff === undefined
-        ? <EmptyState heading="Reading the device diff…" hint="Commit stays locked until the device answers its own diff()." />
-        : <pre className="diff-output">{draft.diff}</pre>}
-      <div className="review-actions">
-        <button className={draft.destructive ? 'danger-button' : 'primary-button'} type="button" onClick={onCommitDraft} disabled={!draft.canCommit || busy} aria-busy={busy}>
-          {draft.destructive ? 'Commit (risky — review above)' : 'Commit to running-config'}
-        </button>
-        <button className="quiet-button" type="button" onClick={onAbortDraft} disabled={busy}>Abort staged changes</button>
-      </div>
-    </section>}
 
     {notice !== '' && <p className="notice notice-success operation-result" role="status">{notice}</p>}
     {failure !== '' && <div className="notice notice-error operation-result" role="alert"><strong>The device did not take that.</strong><p>{failure}</p></div>}

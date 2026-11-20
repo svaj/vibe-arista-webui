@@ -67,16 +67,16 @@
  */
 import { useState } from 'react'
 import type { FormEvent } from 'react'
-import type { CommandSpec, ConfigSession, Node, StaticRoute } from '@devhax-heavy-industries/arista-eapi'
+import type { CommandSpec, Node, StaticRoute } from '@devhax-heavy-industries/arista-eapi'
 
 import { identityFrom } from '../../shared/identity'
 import type { DeviceIdentity } from '../../shared/identity'
 import { softRead, softValue, useDeviceRead } from '../../shared/use-device-read'
 import { useOperation } from '../../shared/use-operation'
-import { ConfirmProvider, useConfirm } from '../../shared/use-confirm'
+import { TransactionScope, useTransaction, useTransactionSnapshot } from '../sessions/TransactionContext'
 import { stageLines } from '../staged-batch'
 import { StaticRoutesView } from './StaticRoutesView'
-import type { StaticRouteRowView, StaticRoutesDraftView } from './StaticRoutesView'
+import type { StaticRouteRowView } from './StaticRoutesView'
 import {
   EMPTY_ROUTE_FIELDS,
   gatewayCandidates,
@@ -98,8 +98,6 @@ export interface StaticRoutesProps {
   readonly proxyConfigured?: boolean
 }
 
-type Session = Pick<ConfigSession, 'name' | 'state' | 'run' | 'diff' | 'hasDiffBeenRead' | 'commit' | 'abort'>
-
 interface PendingStage {
   readonly description: string
   readonly effectLabel: string
@@ -111,14 +109,7 @@ interface PendingStage {
   readonly guardNote?: string
 }
 
-interface DraftState extends PendingStage {
-  readonly session: Session
-  readonly diff?: string
-  readonly commitAttempted: boolean
-}
-
 const PROXY_PROMPT = 'Local proxy is not configured. Set EAPI_HOST, EAPI_USER, and EAPI_PASS in arista-webui/.env.local, then restart Vite.'
-const COMMIT_RECOVERY = 'Commit was attempted; refresh device state before taking another action.'
 
 /** The two sentences every staged write carries into the review panel: what the staged text is, and
  *  what "staged" means on a config session (it is not yet a change to running-config). */
@@ -152,19 +143,20 @@ function routesToViews(routes: readonly StaticRoute[]): readonly StaticRouteRowV
 }
 
 export function StaticRoutes(props: StaticRoutesProps) {
-  return <ConfirmProvider><StaticRoutesWorkspace {...props} /></ConfirmProvider>
+  return <TransactionScope node={props.node}><StaticRoutesWorkspace {...props} /></TransactionScope>
 }
 
 function StaticRoutesWorkspace({ node, proxyConfigured = true }: StaticRoutesProps) {
-  const confirm = useConfirm()
   const operation = useOperation()
   const { busy, notice, failure } = operation
-  const canAct = proxyConfigured && node !== undefined
+  const transaction = useTransaction()
+  const transactionState = useTransactionSnapshot()
+  const transactionBusy = transactionState.status === 'opening' || transactionState.status === 'staging' || transactionState.status === 'committing' || transactionState.status === 'aborting'
+  const canAct = proxyConfigured && node !== undefined && transaction !== undefined && transactionState.status !== 'uncertain'
 
   const [fields, setFields] = useState<RouteFields>(EMPTY_ROUTE_FIELDS)
   const [formError, setFormError] = useState<string | undefined>(undefined)
   const [ack, setAck] = useState(false)
-  const [draft, setDraft] = useState<DraftState | undefined>(undefined)
 
   const read = useDeviceRead<{ routes: readonly StaticRoute[]; identity?: DeviceIdentity }>(
     async () => {
@@ -192,7 +184,6 @@ function StaticRoutesWorkspace({ node, proxyConfigured = true }: StaticRoutesPro
   const selectedRow = rows.find((row) => row.routeKey === activeFields.routeKey)
   const guardNote = fields.action === 'remove-route' ? selectedRow?.guard?.note : undefined
   const ackRequired = guardNote !== undefined
-  const draftOpen = draft !== undefined
 
   function changeFields(next: RouteFields): void {
     setFields(next)
@@ -218,10 +209,7 @@ function StaticRoutesWorkspace({ node, proxyConfigured = true }: StaticRoutesPro
     event.preventDefault()
     setFormError(undefined)
     if (!canAct || node === undefined) return
-    if (draftOpen) {
-      setFormError('A staged session is already open on this screen; commit or abort it before staging another change.')
-      return
-    }
+    if (transactionBusy) return
     const outcome = stageRoute(activeFields, readRows)
     if ('refusal' in outcome) {
       setFormError(outcome.refusal)
@@ -249,76 +237,18 @@ function StaticRoutesWorkspace({ node, proxyConfigured = true }: StaticRoutesPro
   }
 
   async function preview(stage: PendingStage) {
-    if (busy || !canAct || node === undefined || draftOpen) return
-    await operation.run(async () => {
-      const session = await node.configSession({ description: stage.description })
-      const handle: Session = session
-      setDraft({ ...stage, session: handle, commitAttempted: false })
-      await handle.run(stage.specs)
-      const diff = await handle.diff()
-      setDraft({ ...stage, session: handle, diff, commitAttempted: false })
-      return diff
-    }, {
-      progress: 'Staging the route line and reading the device diff…',
-      success: 'Review the device diff before committing this change.',
+    if (busy || transactionBusy || !canAct || transaction === undefined) return
+    const appended = await operation.run(() => transaction.append({
+      source: '/routes/static',
+      action: stage.effectLabel,
+      commands: stage.specs,
+      display: stage.display,
+      risks: stage.risks,
+    }), {
+      progress: 'Adding the route line to the shared transaction…',
+      success: 'Static-route change added to the transaction. Review the device diff before committing in Transaction Center.',
     })
-  }
-
-  /** The F4 body. #80's acceptance line "delete shows the exact route string in the confirm" is this
-   *  first sentence; a tripped guard repeats its own sentence verbatim. */
-  function commitBody(draftState: DraftState): string {
-    const parts = [
-      `Commit session ${draftState.session.name}? The exact command this session stages is: ${draftState.display.join(' · ')}. This changes running-config only; startup-config is never written by this screen (DR-024).`,
-    ]
-    if (draftState.guardNote !== undefined) parts.push(`Guard repeated: ${draftState.guardNote}`)
-    parts.push('If this session is lost mid-commit, the change may still have applied — reconnect and refresh before any further action.')
-    return parts.join(' ')
-  }
-
-  async function commitDraft() {
-    if (busy || draft === undefined || draft.diff === undefined || !draft.session.hasDiffBeenRead() || draft.commitAttempted) return
-    const label = draft.effectLabel
-    if (!await confirm({
-      title: draft.destructive ? `Confirm: ${label}` : 'Commit to running-config',
-      body: commitBody(draft),
-      confirmLabel: draft.destructive ? `Commit despite the guard: ${label}` : 'Commit to running-config',
-      destructive: true,
-      subject: `${draft.session.name} \u00b7 ${draft.display.join(' ')}`,
-    })) return
-    setDraft({ ...draft, commitAttempted: true })
-    const committed = await operation.run(() => draft.session.commit(), {
-      progress: 'Committing the reviewed change to running-config\u2026',
-      success: 'Changes committed to running-config. Startup-config was not changed.',
-      failureSuffix: COMMIT_RECOVERY,
-    })
-    if (committed.ok) {
-      setDraft(undefined)
-      setFields(EMPTY_ROUTE_FIELDS)
-      setAck(false)
-      read.reload() // #80: a committed route changes the table AND the gateway-candidate set — re-read both.
-    }
-  }
-
-  async function abortDraft() {
-    if (busy || draft === undefined || (draft.session.state !== 'open' && draft.session.state !== 'diffed')) return
-    if (!await confirm({ title: 'Abort staged changes', body: `Abort staged changes in session ${draft.session.name}? Its staged ${draft.display.join(' · ')} will be discarded and nothing reaches running-config.`, confirmLabel: 'Abort staged changes', destructive: true, subject: draft.session.name })) return
-    const aborted = await operation.run(async () => {
-      await draft.session.abort()
-      setDraft(undefined)
-      setAck(false)
-      return draft.session.name
-    }, { success: `Session ${draft.session.name} was aborted; nothing was written to the device.` })
-    if (aborted.ok) read.reload()
-  }
-
-  const draftView: StaticRoutesDraftView | undefined = draft === undefined ? undefined : {
-    sessionName: draft.session.name,
-    effectLabel: draft.effectLabel,
-    batch: draft.display,
-    risks: draft.risks,
-    ...(draft.diff === undefined ? {} : { diff: draft.diff }),
-    canCommit: draft.diff !== undefined && draft.session.hasDiffBeenRead() && !draft.commitAttempted,
-    destructive: draft.destructive,
+    if (appended.ok) { setFields(EMPTY_ROUTE_FIELDS); setAck(false) }
   }
 
   const state = !canAct || read.state.kind === 'error' ? 'failed' : read.state.kind === 'loading' ? 'loading' : 'ready'
@@ -333,20 +263,17 @@ function StaticRoutesWorkspace({ node, proxyConfigured = true }: StaticRoutesPro
     fields={activeFields}
     onFieldsChange={changeFields}
     onPreview={submit}
-    onCommit={() => void commitDraft()}
-    onAbortDraft={() => void abortDraft()}
     onReload={() => { setFormError(undefined); setAck(false); read.reload() }}
     ack={ack}
     onAckChange={(next: boolean) => { setAck(next); setFormError(undefined) }}
     ackRequired={ackRequired}
     {...(guardNote === undefined ? {} : { guardNote })}
     {...(formError === undefined ? {} : { formError })}
-    {...(draftView === undefined ? {} : { draft: draftView })}
-    busy={busy}
+    busy={busy || transactionBusy}
     canAct={canAct && state === 'ready'}
     notice={notice}
     failure={failure}
-    connection={!canAct || state === 'failed' ? 'error' : state === 'loading' || busy ? 'connecting' : 'connected'}
+    connection={!canAct || state === 'failed' ? 'error' : state === 'loading' || busy || transactionBusy ? 'connecting' : 'connected'}
     connectionLabel={!canAct
       ? 'Local proxy is not configured'
       : state === 'loading'

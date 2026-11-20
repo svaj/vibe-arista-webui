@@ -43,16 +43,17 @@
  */
 import { useState } from 'react'
 import type { FormEvent } from 'react'
-import type { CommandSpec, ConfigSession, Node, SystemSettings as DeviceSettings } from '@devhax-heavy-industries/arista-eapi'
+import type { CommandSpec, Node, SystemSettings as DeviceSettings } from '@devhax-heavy-industries/arista-eapi'
 
 import { softRead, softValue, useDeviceRead } from '../../shared/use-device-read'
 import type { DeviceIdentity } from '../../shared/identity'
 import { identityFrom } from '../../shared/identity'
 import { useOperation } from '../../shared/use-operation'
-import { ConfirmProvider, useConfirm } from '../../shared/use-confirm'
+import { ConfirmProvider } from '../../shared/use-confirm'
+import { TransactionScope, useTransaction, useTransactionSnapshot } from '../sessions/TransactionContext'
 import { stageDisplay } from '../staged-batch'
 import { SystemSettingsView } from './SystemSettingsView'
-import type { BannerRowView, SystemDraftView } from './SystemSettingsView'
+import type { BannerRowView } from './SystemSettingsView'
 import { BANNER_KINDS, BANNER_LABEL, bannerFraming, hostnameRule } from './system-rules'
 import type { BannerKind } from './system-rules'
 
@@ -66,8 +67,6 @@ export interface SystemSettingsProps {
   readonly node: SystemSettingsClient | undefined
   readonly proxyConfigured?: boolean
 }
-
-type Session = Pick<ConfigSession, 'name' | 'state' | 'run' | 'diff' | 'hasDiffBeenRead' | 'commit' | 'abort'>
 
 type DraftKind =
   | { readonly action: 'set-hostname' }
@@ -86,30 +85,24 @@ interface PendingStage {
   readonly destructive: boolean
 }
 
-interface DraftState extends PendingStage {
-  readonly session: Session
-  readonly diff?: string
-  readonly commitAttempted: boolean
-}
-
 const PROXY_PROMPT = 'Local proxy is not configured. Set EAPI_HOST, EAPI_USER, and EAPI_PASS in arista-webui/.env.local, then restart Vite.'
-const COMMIT_RECOVERY = 'Commit was attempted; refresh device state before taking another action.'
 
 export function SystemSettings(props: SystemSettingsProps) {
-  return <ConfirmProvider><SystemWorkspace {...props} /></ConfirmProvider>
+  return <TransactionScope node={props.node}><ConfirmProvider><SystemWorkspace {...props} /></ConfirmProvider></TransactionScope>
 }
 
 function SystemWorkspace({ node, proxyConfigured = true }: SystemSettingsProps) {
-  const confirm = useConfirm()
   const operation = useOperation()
   const { busy, notice, failure } = operation
-  const canAct = proxyConfigured && node !== undefined
+  const transaction = useTransaction()
+  const transactionState = useTransactionSnapshot()
+  const transactionBusy = transactionState.status === 'opening' || transactionState.status === 'staging' || transactionState.status === 'committing' || transactionState.status === 'aborting'
+  const canAct = proxyConfigured && node !== undefined && transaction !== undefined && transactionState.status !== 'uncertain'
 
   const [hostnameDraft, setHostnameDraft] = useState('')
   const [hostnameError, setHostnameError] = useState<string | undefined>(undefined)
   const [bannerDrafts, setBannerDrafts] = useState<Record<BannerKind, string>>({ login: '', motd: '', exec: '' })
   const [bannerErrors, setBannerErrors] = useState<Partial<Record<BannerKind, string>>>({})
-  const [draft, setDraft] = useState<DraftState | undefined>(undefined)
 
   const read = useDeviceRead<{ settings: DeviceSettings; identity?: DeviceIdentity }>(
     async () => {
@@ -138,18 +131,16 @@ function SystemWorkspace({ node, proxyConfigured = true }: SystemSettingsProps) 
   }
 
   async function preview(stage: PendingStage) {
-    if (busy || !canAct || node === undefined || draft !== undefined) return
-    await operation.run(async () => {
-      const session = await node.configSession({ description: stage.description })
-      const handle: Session = session
-      setDraft({ ...stage, session: handle, commitAttempted: false })
-      await handle.run(stage.specs)
-      const diff = await handle.diff()
-      setDraft({ ...stage, session: handle, diff, commitAttempted: false })
-      return diff
-    }, {
-      progress: 'Staging the change and reading the device diff…',
-      success: 'Review the device diff before committing this change.',
+    if (busy || transactionBusy || !canAct || transaction === undefined) return
+    await operation.run(() => transaction.append({
+      source: '/system',
+      action: stage.effectLabel,
+      commands: stage.specs,
+      display: stage.display,
+      risks: stage.risks,
+    }), {
+      progress: 'Adding the change to the shared transaction and reading the device diff…',
+      success: 'System change added to the transaction. Review the combined diff in Transaction Center.',
     })
   }
 
@@ -157,10 +148,6 @@ function SystemWorkspace({ node, proxyConfigured = true }: SystemSettingsProps) 
   function begin(request: DraftKind) {
     clearErrors()
     if (!canAct || node === undefined) return
-    if (draft !== undefined) {
-      operation.run(async () => { throw new Error('A staged session is already open on this screen; commit or abort it before staging another change.') }).catch(() => undefined)
-      return
-    }
     if (settings === undefined) {
       operation.run(async () => { throw new Error('The system read has not answered, so nothing can be compared or staged against it.') }).catch(() => undefined)
       return
@@ -260,56 +247,6 @@ function SystemWorkspace({ node, proxyConfigured = true }: SystemSettingsProps) 
     })
   }
 
-  async function commitDraft() {
-    if (busy || draft === undefined || draft.diff === undefined || !draft.session.hasDiffBeenRead() || draft.commitAttempted) return
-    const risky = draft.destructive || draft.risks.length > 0
-    const label = draft.effectLabel
-    if (!await confirm({
-      title: risky ? `Confirm: ${label}` : 'Commit to running-config',
-      body: [
-        `Commit session ${draft.session.name}, which stages ${draft.display.join(' \u00b7 ')}? This changes running-config only; startup-config is never written by this screen (DR-024).`,
-        ...(draft.risks.length === 0 ? [] : [`Risk named for this write:\n${draft.risks.map((risk) => `  \u00b7 ${risk}`).join('\n')}`]),
-        'If this session is lost mid-commit, the change may still have applied \u2014 reconnect and refresh before any further action.',
-      ].join(' '),
-      confirmLabel: risky ? `Commit despite the risk: ${label}` : 'Commit to running-config',
-      destructive: true,
-      subject: `${draft.session.name} \u00b7 ${label}`,
-    })) return
-    setDraft({ ...draft, commitAttempted: true })
-    const committed = await operation.run(() => draft.session.commit(), {
-      progress: 'Committing the reviewed change to running-config\u2026',
-      success: 'Changes committed to running-config. Startup-config was not changed.',
-      failureSuffix: COMMIT_RECOVERY,
-    })
-    if (committed.ok) {
-      setDraft(undefined)
-      setHostnameDraft('')
-      setBannerDrafts({ login: '', motd: '', exec: '' })
-      read.reload() // #78: hostname change -> identity chip must refresh; every commit re-reads.
-    }
-  }
-
-  async function abortDraft() {
-    if (busy || draft === undefined || (draft.session.state !== 'open' && draft.session.state !== 'diffed')) return
-    if (!await confirm({ title: 'Abort staged changes', body: `Abort staged changes in session ${draft.session.name}? Its staged ${draft.display.join(' \u00b7 ')} will be discarded.`, confirmLabel: 'Abort staged changes', destructive: true, subject: draft.session.name })) return
-    const aborted = await operation.run(async () => {
-      await draft.session.abort()
-      setDraft(undefined)
-      return draft.session.name
-    }, { success: `Session ${draft.session.name} was aborted; nothing was written to the device.` })
-    if (aborted.ok) read.reload()
-  }
-
-  const draftView: SystemDraftView | undefined = draft === undefined ? undefined : {
-    sessionName: draft.session.name,
-    effectLabel: draft.effectLabel,
-    batch: draft.display,
-    risks: draft.risks,
-    ...(draft.diff === undefined ? {} : { diff: draft.diff }),
-    canCommit: draft.diff !== undefined && draft.session.hasDiffBeenRead() && !draft.commitAttempted,
-    destructive: draft.destructive,
-  }
-
   const bannerRows: readonly BannerRowView[] = BANNER_KINDS.map((kind) => {
     const body = settings?.banner[kind]
     return {
@@ -348,12 +285,11 @@ function SystemWorkspace({ node, proxyConfigured = true }: SystemSettingsProps) 
     routingKnown={settings !== undefined}
     onRouting={(enable: boolean) => begin({ action: 'routing', enable })}
     banners={bannerRows}
-    {...(draftView === undefined ? {} : { draft: draftView })}
-    busy={busy}
+    busy={busy || transactionBusy}
     canAct={canAct && state === 'ready'}
     notice={notice}
     failure={failure}
-    connection={!canAct || state === 'failed' ? 'error' : state === 'loading' || busy ? 'connecting' : 'connected'}
+    connection={!canAct || state === 'failed' ? 'error' : state === 'loading' || busy || transactionBusy ? 'connecting' : 'connected'}
     connectionLabel={!canAct
       ? 'Local proxy is not configured'
       : state === 'loading'
@@ -361,8 +297,6 @@ function SystemWorkspace({ node, proxyConfigured = true }: SystemSettingsProps) 
         : state === 'failed'
           ? 'The system read did not come back'
           : 'System settings read from the parsed running-config'}
-    onCommitDraft={() => void commitDraft()}
-    onAbortDraft={() => void abortDraft()}
     onReload={() => { clearErrors(); read.reload() }}
   />
 }

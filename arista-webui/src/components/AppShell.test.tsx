@@ -132,6 +132,17 @@ describe('AppShell chrome', () => {
 
     expect(container.querySelector('.shell-status')).toBeNull()
   })
+
+  it('exposes an accessible transaction link only while changes are staged', () => {
+    setHash('#/vlans')
+    const { rerender } = render(<AppShell homePath="/vlans" routes={routes} transaction={{ count: 0, status: 'idle' }} />)
+    expect(screen.queryByRole('link', { name: /Open transaction/u })).not.toBeInTheDocument()
+
+    rerender(<AppShell homePath="/vlans" routes={routes} transaction={{ count: 2, status: 'ready' }} />)
+    const link = screen.getByRole('link', { name: 'Open transaction: 2 staged change(s), ready' })
+    expect(link).toHaveAttribute('href', '#/sessions')
+    expect(link).toHaveTextContent('2')
+  })
 })
 
 describe('AppShell outlet routing', () => {
