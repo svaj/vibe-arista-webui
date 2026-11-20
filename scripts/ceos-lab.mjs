@@ -1285,6 +1285,24 @@ async function cmdUp(cfg) {
     let forwarderPid = null
     const sp = statePath(runId)
     ensureStateDir()
+    // Provisional state file BEFORE the forwarder starts: the forwarder's watchdog
+    // self-extinguishes when its --state-file disappears, and the full state is only
+    // written after the peer bring-up (~2 min on --nodes 2). Without this file the
+    // primary's forwarder always dies mid-boot with "run state file removed"
+    // (observed 2026-11-19, run lab-368804-9ba87d). The full writeState below
+    // overwrites this one; teardown removes it, which is the signal the watchdog wants.
+    writeState({
+      runId,
+      schema: 4,
+      provisional: true,
+      container: names.container,
+      containerId: cid,
+      hostIp: cfg.hostIp,
+      port,
+      containerApiPort: cfg.containerApiPort,
+      mgmtSubnet: mgmtSubnet.cidr,
+      mgmtContainerIp: mgmtIp,
+    })
     {
       const fwd = startForwarder({
         hostIp: cfg.hostIp,
@@ -1868,7 +1886,10 @@ async function bringUpPeerNode(cfg, opts) {
     refuse(`no peer mgmt subnet settled a live connected route. Tried: ${bTries.slice(0, 4).join(' · ')}`, EXIT.readiness)
   }
   const bMgmtIp = `${bSubnet.octetBase}.10`
-  docker(['network', 'create', `--label=${LABEL_RUN}=${runId}`, `--label=${LABEL_MANAGER}=${MANAGER}`, peer])
+  // The peer wire bridge is NOT created here: cmdUp created it before the primary's
+  // `docker start` (extraNets, f946281) because cEOS binds NICs to front-panel ports
+  // only at boot — a create-time re-create here always died with
+  // "network with name …-peer already exists" (exit 8, observed 2026-11-19).
 
   const createArgs = [
     'create',
