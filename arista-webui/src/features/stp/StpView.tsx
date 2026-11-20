@@ -3,15 +3,17 @@
  * `SystemSettingsView`); every device string arrives as a plain value, and no `StpSettings`,
  * `StpInterface` or `ConfigSession` crosses this boundary.
  *
- * ## The boundary this view keeps honest (the #85 acceptance line)
+ * ## The boundary this view keeps honest (the #85 acceptance line, updated by B3 #88 step 1)
  *
- * Every field here is CONFIG-BACKED: `node.stp.get()` parses `running-config all`
- * (`arista-api-client/src/resources/stp.ts`), and `show spanning-tree` has no capture for this
- * device, so the summary panel shows the configured mode token only and carries
- * {@link STP_OPERATIONAL_NOTE}; a test pins that operational state vocabulary never reaches the
- * DOM. No global-mode control renders anywhere (blocked issue B3 #88) — {@link STP_MODE_EDIT_NOTE}
- * is static copy, not a form. The MST/instance half says what it is: this client's reader is
- * upstream's stub ({@link STP_INSTANCES_NOTE}).
+ * The CONFIG table is config-backed: `node.stp.get()` parses `running-config all`
+ * (`arista-api-client/src/resources/stp.ts`). The OPERATIONAL panel below it is device-backed:
+ * `show spanning-tree` is capture-backed on both targets since the #88 step 1 refresh, so live
+ * instance/port state renders verbatim from the reply — and when the soft read fails, the panel
+ * carries {@link STP_OPERATIONAL_UNAVAILABLE_NOTE} instead of pretending. The two panels never mix
+ * sources. No global-mode control renders anywhere (blocked issue B3 #88 — the guard-design
+ * decision, not the blast, is what remains) — {@link STP_MODE_EDIT_NOTE} is static copy, not a form.
+ * The MST/instance half of the CONFIG summary says what it is: this client's reader is upstream's
+ * stub ({@link STP_INSTANCES_NOTE}).
  *
  * Configured text (tokens the device wrote) renders as trusted `<code>`; the only untrusted free
  * text is the config diff, which renders in a real `<pre>` — the same pin shape as the rest of the
@@ -26,8 +28,8 @@ import { DataTable } from '../../components/ui/DataTable'
 import type { DataTableColumn } from '../../components/ui/DataTable'
 import { EmptyState } from '../../components/ui/EmptyState'
 import { StatePill } from '../../components/ui/StatePill'
-import { STP_INSTANCES_NOTE, STP_MODE_EDIT_NOTE, STP_OPERATIONAL_NOTE, STP_WRITE_ACTIONS, isClientPortfastType } from './stp-rules'
-import type { StpPortRowView } from './stp-rules'
+import { STP_INSTANCES_NOTE, STP_MODE_EDIT_NOTE, STP_OPERATIONAL_UNAVAILABLE_NOTE, STP_WRITE_ACTIONS, isClientPortfastType } from './stp-rules'
+import type { StpOperationalInstanceView, StpOperationalPortView, StpPortRowView } from './stp-rules'
 
 /** One option in the in-screen port selector. */
 export interface StpPortOption {
@@ -49,6 +51,12 @@ export interface StpViewProps {
   readonly mode?: string
   readonly portCount: number
   readonly rows: readonly StpPortRowView[]
+
+  // --- operational (device-backed: the soft `show spanning-tree` read, B3 #88 step 1) ----------------
+  /** The live instances the read answered; absent while the soft read has not resolved. */
+  readonly operational?: readonly StpOperationalInstanceView[]
+  /** True when the soft read FAILED — the panel names that instead of showing an empty table. */
+  readonly operationalUnavailable?: boolean
 
   // --- per-port editor ------------------------------------------------------------------------------
   readonly ports: readonly StpPortOption[]
@@ -81,6 +89,8 @@ export function StpView(props: StpViewProps): ReactElement {
     mode,
     portCount,
     rows,
+    operational,
+    operationalUnavailable,
     ports,
     selectedPort,
     selectedAction,
@@ -113,6 +123,18 @@ export function StpView(props: StpViewProps): ReactElement {
         </>
       ),
     },
+  ]
+
+  // The operational table's columns: every cell is the device's own token rendered verbatim —
+  // no StatePill vocabulary here on purpose, because `state`/`role` are open device spellings
+  // (forwarding/blocking/designated/root/…, and a rapid-pvst box answers per-VLAN instances).
+  const operationalPortColumns: readonly DataTableColumn<StpOperationalPortView>[] = [
+    { header: 'Port', cell: (row) => <code>{row.name}</code> },
+    { header: 'State', cell: (row) => <code>{row.state}</code> },
+    { header: 'Role', cell: (row) => <code>{row.role}</code> },
+    { header: 'Cost', cell: (row) => <code>{String(row.cost)}</code> },
+    { header: 'Priority', cell: (row) => <code>{String(row.priority)}</code> },
+    { header: 'Edge', cell: (row) => <code>{row.edgePort ? 'true' : 'false'}</code> },
   ]
 
   return <section className="workspace" aria-labelledby="workspace-title">
@@ -167,12 +189,40 @@ export function StpView(props: StpViewProps): ReactElement {
         The token is whatever the device wrote, kept verbatim — this client does not translate it.
       </p>
       <p className="field-note">
-        <strong>Operational state is not shown.</strong> <code>show spanning-tree</code> has no
-        capture for this device, so per the #85 boundary: {STP_OPERATIONAL_NOTE} (M12 #14). Nothing on
-        this panel claims what any port is actually doing.
+        The panel below is the <strong>operational</strong> half: it renders what
+        <code>show spanning-tree</code> answered on this device (capture-backed on both targets
+        since issue B3 #88 step 1). Nothing in <em>this</em> panel claims what any port is doing —
+        that is the live panel&#39;s job, and the two never mix sources.
       </p>
       <p className="field-note">{STP_MODE_EDIT_NOTE}</p>
       <p className="field-note">{STP_INSTANCES_NOTE}</p>
+    </section>
+
+    {/* Operational panel — device-backed (the soft `show spanning-tree` read, B3 #88 step 1).
+        Every token is the device's own; instance keys are displayed, never matched. */}
+    <section className="panel" aria-labelledby="stp-operational-title">
+      <div className="panel-heading">
+        <div><p className="eyebrow">OPERATIONAL (show spanning-tree)</p><h3 id="stp-operational-title">Live spanning-tree state</h3></div>
+        <span className="panel-index">{operationalUnavailable === true ? 'unread' : operational === undefined ? 'reading…' : `${String(operational.length)} instance(s)`}</span>
+      </div>
+      {operationalUnavailable === true && <p className="field-note">{STP_OPERATIONAL_UNAVAILABLE_NOTE}</p>}
+      {operationalUnavailable !== true && operational === undefined && <p className="notice" role="status">Reading <code>show spanning-tree</code>…</p>}
+      {operational !== undefined && operational.length === 0 && <EmptyState heading="The device answered `show spanning-tree` with no instances." hint="An empty instance map is a device answer, not a read failure — spanning-tree may be disabled on this box." />}
+      {operational !== undefined && operational.map((instance) => (
+        <div className="stp-instance" key={instance.key}>
+          <p className="field-note">
+            Instance <code>{instance.key}</code> — protocol <code>{instance.protocol}</code>, bridge priority <code>{String(instance.bridgePriority)}</code>,
+            timers hello <code>{String(instance.helloTime)}s</code> / forward-delay <code>{String(instance.forwardDelay)}s</code> / max-age <code>{String(instance.maxAge)}s</code>
+            {instance.rootPort === undefined ? '' : <>, root port <code>{instance.rootPort}</code></>}.
+          </p>
+          <DataTable
+            columns={operationalPortColumns}
+            rows={instance.ports}
+            rowKey={(row) => row.name}
+            label={`Live spanning-tree ports for instance ${instance.key}`}
+          />
+        </div>
+      ))}
     </section>
 
     {/* Per-port config table */}

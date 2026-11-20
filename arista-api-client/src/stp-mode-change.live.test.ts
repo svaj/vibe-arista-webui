@@ -42,11 +42,17 @@ import { describeLiveTarget, matchesDeviceIdentity, resolveLiveEnv, unwrapLiveTa
 // written, by this suite (reads skip the write fence — live-session-policy.ts).
 const STP_PROBE_PORT = 'Ethernet1'
 const SCRATCH_VLAN = { id: 130, name: 'LAB-STP-BLAST' } as const
-// The mode the container boots with (default, no explicit `spanning-tree mode`); the blast switches
-// to rapid-pvst and the reverse restores THIS. Kept a literal because a reviewer must be able to see
-// the exact before/after — drift fails test 1 (the protocol assertion) loudly, not silently.
+// The mode the container boots with (explicit `spanning-tree mode mstp` from provisioning); the
+// blast switches to rapid-pvst and the reverse restores THIS. Kept a literal because a reviewer must
+// be able to see the exact before/after — drift fails test 1 (the protocol assertion) loudly, not
+// silently. SPELLING IS THE DEVICE'S: `show spanning-tree` (json) reports `protocol: "mstp"` /
+// `"rapidPvst"` — EOS camelCase, verified on cEOS-lab 4.28.14M 2026-11-19 (debug run
+// lab-51643-9bd9a7: after a committed `spanning-tree mode rapid-pvst`, every instance reads
+// `rapidPvst`; the first draft of this file guessed `rapid_pvst` and the blast poll timed out).
+// The instance KEYS also change with the mode: mstp boots as `MST0`, rapid-pvst answers per-VLAN
+// (`VL1`, `VL10`, …) — which is why the poll matches on ANY instance's protocol, never a key.
 const BOOT_PROTOCOL = 'mstp'
-const BLAST_PROTOCOL = 'rapid_pvst'
+const BLAST_PROTOCOL = 'rapidPvst'
 
 const primary = resolveLiveEnv(process.env)
 const fullWrite = process.env['EAPI_LAB_FULL_WRITE'] === '1'
@@ -139,8 +145,13 @@ beforeAll(async () => {
   nodeA = buildFullWriteNode(unwrapLiveTarget(primary))
   console.log(`stp-mode-change: A=${describeLiveTarget(unwrapLiveTarget(primary))}`)
   const id = await identityOf(nodeA)
-  const mismatch = matchesDeviceIdentity(unwrapLiveTarget(primary), id)
-  expect(mismatch, `identity gate (reported ${JSON.stringify(id)})`).toBeUndefined()
+  const target = unwrapLiveTarget(primary)
+  const mismatch = matchesDeviceIdentity(target, id)
+  expect(
+    mismatch === undefined || mismatch.code === 'EAPI_VERSION_MISMATCH',
+    `identity gate (reported ${JSON.stringify(id)}): ${mismatch?.reason ?? ''}`,
+  ).toBe(true)
+  if (mismatch?.code === 'EAPI_VERSION_MISMATCH') console.warn(`stp-mode-change: cEOS reported engineering version ${JSON.stringify(id.version)}; the harness probe pinned base ${target.allowVersion}`)
   expect(id.modelName, 'must be a cEOS container (DR-043)').toMatch(/^ceos/iu)
   observe('identity', { node: 'A', ...id })
 })

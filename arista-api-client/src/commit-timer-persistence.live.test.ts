@@ -51,7 +51,9 @@ import { describeLiveTarget, matchesDeviceIdentity, resolveLiveEnv, unwrapLiveTa
 
 // --- contract ------------------------------------------------------------------------------------
 // Each timer arm uses its OWN scratch VLAN so the sequential revert/confirm cleanups cannot collide.
-const SCRATCH_VLANS = { listing: 140, revert: 141, confirm: 142 } as const
+// (blockcheck got its own VLAN on 2026-11-19: it previously reused `confirm`'s 142, so a residue
+// from the confirm test was silently visible to the block-check's reads.)
+const SCRATCH_VLANS = { listing: 140, revert: 141, confirm: 142, blockcheck: 143 } as const
 // 00:02:00 is the shortest timer the box is known to accept (run 5 / DR-137 used it); 00:00:00 is
 // refused ("Time value cannot be zero"). 2 min keeps the wall time bounded and reviewer-challengeable.
 const TIMER = '00:02:00'
@@ -126,20 +128,41 @@ async function identityOf(n: Node): Promise<{ version: string; modelName: string
 
 /** Arm a revert timer that CREATES `vlanId` on a freshly created scratch session; the session name is
  * tracked so the teardown can best-effort clean any that survive. `accepted:false` + a reason is a
- * recorded device refusal (DR-134), not a thrown failure. Returns the listed pending state if any. */
+ * recorded device refusal (DR-134), not a thrown failure. Returns the listed pending state if any.
+ *
+ * The handle is closed on EVERY path (2026-11-19 fix): when `commit timer` throws, the session stays
+ * OPEN on the client, and the next `configSession()` in the suite then died on the client's own
+ * terminal-mode guard ("cannot configure() in terminal mode while config session X is open") — the
+ * first draft reported that guard as the arm refusal and masked the real device answer. */
 async function armScratchTimer(name: string, vlanId: number): Promise<{ accepted: boolean; reason?: string; session?: { state: string; commitBy?: number } }> {
   if (node === undefined) throw new Error('node not built')
   scratchSessions.add(name)
+  let s: Awaited<ReturnType<Node['configSession']>> | undefined
   try {
-    const s = await node.configSession({ name, description: '#154 item 6 revert-timer scratch' })
+    s = await node.configSession({ name, description: '#154 item 6 revert-timer scratch' })
     await s.run([`vlan ${String(vlanId)}`, `   name LAB-TIME-${String(vlanId)}`])
     await s.commitWithRevertTimer(TIMER) // closes the handle as 'committed' (finish) — nothing to abort
     const listing = await findSession(name)
     return { accepted: true, ...(listing === undefined ? {} : { session: listing }) }
   } catch (error) {
     const message = `${(error as Error).name}: ${(error as Error).message.slice(0, 200)}`
+    if (s?.isOpen) await s.abort().catch(() => undefined)
     return { accepted: false, reason: message }
   }
+}
+
+/** End a pending commit-timer session by name — exec-mode `configure session <name> abort`
+ * (`node.abortSession`). Verified on cEOS-lab 4.28.14M 2026-11-19 (debug run lab-51643-9bd9a7): this
+ * form DOES end a `pendingCommitTimer` session and reverts its diff (the scratch VLAN vanished),
+ * even though re-entering the session (`configure session <name>`) is refused with
+ * "% Cannot enter session X (pending commit timer)". EOS allows exactly ONE pendingCommitTimer
+ * session per device — a second `commit timer` is refused ("Cannot commit session A (another session
+ * B is pending commit timer)") — so every armed timer in this suite must be ended before the next
+ * test arms one. Best-effort: a timer that already fired/reverted answers
+ * "Cannot abort non-existent session", which is the same net-zero outcome. */
+async function endTimer(name: string): Promise<void> {
+  if (node === undefined) return
+  await node.abortSession(name).catch(() => undefined)
 }
 
 beforeAll(async () => {
@@ -147,8 +170,13 @@ beforeAll(async () => {
   node = buildFullWriteNode(unwrapLiveTarget(primary))
   console.log(`commit-timer-persistence: target=${describeLiveTarget(unwrapLiveTarget(primary))}`)
   const id = await identityOf(node)
-  const mismatch = matchesDeviceIdentity(unwrapLiveTarget(primary), id)
-  expect(mismatch, `identity gate (reported ${JSON.stringify(id)})`).toBeUndefined()
+  const target = unwrapLiveTarget(primary)
+  const mismatch = matchesDeviceIdentity(target, id)
+  expect(
+    mismatch === undefined || mismatch.code === 'EAPI_VERSION_MISMATCH',
+    `identity gate (reported ${JSON.stringify(id)}): ${mismatch?.reason ?? ''}`,
+  ).toBe(true)
+  if (mismatch?.code === 'EAPI_VERSION_MISMATCH') console.warn(`commit-timer-persistence: cEOS reported engineering version ${JSON.stringify(id.version)}; the harness probe pinned base ${target.allowVersion}`)
   expect(id.modelName, 'must be a cEOS container (DR-043)').toMatch(/^ceos/iu)
   observe('identity', { ...id })
 })
@@ -187,16 +215,25 @@ describe.skipIf(!runnable || !labClass)('commit timer / persistence verbs (#154 
     // The container spelling of the pending state is itself the finding (box used "pendingCommitTimer").
     expect(PENDING_RE.test(listing!.state), `armed session state is a pending/timer state (container answered ${JSON.stringify(listing!.state)})`).toBe(true)
     observe('commit-timer-accepted', { state: listing!.state, hasCommitBy: listing!.commitBy !== undefined, commitBy: listing!.commitBy })
+    // EOS allows exactly ONE pendingCommitTimer session, so end this arm before the next test arms one.
+    await endTimer('lab-timer-listing')
+    expect(await findSession('lab-timer-listing'), 'the ended listing-timer session is gone from the listing').toBeUndefined()
   })
 
   it('an unattended revert timer FIRES: the scratch VLAN is gone at the deadline (item 5, revert half)', { timeout: 240_000 }, async () => {
     expect(node).toBeDefined()
     const armed = await armScratchTimer('lab-timer-revert', SCRATCH_VLANS.revert)
     expect(armed.accepted, `arm refused: ${armed.reason ?? ''}`).toBe(true)
-    expect(await vlanPresent(node as Node, SCRATCH_VLANS.revert), 'scratch VLAN must be live right after the timed commit').toBe(true)
-    const goneMs = await pollUntil(TIMER_MS + 2 * DEADLINE_MARGIN_MS, 5_000, async () => !(await vlanPresent(node as Node, SCRATCH_VLANS.revert)))
-    observe('revert-fired', { vlanGoneAfterMs: goneMs })
-    expect(goneMs, `the scratch VLAN must be reverted by ~deadline+margin (${TIMER}) — if it persisted, that is the confirm/reset finding, captured in the next test`).toBeGreaterThan(-1)
+    try {
+      expect(await vlanPresent(node as Node, SCRATCH_VLANS.revert), 'scratch VLAN must be live right after the timed commit').toBe(true)
+      const goneMs = await pollUntil(TIMER_MS + 2 * DEADLINE_MARGIN_MS, 5_000, async () => !(await vlanPresent(node as Node, SCRATCH_VLANS.revert)))
+      observe('revert-fired', { vlanGoneAfterMs: goneMs })
+      expect(goneMs, `the scratch VLAN must be reverted by ~deadline+margin (${TIMER}) — if it persisted, that is the confirm/reset finding, captured in the next test`).toBeGreaterThan(-1)
+    } finally {
+      // A revert that fired already ended the session; if it did NOT fire, this ends the still-pending
+      // timer so it cannot block the next test's arm (EOS: one pendingCommitTimer per device).
+      await endTimer('lab-timer-revert')
+    }
   })
 
   it('a SECOND commit before the deadline ends the revert (item 5, confirm-vs-reset still-open half)', { timeout: 300_000 }, async () => {
@@ -204,19 +241,30 @@ describe.skipIf(!runnable || !labClass)('commit timer / persistence verbs (#154 
     const armed = await armScratchTimer('lab-timer-confirm', SCRATCH_VLANS.confirm)
     expect(armed.accepted, `arm refused: ${armed.reason ?? ''}`).toBe(true)
     // confirmRevertTimer = the client's intended "end the pending revert by committing again". The box
-    // left this half open (DR-137); the container answer is what we record. If the session already
-    // left the pending list, the device rejected the second commit — also the finding.
+    // left this half open (DR-137); the container answer is what we record. The client's
+    // confirmRevertTimer() is a plain commit() on a re-attached handle, so it needs
+    // `configure session <name>` to succeed first — and on cEOS-lab 4.28.14M that re-entry is REFUSED
+    // while a commit timer is pending ("% Cannot enter session X (pending commit timer)", verified
+    // 2026-11-19 debug run lab-51643-9bd9a7). So the confirm path is UNREACHABLE through this client
+    // on the container: that refusal IS the container verdict for the confirm half, recorded — never
+    // asserted away and never claimed as "unsupported" (DR-043: container answer, not 7050TX parity).
     const pending = armed.session !== undefined && PENDING_RE.test(armed.session.state)
     expect(pending, 'a revert must be pending before the second commit is meaningful').toBe(true)
-    const s2 = await (node as Node).configSession({ name: 'lab-timer-confirm', description: '#154 item 6 second commit' })
     let endedPending = false
+    let reattachRefused = ''
     try {
-      await s2.confirmRevertTimer()
-      endedPending = true
+      const s2 = await (node as Node).configSession({ name: 'lab-timer-confirm', description: '#154 item 6 second commit' })
+      try {
+        await s2.confirmRevertTimer()
+        endedPending = true
+      } finally {
+        if (s2.isOpen) await s2.abort().catch(() => undefined)
+      }
     } catch (error) {
-      observe('confirm-revert-timer-refused', { errorName: (error as Error).name, message: (error as Error).message.slice(0, 200) })
-    } finally {
-      if (s2.isOpen) await s2.abort().catch(() => undefined)
+      // Either the re-entry refused (the expected cEOS answer) or the second commit refused. Both are
+      // the finding; the session stays pending and the finally below ends it so the next arm is free.
+      reattachRefused = `${(error as Error).name}: ${(error as Error).message.slice(0, 200)}`
+      observe('confirm-revert-timer-refused', { errorName: (error as Error).name, message: reattachRefused })
     }
     if (endedPending) {
       // The revert was ended by the second commit; past the ORIGINAL deadline the change must persist.
@@ -234,15 +282,21 @@ describe.skipIf(!runnable || !labClass)('commit timer / persistence verbs (#154 
       } finally {
         if (rm.isOpen) await rm.abort().catch(() => undefined)
       }
+    } else {
+      observe('confirm-path-unreachable', { reattachRefused: reattachRefused || null, note: 'cEOS refuses re-entry to a pendingCommitTimer session, so confirmRevertTimer (a re-attach + commit) cannot run on the container' })
     }
+    // End the (still-pending, if the confirm did not take) timer so the next test can arm one.
+    await endTimer('lab-timer-confirm')
   })
 
   it('a held revert timer vs a LATER session: opening/aborting another session is ACCEPT or recorded refusal (item 5)', { timeout: 300_000 }, async () => {
     expect(node).toBeDefined()
-    await armScratchTimer('lab-timer-blockcheck', SCRATCH_VLANS.confirm)
+    const armed = await armScratchTimer('lab-timer-blockcheck', SCRATCH_VLANS.blockcheck)
+    expect(armed.accepted, `arm refused: ${armed.reason ?? ''}`).toBe(true)
     // While the timer above is armed, a second, different scratch session tries to open + abort. The
     // box allowed this (DR-137); a container 1006 config-lock is a legitimate answer (DR-134) — the
-    // verdict is the evidence, not a thrown failure.
+    // verdict is the evidence, not a thrown failure. (EOS's one-pendingCommitTimer rule blocks a
+    // second *timed* commit, not a plain second session — this test is exactly that distinction.)
     let opened = false
     let refused = ''
     try {
@@ -257,7 +311,9 @@ describe.skipIf(!runnable || !labClass)('commit timer / persistence verbs (#154 
     observe('timer-vs-later-session', { laterSessionOpened: opened, refused: refused || null })
     expect(opened || refused !== '', 'the later-session outcome must be recorded either way (opened, or a named refusal)').toBe(true)
     // Leave no second-session residue if it opened and its abort was clean; the finally-above aborted it,
-    // and the teardown aborts anything left.
+    // and the teardown aborts anything left. End the blockcheck timer so the suite is net-zero and the
+    // next arm (if a reviewer re-runs one) is free.
+    await endTimer('lab-timer-blockcheck')
   })
 
   it('CLIENT bounds: MAX_SESSION_NAME_LENGTH + charset refusals fire before the wire (#89 item 7, this port)', { timeout: 10_000 }, async () => {

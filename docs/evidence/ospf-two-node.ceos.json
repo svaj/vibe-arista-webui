@@ -1,0 +1,112 @@
+{
+  "generatedAt": "2026-11-20T03:04:22.994Z",
+  "targetClass": "ceos-lab-container",
+  "harness": "scripts/ceos-lab.mjs --nodes 2",
+  "link": {
+    "aIp": "10.155.0.1",
+    "bIp": "10.155.0.2",
+    "subnet": "10.155.0.0/30",
+    "bLoopback": "10.156.0.2",
+    "area": "0"
+  },
+  "observations": [
+    {
+      "step": "identity",
+      "at": "2026-11-20T03:02:48.873Z",
+      "node": "A",
+      "version": "4.28.14M-50015774.42814M (engineering build)",
+      "modelName": "cEOSLab"
+    },
+    {
+      "step": "identity",
+      "at": "2026-11-20T03:02:48.940Z",
+      "node": "B",
+      "version": "4.28.14M-50015774.42814M (engineering build)",
+      "modelName": "cEOSLab"
+    },
+    {
+      "step": "adjacency-formed",
+      "at": "2026-11-20T03:03:24.631Z",
+      "aSeesBms": 35554,
+      "bSeesAms": 67,
+      "aEntry": {
+        "routerId": "10.156.0.2",
+        "priority": 1,
+        "drState": "DR",
+        "interfaceName": "Ethernet3",
+        "adjacencyState": "full",
+        "inactivity": 1795143839.525181,
+        "interfaceAddress": "10.155.0.2",
+        "options": {
+          "multitopologyCapability": false,
+          "doNotUseInRouteCalc": false,
+          "demandCircuitsSupport": false,
+          "nssaCapability": false,
+          "externalRoutingCapability": true,
+          "opaqueLsaSupport": false,
+          "linkLocalSignaling": false,
+          "multicastCapability": false
+        },
+        "details": {
+          "areaId": "0.0.0.0",
+          "bfdState": "adminDown",
+          "backupDesignatedRouter": "10.155.0.1",
+          "stateTime": 1795143804.525207,
+          "retransmissionCount": 0,
+          "grLastRestartTime": null,
+          "designatedRouter": "10.155.0.2",
+          "grHelperTimer": null,
+          "numberOfStateChanges": 7,
+          "bfdRequestSent": false,
+          "grNumAttempts": 0,
+          "inactivityDefers": 0
+        }
+      }
+    },
+    {
+      "step": "peer-route-present",
+      "at": "2026-11-20T03:03:30.867Z",
+      "learnedAfterMs": 6169,
+      "detail": {
+        "vrfs": {
+          "default": {
+            "routes": {
+              "10.156.0.2/32": {
+                "kernelProgrammed": true,
+                "directlyConnected": false,
+                "routeAction": "forward",
+                "routeLeaked": false,
+                "vias": [
+                  {
+                    "interface": "Ethernet3",
+                    "nexthopAddr": "10.155.0.2"
+                  }
+                ],
+                "metric": 20,
+                "hardwareProgrammed": true,
+                "routeType": "OSPF",
+                "preference": 110
+              }
+            },
+            "allRoutesProgrammedKernel": true,
+            "routingDisabled": false,
+            "allRoutesProgrammedHardware": true,
+            "defaultRouteState": "notSet"
+          }
+        }
+      }
+    },
+    {
+      "step": "blast-route",
+      "at": "2026-11-20T03:03:37.549Z",
+      "withdrawnMs": 67,
+      "restoredMs": 6170
+    },
+    {
+      "step": "blast-adjacency",
+      "at": "2026-11-20T03:04:22.803Z",
+      "droppedMs": 32636,
+      "reformedMs": 12279
+    }
+  ]
+}

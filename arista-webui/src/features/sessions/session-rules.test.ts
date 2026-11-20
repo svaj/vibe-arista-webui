@@ -51,6 +51,19 @@ describe('describeSessionRow — pending/timer/state are TEXT claims the confirm
     expect(row.label).toBe('SYNTHETIC-future-state')
     expect(row.dangerous).toBe(false)
   })
+  it('#89: the device word `pendingCommitTimer` arms the timer even without commitBy, and the note carries the captured abort-with-revert exit', () => {
+    // state: "pendingCommitTimer" with hasCommitBy: true is the cEOS capture
+    // (docs/evidence/commit-timer-persistence.ceos.json, step commit-timer-accepted).
+    const armed = describeSessionRow({ name: 'lab-t', state: 'pendingCommitTimer', commitBy: 928.5, instances: [] })
+    expect(armed.label).toMatch(/COMMIT TIMER is armed/u)
+    expect(armed.dangerous).toBe(true)
+    expect(armed.timerNote).toMatch(/abort-with-revert/u)
+    expect(armed.timerNote).toMatch(/re-entering the session is refused/u)
+    // A state-named timer whose commitBy is absent stays honest: unknown, not no-timer.
+    const noEpoch = describeSessionRow({ name: 'lab-t', state: 'pendingCommitTimer', instances: [] })
+    expect(noEpoch.dangerous).toBe(true)
+    expect(noEpoch.timerNote).toMatch(/unknown, not no-timer/u)
+  })
 })
 
 describe('describeRecovery — every bucket rides, nothing dropped', () => {

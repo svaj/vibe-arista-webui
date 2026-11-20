@@ -36,13 +36,15 @@
  *
  * - **No global `spanning-tree mode …` action.** Mode changes are blocked issue B3 (#88); the
  *   screen renders no control for it and {@link STP_MODE_EDIT_NOTE} states that statically.
- * - **No operational fields.** `show spanning-tree` has no capture for this device, so
- *   {@link STP_OPERATIONAL_NOTE} is the only "state" sentence the summary panel carries, and no
- *   per-port operational column exists ({@link StpPortRowView} has exactly the three config-read
- *   fields the frozen reader answers).
+ * - **No operational fields in the CONFIG table.** {@link StpPortRowView} has exactly the three
+ *   config-read fields the frozen reader answers. The operational half lives in its own panel, fed
+ *   by the capture-backed `show spanning-tree` read ({@link stpOperationalView}, B3 #88 step 1) —
+ *   the two panels never mix their sources.
  */
 
 import type { StpInterface } from '@devhax-heavy-industries/arista-eapi'
+
+import type { ShowSpanningTreeReply } from '../../eapi/show-contracts'
 
 /** The id of every per-port write this screen can stage — the client's verb, kebab-cased. */
 export type StpWriteActionId =
@@ -133,18 +135,82 @@ export function stpPortRowView(row: StpInterface): StpPortRowView {
 
 /** Static copy: why there is no mode control anywhere on this screen (blocked issue B3 #88). */
 export const STP_MODE_EDIT_NOTE =
-  'Global spanning-tree mode editing is not offered on this screen. A mode change (`spanning-tree mode …`) is blocked pending issue B3 (#88), so no control here can stage one — the mode line below is read-only config text.'
+  'Global spanning-tree mode editing is not offered on this screen. A mode change (`spanning-tree mode …`) is blocked pending issue B3 (#88) — the blast itself is now observed evidence (docs/evidence/stp-mode-change.ceos.json), and what remains blocked is the guard-design DECISIONS entry — so no control here can stage one. The mode line below is read-only config text.'
 
 /**
- * Static copy: the operational half of STP is not observable from this screen. Carries the exact
- * #85 sentence; a test pins that no operational state vocabulary ever reaches the DOM beside it.
+ * Copy for the ONE case in which the operational panel shows no live state: the soft
+ * `show spanning-tree` read did not answer. The command itself is capture-backed on BOTH targets
+ * (B3 #88 step 1: the 7050TX-64 hw inventory and the configured cEOS-lab 4.28.14M capture), so this
+ * sentence is about THIS READ failing on THIS device right now — never a claim that the command is
+ * unsupported. The old #85 sentence ("operational STP state not yet observable — capture pending")
+ * is retired here because the capture landed; a test pins the new copy and that live state
+ * vocabulary renders when the read answers.
  */
-export const STP_OPERATIONAL_NOTE =
-  'operational STP state not yet observable — capture pending'
+export const STP_OPERATIONAL_UNAVAILABLE_NOTE =
+  'The live `show spanning-tree` read did not answer on this device, so no operational state is shown. This is a read failure, not a claim that the command is unsupported — the command is capture-backed on both targets (issue B3 #88 step 1).'
 
 /** Static copy: what this client's MST/instance reader actually is (upstream's 2015 stub, row 171). */
 export const STP_INSTANCES_NOTE =
   'MST instances: this client has no reader — pyeapi\u2019s `StpInstances.getall` has been a `return dict()` stub since 2015, so the empty instance table is THIS CLIENT not having read anything, not a claim that the switch runs no instances.'
+
+/**
+ * One port of one live spanning-tree instance, folded out of the capture-backed
+ * `show spanning-tree` reply for the operational panel. Every value is the device's own token
+ * (`state`, `role`, `linkType` are open strings — DR-032), so the panel renders them verbatim and
+ * never maps them into a vocabulary of its own.
+ */
+export interface StpOperationalPortView {
+  readonly name: string
+  readonly state: string
+  readonly role: string
+  readonly cost: number
+  readonly priority: number
+  readonly edgePort: boolean
+}
+
+/** One live spanning-tree instance. `key` is the device's own instance name — `MST0` under mstp,
+ * per-VLAN `VL<n>` under rapid-pvst (blast evidence, docs/evidence/stp-mode-change.ceos.json) — so
+ * it is displayed, never matched against a literal. */
+export interface StpOperationalInstanceView {
+  readonly key: string
+  readonly protocol: string
+  readonly bridgePriority: number
+  readonly helloTime: number
+  readonly forwardDelay: number
+  readonly maxAge: number
+  /** Present only on the hardware capture shape; the cEOS answer carries no root-port key. */
+  readonly rootPort?: string
+  readonly ports: readonly StpOperationalPortView[]
+}
+
+/**
+ * Fold a `show spanning-tree` reply into display rows without inventing or dropping instances.
+ * Instance and port KEY ORDER is the device's (the client notes it is non-deterministic), so this
+ * sorts by name to keep the table stable across reloads.
+ */
+export function stpOperationalView(reply: ShowSpanningTreeReply): readonly StpOperationalInstanceView[] {
+  return Object.entries(reply.spanningTreeInstances ?? {})
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([key, instance]) => ({
+      key,
+      protocol: instance.protocol,
+      bridgePriority: instance.bridge.priority,
+      helloTime: instance.bridge.helloTime,
+      forwardDelay: instance.bridge.forwardDelay,
+      maxAge: instance.bridge.maxAge,
+      ...(instance.rootPort === undefined ? {} : { rootPort: instance.rootPort.interface }),
+      ports: Object.entries(instance.interfaces ?? {})
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([name, port]) => ({
+          name,
+          state: port.state,
+          role: port.role,
+          cost: port.cost,
+          priority: port.priority,
+          edgePort: port.isEdgePort,
+        })),
+    }))
+}
 
 /**
  * The loop-risk sentence for every affirmative PortFast write (#85's hard-confirm guard). It names
@@ -185,7 +251,7 @@ export function stageRisks(action: StpWriteAction, port: string): readonly strin
         readBack,
         action.id === 'portfast-unset'
           ? `This negates PortFast on ${port} — the exact \`no spanning-tree portfast\` line is also the ONE thing this client's reader looks for to report PortFast disabled (row 170), so the flag below flips on refresh. Attached hosts simply wait out the normal converge delay.`
-          : `Enables BPDU guard on ${port}: the exact \`spanning-tree bpduguard enable\` line is what the reader treats as guard-on (row 170), so this write is what the next refresh must show. What the device does operationally with guard on is not observable from this screen (\`show spanning-tree\` is uncaptured).`,
+          : `Enables BPDU guard on ${port}: the exact \`spanning-tree bpduguard enable\` line is what the reader treats as guard-on (row 170), so this write is what the next refresh must show. What the device does operationally with guard on is a live-state question — the operational panel reads it from \`show spanning-tree\`, not from this config table.`,
       ]
   }
 }

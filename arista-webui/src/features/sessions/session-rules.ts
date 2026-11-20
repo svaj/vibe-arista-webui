@@ -60,8 +60,18 @@ export function parseDraftLines(text: string): readonly string[] {
 }
 
 /** One `show configuration sessions` row reduced to render-safe strings. Device state stays
- *  verbatim (DR-032: the value set is a device enum the port has only confirmed for `pending`), and
- *  the fields that make abort DANGEROUS (armed commit timer) are surfaced for the confirm text. */
+ *  verbatim (DR-032: the value set is a device enum the port has only confirmed for `pending` and,
+ *  since the #89 cEOS lane, `pendingCommitTimer` — `commit-timer-persistence.ceos.json` records
+ *  `state: "pendingCommitTimer"` with `hasCommitBy: true`), and the fields that make abort
+ *  DANGEROUS (armed commit timer) are surfaced for the confirm text.
+ *
+ *  The timer note carries the 2026-11-19/20 cEOS-lab 4.28.14M findings (#89): exec-mode
+ *  `configure session <name> abort` DOES end a `pendingCommitTimer` session and REVERTS its
+ *  committed diff, while re-entering it is refused (`% Cannot enter session X (pending commit
+ *  timer)`) — so the confirm path the client models (`commitRevertTimer`-style re-attach + commit)
+ *  is unreachable on the container, and the only captured exit is abort-with-revert or letting the
+ *  timer fire. EOS allows exactly ONE pendingCommitTimer session per device. Container facts —
+ *  they do not settle 7050TX-64 behavior (DR-043). */
 export function describeSessionRow(session: {
   readonly name: string
   readonly state: string
@@ -71,14 +81,22 @@ export function describeSessionRow(session: {
   readonly commitUser?: string
   readonly instances?: readonly unknown[]
 }): { label: string; dangerous: boolean; timerNote?: string } {
-  const timerActive = session.commitBy !== undefined
-  const label = session.state === 'pending'
-    ? (timerActive ? 'pending — a COMMIT TIMER is armed: its change is live and a revert is scheduled' : 'pending — holds the config lock')
-    : session.state
+  const timerActive = session.commitBy !== undefined || session.state === 'pendingCommitTimer'
+  const label = timerActive
+    ? 'a COMMIT TIMER is armed: its change is live and a revert is scheduled'
+    : session.state === 'pending'
+      ? 'pending — holds the config lock'
+      : session.state
   return {
     label,
     dangerous: timerActive || session.state === 'pending',
-    ...(timerActive ? { timerNote: `commitBy epoch ${String(session.commitBy)}s — recovery never aborts a timer-armed session (DR-050): that is a decision to present, not cleanup to perform` } : {}),
+    ...(timerActive
+      ? {
+          timerNote:
+            `commitBy epoch ${String(session.commitBy ?? '(the device named the state but carried no commitBy — unknown, not no-timer)')}s — recovery never aborts a timer-armed session (DR-050): that is a decision to present, not cleanup to perform. ` +
+            'On cEOS-lab 4.28.14M the captured exit is abort-with-revert: exec `configure session <name> abort` ends the timer and reverts its diff, and re-entering the session is refused, so there is no captured "confirm the change" path (container fact, DR-043).',
+        }
+      : {}),
   }
 }
 

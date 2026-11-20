@@ -1,0 +1,51 @@
+{
+  "generatedAt": "2026-11-20T12:14:27.037Z",
+  "targetClass": "ceos-lab-container",
+  "harness": "scripts/ceos-lab.mjs (full-write lab)",
+  "bootProtocol": "mstp",
+  "blastProtocol": "rapidPvst",
+  "observations": [
+    {
+      "step": "identity",
+      "at": "2026-11-20T12:14:25.214Z",
+      "node": "A",
+      "version": "4.28.14M-50015774.42814M (engineering build)",
+      "modelName": "cEOSLab"
+    },
+    {
+      "step": "configured-stp-populated",
+      "at": "2026-11-20T12:14:25.436Z",
+      "instances": [
+        {
+          "key": "MST0",
+          "protocol": "mstp",
+          "ports": [
+            "Ethernet1"
+          ]
+        }
+      ]
+    },
+    {
+      "step": "grammar-stage-abort",
+      "at": "2026-11-20T12:14:25.772Z",
+      "mode": "spanning-tree mode rapid-pvst",
+      "committed": false
+    },
+    {
+      "step": "blast-mode-change",
+      "at": "2026-11-20T12:14:26.513Z",
+      "flippedMs": 67,
+      "abortedReverseStableMs": 81
+    },
+    {
+      "step": "net-zero-sessions",
+      "at": "2026-11-20T12:14:26.968Z",
+      "remaining": [
+        {
+          "name": "lab-pending-capture",
+          "state": "pending"
+        }
+      ]
+    }
+  ]
+}

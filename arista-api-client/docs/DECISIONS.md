@@ -2911,6 +2911,62 @@ surviving armed session is best-effort aborted in `afterAll` so a half-run never
 its container sibling); DR-134 (device refusal is the answer); DR-145/DR-146 (the host gate);
 DR-035(c) (no persistence); DR-043/DR-034/DR-035; #89 (items 8 closed, 5/7 gated here).
 
+### DR-148 — the three blocked-issue cEOS lanes (#87 two-node OSPF, #88 STP mode blast, #89 commit timers) ran GREEN on 2026-11-20; the container verdicts land, two device-fact corrections ride with them, and the confirm-vs-reset question for item 5 is answered NEGATIVE-BY-UNREACHABILITY on the container class
+
+DR-145/DR-146 gated these lanes on a BPF-cleared container host and DR-147 shipped the timer lane
+verified-offline-only. The host cleared the gate (and was rebooted 2026-11-20, which is also what
+finally killed the stale per-/24 HNS route poisoning the mgmt bands). All three ran green through
+`scripts/run-blocked-evidence.sh` on disposable cEOS-lab 4.28.14M (engineering build
+`4.28.14M-50015774.42814M`), artifacts under `docs/evidence/`. **Everything below is container
+evidence; none of it settles 7050TX-64 / 4.28.13.1M behavior (DR-043).**
+
+**#89 item 5, container verdict (`commit-timer-persistence.ceos.json`, 6 passed / 2 skipped).**
+(1) The container ACCEPTS `commit timer 00:02:00`: the session re-lists on the plain form with
+`state: "pendingCommitTimer"` and a `commitBy` — the state spelling is the client's own word, now
+device-confirmed on this class. (2) An unattended revert FIRES: the scratch VLAN vanished 122 s
+after the timed commit. (3) **Confirm-vs-reset is unanswerable on the container, and the reason is
+itself the finding:** EOS allows exactly ONE `pendingCommitTimer` session per device (a second
+timed commit is refused naming the first), and re-entering an armed session is refused
+(`% Cannot enter session X (pending commit timer)`) — so `confirmRevertTimer` (re-attach + commit)
+has no reachable path. The captured exits are: let the timer fire (revert), or exec-mode
+`configure session <name> abort` (`node.abortSession`), which DOES end the timer AND reverts its
+committed diff (scratch VLAN gone; a timer that already fired answers "Cannot abort non-existent
+session" — same net-zero). (4) A LATER session opens fine while a timer is armed (no 1006) — the
+lock is per-session-contention, not timer-global. (5) The client's name bounds (64 + charset) fire
+before the wire as *this port's* limits, and a 64-char name opens/aborts clean on the device; the
+device-bound boundary stays the two skipped discovery stubs (unchanged from DR-147).
+
+**#88 blast (`stp-mode-change.ceos.json`, 4 passed / 1 skipped).** Boot protocol `mstp` (MST0 with
+Ethernet1); `spanning-tree mode rapid-pvst` stages/aborts clean, and the COMMITTED answer reports
+the protocol **camelCase `rapidPvst`** — the suite's original `rapid_pvst` constant was a wrong
+guess and failed the blast, fixed in-suite (a device-fact correction, same class as DR-131's
+model-name spelling). The mode change also REPLACES the MST0 instance with per-VLAN instances
+(VL1…). Flip 67 ms, aborted-reverse stable 81 ms; sessions net-zero after the run.
+
+**#87 blast (`ospf-two-node.ceos.json`, 4 passed).** Two-node adjacency forms over the harness
+peer bridge; route-withdrawal blast re-converges in 67 ms withdrawn / 6170 ms restored; the
+adjacency-drop blast takes 32636 ms to age the neighbor out and 12279 ms to reform — the
+destructor-timer scale, recorded for the deployment-policy decision the owner still owns.
+
+**Harness bugs the runs found and fixed (both in `scripts/ceos-lab.mjs`).** (a) A f946281
+regression: `cmdUp` and `bringUpPeerNode` both created the `-peer` bridge, so `--nodes 2` died
+exit 8 — the second create is deleted. (b) The loopback forwarder's watchdog treated a missing
+state file as teardown and self-extinguished mid-peer-boot; `cmdUp` now writes a provisional
+state file before starting the forwarder. The 2-node band default split to its own /24
+(`CEOS_LAB_MGMT_BAND_2NODE`) because one /24 cannot serve both mgmt bridges.
+
+**Consequences.** #89's B4 spec can now cite container answers for item 5's mechanics while the
+PHYSICAL persistence verbs (`copy run start`, `configure replace`, session-scoped `rollback`)
+remain the operator-authorization fence they always were; the webui TransactionCenter's
+`describeSessionRow` timer note now carries the abort-with-revert/no-confirm-path finding verbatim
+and treats a `pendingCommitTimer` state word as timer-armed even without `commitBy`. #88's
+operational panel and #87's read-only routing screen shipped against the capture-backed contracts
+(`show-contracts.ts`), with BGP deliberately unmodelled (the recorded double negative).
+**Related:** DR-147 (the lane this closes the container half of); DR-137 (hardware item-5 sibling —
+its confirm half stays open, the container could not even ask); DR-134; DR-145/DR-146 (the host
+gate this run passed); DR-131 (device-spelling corrections); DR-043 (every claim above is
+container-scoped); #87/#88/#89.
+
 ## Open items (need the device)
 
 Use cEOS first for software behavior and schema exploration, recording its model/version;
