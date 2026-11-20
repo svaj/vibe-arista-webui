@@ -1,0 +1,54 @@
+{
+  "generatedAt": "2026-11-20T12:17:41.460Z",
+  "observations": [
+    {
+      "step": "identity",
+      "at": "2026-11-20T12:15:34.578Z",
+      "version": "4.28.14M-50015774.42814M (engineering build)",
+      "modelName": "cEOSLab"
+    },
+    {
+      "step": "commit-timer-accepted",
+      "at": "2026-11-20T12:15:35.092Z",
+      "state": "pendingCommitTimer",
+      "hasCommitBy": true,
+      "commitBy": 928.569443131
+    },
+    {
+      "step": "revert-fired",
+      "at": "2026-11-20T12:17:38.360Z",
+      "vlanGoneAfterMs": 122039
+    },
+    {
+      "step": "confirm-revert-timer-refused",
+      "at": "2026-11-20T12:17:38.872Z",
+      "errorName": "CommandError",
+      "message": "CommandError: Error [1000]: CLI command 2 of 3 'configure session lab-timer-confirm description \"#154 item 6 second commit\"' failed: could not run command [errors: ['Cannot enter session lab-timer-confirm (pending "
+    },
+    {
+      "step": "confirm-path-unreachable",
+      "at": "2026-11-20T12:17:38.872Z",
+      "reattachRefused": "CommandError: Error [1000]: CLI command 2 of 3 'configure session lab-timer-confirm description \"#154 item 6 second commit\"' failed: could not run command [errors: ['Cannot enter session lab-timer-confirm (pending ",
+      "note": "cEOS refuses re-entry to a pendingCommitTimer session, so confirmRevertTimer (a re-attach + commit) cannot run on the container"
+    },
+    {
+      "step": "timer-vs-later-session",
+      "at": "2026-11-20T12:17:40.196Z",
+      "laterSessionOpened": true,
+      "refused": null
+    },
+    {
+      "step": "client-name-bounds",
+      "at": "2026-11-20T12:17:40.826Z",
+      "max": 64,
+      "refusedBeforeWire": true
+    },
+    {
+      "step": "device-accepts-client-bound-name",
+      "at": "2026-11-20T12:17:40.964Z",
+      "nameLength": 64,
+      "listedWhileOpen": false,
+      "abortedClean": true
+    }
+  ]
+}

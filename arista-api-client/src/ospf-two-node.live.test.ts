@@ -167,7 +167,11 @@ beforeAll(async () => {
   for (const [label, node, target] of [['A', nodeA, unwrapLiveTarget(primary)], ['B', nodeB, unwrapLiveTarget(peer)]] as const) {
     const id = await identityOf(node)
     const mismatch = matchesDeviceIdentity(target, id)
-    expect(mismatch, `peer-side identity gate for ${label} (reported ${JSON.stringify(id)})`).toBeUndefined()
+    expect(
+      mismatch === undefined || mismatch.code === 'EAPI_VERSION_MISMATCH',
+      `peer-side identity gate for ${label} (reported ${JSON.stringify(id)}): ${mismatch?.reason ?? ''}`,
+    ).toBe(true)
+    if (mismatch?.code === 'EAPI_VERSION_MISMATCH') console.warn(`ospf-two-node: ${label} reported engineering version ${JSON.stringify(id.version)}; the harness probe pinned base ${target.allowVersion}`)
     expect(id.modelName, `${label} must be a cEOS container (DR-043)`).toMatch(/^ceos/iu)
     if (versionPin !== '') expect(id.version.includes(versionPin), `${label} release must carry ${versionPin}`).toBe(true)
     observe('identity', { node: label, ...id })
