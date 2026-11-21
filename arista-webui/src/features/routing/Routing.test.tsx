@@ -138,7 +138,7 @@ describe('Routing — read-only banner in every state', () => {
     expect(reloadButton()).toBeDisabled()
     expect(fakes.ospfGet).not.toHaveBeenCalled()
     expect(fakes.show).not.toHaveBeenCalled()
-    expect(screen.getByText(/Routing configuration editors are not offered here/u)).toBeInTheDocument()
+    expect(screen.getByText(/Routing configuration editors are not offered on THIS screen/u)).toBeInTheDocument()
   })
 
   it('loading: the banner is already up while the reads are in flight', () => {
@@ -147,7 +147,7 @@ describe('Routing — read-only banner in every state', () => {
     const node = { ospf: { get: ospfGet }, routemaps: { getAll: async () => new Map() }, vrrp: { getAll: async () => new Map() }, show } as unknown as TestNode
     render(<Routing node={node} proxyConfigured />)
     expect(screen.getByText(/Reading routing state \(parsed running-config/u)).toBeInTheDocument()
-    expect(screen.getByText(/Routing configuration editors are not offered here/u)).toBeInTheDocument()
+    expect(screen.getByText(/Routing configuration editors are not offered on THIS screen/u)).toBeInTheDocument()
   })
 
   it('ready: no write affordance anywhere — the only buttons are Reload / Try again', async () => {

@@ -19,6 +19,7 @@ import { Vrfs } from './features/vrfs/Vrfs'
 import { Acls } from './features/acls/Acls'
 import { StaticRoutes } from './features/routes/StaticRoutes'
 import { Routing } from './features/routing/Routing'
+import { VrrpManager } from './features/routing/VrrpManager'
 import { TransactionCenter } from './features/sessions/TransactionCenter'
 import { Users } from './features/users/Users'
 import { VlanManagement } from './features/vlans/VlanManagement'
@@ -160,11 +161,20 @@ function App() {
     },
     // B2 (#87) owns `#/routing`: READ-ONLY routing status (OSPF / route maps / VRRP). The
     // container's seam is Pick<Node, 'ospf' | 'routemaps' | 'vrrp' | 'show'> — it cannot even see a
-    // config session — and the screen ships no writes: #87 keeps every routing editor blocked
-    // behind a per-protocol blast-radius review. BGP renders the recorded double negative, not data.
+    // config session — and the screen ships no writes: the blast review that once blocked every
+    // routing editor has since narrowed per-protocol (the VRRP editor lives at `#/routing/vrrp`
+    // below; OSPF/route-map/BGP editors stay blocked). BGP renders the recorded double negative.
     '/routing': {
       title: 'Routing status',
       element: <Routing node={node} proxyConfigured={configured} />,
+    },
+    // #87's VRRP slice owns `#/routing/vrrp`: the virtual-router viewer/editor. Every composed
+    // line comes from the client's own dry-run seam ({ run: false } on each field setter) — the
+    // strongest command-text pin in the repo — and the failover confirm states honestly that the
+    // blast is unmeasured on any target (owner decision 2026-11-21; SPEC-vrrp-editor.md).
+    '/routing/vrrp': {
+      title: 'VRRP',
+      element: <VrrpManager node={node} proxyConfigured={configured} />,
     },
     '/vlans/manage': {
       title: 'VLAN management',

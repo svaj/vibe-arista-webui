@@ -122,6 +122,23 @@ describe('App composition (F6 chrome)', () => {
     expect(screen.getByRole('button', { name: 'Reload static routes' })).toBeDisabled()
   })
 
+  it('puts the #87 VRRP editor in the nav on #/routing/vrrp', () => {
+    render(<App />)
+
+    const vrrp = screen.getByRole('link', { name: 'VRRP' })
+    expect(vrrp).toHaveAttribute('href', '#/routing/vrrp')
+    expect(vrrp).not.toHaveAttribute('aria-current', 'page')
+    // Registering the route must not warm anything up: with no proxy the screen prompts and its
+    // three staging triggers stay disabled — no read is attempted.
+    fireEvent.click(vrrp)
+    expect(screen.getByRole('heading', { level: 2, name: 'VRRP virtual routers' })).toBeInTheDocument()
+    expect(screen.getByRole('alert')).toHaveTextContent('EAPI_HOST')
+    expect(screen.getByRole('button', { name: 'Stage create batch' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Stage field edit' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Stage delete' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Reload VRRP state' })).toBeDisabled()
+  })
+
   it('puts the S7 (#77) capability probe panel in the nav on #/capabilities', () => {
     render(<App />)
 

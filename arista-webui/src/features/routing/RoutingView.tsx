@@ -265,8 +265,11 @@ export function RoutingView(props: RoutingViewProps): ReactElement {
       {!configKnown
         ? <p className="field-note">No <code>vrrp.getAll()</code> read has answered yet.</p>
         : vrrpConfigRows.length === 0
-          ? <EmptyState heading="No interface section carries a `vrrp &lt;vrid&gt;` line." hint="A normal configured state. VRRP writes are the largest ported module and stay blocked behind #87's blast-radius review — this screen never edits them." />
+          ? <EmptyState heading="No interface section carries a `vrrp &lt;vrid&gt;` line." hint="A normal configured state. VRRP writes live on the VRRP editor (#/routing/vrrp) — this screen never edits them." />
           : <DataTable columns={vrrpConfigColumns} rows={vrrpConfigRows} rowKey={(row) => `${row.interfaceName}/${String(row.vrid)}`} label="Configured VRRP groups" />}
+      {/* #87's VRRP slice shipped the editor — the panel points at it instead of the old
+          "this screen never edits them" dead end. */}
+      <p className="field-note">To create, edit, or delete these groups, use the <a href="#/routing/vrrp">VRRP editor</a>.</p>
     </section>
 
     {/* VRRP — device half */}

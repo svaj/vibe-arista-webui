@@ -3105,6 +3105,49 @@ quotes); DR-096 (the client's mode write-grammar stays untouched — the screen 
 so offering `rapid-pvst` does not widen `STP_MODES`); DR-057 (the device keeps the say); DR-043
 (the scoping sentence rides every risk list); DR-032 (device tokens verbatim); #88.
 
+### DR-152 — the #87 VRRP slice ships the first per-protocol routing editor (`#/routing/vrrp`): command text comes from the CLIENT's dry-run seam, and the failover blast copy is honest-unmeasured — the contrast case to DR-151's deviation
+
+DR-149's permissive blast policy ("live traffic undisturbed" is the only hard line) plus #87's
+"each protocol = its own screen" rule unblocked the VRRP half first: `VrrpManager`/
+`VrrpManagerView` plus the pure `vrrp-rules.ts`, per `docs/SPEC-vrrp-editor.md`, staging through
+the #141 coordinator. No `arista-api-client` change — the client's W3c #51 surface (DR-116–121)
+already carries everything the screen needs.
+
+**Where DR-151 deviated, this screen follows the rule:** `vrrp.ts` is a fully ported module with a
+`{ run: false }` dry-run arm on every field setter (`runCommand`/`runCommandList`,
+`vrrp.ts:560-568`), so the screen composes create/edit batches by CALLING the client's own setters
+(`node.vrrp.setEnable/setPrimaryIp/setPriority/setDescription/setPreempt/setTimersAdvertise`,
+`{ run: false }`) in the `_vrrp_set` order pinned at `vrrp.test.ts:404-424` — enable line first,
+because `create` injects `enable: false` when omitted (`vrrp.ts:585`). The modern/legacy family
+spelling (`ipv4`/`priority-level`/`session description`/`disabled` vs the legacy arms) is the
+client's config-text detection (DR-116), inherited for free; the screen never picks a family. The
+ONE literal the screen composes by hand is the delete line `no vrrp <vrid>` — `delete()` has no
+dry-run arm (always sends, `vrrp.ts:588`), so the text is the client's own era-free literal (pin
+`vrrp.test.ts:508`), cited at its composition site.
+
+**Owner intake 2026-11-21 (this slice):** (1) verb set **create + per-field edit + delete** with a
+bounded field set — the advanced fields (secondary IPs, tracked objects, BFD, ip-version,
+mac-adv-interval, the three delays) are READ-ONLY columns in v1; (2) **honest unmeasured blast
+copy**: no VRRP failover blast has been measured on any target (unlike the OSPF/STP lanes), so
+every confirm states the switchover mechanism and says the timing is NOT measured — no fabricated
+number, and the first real use on the unit is the measurement opportunity.
+
+**Device facts the screen stands on (unchanged here, cited for the record):** `vrrp <n> ipv4
+<addr>` on an SVI staged a real 12-line diff on the 7050TX-64-R and aborted (DR-135 run 9 item 8,
+`configure-session-vlan-interface-vrrp-ipv4--hw-session-probe.json`); legacy `vrrp <n> ip <addr>`
+is REFUSED on the box (`deprecated by 'vrrp ipv4'`); `show vrrp` answers `virtualRouters: []` on
+both targets (element shape unmodelled — count-only device panel); the box runs zero VRRP today
+and `ip routing` is OFF — the screen never touches it (the audit's #87 Do-Not-Do; the create
+confirm states the captured `no ip routing` posture so a create is never mistaken for enabling
+inter-VLAN routing). Creating an existing `(interface, vrid)` and staging an already-said value
+are refused in-form at zero appends. `ROUTING_READ_ONLY_NOTE` narrows to OSPF/route-map/BGP;
+those editors stay open slices (BGP additionally has no device read surface on this SKU).
+
+**Related:** DR-149 (the permissive policy that unblocked this); DR-151 (the deviation this is the
+contrast case to); DR-116–121 (the client module this composes through); DR-135 (the hardware
+grammar verdicts); DR-057 (device refusals stay the device's answer); DR-043 (container evidence
+never establishes this unit's failover behavior); DR-024 (running-config-only); #87.
+
 ## Open items (need the device)
 
 Use cEOS first for software behavior and schema exploration, recording its model/version;

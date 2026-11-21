@@ -194,7 +194,7 @@ Since this was pulled from a feature list, this needs to be turned into relevant
 - [ ] GRE tunnel interfaces; GRE ECMP next-hop groups; GRE next-hop group liveness detection
 - [ ] IP-in-IP ECMP next-hop groups; IP-in-IP termination (decap group)
 - [ ] ECMP visibility over tunnels
-- [ ] VRRP / VRRPv6; VRF-aware VRRP BFD; VRRP + local proxy-ARP
+- [x] VRRP / VRRPv6; VRF-aware VRRP BFD; VRRP + local proxy-ARP *(partial: #87 VRRP slice — `#/routing/vrrp` views every configured (interface, VRID) group and creates/edits/deletes IPv4 virtual routers (bounded fields: enable, primary IPv4, priority, description, preempt, advertise-interval edit; advanced fields read-only), staging through the shared transaction with the honest-unmeasured failover confirm; every line composed via the client's dry-run seam (DR-116 family detection inherited). VRRPv6, VRF-aware VRRP, BFD tuning, and proxy-ARP interaction stay unmodelled; failover blast remains UNMEASURED on any target)*
 - [ ] IPv6 ND proxy
 - [ ] BFD (v4/v6, VRF-aware, multi-hop, passive mode, hardware-accelerated TX)
 - [ ] RAIL (Rapid Automated Indication of Link Loss)
