@@ -354,7 +354,7 @@ describe('Stp — summary honesty and the closed halves', () => {
     expect(screen.getByRole('row', { name: /Ethernet3/u })).toBeInTheDocument()
   })
 
-  it('NO global-mode control renders anywhere, and the static B3 (#88) note is on screen', async () => {
+  it('NO global-mode control renders anywhere, and the note points at the #/stp/global editor (B3 #88 step 2)', async () => {
     const fakes = makeFakes()
     renderScreen(fakes)
     await readyPorts()
@@ -364,7 +364,10 @@ describe('Stp — summary honesty and the closed halves', () => {
     for (const option of within(actionSelect()).getAllByRole('option')) {
       expect(option.textContent).not.toMatch(/mode/u)
     }
-    expect(screen.getByText(/Global spanning-tree mode editing is not offered/u)).toHaveTextContent('B3 (#88)')
+    // B3 #88 step 2 (2026-11-21): the mode + MST region editor shipped on its own route; the old
+    // "blocked pending #88" sentence is retired, and this screen still renders no mode control.
+    expect(screen.getByText(/Global spanning-tree mode editing lives on the dedicated/u)).toHaveTextContent('#/stp/global')
+    expect(screen.queryByText(/blocked pending issue B3/u)).not.toBeInTheDocument()
     // The MST stub sentence never reads as "the switch has no instances".
     expect(screen.getByText(/`return dict\(\)` stub since 2015/u)).toHaveTextContent('not a claim')
   })

@@ -3070,6 +3070,41 @@ verdicts); DR-035(c) (the fence — narrowed only for this named lane); DR-011 (
 artifacts — this run's addition); DR-043 (hardware facts, no cross-claim to containers either);
 #89.
 
+### DR-151 — the #88 global STP editor ships as a Web-UI-only raw-line screen (`#/stp/global`): the command text pins to CAPTURES, not client verbs — the repo's one recorded convention deviation, bounded by a pin module and a refusal fallback
+
+DR-149 settled the guard design; the owner's 2026-11-21 intake settled the three build questions
+(mode set **including `rapid-pvst`**, placement on a **new route `#/stp/global`**, and — against
+this agent's recommendation — **no client slice**: the MST-region grammar is composed in the webui
+from capture spellings). Shipped per `docs/SPEC-stp-global-editor.md`: `StpGlobal`/`StpGlobalView`
+plus the pure `stp-global-rules.ts`, staging through the #141 coordinator; `#/stp` keeps zero
+mode controls (the audit's "Do Not Do" holds — its note now points at the new route).
+
+**The deviation, recorded because it is deliberate:** every other write screen's command text
+mirrors a client-pinned verb (`stp.test.ts` `sentAsText` and friends); pyeapi never had MST-region
+verbs, and no client slice was authorized, so this screen's strings pin to **captured artifacts**
+instead — the hardware batch `unblock-stp-mst-region-grammar` (the `name`/`revision`/`instance …
+vlan …` spelling, staged-aborted on the box) and `stp-mode-change.ceos.json` (the hyphenated
+`spanning-tree mode rapid-pvst` config line; the camelCase `rapidPvst` belongs to `show` JSON
+only). Bounded three ways: all strings live in one pure module with byte-for-byte pins; the
+`rapid-pvst` option carries a mandatory container-only-acceptance disclosure in-form and its
+device refusal (DR-057) is the designed fallback; and no `no …`/`default …` arm exists anywhere
+(uncaptured spellings stay out — region-mapping **removal** is deliberately not offered until a
+`no instance …` spelling is captured). If a client MST-region slice ever lands, the screen
+switches to it and the deviation retires.
+
+**Also decided here:** the region block reads from `chunkConfig()` (the `show spanning-tree` JSON
+carries no region fields — verified against the cEOS capture), SOFT so its failure mutes only the
+region panel; the child lines stage unindented via `submodeCommands`, the same in-submode framing
+every hardware-staged submode batch this app has sent (the capture's own leading whitespace is
+cosmetic — sequential application is the proven mechanism, and the device diff stays the
+authority). The second-confirm seam (Users-screen pattern) carries the DR-149 blast facts for
+mode changes and region name/revision changes; a pure instance remap ships risks only.
+
+**Related:** DR-149 (the guard design this implements); DR-148 (the blast numbers the confirm
+quotes); DR-096 (the client's mode write-grammar stays untouched — the screen stages raw lines,
+so offering `rapid-pvst` does not widen `STP_MODES`); DR-057 (the device keeps the say); DR-043
+(the scoping sentence rides every risk list); DR-032 (device tokens verbatim); #88.
+
 ## Open items (need the device)
 
 Use cEOS first for software behavior and schema exploration, recording its model/version;

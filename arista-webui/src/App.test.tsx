@@ -238,6 +238,21 @@ describe('App composition (F6 chrome)', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('EAPI_HOST')
   })
 
+  it('puts the B3 (#88) spanning-tree global editor in the nav on #/stp/global', () => {
+    render(<App />)
+
+    const global = screen.getByRole('link', { name: 'Spanning-tree global' })
+    expect(global).toHaveAttribute('href', '#/stp/global')
+    expect(global).not.toHaveAttribute('aria-current', 'page')
+    // Unconfigured: the route registers and the screen idles on the proxy prompt — visiting it
+    // must not open a session or read anything. The two STP screens stay separate (audit #88).
+    fireEvent.click(global)
+    expect(screen.getByRole('heading', { level: 2, name: 'Spanning-tree global' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Stage mode change' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Stage region edit' })).toBeDisabled()
+    expect(screen.getByRole('alert')).toHaveTextContent('EAPI_HOST')
+  })
+
   // ---- #140a: runtime-connect composition (dev server WITHOUT the env proxy). These render the
   // real App with the probe seam stubbed; nothing here dials a device.
   afterEach(() => {

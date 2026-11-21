@@ -143,8 +143,10 @@ describe('stp-rules — read-side display helpers and standing notes', () => {
   })
 
   it('the standing notes carry #85’s closures, updated by B3 #88 step 1', () => {
-    expect(STP_MODE_EDIT_NOTE).toMatch(/not offered/iu)
-    expect(STP_MODE_EDIT_NOTE).toContain('B3 (#88)')
+    // B3 #88 step 2 (2026-11-21): the note now POINTS at the #/stp/global editor; the old
+    // "blocked pending #88" sentence is retired (the Stp.test.tsx pin proves it is gone).
+    expect(STP_MODE_EDIT_NOTE).toMatch(/lives on the dedicated `Spanning-tree global` screen \(#\/stp\/global\)/u)
+    expect(STP_MODE_EDIT_NOTE).toMatch(/never mixed into this per-port guard screen/u)
     // The #85 sentence "operational STP state not yet observable — capture pending" is RETIRED:
     // the capture landed on both targets (#88 step 1). The remaining note is about a FAILED READ.
     expect(STP_OPERATIONAL_UNAVAILABLE_NOTE).toMatch(/did not answer/u)

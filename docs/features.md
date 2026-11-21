@@ -93,8 +93,8 @@ Since this was pulled from a feature list, this needs to be turned into relevant
 - [ ] VLAN translation / dual-tag VLAN manipulation
 - [ ] PVLAN
 - [ ] IEEE 802.1w RSTP
-- [ ] IEEE 802.1s MSTP
-- [ ] Rapid Per-VLAN Spanning Tree (Rapid-PVSTP)
+- [x] IEEE 802.1s MSTP *(partial: B3 #88 step 2 — `#/stp/global` edits the global mode (`mstp`/`none`/`rapid-pvst`) and the MST region block (`name`/`revision`/`instance … vlan …`) through the shared transaction, capture-pinned lines (DR-149 guard design: blast facts at every confirm, no hygiene gate); operational instance state stays `#/stp`'s read-only panel, and the client's MST-instance reader remains upstream's stub)*
+- [x] Rapid Per-VLAN Spanning Tree (Rapid-PVSTP) *(partial: B3 #88 step 2 — `rapid-pvst` is OFFERED in the mode editor with the container-only-acceptance disclosure (proven on cEOS-lab 4.28.14M, DR-148; the 7050TX-64-R may refuse — its refusal is the fallback); per-VLAN operational state unverified on this unit)*
 - [ ] MST–PVST interop
 - [x] BPDU guard / BPDU filtering *(S15 #85 per-port `spanning-tree bpduguard` + `portfast`/edge/auto writes through a named session; BPDU filtering is not in the ported pyeapi stp verbs, so that half stays open)*
 - [ ] Root guard / loop guard / loop protection
