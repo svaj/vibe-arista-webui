@@ -155,6 +155,7 @@ export type LiveRefusalCode =
   | 'EAPI_SCRATCH_INTERFACE_INVALID'
   | 'EAPI_SCRATCH_INTERFACE_NOT_ETHERNET'
   | 'EAPI_HARDWARE_WRITE_FENCE'
+  | 'EAPI_PERSISTENCE_CONSENT_MISSING'
   | 'EAPI_SCRATCH_VLAN_MISSING'
   | 'EAPI_SCRATCH_VLAN_INVALID'
   | 'EAPI_LAB_FULL_WRITE_MISSING'
@@ -615,6 +616,15 @@ export interface ScratchInterfaceGateOptions {
    * scratch-still-unused check before a commit batch). Everything else must take the refusal.
    */
   readonly hardwareSessionProbe?: boolean | undefined
+  /**
+   * `true` only from `src/persistence-hardware.live.test.ts` — the #89 persistence-verb lane the
+   * owner authorized on 2026-11-21 (`copy running-config startup-config`, `configure replace`,
+   * session-scoped `rollback`), fenced by its own consent chain: `EAPI_HW_PERSISTENCE=1` plus a typed
+   * `EAPI_HW_PERSISTENCE_CONSENT` echo of the scratch port, the same scratch-still-unused check, and a
+   * plan the operator reviews before the run (`scripts/capture-hw-persistence.sh`). This is the
+   * SECOND lane ever admitted past the fence; everything else still takes the refusal.
+   */
+  readonly hardwarePersistence?: boolean | undefined
 }
 
 /**
@@ -631,10 +641,10 @@ export interface ScratchInterfaceGateOptions {
  * calls, rather than in 19 hand-written files a future suite can forget.
  */
 export function requireScratchInterface(target: LiveTarget, options: ScratchInterfaceGateOptions = {}): { ok: true; name: string } | LiveRefusal {
-  if (target.targetClass === HARDWARE_TARGET_CLASS && options.hardwareSessionProbe !== true) {
+  if (target.targetClass === HARDWARE_TARGET_CLASS && options.hardwareSessionProbe !== true && options.hardwarePersistence !== true) {
     return refusal(
       'EAPI_HARDWARE_WRITE_FENCE',
-      'this scratch gate is the lab lane write gate: with EAPI_TARGET_CLASS=hardware the only allowed mutation path is src/hw-session-probe.live.test.ts running a reviewed probe spec (DR-124/DR-125/DR-132) — a lab suite staging lines on a switch port is exactly the accident that fence exists to prevent',
+      'this scratch gate is the lab lane write gate: with EAPI_TARGET_CLASS=hardware the only allowed mutation paths are src/hw-session-probe.live.test.ts running a reviewed probe spec (DR-124/DR-125/DR-132) and the owner-authorized src/persistence-hardware.live.test.ts persistence lane (its own consent chain) — a lab suite staging lines on a switch port is exactly the accident that fence exists to prevent',
     )
   }
   const name = target.scratchInterface
@@ -700,9 +710,49 @@ export function requireLabFullWrite(target: LiveTarget, env: LiveEnv): LiveRefus
 }
 
 /**
+ * The #89 hardware persistence-verb consent (#166 follow-up, owner authorization 2026-11-21):
+ * `copy running-config startup-config`, `configure replace`, and session-scoped `rollback` may run
+ * against the physical switch ONLY from `src/persistence-hardware.live.test.ts`, and only when the
+ * operator has (a) set `EAPI_HW_PERSISTENCE=1` and (b) typed `EAPI_HW_PERSISTENCE_CONSENT` as an
+ * exact echo of the declared `EAPI_SCRATCH_INTERFACE` — the same typed-echo pattern as
+ * `EAPI_HW_CONSENT` and `EAPI_HW_CORS_CONSENT`, so the port the lane may mutate is the port the
+ * operator named by hand. The runner (`scripts/capture-hw-persistence.sh`) prints the full plan for
+ * review BEFORE the consent prompt. This guard checks the env pair; the scratch gate above admits
+ * the lane only through `hardwarePersistence: true`.
+ *
+ * `options.rehearsalEcho` is the `--rehearse` shape: the cEOS harness chooses the scratch port only
+ * AFTER the container boots, so an operator cannot echo it in advance. On the throwaway-container
+ * path the typed echo is instead the fixed rehearsal label (the caller supplies it, and the lab
+ * class plus `EAPI_LAB_FULL_WRITE` are separately required by the caller). The label is not a
+ * loophole: rehearsal grants no hardware access — the fence above is hardware-class-only.
+ */
+export function requireHwPersistenceConsent(env: LiveEnv, options: { readonly rehearsalEcho?: string } = {}): LiveRefusal | undefined {
+  if (env['EAPI_HW_PERSISTENCE']?.trim() !== '1') {
+    return refusal('EAPI_PERSISTENCE_CONSENT_MISSING', 'EAPI_HW_PERSISTENCE=1 is not set — the physical persistence-verb lane (copy run start / configure replace / rollback) runs only under the owner authorization of 2026-11-21, via scripts/capture-hw-persistence.sh')
+  }
+  const scratch = envValue(env, 'EAPI_SCRATCH_INTERFACE')?.trim() ?? ''
+  const consent = envValue(env, 'EAPI_HW_PERSISTENCE_CONSENT')?.trim() ?? ''
+  if (options.rehearsalEcho !== undefined) {
+    if (consent !== options.rehearsalEcho) {
+      return refusal('EAPI_PERSISTENCE_CONSENT_MISSING', `EAPI_HW_PERSISTENCE_CONSENT must be typed as the exact rehearsal echo (${JSON.stringify(options.rehearsalEcho)}) — the operator confirms the throwaway-container run by hand`)
+    }
+    return undefined
+  }
+  if (scratch === '') {
+    return refusal('EAPI_SCRATCH_INTERFACE_MISSING', 'EAPI_SCRATCH_INTERFACE is not set — the persistence lane mutates exactly one declared scratch port, never one inferred (DR-035(b))')
+  }
+  if (consent !== scratch) {
+    return refusal('EAPI_PERSISTENCE_CONSENT_MISSING', `EAPI_HW_PERSISTENCE_CONSENT must be typed as an exact echo of EAPI_SCRATCH_INTERFACE (${JSON.stringify(scratch)}) — the operator names the mutated port by hand, not the shell`)
+  }
+  return undefined
+}
+
+/**
  * The persistence ban, spelled as a check rather than a comment: DR-035(c) and docs/CEOS.md:83-84 say
  * a live lane never saves the startup config. `docs/TESTING.md:157-159` reserves one exempt file for a
  * dedicated persistence test — that file (if it is ever written) must not call this guard.
+ * The exempt file now EXISTS: `src/persistence-hardware.live.test.ts` (#89, owner-authorized
+ * 2026-11-21) — it never calls this guard, and no other lane may treat the exemption as its own.
  */
 export function assertNoPersistenceCommand(commands: readonly unknown[]): LiveRefusal | undefined {
   const offender = commands.find((command) => /(?:^|\s)copy\s+running-config\s+startup-config|(?:^|\s)copy\s+run\s+start/iu.test(String(commandText(command))))

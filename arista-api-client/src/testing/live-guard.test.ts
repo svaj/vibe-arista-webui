@@ -32,6 +32,7 @@ import {
   liveTransportOptions,
   matchesDeviceIdentity,
   matchesExactly,
+  requireHwPersistenceConsent,
   requireLabFullWrite,
   requireScratchInterface,
   requireScratchVlan,
@@ -565,6 +566,63 @@ describe('the write-side gates (DR-035)', () => {
     const lab = accepted(labEnv({ EAPI_SCRATCH_INTERFACE: 'Management0' }))
     const stillRefused = requireScratchInterface(lab, { hardwareSessionProbe: true })
     expect('code' in stillRefused ? stillRefused.code : '').toBe('EAPI_SCRATCH_INTERFACE_NOT_ETHERNET')
+  })
+
+  it('the #89 persistence lane is the SECOND named exemption from the hardware write fence (owner authorization 2026-11-21)', () => {
+    const target = accepted({ ...hwEnvLike(), EAPI_SCRATCH_INTERFACE: 'Ethernet22' })
+    // Without either exemption the fence stands, and its reason now names both admitted lanes.
+    const fenced = requireScratchInterface(target)
+    expect('code' in fenced ? fenced.code : '').toBe('EAPI_HARDWARE_WRITE_FENCE')
+    if ('reason' in fenced) expect(fenced.reason).toMatch(/persistence-hardware/u)
+    // The persistence opt-in admits the same vetted name — and only on a hardware target.
+    expect(requireScratchInterface(target, { hardwarePersistence: true })).toEqual({ ok: true, name: 'Ethernet22' })
+    // Inert for lab targets, exactly like hardwareSessionProbe: it cannot widen the lab gate.
+    const lab = accepted(labEnv({ EAPI_SCRATCH_INTERFACE: 'Management0' }))
+    expect(requireScratchInterface(lab, { hardwarePersistence: true })).toMatchObject({ code: 'EAPI_SCRATCH_INTERFACE_NOT_ETHERNET' })
+  })
+})
+
+describe('the #89 hardware persistence consent chain (owner authorization 2026-11-21)', () => {
+  const consentEnv = (overrides: Record<string, string | undefined> = {}): LiveEnv => ({
+    EAPI_HW_PERSISTENCE: '1',
+    EAPI_SCRATCH_INTERFACE: 'Ethernet22',
+    EAPI_HW_PERSISTENCE_CONSENT: 'Ethernet22',
+    ...overrides,
+  })
+
+  it('accepts only the full chain: flag set, scratch declared, consent typed as an exact echo', () => {
+    expect(requireHwPersistenceConsent(consentEnv())).toBeUndefined()
+    // Whitespace around the typed echo is tolerated (a human typing into a shell), case is not.
+    expect(requireHwPersistenceConsent(consentEnv({ EAPI_HW_PERSISTENCE_CONSENT: '  Ethernet22  ' }))).toBeUndefined()
+  })
+
+  it('refuses without EAPI_HW_PERSISTENCE=1 — the lane never runs by accident', () => {
+    expect(requireHwPersistenceConsent(consentEnv({ EAPI_HW_PERSISTENCE: undefined }))?.code).toBe('EAPI_PERSISTENCE_CONSENT_MISSING')
+    expect(requireHwPersistenceConsent(consentEnv({ EAPI_HW_PERSISTENCE: '0' }))?.code).toBe('EAPI_PERSISTENCE_CONSENT_MISSING')
+    expect(requireHwPersistenceConsent(consentEnv({ EAPI_HW_PERSISTENCE: 'yes' }))?.code).toBe('EAPI_PERSISTENCE_CONSENT_MISSING')
+  })
+
+  it('refuses an undeclared scratch port (never inferred, DR-035(b))', () => {
+    expect(requireHwPersistenceConsent(consentEnv({ EAPI_SCRATCH_INTERFACE: undefined }))?.code).toBe('EAPI_SCRATCH_INTERFACE_MISSING')
+    expect(requireHwPersistenceConsent(consentEnv({ EAPI_SCRATCH_INTERFACE: '   ' }))?.code).toBe('EAPI_SCRATCH_INTERFACE_MISSING')
+  })
+
+  it('refuses a consent that does not exactly echo the scratch port — the operator names the mutated port by hand', () => {
+    expect(requireHwPersistenceConsent(consentEnv({ EAPI_HW_PERSISTENCE_CONSENT: 'Ethernet24' }))?.code).toBe('EAPI_PERSISTENCE_CONSENT_MISSING')
+    // Case-sensitive: the echo must be the declared spelling, not a lookalike.
+    expect(requireHwPersistenceConsent(consentEnv({ EAPI_HW_PERSISTENCE_CONSENT: 'ethernet22' }))?.code).toBe('EAPI_PERSISTENCE_CONSENT_MISSING')
+    expect(requireHwPersistenceConsent(consentEnv({ EAPI_HW_PERSISTENCE_CONSENT: undefined }))?.code).toBe('EAPI_PERSISTENCE_CONSENT_MISSING')
+    // The refusal reason names the port that must be echoed, so the prompt is self-explaining.
+    expect(requireHwPersistenceConsent(consentEnv({ EAPI_HW_PERSISTENCE_CONSENT: 'nope' }))?.reason).toMatch(/Ethernet22/u)
+  })
+
+  it('the --rehearse shape echoes a fixed label instead of a port (the harness picks the port after boot)', () => {
+    // With the rehearsal label, no scratch port needs declaring in advance…
+    expect(requireHwPersistenceConsent({ EAPI_HW_PERSISTENCE: '1', EAPI_HW_PERSISTENCE_CONSENT: 'REHEARSAL-CEOS' }, { rehearsalEcho: 'REHEARSAL-CEOS' })).toBeUndefined()
+    // …but the typed echo still has to match the label exactly.
+    expect(requireHwPersistenceConsent({ EAPI_HW_PERSISTENCE: '1', EAPI_HW_PERSISTENCE_CONSENT: 'Ethernet22' }, { rehearsalEcho: 'REHEARSAL-CEOS' })?.code).toBe('EAPI_PERSISTENCE_CONSENT_MISSING')
+    // Without the rehearsal option, the label is NOT a loophole past the port echo.
+    expect(requireHwPersistenceConsent(consentEnv({ EAPI_HW_PERSISTENCE_CONSENT: 'REHEARSAL-CEOS' }))?.code).toBe('EAPI_PERSISTENCE_CONSENT_MISSING')
   })
 })
 
