@@ -1,0 +1,1738 @@
+{
+  "kind": "session-grammar-ceos-review-artifact",
+  "warning": "CONTAINER EVIDENCE ONLY — cEOS-lab 4.28.14M. NOT a 7050TX-64 / 4.28.13.1M verdict (DR-043). Every session aborted; nothing committed (see findings[\"sweep-and-net-zero\"]). The hardware halves of all four families stay open device questions.",
+  "generatedAt": "2026-11-21T22:24:26.687Z",
+  "containerIdentity": {
+    "version": "4.28.14M-50015774.42814M (engineering build)",
+    "modelName": "cEOSLab"
+  },
+  "findings": [
+    {
+      "id": "sessions-before",
+      "names": [
+        "lab-pending-capture",
+        "lab-provision"
+      ]
+    },
+    {
+      "id": "name-length-boundary",
+      "clientMax": 64,
+      "ladder": [
+        {
+          "len": 64,
+          "accepted": true,
+          "errorRaw": "{\"jsonrpc\": \"2.0\", \"id\": \"session-grammar\", \"result\": [{}, {}]}",
+          "abortRecorded": true
+        },
+        {
+          "len": 65,
+          "accepted": true,
+          "errorRaw": "{\"jsonrpc\": \"2.0\", \"id\": \"session-grammar\", \"result\": [{}, {}]}",
+          "abortRecorded": true
+        },
+        {
+          "len": 96,
+          "accepted": true,
+          "errorRaw": "{\"jsonrpc\": \"2.0\", \"id\": \"session-grammar\", \"result\": [{}, {}]}",
+          "abortRecorded": true
+        },
+        {
+          "len": 128,
+          "accepted": true,
+          "errorRaw": "{\"jsonrpc\": \"2.0\", \"id\": \"session-grammar\", \"result\": [{}, {}]}",
+          "abortRecorded": true
+        },
+        {
+          "len": 256,
+          "accepted": true,
+          "errorRaw": "{\"jsonrpc\": \"2.0\", \"id\": \"session-grammar\", \"result\": [{}, {}]}",
+          "abortRecorded": true
+        },
+        {
+          "len": 512,
+          "accepted": true,
+          "errorRaw": "{\"jsonrpc\": \"2.0\", \"id\": \"session-grammar\", \"result\": [{}, {}]}",
+          "abortRecorded": true
+        },
+        {
+          "len": 1024,
+          "accepted": true,
+          "errorRaw": "{\"jsonrpc\": \"2.0\", \"id\": \"session-grammar\", \"result\": [{}, {}]}",
+          "abortRecorded": true
+        },
+        {
+          "len": 2048,
+          "accepted": true,
+          "errorRaw": "{\"jsonrpc\": \"2.0\", \"id\": \"session-grammar\", \"result\": [{}, {}]}",
+          "abortRecorded": true
+        },
+        {
+          "len": 4096,
+          "accepted": true,
+          "errorRaw": "{\"jsonrpc\": \"2.0\", \"id\": \"session-grammar\", \"result\": [{}, {}]}",
+          "abortRecorded": true
+        },
+        {
+          "len": 8192,
+          "accepted": true,
+          "errorRaw": "{\"jsonrpc\": \"2.0\", \"id\": \"session-grammar\", \"result\": [{}, {}]}",
+          "abortRecorded": true
+        }
+      ],
+      "bisection": [],
+      "deviceMaxAccepted": ">= 8192 (ladder never refused)",
+      "note": "Raw `configure session <name>` openers, aborted in-probe, nothing committed. deviceMaxAccepted is the LONGEST name this container opened; the client bound (64) is this port's, not the device's."
+    },
+    {
+      "id": "name-charset-boundary",
+      "probes": [
+        {
+          "id": "space",
+          "charJson": "\" \"",
+          "note": "whitespace splits the CLI token — expect a parse answer, not a charset one",
+          "accepted": true,
+          "errorRaw": "{\"jsonrpc\": \"2.0\", \"id\": \"session-grammar\", \"result\": [{}, {}]}",
+          "abortRecorded": true
+        },
+        {
+          "id": "dquote",
+          "charJson": "\"\\\"\"",
+          "note": "quote: can open a quoted token after the name",
+          "accepted": false,
+          "error": "CLI command 2 of 2 'configure session sg-c-dquote\"' failed: could not run command",
+          "errorRaw": "{\"jsonrpc\": \"2.0\", \"id\": \"session-grammar\", \"error\": {\"data\": [{}, {\"errors\": [\"Session name sg-c-dquote\\\" is invalid.\"]}], \"message\": \"CLI command 2 of 2 'configure session sg-c-dquote\\\"' failed: could not run command\", \"code\": 1000}}",
+          "abortRecorded": false
+        },
+        {
+          "id": "squote",
+          "charJson": "\"'\"",
+          "note": "single quote",
+          "accepted": false,
+          "error": "CLI command 2 of 2 'configure session sg-c-squote'' failed: could not run command",
+          "errorRaw": "{\"jsonrpc\": \"2.0\", \"id\": \"session-grammar\", \"error\": {\"data\": [{}, {\"errors\": [\"Session name sg-c-squote' is invalid.\"]}], \"message\": \"CLI command 2 of 2 'configure session sg-c-squote'' failed: could not run command\", \"code\": 1000}}",
+          "abortRecorded": false
+        },
+        {
+          "id": "backslash",
+          "charJson": "\"\\\\\"",
+          "note": "escape byte",
+          "accepted": false,
+          "error": "CLI command 2 of 2 'configure session sg-c-backslash\\' failed: could not run command",
+          "errorRaw": "{\"jsonrpc\": \"2.0\", \"id\": \"session-grammar\", \"error\": {\"data\": [{}, {\"errors\": [\"Session name sg-c-backslash\\\\ is invalid.\"]}], \"message\": \"CLI command 2 of 2 'configure session sg-c-backslash\\\\' failed: could not run command\", \"code\": 1000}}",
+          "abortRecorded": false
+        },
+        {
+          "id": "backtick",
+          "charJson": "\"`\"",
+          "note": "shell-history byte at the CLI layer",
+          "accepted": false,
+          "error": "CLI command 2 of 2 'configure session sg-c-backtick`' failed: could not run command",
+          "errorRaw": "{\"jsonrpc\": \"2.0\", \"id\": \"session-grammar\", \"error\": {\"data\": [{}, {\"errors\": [\"Session name sg-c-backtick` is invalid.\"]}], \"message\": \"CLI command 2 of 2 'configure session sg-c-backtick`' failed: could not run command\", \"code\": 1000}}",
+          "abortRecorded": false
+        },
+        {
+          "id": "hash",
+          "charJson": "\"#\"",
+          "note": "comment byte: may swallow the rest of the line",
+          "accepted": false,
+          "error": "CLI command 2 of 2 'configure session sg-c-hash#' failed: could not run command",
+          "errorRaw": "{\"jsonrpc\": \"2.0\", \"id\": \"session-grammar\", \"error\": {\"data\": [{}, {\"errors\": [\"Session name sg-c-hash# is invalid.\"]}], \"message\": \"CLI command 2 of 2 'configure session sg-c-hash#' failed: could not run command\", \"code\": 1000}}",
+          "abortRecorded": false
+        },
+        {
+          "id": "semicolon",
+          "charJson": "\";\"",
+          "note": "command terminator: may open the TRUNCATED prefix name — sweep owns it",
+          "accepted": false,
+          "error": "CLI command 2 of 2 'configure session sg-c-semicolon;' failed: could not run command",
+          "errorRaw": "{\"jsonrpc\": \"2.0\", \"id\": \"session-grammar\", \"error\": {\"data\": [{}, {\"errors\": [\"Session name sg-c-semicolon; is invalid.\"]}], \"message\": \"CLI command 2 of 2 'configure session sg-c-semicolon;' failed: could not run command\", \"code\": 1000}}",
+          "abortRecorded": false
+        },
+        {
+          "id": "tab",
+          "charJson": "\"\\t\"",
+          "note": "control byte (whitespace class)",
+          "accepted": true,
+          "errorRaw": "{\"jsonrpc\": \"2.0\", \"id\": \"session-grammar\", \"result\": [{}, {}]}",
+          "abortRecorded": true
+        },
+        {
+          "id": "newline",
+          "charJson": "\"\\n\"",
+          "note": "control byte: would end the command line — nothing is placed after it",
+          "accepted": true,
+          "errorRaw": "{\"jsonrpc\": \"2.0\", \"id\": \"session-grammar\", \"result\": [{}, {}]}",
+          "abortRecorded": true
+        }
+      ],
+      "note": "Each byte sits at the END of an otherwise-safe name so an injection-capable parser can only ever open the truncated `sg-c-<id>` prefix (never a crafted second command). The end-of-run sweep aborts every sg-* session, so a truncated open is still owned by this run. Compare against UNSAFE_SESSION_NAME in src/config-session.ts (this port's refusals)."
+    },
+    {
+      "id": "description-quote-depth",
+      "probes": [
+        {
+          "id": "c0-plain",
+          "rawCliText": "\"plain round-trip baseline\"",
+          "note": "the hardware run-2 class, re-asked on the container as the comparison arm",
+          "openerAccepted": true,
+          "storedDescription": "\"plain round-trip baseline\"",
+          "storedFrom": "detail"
+        },
+        {
+          "id": "c1-embedded",
+          "rawCliText": "\"embedded \"quoted\" words\"",
+          "note": "bare embedded double quotes mid-string",
+          "openerAccepted": true,
+          "storedDescription": "\"embedded \"quoted\" words\"",
+          "storedFrom": "detail"
+        },
+        {
+          "id": "c2-escaped",
+          "rawCliText": "\"escaped \\\"quote\\\" inner\"",
+          "note": "backslash-escaped quotes — the shape this client's quoteDescription() emits",
+          "openerAccepted": true,
+          "storedDescription": "\"escaped \\\"quote\\\" inner\"",
+          "storedFrom": "detail"
+        },
+        {
+          "id": "c3-hash",
+          "rawCliText": "\"hash # comment byte\"",
+          "note": "comment byte inside a quoted token",
+          "openerAccepted": true,
+          "storedDescription": "\"hash # comment byte\"",
+          "storedFrom": "detail"
+        },
+        {
+          "id": "c4-semi",
+          "rawCliText": "\"semi ; terminator byte\"",
+          "note": "command-terminator byte inside a quoted token",
+          "openerAccepted": true,
+          "storedDescription": "\"semi ; terminator byte\"",
+          "storedFrom": "detail"
+        },
+        {
+          "id": "c5-backslash",
+          "rawCliText": "\"back \\\\ slash pair\"",
+          "note": "escaped backslash pair",
+          "openerAccepted": true,
+          "storedDescription": "\"back \\\\ slash pair\"",
+          "storedFrom": "detail"
+        },
+        {
+          "id": "c6-backtick",
+          "rawCliText": "\"backtick ` byte\"",
+          "note": "backtick inside a quoted token",
+          "openerAccepted": true,
+          "storedDescription": "\"backtick ` byte\"",
+          "storedFrom": "detail"
+        },
+        {
+          "id": "c7-squote",
+          "rawCliText": "\"apostrophe ' single\"",
+          "note": "single quote inside a double-quoted token",
+          "openerAccepted": true,
+          "storedDescription": "\"apostrophe ' single\"",
+          "storedFrom": "detail"
+        }
+      ],
+      "note": "Raw CLI description text (the device parser is the question, not this client's quoteDescription). storedDescription is what the device kept, read from the session listing while the session was still pending. Compare against quoteDescription()/assertDescriptionText in src/config-session.ts."
+    },
+    {
+      "id": "no-commit-opener",
+      "openerAccepted": true,
+      "listedState": "pending",
+      "listedDescription": "\"sg no-commit probe\"",
+      "stagedDiffText": "--- system:/running-config\n+++ session:/sg-nocommit-1-session-config\n@@ -30,6 +30,9 @@\n vlan 110\n    name LAB-SPARE\n !\n+vlan 150\n+   name LAB-SG-NC\n+!\n management api http-commands\n    no shutdown\n !\n",
+      "commitAttempt": {
+        "accepted": false,
+        "error": "CLI command 3 of 3 'commit' failed: could not run command"
+      },
+      "note": "The client (ConfigSessionOptions.noCommit, config-session.ts) refuses commit() LOCALLY for a no-commit session on the strength of the SessionCli.py:295-311 image note. commitAttempt.error is the DEVICE answer that note predicts. If the commit was accepted, the staged vlan 150 was removed by a follow-up session (net-zero undo recorded in captures)."
+    },
+    {
+      "id": "bare-show-session-config",
+      "accepted": true,
+      "resultShape": [
+        "header",
+        "comments",
+        "cmds"
+      ],
+      "outputHead": "{\"header\":[\"! device: 1c4a26eb5b56 (cEOSLab, EOS-4.28.14M-50015774.42814M (engineering build))\\n!\\n\"],\"comments\":[],\"cmds\":{\"ip route 10.20.0.0/24 10.0.100.2\":null,\"ip prefix-list PL-LAB-STATIC seq 5 permit 10.20.0.0/24 le 32\":null,\"router bgp 65001\":{\"comments\":[],\"cmds\":{\"neighbor 10.0.110.2 remote-as 65002\":null,\"network 10.20.0.0/24\":null,\"router-id 10.0.110.1\":null}},\"transceiver qsfp default",
+      "aborted": true,
+      "note": "STATUS §3: the bare form (without `diffs`) is the read shape still missing on both targets. Staged vlan 151 was ABORTED with the session — net-zero."
+    },
+    {
+      "id": "sweep-and-net-zero",
+      "sessionsBefore": [
+        "lab-pending-capture",
+        "lab-provision"
+      ],
+      "sessionsAfterSweep": [
+        "lab-pending-capture",
+        "lab-provision"
+      ],
+      "swept": [],
+      "netZero": true,
+      "note": "Nothing in this lane commits (the only possible commit is Family D, which undoes itself if accepted), so running-config is net-zero by construction; this sweep proves no sg-* session residue and that the pre-existing lab sessions are untouched."
+    }
+  ],
+  "captures": [
+    {
+      "question": "baseline: sessions before the run (expect lab-pending-capture + lab-provision)",
+      "cmds": [
+        "enable",
+        "show configuration sessions detail"
+      ],
+      "response": {
+        "ok": true,
+        "status": 200,
+        "result": [
+          {},
+          {
+            "maxSavedSessions": 1,
+            "maxOpenSessions": 5,
+            "sessions": {
+              "lab-pending-capture": {
+                "instances": {},
+                "state": "pending",
+                "commitUser": "",
+                "description": ""
+              },
+              "lab-provision": {
+                "instances": {},
+                "state": "completed",
+                "commitUser": "root",
+                "description": "",
+                "completedTime": 1795299850.2688584
+              }
+            }
+          }
+        ],
+        "raw": "{\"jsonrpc\": \"2.0\", \"id\": \"session-grammar\", \"result\": [{}, {\"maxSavedSessions\": 1, \"maxOpenSessions\": 5, \"sessions\": {\"lab-pending-capture\": {\"instances\": {}, \"state\": \"pending\", \"commitUser\": \"\", \"description\": \"\"}, \"lab-provision\": {\"instances\": {}, \"state\": \"completed\", \"commitUser\": \"root\", \"description\": \"\", \"completedTime\": 1795299850.2688584}}}]}"
+      }
+    },
+    {
+      "question": "A: raw opener, name length 64",
+      "cmds": [
+        "enable",
+        "configure session sg-len-64-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+      ],
+      "response": {
+        "ok": true,
+        "status": 200,
+        "result": [
+          {},
+          {}
+        ],
+        "raw": "{\"jsonrpc\": \"2.0\", \"id\": \"session-grammar\", \"result\": [{}, {}]}"
+      }
+    },
+    {
+      "question": "A: raw opener, name length 64 — abort",
+      "cmds": [
+        "enable",
+        "configure session sg-len-64-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx abort"
+      ],
+      "response": {
+        "ok": true,
+        "status": 200,
+        "result": [
+          {},
+          {}
+        ],
+        "raw": "{\"jsonrpc\": \"2.0\", \"id\": \"session-grammar\", \"result\": [{}, {}]}"
+      }
+    },
+    {
+      "question": "A: raw opener, name length 65",
+      "cmds": [
+        "enable",
+        "configure session sg-len-65-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+      ],
+      "response": {
+        "ok": true,
+        "status": 200,
+        "result": [
+          {},
+          {}
+        ],
+        "raw": "{\"jsonrpc\": \"2.0\", \"id\": \"session-grammar\", \"result\": [{}, {}]}"
+      }
+    },
+    {
+      "question": "A: raw opener, name length 65 — abort",
+      "cmds": [
+        "enable",
+        "configure session sg-len-65-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx abort"
+      ],
+      "response": {
+        "ok": true,
+        "status": 200,
+        "result": [
+          {},
+          {}
+        ],
+        "raw": "{\"jsonrpc\": \"2.0\", \"id\": \"session-grammar\", \"result\": [{}, {}]}"
+      }
+    },
+    {
+      "question": "A: raw opener, name length 96",
+      "cmds": [
+        "enable",
+        "configure session sg-len-96-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+      ],
+      "response": {
+        "ok": true,
+        "status": 200,
+        "result": [
+          {},
+          {}
+        ],
+        "raw": "{\"jsonrpc\": \"2.0\", \"id\": \"session-grammar\", \"result\": [{}, {}]}"
+      }
+    },
+    {
+      "question": "A: raw opener, name length 96 — abort",
+      "cmds": [
+        "enable",
+        "configure session sg-len-96-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx abort"
+      ],
+      "response": {
+        "ok": true,
+        "status": 200,
+        "result": [
+          {},
+          {}
+        ],
+        "raw": "{\"jsonrpc\": \"2.0\", \"id\": \"session-grammar\", \"result\": [{}, {}]}"
+      }
+    },
+    {
+      "question": "A: raw opener, name length 128",
+      "cmds": [
+        "enable",
+        "configure session sg-len-128-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+      ],
+      "response": {
+        "ok": true,
+        "status": 200,
+        "result": [
+          {},
+          {}
+        ],
+        "raw": "{\"jsonrpc\": \"2.0\", \"id\": \"session-grammar\", \"result\": [{}, {}]}"
+      }
+    },
+    {
+      "question": "A: raw opener, name length 128 — abort",
+      "cmds": [
+        "enable",
+        "configure session sg-len-128-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx abort"
+      ],
+      "response": {
+        "ok": true,
+        "status": 200,
+        "result": [
+          {},
+          {}
+        ],
+        "raw": "{\"jsonrpc\": \"2.0\", \"id\": \"session-grammar\", \"result\": [{}, {}]}"
+      }
+    },
+    {
+      "question": "A: raw opener, name length 256",
+      "cmds": [
+        "enable",
+        "configure session sg-len-256-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+      ],
+      "response": {
+        "ok": true,
+        "status": 200,
+        "result": [
+          {},
+          {}
+        ],
+        "raw": "{\"jsonrpc\": \"2.0\", \"id\": \"session-grammar\", \"result\": [{}, {}]}"
+      }
+    },
+    {
+      "question": "A: raw opener, name length 256 — abort",
+      "cmds": [
+        "enable",
+        "configure session sg-len-256-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx abort"
+      ],
+      "response": {
+        "ok": true,
+        "status": 200,
+        "result": [
+          {},
+          {}
+        ],
+        "raw": "{\"jsonrpc\": \"2.0\", \"id\": \"session-grammar\", \"result\": [{}, {}]}"
+      }
+    },
+    {
+      "question": "A: raw opener, name length 512",
+      "cmds": [
+        "enable",
+        "configure session sg-len-512-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+      ],
+      "response": {
+        "ok": true,
+        "status": 200,
+        "result": [
+          {},
+          {}
+        ],
+        "raw": "{\"jsonrpc\": \"2.0\", \"id\": \"session-grammar\", \"result\": [{}, {}]}"
+      }
+    },
+    {
+      "question": "A: raw opener, name length 512 — abort",
+      "cmds": [
+        "enable",
+        "configure session sg-len-512-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx abort"
+      ],
+      "response": {
+        "ok": true,
+        "status": 200,
+        "result": [
+          {},
+          {}
+        ],
+        "raw": "{\"jsonrpc\": \"2.0\", \"id\": \"session-grammar\", \"result\": [{}, {}]}"
+      }
+    },
+    {
+      "question": "A: raw opener, name length 1024",
+      "cmds": [
+        "enable",
+        "configure session sg-len-1024-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+      ],
+      "response": {
+        "ok": true,
+        "status": 200,
+        "result": [
+          {},
+          {}
+        ],
+        "raw": "{\"jsonrpc\": \"2.0\", \"id\": \"session-grammar\", \"result\": [{}, {}]}"
+      }
+    },
+    {
+      "question": "A: raw opener, name length 1024 — abort",
+      "cmds": [
+        "enable",
+        "configure session sg-len-1024-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx abort"
+      ],
+      "response": {
+        "ok": true,
+        "status": 200,
+        "result": [
+          {},
+          {}
+        ],
+        "raw": "{\"jsonrpc\": \"2.0\", \"id\": \"session-grammar\", \"result\": [{}, {}]}"
+      }
+    },
+    {
+      "question": "A: raw opener, name length 2048",
+      "cmds": [
+        "enable",
+        "configure session sg-len-2048-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+      ],
+      "response": {
+        "ok": true,
+        "status": 200,
+        "result": [
+          {},
+          {}
+        ],
+        "raw": "{\"jsonrpc\": \"2.0\", \"id\": \"session-grammar\", \"result\": [{}, {}]}"
+      }
+    },
+    {
+      "question": "A: raw opener, name length 2048 — abort",
+      "cmds": [
+        "enable",
+        "configure session sg-len-2048-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx abort"
+      ],
+      "response": {
+        "ok": true,
+        "status": 200,
+        "result": [
+          {},
+          {}
+        ],
+        "raw": "{\"jsonrpc\": \"2.0\", \"id\": \"session-grammar\", \"result\": [{}, {}]}"
+      }
+    },
+    {
+      "question": "A: raw opener, name length 4096",
+      "cmds": [
+        "enable",
+        "configure session sg-len-4096-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+      ],
+      "response": {
+        "ok": true,
+        "status": 200,
+        "result": [
+          {},
+          {}
+        ],
+        "raw": "{\"jsonrpc\": \"2.0\", \"id\": \"session-grammar\", \"result\": [{}, {}]}"
+      }
+    },
+    {
+      "question": "A: raw opener, name length 4096 — abort",
+      "cmds": [
+        "enable",
+        "configure session sg-len-4096-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx abort"
+      ],
+      "response": {
+        "ok": true,
+        "status": 200,
+        "result": [
+          {},
+          {}
+        ],
+        "raw": "{\"jsonrpc\": \"2.0\", \"id\": \"session-grammar\", \"result\": [{}, {}]}"
+      }
+    },
+    {
+      "question": "A: raw opener, name length 8192",
+      "cmds": [
+        "enable",
+        "configure session sg-len-8192-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+      ],
+      "response": {
+        "ok": true,
+        "status": 200,
+        "result": [
+          {},
+          {}
+        ],
+        "raw": "{\"jsonrpc\": \"2.0\", \"id\": \"session-grammar\", \"result\": [{}, {}]}"
+      }
+    },
+    {
+      "question": "A: raw opener, name length 8192 — abort",
+      "cmds": [
+        "enable",
+        "configure session sg-len-8192-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx abort"
+      ],
+      "response": {
+        "ok": true,
+        "status": 200,
+        "result": [
+          {},
+          {}
+        ],
+        "raw": "{\"jsonrpc\": \"2.0\", \"id\": \"session-grammar\", \"result\": [{}, {}]}"
+      }
+    },
+    {
+      "question": "B: raw opener, charset byte space",
+      "cmds": [
+        "enable",
+        "configure session sg-c-space "
+      ],
+      "response": {
+        "ok": true,
+        "status": 200,
+        "result": [
+          {},
+          {}
+        ],
+        "raw": "{\"jsonrpc\": \"2.0\", \"id\": \"session-grammar\", \"result\": [{}, {}]}"
+      }
+    },
+    {
+      "question": "B: raw opener, charset byte space — abort",
+      "cmds": [
+        "enable",
+        "configure session sg-c-space  abort"
+      ],
+      "response": {
+        "ok": true,
+        "status": 200,
+        "result": [
+          {},
+          {}
+        ],
+        "raw": "{\"jsonrpc\": \"2.0\", \"id\": \"session-grammar\", \"result\": [{}, {}]}"
+      }
+    },
+    {
+      "question": "B: raw opener, charset byte dquote",
+      "cmds": [
+        "enable",
+        "configure session sg-c-dquote\""
+      ],
+      "response": {
+        "ok": false,
+        "status": 200,
+        "error": "CLI command 2 of 2 'configure session sg-c-dquote\"' failed: could not run command",
+        "raw": "{\"jsonrpc\": \"2.0\", \"id\": \"session-grammar\", \"error\": {\"data\": [{}, {\"errors\": [\"Session name sg-c-dquote\\\" is invalid.\"]}], \"message\": \"CLI command 2 of 2 'configure session sg-c-dquote\\\"' failed: could not run command\", \"code\": 1000}}"
+      }
+    },
+    {
+      "question": "B: raw opener, charset byte squote",
+      "cmds": [
+        "enable",
+        "configure session sg-c-squote'"
+      ],
+      "response": {
+        "ok": false,
+        "status": 200,
+        "error": "CLI command 2 of 2 'configure session sg-c-squote'' failed: could not run command",
+        "raw": "{\"jsonrpc\": \"2.0\", \"id\": \"session-grammar\", \"error\": {\"data\": [{}, {\"errors\": [\"Session name sg-c-squote' is invalid.\"]}], \"message\": \"CLI command 2 of 2 'configure session sg-c-squote'' failed: could not run command\", \"code\": 1000}}"
+      }
+    },
+    {
+      "question": "B: raw opener, charset byte backslash",
+      "cmds": [
+        "enable",
+        "configure session sg-c-backslash\\"
+      ],
+      "response": {
+        "ok": false,
+        "status": 200,
+        "error": "CLI command 2 of 2 'configure session sg-c-backslash\\' failed: could not run command",
+        "raw": "{\"jsonrpc\": \"2.0\", \"id\": \"session-grammar\", \"error\": {\"data\": [{}, {\"errors\": [\"Session name sg-c-backslash\\\\ is invalid.\"]}], \"message\": \"CLI command 2 of 2 'configure session sg-c-backslash\\\\' failed: could not run command\", \"code\": 1000}}"
+      }
+    },
+    {
+      "question": "B: raw opener, charset byte backtick",
+      "cmds": [
+        "enable",
+        "configure session sg-c-backtick`"
+      ],
+      "response": {
+        "ok": false,
+        "status": 200,
+        "error": "CLI command 2 of 2 'configure session sg-c-backtick`' failed: could not run command",
+        "raw": "{\"jsonrpc\": \"2.0\", \"id\": \"session-grammar\", \"error\": {\"data\": [{}, {\"errors\": [\"Session name sg-c-backtick` is invalid.\"]}], \"message\": \"CLI command 2 of 2 'configure session sg-c-backtick`' failed: could not run command\", \"code\": 1000}}"
+      }
+    },
+    {
+      "question": "B: raw opener, charset byte hash",
+      "cmds": [
+        "enable",
+        "configure session sg-c-hash#"
+      ],
+      "response": {
+        "ok": false,
+        "status": 200,
+        "error": "CLI command 2 of 2 'configure session sg-c-hash#' failed: could not run command",
+        "raw": "{\"jsonrpc\": \"2.0\", \"id\": \"session-grammar\", \"error\": {\"data\": [{}, {\"errors\": [\"Session name sg-c-hash# is invalid.\"]}], \"message\": \"CLI command 2 of 2 'configure session sg-c-hash#' failed: could not run command\", \"code\": 1000}}"
+      }
+    },
+    {
+      "question": "B: raw opener, charset byte semicolon",
+      "cmds": [
+        "enable",
+        "configure session sg-c-semicolon;"
+      ],
+      "response": {
+        "ok": false,
+        "status": 200,
+        "error": "CLI command 2 of 2 'configure session sg-c-semicolon;' failed: could not run command",
+        "raw": "{\"jsonrpc\": \"2.0\", \"id\": \"session-grammar\", \"error\": {\"data\": [{}, {\"errors\": [\"Session name sg-c-semicolon; is invalid.\"]}], \"message\": \"CLI command 2 of 2 'configure session sg-c-semicolon;' failed: could not run command\", \"code\": 1000}}"
+      }
+    },
+    {
+      "question": "B: raw opener, charset byte tab",
+      "cmds": [
+        "enable",
+        "configure session sg-c-tab\t"
+      ],
+      "response": {
+        "ok": true,
+        "status": 200,
+        "result": [
+          {},
+          {}
+        ],
+        "raw": "{\"jsonrpc\": \"2.0\", \"id\": \"session-grammar\", \"result\": [{}, {}]}"
+      }
+    },
+    {
+      "question": "B: raw opener, charset byte tab — abort",
+      "cmds": [
+        "enable",
+        "configure session sg-c-tab\t abort"
+      ],
+      "response": {
+        "ok": true,
+        "status": 200,
+        "result": [
+          {},
+          {}
+        ],
+        "raw": "{\"jsonrpc\": \"2.0\", \"id\": \"session-grammar\", \"result\": [{}, {}]}"
+      }
+    },
+    {
+      "question": "B: raw opener, charset byte newline",
+      "cmds": [
+        "enable",
+        "configure session sg-c-newline\n"
+      ],
+      "response": {
+        "ok": true,
+        "status": 200,
+        "result": [
+          {},
+          {}
+        ],
+        "raw": "{\"jsonrpc\": \"2.0\", \"id\": \"session-grammar\", \"result\": [{}, {}]}"
+      }
+    },
+    {
+      "question": "B: raw opener, charset byte newline — abort",
+      "cmds": [
+        "enable",
+        "configure session sg-c-newline\n abort"
+      ],
+      "response": {
+        "ok": true,
+        "status": 200,
+        "result": [
+          {},
+          {}
+        ],
+        "raw": "{\"jsonrpc\": \"2.0\", \"id\": \"session-grammar\", \"result\": [{}, {}]}"
+      }
+    },
+    {
+      "question": "C: description probe c0-plain",
+      "cmds": [
+        "enable",
+        "configure session sg-c0-plain description \"plain round-trip baseline\""
+      ],
+      "response": {
+        "ok": true,
+        "status": 200,
+        "result": [
+          {},
+          {}
+        ],
+        "raw": "{\"jsonrpc\": \"2.0\", \"id\": \"session-grammar\", \"result\": [{}, {}]}"
+      }
+    },
+    {
+      "question": "C: sessions detail while c0-plain is open",
+      "cmds": [
+        "enable",
+        "show configuration sessions detail"
+      ],
+      "response": {
+        "ok": true,
+        "status": 200,
+        "result": [
+          {},
+          {
+            "maxSavedSessions": 1,
+            "maxOpenSessions": 5,
+            "sessions": {
+              "lab-pending-capture": {
+                "instances": {},
+                "state": "pending",
+                "commitUser": "",
+                "description": ""
+              },
+              "sg-c0-plain": {
+                "instances": {},
+                "state": "pending",
+                "commitUser": "",
+                "description": "\"plain round-trip baseline\""
+              },
+              "lab-provision": {
+                "instances": {},
+                "state": "completed",
+                "commitUser": "root",
+                "description": "",
+                "completedTime": 1795299850.2688596
+              }
+            }
+          }
+        ],
+        "raw": "{\"jsonrpc\": \"2.0\", \"id\": \"session-grammar\", \"result\": [{}, {\"maxSavedSessions\": 1, \"maxOpenSessions\": 5, \"sessions\": {\"lab-pending-capture\": {\"instances\": {}, \"state\": \"pending\", \"commitUser\": \"\", \"description\": \"\"}, \"sg-c0-plain\": {\"instances\": {}, \"state\": \"pending\", \"commitUser\": \"\", \"description\": \"\\\"plain round-trip baseline\\\"\"}, \"lab-provision\": {\"instances\": {}, \"state\": \"completed\", \"commitUser\": \"root\", \"description\": \"\", \"completedTime\": 1795299850.2688596}}}]}"
+      }
+    },
+    {
+      "question": "C: abort c0-plain",
+      "cmds": [
+        "enable",
+        "configure session sg-c0-plain abort"
+      ],
+      "response": {
+        "ok": true,
+        "status": 200,
+        "result": [
+          {},
+          {}
+        ],
+        "raw": "{\"jsonrpc\": \"2.0\", \"id\": \"session-grammar\", \"result\": [{}, {}]}"
+      }
+    },
+    {
+      "question": "C: description probe c1-embedded",
+      "cmds": [
+        "enable",
+        "configure session sg-c1-embedded description \"embedded \"quoted\" words\""
+      ],
+      "response": {
+        "ok": true,
+        "status": 200,
+        "result": [
+          {},
+          {}
+        ],
+        "raw": "{\"jsonrpc\": \"2.0\", \"id\": \"session-grammar\", \"result\": [{}, {}]}"
+      }
+    },
+    {
+      "question": "C: sessions detail while c1-embedded is open",
+      "cmds": [
+        "enable",
+        "show configuration sessions detail"
+      ],
+      "response": {
+        "ok": true,
+        "status": 200,
+        "result": [
+          {},
+          {
+            "maxSavedSessions": 1,
+            "maxOpenSessions": 5,
+            "sessions": {
+              "sg-c1-embedded": {
+                "instances": {},
+                "state": "pending",
+                "commitUser": "",
+                "description": "\"embedded \"quoted\" words\""
+              },
+              "lab-pending-capture": {
+                "instances": {},
+                "state": "pending",
+                "commitUser": "",
+                "description": ""
+              },
+              "lab-provision": {
+                "instances": {},
+                "state": "completed",
+                "commitUser": "root",
+                "description": "",
+                "completedTime": 1795299850.2688596
+              }
+            }
+          }
+        ],
+        "raw": "{\"jsonrpc\": \"2.0\", \"id\": \"session-grammar\", \"result\": [{}, {\"maxSavedSessions\": 1, \"maxOpenSessions\": 5, \"sessions\": {\"sg-c1-embedded\": {\"instances\": {}, \"state\": \"pending\", \"commitUser\": \"\", \"description\": \"\\\"embedded \\\"quoted\\\" words\\\"\"}, \"lab-pending-capture\": {\"instances\": {}, \"state\": \"pending\", \"commitUser\": \"\", \"description\": \"\"}, \"lab-provision\": {\"instances\": {}, \"state\": \"completed\", \"commitUser\": \"root\", \"description\": \"\", \"completedTime\": 1795299850.2688596}}}]}"
+      }
+    },
+    {
+      "question": "C: abort c1-embedded",
+      "cmds": [
+        "enable",
+        "configure session sg-c1-embedded abort"
+      ],
+      "response": {
+        "ok": true,
+        "status": 200,
+        "result": [
+          {},
+          {}
+        ],
+        "raw": "{\"jsonrpc\": \"2.0\", \"id\": \"session-grammar\", \"result\": [{}, {}]}"
+      }
+    },
+    {
+      "question": "C: description probe c2-escaped",
+      "cmds": [
+        "enable",
+        "configure session sg-c2-escaped description \"escaped \\\"quote\\\" inner\""
+      ],
+      "response": {
+        "ok": true,
+        "status": 200,
+        "result": [
+          {},
+          {}
+        ],
+        "raw": "{\"jsonrpc\": \"2.0\", \"id\": \"session-grammar\", \"result\": [{}, {}]}"
+      }
+    },
+    {
+      "question": "C: sessions detail while c2-escaped is open",
+      "cmds": [
+        "enable",
+        "show configuration sessions detail"
+      ],
+      "response": {
+        "ok": true,
+        "status": 200,
+        "result": [
+          {},
+          {
+            "maxSavedSessions": 1,
+            "maxOpenSessions": 5,
+            "sessions": {
+              "sg-c2-escaped": {
+                "instances": {},
+                "state": "pending",
+                "commitUser": "",
+                "description": "\"escaped \\\"quote\\\" inner\""
+              },
+              "lab-provision": {
+                "instances": {},
+                "state": "completed",
+                "commitUser": "root",
+                "description": "",
+                "completedTime": 1795299850.2688594
+              },
+              "lab-pending-capture": {
+                "instances": {},
+                "state": "pending",
+                "commitUser": "",
+                "description": ""
+              }
+            }
+          }
+        ],
+        "raw": "{\"jsonrpc\": \"2.0\", \"id\": \"session-grammar\", \"result\": [{}, {\"maxSavedSessions\": 1, \"maxOpenSessions\": 5, \"sessions\": {\"sg-c2-escaped\": {\"instances\": {}, \"state\": \"pending\", \"commitUser\": \"\", \"description\": \"\\\"escaped \\\\\\\"quote\\\\\\\" inner\\\"\"}, \"lab-provision\": {\"instances\": {}, \"state\": \"completed\", \"commitUser\": \"root\", \"description\": \"\", \"completedTime\": 1795299850.2688594}, \"lab-pending-capture\": {\"instances\": {}, \"state\": \"pending\", \"commitUser\": \"\", \"description\": \"\"}}}]}"
+      }
+    },
+    {
+      "question": "C: abort c2-escaped",
+      "cmds": [
+        "enable",
+        "configure session sg-c2-escaped abort"
+      ],
+      "response": {
+        "ok": true,
+        "status": 200,
+        "result": [
+          {},
+          {}
+        ],
+        "raw": "{\"jsonrpc\": \"2.0\", \"id\": \"session-grammar\", \"result\": [{}, {}]}"
+      }
+    },
+    {
+      "question": "C: description probe c3-hash",
+      "cmds": [
+        "enable",
+        "configure session sg-c3-hash description \"hash # comment byte\""
+      ],
+      "response": {
+        "ok": true,
+        "status": 200,
+        "result": [
+          {},
+          {}
+        ],
+        "raw": "{\"jsonrpc\": \"2.0\", \"id\": \"session-grammar\", \"result\": [{}, {}]}"
+      }
+    },
+    {
+      "question": "C: sessions detail while c3-hash is open",
+      "cmds": [
+        "enable",
+        "show configuration sessions detail"
+      ],
+      "response": {
+        "ok": true,
+        "status": 200,
+        "result": [
+          {},
+          {
+            "maxSavedSessions": 1,
+            "maxOpenSessions": 5,
+            "sessions": {
+              "sg-c3-hash": {
+                "instances": {},
+                "state": "pending",
+                "commitUser": "",
+                "description": "\"hash # comment byte\""
+              },
+              "lab-pending-capture": {
+                "instances": {},
+                "state": "pending",
+                "commitUser": "",
+                "description": ""
+              },
+              "lab-provision": {
+                "instances": {},
+                "state": "completed",
+                "commitUser": "root",
+                "description": "",
+                "completedTime": 1795299850.268859
+              }
+            }
+          }
+        ],
+        "raw": "{\"jsonrpc\": \"2.0\", \"id\": \"session-grammar\", \"result\": [{}, {\"maxSavedSessions\": 1, \"maxOpenSessions\": 5, \"sessions\": {\"sg-c3-hash\": {\"instances\": {}, \"state\": \"pending\", \"commitUser\": \"\", \"description\": \"\\\"hash # comment byte\\\"\"}, \"lab-pending-capture\": {\"instances\": {}, \"state\": \"pending\", \"commitUser\": \"\", \"description\": \"\"}, \"lab-provision\": {\"instances\": {}, \"state\": \"completed\", \"commitUser\": \"root\", \"description\": \"\", \"completedTime\": 1795299850.268859}}}]}"
+      }
+    },
+    {
+      "question": "C: abort c3-hash",
+      "cmds": [
+        "enable",
+        "configure session sg-c3-hash abort"
+      ],
+      "response": {
+        "ok": true,
+        "status": 200,
+        "result": [
+          {},
+          {}
+        ],
+        "raw": "{\"jsonrpc\": \"2.0\", \"id\": \"session-grammar\", \"result\": [{}, {}]}"
+      }
+    },
+    {
+      "question": "C: description probe c4-semi",
+      "cmds": [
+        "enable",
+        "configure session sg-c4-semi description \"semi ; terminator byte\""
+      ],
+      "response": {
+        "ok": true,
+        "status": 200,
+        "result": [
+          {},
+          {}
+        ],
+        "raw": "{\"jsonrpc\": \"2.0\", \"id\": \"session-grammar\", \"result\": [{}, {}]}"
+      }
+    },
+    {
+      "question": "C: sessions detail while c4-semi is open",
+      "cmds": [
+        "enable",
+        "show configuration sessions detail"
+      ],
+      "response": {
+        "ok": true,
+        "status": 200,
+        "result": [
+          {},
+          {
+            "maxSavedSessions": 1,
+            "maxOpenSessions": 5,
+            "sessions": {
+              "lab-pending-capture": {
+                "instances": {},
+                "state": "pending",
+                "commitUser": "",
+                "description": ""
+              },
+              "lab-provision": {
+                "instances": {},
+                "state": "completed",
+                "commitUser": "root",
+                "description": "",
+                "completedTime": 1795299850.2688594
+              },
+              "sg-c4-semi": {
+                "instances": {},
+                "state": "pending",
+                "commitUser": "",
+                "description": "\"semi ; terminator byte\""
+              }
+            }
+          }
+        ],
+        "raw": "{\"jsonrpc\": \"2.0\", \"id\": \"session-grammar\", \"result\": [{}, {\"maxSavedSessions\": 1, \"maxOpenSessions\": 5, \"sessions\": {\"lab-pending-capture\": {\"instances\": {}, \"state\": \"pending\", \"commitUser\": \"\", \"description\": \"\"}, \"lab-provision\": {\"instances\": {}, \"state\": \"completed\", \"commitUser\": \"root\", \"description\": \"\", \"completedTime\": 1795299850.2688594}, \"sg-c4-semi\": {\"instances\": {}, \"state\": \"pending\", \"commitUser\": \"\", \"description\": \"\\\"semi ; terminator byte\\\"\"}}}]}"
+      }
+    },
+    {
+      "question": "C: abort c4-semi",
+      "cmds": [
+        "enable",
+        "configure session sg-c4-semi abort"
+      ],
+      "response": {
+        "ok": true,
+        "status": 200,
+        "result": [
+          {},
+          {}
+        ],
+        "raw": "{\"jsonrpc\": \"2.0\", \"id\": \"session-grammar\", \"result\": [{}, {}]}"
+      }
+    },
+    {
+      "question": "C: description probe c5-backslash",
+      "cmds": [
+        "enable",
+        "configure session sg-c5-backslash description \"back \\\\ slash pair\""
+      ],
+      "response": {
+        "ok": true,
+        "status": 200,
+        "result": [
+          {},
+          {}
+        ],
+        "raw": "{\"jsonrpc\": \"2.0\", \"id\": \"session-grammar\", \"result\": [{}, {}]}"
+      }
+    },
+    {
+      "question": "C: sessions detail while c5-backslash is open",
+      "cmds": [
+        "enable",
+        "show configuration sessions detail"
+      ],
+      "response": {
+        "ok": true,
+        "status": 200,
+        "result": [
+          {},
+          {
+            "maxSavedSessions": 1,
+            "maxOpenSessions": 5,
+            "sessions": {
+              "lab-pending-capture": {
+                "instances": {},
+                "state": "pending",
+                "commitUser": "",
+                "description": ""
+              },
+              "lab-provision": {
+                "instances": {},
+                "state": "completed",
+                "commitUser": "root",
+                "description": "",
+                "completedTime": 1795299850.2688582
+              },
+              "sg-c5-backslash": {
+                "instances": {},
+                "state": "pending",
+                "commitUser": "",
+                "description": "\"back \\\\ slash pair\""
+              }
+            }
+          }
+        ],
+        "raw": "{\"jsonrpc\": \"2.0\", \"id\": \"session-grammar\", \"result\": [{}, {\"maxSavedSessions\": 1, \"maxOpenSessions\": 5, \"sessions\": {\"lab-pending-capture\": {\"instances\": {}, \"state\": \"pending\", \"commitUser\": \"\", \"description\": \"\"}, \"lab-provision\": {\"instances\": {}, \"state\": \"completed\", \"commitUser\": \"root\", \"description\": \"\", \"completedTime\": 1795299850.2688582}, \"sg-c5-backslash\": {\"instances\": {}, \"state\": \"pending\", \"commitUser\": \"\", \"description\": \"\\\"back \\\\\\\\ slash pair\\\"\"}}}]}"
+      }
+    },
+    {
+      "question": "C: abort c5-backslash",
+      "cmds": [
+        "enable",
+        "configure session sg-c5-backslash abort"
+      ],
+      "response": {
+        "ok": true,
+        "status": 200,
+        "result": [
+          {},
+          {}
+        ],
+        "raw": "{\"jsonrpc\": \"2.0\", \"id\": \"session-grammar\", \"result\": [{}, {}]}"
+      }
+    },
+    {
+      "question": "C: description probe c6-backtick",
+      "cmds": [
+        "enable",
+        "configure session sg-c6-backtick description \"backtick ` byte\""
+      ],
+      "response": {
+        "ok": true,
+        "status": 200,
+        "result": [
+          {},
+          {}
+        ],
+        "raw": "{\"jsonrpc\": \"2.0\", \"id\": \"session-grammar\", \"result\": [{}, {}]}"
+      }
+    },
+    {
+      "question": "C: sessions detail while c6-backtick is open",
+      "cmds": [
+        "enable",
+        "show configuration sessions detail"
+      ],
+      "response": {
+        "ok": true,
+        "status": 200,
+        "result": [
+          {},
+          {
+            "maxSavedSessions": 1,
+            "maxOpenSessions": 5,
+            "sessions": {
+              "lab-pending-capture": {
+                "instances": {},
+                "state": "pending",
+                "commitUser": "",
+                "description": ""
+              },
+              "lab-provision": {
+                "instances": {},
+                "state": "completed",
+                "commitUser": "root",
+                "description": "",
+                "completedTime": 1795299850.268859
+              },
+              "sg-c6-backtick": {
+                "instances": {},
+                "state": "pending",
+                "commitUser": "",
+                "description": "\"backtick ` byte\""
+              }
+            }
+          }
+        ],
+        "raw": "{\"jsonrpc\": \"2.0\", \"id\": \"session-grammar\", \"result\": [{}, {\"maxSavedSessions\": 1, \"maxOpenSessions\": 5, \"sessions\": {\"lab-pending-capture\": {\"instances\": {}, \"state\": \"pending\", \"commitUser\": \"\", \"description\": \"\"}, \"lab-provision\": {\"instances\": {}, \"state\": \"completed\", \"commitUser\": \"root\", \"description\": \"\", \"completedTime\": 1795299850.268859}, \"sg-c6-backtick\": {\"instances\": {}, \"state\": \"pending\", \"commitUser\": \"\", \"description\": \"\\\"backtick ` byte\\\"\"}}}]}"
+      }
+    },
+    {
+      "question": "C: abort c6-backtick",
+      "cmds": [
+        "enable",
+        "configure session sg-c6-backtick abort"
+      ],
+      "response": {
+        "ok": true,
+        "status": 200,
+        "result": [
+          {},
+          {}
+        ],
+        "raw": "{\"jsonrpc\": \"2.0\", \"id\": \"session-grammar\", \"result\": [{}, {}]}"
+      }
+    },
+    {
+      "question": "C: description probe c7-squote",
+      "cmds": [
+        "enable",
+        "configure session sg-c7-squote description \"apostrophe ' single\""
+      ],
+      "response": {
+        "ok": true,
+        "status": 200,
+        "result": [
+          {},
+          {}
+        ],
+        "raw": "{\"jsonrpc\": \"2.0\", \"id\": \"session-grammar\", \"result\": [{}, {}]}"
+      }
+    },
+    {
+      "question": "C: sessions detail while c7-squote is open",
+      "cmds": [
+        "enable",
+        "show configuration sessions detail"
+      ],
+      "response": {
+        "ok": true,
+        "status": 200,
+        "result": [
+          {},
+          {
+            "maxSavedSessions": 1,
+            "maxOpenSessions": 5,
+            "sessions": {
+              "lab-pending-capture": {
+                "instances": {},
+                "state": "pending",
+                "commitUser": "",
+                "description": ""
+              },
+              "lab-provision": {
+                "instances": {},
+                "state": "completed",
+                "commitUser": "root",
+                "description": "",
+                "completedTime": 1795299850.268859
+              },
+              "sg-c7-squote": {
+                "instances": {},
+                "state": "pending",
+                "commitUser": "",
+                "description": "\"apostrophe ' single\""
+              }
+            }
+          }
+        ],
+        "raw": "{\"jsonrpc\": \"2.0\", \"id\": \"session-grammar\", \"result\": [{}, {\"maxSavedSessions\": 1, \"maxOpenSessions\": 5, \"sessions\": {\"lab-pending-capture\": {\"instances\": {}, \"state\": \"pending\", \"commitUser\": \"\", \"description\": \"\"}, \"lab-provision\": {\"instances\": {}, \"state\": \"completed\", \"commitUser\": \"root\", \"description\": \"\", \"completedTime\": 1795299850.268859}, \"sg-c7-squote\": {\"instances\": {}, \"state\": \"pending\", \"commitUser\": \"\", \"description\": \"\\\"apostrophe ' single\\\"\"}}}]}"
+      }
+    },
+    {
+      "question": "C: abort c7-squote",
+      "cmds": [
+        "enable",
+        "configure session sg-c7-squote abort"
+      ],
+      "response": {
+        "ok": true,
+        "status": 200,
+        "result": [
+          {},
+          {}
+        ],
+        "raw": "{\"jsonrpc\": \"2.0\", \"id\": \"session-grammar\", \"result\": [{}, {}]}"
+      }
+    },
+    {
+      "question": "D: no-commit opener",
+      "cmds": [
+        "enable",
+        "configure session sg-nocommit-1 no-commit description \"sg no-commit probe\""
+      ],
+      "response": {
+        "ok": true,
+        "status": 200,
+        "result": [
+          {},
+          {}
+        ],
+        "raw": "{\"jsonrpc\": \"2.0\", \"id\": \"session-grammar\", \"result\": [{}, {}]}"
+      }
+    },
+    {
+      "question": "D: sessions detail while no-commit session is open",
+      "cmds": [
+        "enable",
+        "show configuration sessions detail"
+      ],
+      "response": {
+        "ok": true,
+        "status": 200,
+        "result": [
+          {},
+          {
+            "maxSavedSessions": 1,
+            "maxOpenSessions": 5,
+            "sessions": {
+              "lab-pending-capture": {
+                "instances": {},
+                "state": "pending",
+                "commitUser": "",
+                "description": ""
+              },
+              "sg-nocommit-1": {
+                "instances": {},
+                "state": "pending",
+                "commitUser": "",
+                "description": "\"sg no-commit probe\""
+              },
+              "lab-provision": {
+                "instances": {},
+                "state": "completed",
+                "commitUser": "root",
+                "description": "",
+                "completedTime": 1795299850.268859
+              }
+            }
+          }
+        ],
+        "raw": "{\"jsonrpc\": \"2.0\", \"id\": \"session-grammar\", \"result\": [{}, {\"maxSavedSessions\": 1, \"maxOpenSessions\": 5, \"sessions\": {\"lab-pending-capture\": {\"instances\": {}, \"state\": \"pending\", \"commitUser\": \"\", \"description\": \"\"}, \"sg-nocommit-1\": {\"instances\": {}, \"state\": \"pending\", \"commitUser\": \"\", \"description\": \"\\\"sg no-commit probe\\\"\"}, \"lab-provision\": {\"instances\": {}, \"state\": \"completed\", \"commitUser\": \"root\", \"description\": \"\", \"completedTime\": 1795299850.268859}}}]}"
+      }
+    },
+    {
+      "question": "D: stage + diff inside no-commit session",
+      "cmds": [
+        "enable",
+        "configure session sg-nocommit-1",
+        "vlan 150",
+        "   name LAB-SG-NC",
+        "show session-config diffs"
+      ],
+      "response": {
+        "ok": true,
+        "status": 200,
+        "result": [
+          {
+            "output": ""
+          },
+          {
+            "output": ""
+          },
+          {
+            "output": ""
+          },
+          {
+            "output": ""
+          },
+          {
+            "output": "--- system:/running-config\n+++ session:/sg-nocommit-1-session-config\n@@ -30,6 +30,9 @@\n vlan 110\n    name LAB-SPARE\n !\n+vlan 150\n+   name LAB-SG-NC\n+!\n management api http-commands\n    no shutdown\n !\n"
+          }
+        ],
+        "raw": "{\"jsonrpc\": \"2.0\", \"id\": \"session-grammar\", \"result\": [{\"output\": \"\"}, {\"output\": \"\"}, {\"output\": \"\"}, {\"output\": \"\"}, {\"output\": \"--- system:/running-config\\n+++ session:/sg-nocommit-1-session-config\\n@@ -30,6 +30,9 @@\\n vlan 110\\n    name LAB-SPARE\\n !\\n+vlan 150\\n+   name LAB-SG-NC\\n+!\\n management api http-commands\\n    no shutdown\\n !\\n\"}]}"
+      }
+    },
+    {
+      "question": "D: in-session commit attempt on no-commit session",
+      "cmds": [
+        "enable",
+        "configure session sg-nocommit-1",
+        "commit"
+      ],
+      "response": {
+        "accepted": false,
+        "error": "CLI command 3 of 3 'commit' failed: could not run command"
+      }
+    },
+    {
+      "question": "D: abort sg-nocommit-1",
+      "cmds": [
+        "enable",
+        "configure session sg-nocommit-1 abort"
+      ],
+      "response": {
+        "ok": true,
+        "status": 200,
+        "result": [
+          {},
+          {}
+        ],
+        "raw": "{\"jsonrpc\": \"2.0\", \"id\": \"session-grammar\", \"result\": [{}, {}]}"
+      }
+    },
+    {
+      "question": "E: bare show session-config inside a named session",
+      "cmds": [
+        "enable",
+        "configure session sg-bare-read-1",
+        "vlan 151",
+        "   name LAB-SG-BARE",
+        "show session-config"
+      ],
+      "response": {
+        "ok": true,
+        "status": 200,
+        "result": [
+          {},
+          {},
+          {},
+          {},
+          {
+            "header": [
+              "! device: 1c4a26eb5b56 (cEOSLab, EOS-4.28.14M-50015774.42814M (engineering build))\n!\n"
+            ],
+            "comments": [],
+            "cmds": {
+              "ip route 10.20.0.0/24 10.0.100.2": null,
+              "ip prefix-list PL-LAB-STATIC seq 5 permit 10.20.0.0/24 le 32": null,
+              "router bgp 65001": {
+                "comments": [],
+                "cmds": {
+                  "neighbor 10.0.110.2 remote-as 65002": null,
+                  "network 10.20.0.0/24": null,
+                  "router-id 10.0.110.1": null
+                }
+              },
+              "transceiver qsfp default-mode 4x10G": null,
+              "route-map RM-LAB-IMPORT deny 20": {
+                "comments": [],
+                "cmds": {}
+              },
+              "interface Port-Channel1": {
+                "comments": [],
+                "cmds": {
+                  "switchport mode trunk": null,
+                  "switchport trunk allowed vlan 100-110": null,
+                  "description LAB-LACP": null,
+                  "switchport trunk native vlan 10": null,
+                  "switchport trunk group LABGRP": null
+                }
+              },
+              "ip access-list EXT-ACL-1": {
+                "comments": [],
+                "cmds": {
+                  "20 permit icmp any any": null,
+                  "10 permit tcp any host 10.0.100.1 eq https": null
+                }
+              },
+              "no aaa root": null,
+              "agent LicenseManager shutdown": null,
+              "username <lab-run-user> privilege 15 role network-admin secret <redacted-lab-secret>": null,
+              "spanning-tree mode mstp": null,
+              "vlan 151": {
+                "comments": [],
+                "cmds": {
+                  "name LAB-SG-BARE": null
+                }
+              },
+              "interface Vlan110": {
+                "comments": [],
+                "cmds": {
+                  "ip address 10.0.110.1/24": null
+                }
+              },
+              "hostname 1c4a26eb5b56": null,
+              "vlan 110": {
+                "comments": [],
+                "cmds": {
+                  "name LAB-SPARE": null
+                }
+              },
+              "agent StandbyCpld shutdown": null,
+              "agent PowerManager shutdown": null,
+              "router ospf 1": {
+                "comments": [],
+                "cmds": {
+                  "router-id 10.0.110.1": null,
+                  "network 10.0.110.0/24 area 0.0.0.0": null,
+                  "network 10.0.100.0/24 area 0.0.0.0": null,
+                  "max-lsa 12000": null
+                }
+              },
+              "ip access-list standard STD-ACL-1": {
+                "comments": [],
+                "cmds": {
+                  "10 permit 10.0.0.0/8": null
+                }
+              },
+              "agent LedPolicy shutdown": null,
+              "agent Thermostat shutdown": null,
+              "service routing protocols model ribd": null,
+              "vlan 100": {
+                "comments": [],
+                "cmds": {
+                  "name LAB-ACCESS": null
+                }
+              },
+              "spanning-tree mst 0 priority 4096": null,
+              "interface Ethernet1": {
+                "comments": [],
+                "cmds": {
+                  "spanning-tree portfast": null,
+                  "spanning-tree bpduguard enable": null,
+                  "switchport access vlan 100": null
+                }
+              },
+              "agent Bfd shutdown": null,
+              "management api http-commands": {
+                "comments": [],
+                "cmds": {
+                  "no shutdown": null
+                }
+              },
+              "interface Ethernet2": {
+                "comments": [],
+                "cmds": {
+                  "channel-group 1 mode active": null
+                }
+              },
+              "interface Vlan100": {
+                "comments": [],
+                "cmds": {
+                  "ip address 10.0.100.1/24": null
+                }
+              },
+              "ip routing": null,
+              "route-map RM-LAB-IMPORT permit 10": {
+                "comments": [],
+                "cmds": {
+                  "match ip address prefix-list PL-LAB-STATIC": null
+                }
+              },
+              "agent PowerFuse shutdown": null,
+              "ntp server 10.20.0.2": null,
+              "vlan 10": {
+                "comments": [],
+                "cmds": {
+                  "name LAB-NATIVE": null
+                }
+              }
+            }
+          }
+        ],
+        "raw": "{\"jsonrpc\": \"2.0\", \"id\": \"session-grammar\", \"result\": [{}, {}, {}, {}, {\"header\": [\"! device: 1c4a26eb5b56 (cEOSLab, EOS-4.28.14M-50015774.42814M (engineering build))\\n!\\n\"], \"comments\": [], \"cmds\": {\"ip route 10.20.0.0/24 10.0.100.2\": null, \"ip prefix-list PL-LAB-STATIC seq 5 permit 10.20.0.0/24 le 32\": null, \"router bgp 65001\": {\"comments\": [], \"cmds\": {\"neighbor 10.0.110.2 remote-as 65002\": null, \"network 10.20.0.0/24\": null, \"router-id 10.0.110.1\": null}}, \"transceiver qsfp default-mode 4x10G\": null, \"route-map RM-LAB-IMPORT deny 20\": {\"comments\": [], \"cmds\": {}}, \"interface Port-Channel1\": {\"comments\": [], \"cmds\": {\"switchport mode trunk\": null, \"switchport trunk allowed vlan 100-110\": null, \"description LAB-LACP\": null, \"switchport trunk native vlan 10\": null, \"switchport trunk group LABGRP\": null}}, \"ip access-list EXT-ACL-1\": {\"comments\": [], \"cmds\": {\"20 permit icmp any any\": nu"
+      }
+    },
+    {
+      "question": "E: abort sg-bare-read-1",
+      "cmds": [
+        "enable",
+        "configure session sg-bare-read-1 abort"
+      ],
+      "response": {
+        "ok": true,
+        "status": 200,
+        "result": [
+          {},
+          {}
+        ],
+        "raw": "{\"jsonrpc\": \"2.0\", \"id\": \"session-grammar\", \"result\": [{}, {}]}"
+      }
+    },
+    {
+      "question": "post-run: sessions detail before the sweep",
+      "cmds": [
+        "enable",
+        "show configuration sessions detail"
+      ],
+      "response": {
+        "ok": true,
+        "status": 200,
+        "result": [
+          {},
+          {
+            "maxSavedSessions": 1,
+            "maxOpenSessions": 5,
+            "sessions": {
+              "lab-pending-capture": {
+                "instances": {},
+                "state": "pending",
+                "commitUser": "",
+                "description": ""
+              },
+              "lab-provision": {
+                "instances": {},
+                "state": "completed",
+                "commitUser": "root",
+                "description": "",
+                "completedTime": 1795299850.2688591
+              }
+            }
+          }
+        ],
+        "raw": "{\"jsonrpc\": \"2.0\", \"id\": \"session-grammar\", \"result\": [{}, {\"maxSavedSessions\": 1, \"maxOpenSessions\": 5, \"sessions\": {\"lab-pending-capture\": {\"instances\": {}, \"state\": \"pending\", \"commitUser\": \"\", \"description\": \"\"}, \"lab-provision\": {\"instances\": {}, \"state\": \"completed\", \"commitUser\": \"root\", \"description\": \"\", \"completedTime\": 1795299850.2688591}}}]}"
+      }
+    },
+    {
+      "question": "post-run: sessions detail after the sweep",
+      "cmds": [
+        "enable",
+        "show configuration sessions detail"
+      ],
+      "response": {
+        "ok": true,
+        "status": 200,
+        "result": [
+          {},
+          {
+            "maxSavedSessions": 1,
+            "maxOpenSessions": 5,
+            "sessions": {
+              "lab-pending-capture": {
+                "instances": {},
+                "state": "pending",
+                "commitUser": "",
+                "description": ""
+              },
+              "lab-provision": {
+                "instances": {},
+                "state": "completed",
+                "commitUser": "root",
+                "description": "",
+                "completedTime": 1795299850.2688591
+              }
+            }
+          }
+        ],
+        "raw": "{\"jsonrpc\": \"2.0\", \"id\": \"session-grammar\", \"result\": [{}, {\"maxSavedSessions\": 1, \"maxOpenSessions\": 5, \"sessions\": {\"lab-pending-capture\": {\"instances\": {}, \"state\": \"pending\", \"commitUser\": \"\", \"description\": \"\"}, \"lab-provision\": {\"instances\": {}, \"state\": \"completed\", \"commitUser\": \"root\", \"description\": \"\", \"completedTime\": 1795299850.2688591}}}]}"
+      }
+    }
+  ]
+}

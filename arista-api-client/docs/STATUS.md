@@ -331,7 +331,9 @@ source (pyeapi 1.0.4-rc0).
 > `commit <intf> verify`/`revert <intf>` pair, which this repo still refuses to compose unread), the
 > longest-name/charset session boundary and description quote-depth + `no-commit` (items 7/8 — adversarial
 > names/descriptions do not belong on the one-scratch-port licence), and the bare `show session-config`
-> form (still missing). A further full run is optional from here: the sweep's open lines cannot be
+> form (still missing). **2026-11-21 update: the container halves of all of these landed via the raw-opener
+> cEOS lane (DR-156, `scripts/capture-session-grammar-ceos.{mjs,sh}` + `docs/evidence/session-grammar.ceos.json`)
+> — the HARDWARE halves stay exactly as deferred here, still unasked by design.** A further full run is optional from here: the sweep's open lines cannot be
 > answered by re-running rev 5.
 
 > **2026-11-15, run 7 (the UNBLOCK day, spec `docs/hw-capture-unblock.draft.json`): 7/7 batches,
@@ -473,7 +475,13 @@ which needs explicit authorization on hardware and unconditional cleanup.
       revert-auto-fired entry removes itself and frees its name (DR-136 + DR-137; the probe lane retries
       under `hw-probe-<name>-<run tag>` because of it). Longest-accepted-name and charset boundaries are still
       uncaptured on purpose: answering them means committing an adversarially-named session, which one
-      designated scratch interface does not license.)**
+      designated scratch interface does not license.
+      **CONTAINER HALF ANSWERED 2026-11-21 (DR-156, `docs/evidence/session-grammar.ceos.json` — raw
+      openers past the client's bounds, every session aborted, net-zero): no length boundary found
+      through 8192 (the client's 64 is purely ours); the device refuses `"`/`'`/`\\`/backtick/`#`/`;`
+      with its own `Session name <x> is invalid.` but ACCEPTS whitespace as a name TRUNCATION — the
+      `\S+` split + re-parse injection class is now device-confirmed (the space-probe session opened
+      truncated and its abort rode the split). The 7050TX halves stay open behind the fence.)**
 - [ ] `configure session <name> description "…"` quoting depth (embedded `"`, `#`, `;`, backslash), and
       whether `no-commit` is accepted or answered `1002` on the 7050TX-64 → open item 8
       **(half answered 2026-11-08, and the earlier cautious sentence here was wrong: the plain form DOES
@@ -483,7 +491,13 @@ which needs explicit authorization on hardware and unconditional cleanup.
       the CLI token as `quoteDescription` sent it, which is the behavior that family of tests assumes.
       Still owed: an embedded `"`/`#`/`;`/backslash inside the description, and `no-commit`. Neither is
       probed by the scratch-session spec: probing quote depth means committing a session whose name or
-      description is adversarial, which "one designated scratch interface" does not license.)**
+      description is adversarial, which "one designated scratch interface" does not license.
+      **CONTAINER HALF ANSWERED 2026-11-21 (DR-156): all eight raw-CLI description depths (embedded
+      `"`, `\"`, `#`, `;`, `\\`, backtick, `'`, plus the plain baseline) are ACCEPTED and stored
+      VERBATIM per `show configuration sessions detail` — the run-2 as-sent/no-unwrap behavior extends
+      to every embedded depth on this class. `no-commit` is device-real: opener ACCEPTS, session lists
+      `pending`, in-session `commit` REFUSED (code 1000, device reason string uncaptured) — the
+      client's local refusal stands on a device that also refuses. The 7050TX halves stay open.)**
 - [ ] which of `copy running-config startup-config`, `rollback clean-config [ { groups } ]`,
       `rollback <name>` and `configure replace <url>` answer `1002`/`1004` per platform (cEOS first, then
       target — the class of gap DR-042 warns about)
@@ -527,7 +541,11 @@ which needs explicit authorization on hardware and unconditional cleanup.
       address, and `ip routing` (whose hunk shows `-no ip routing`, i.e. routing is off on this switch today)
       all produced real staged diffs that were then aborted. Refused lines appear in NO diff, which is how the
       `only`-keyword and inline-`vlan name` refusals were proven to have staged nothing. Still missing: the
-      bare `show session-config` (no `diffs`) form, and the commit-timer behaviour now queued in this lane.)**
+      bare `show session-config` (no `diffs`) form, and the commit-timer behaviour now queued in this lane.
+      **Bare form ANSWERED on the container 2026-11-21 (DR-156): ACCEPTS, answers the command-line-keyed
+      `{header, comments, cmds}` session-config tree — same shape class as `show running-config` JSON,
+      so its KEYS are a credential surface (the lane's redactor walks keys, DR-150/DR-011). Hardware
+      fixture still owed; commit-timer behaviour answered since (DR-137 hardware, DR-148 container).)**
 
 Suggested first command batch (no writes):
 

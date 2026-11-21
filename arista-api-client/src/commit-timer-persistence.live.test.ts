@@ -35,9 +35,12 @@
  * already settled by the 2026-11-16 part B: copy-run-start ACCEPTED, configure-replace exists,
  * rollback clean-config exec 1002; this suite does not re-litigate it.)
  *
- * GATED + verified-offline-only (DR-147): the local run that would produce these container verdicts is
- * blocked by the host BPF fault (DR-145/DR-146), so until the run happens on a cleared host, #89 items
- * 5-7 read implemented/evidence-pending — never observed, never unsupported.
+ * GATED + verified-offline-only (DR-147) at ship time; the gated run LANDED green on the cleared host
+ * 2026-11-20 (DR-148, `docs/evidence/commit-timer-persistence.ceos.json` — 6 passed / 2 skipped), so
+ * the container verdicts for items 5-7 are on record. The two device-bound discovery stubs below got
+ * their CONTAINER half from the raw-opener grammar lane on 2026-11-21 (DR-156,
+ * `docs/evidence/session-grammar.ceos.json`); they stay skipped for the 7050TX halves, which remain
+ * operator-fence questions (DR-043: container answers never settle this SKU).
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { mkdirSync, writeFileSync } from 'node:fs'
@@ -347,16 +350,23 @@ describe.skipIf(!runnable || !labClass)('commit timer / persistence verbs (#154 
   // opener via exec() (by design, command-layer), and buildFullWriteNode's Node has no raw-config
   // bypass; discovering the device's TRUE length/charset bounds (past the client's 64 / charset)
   // requires issuing `configure session <name>` at the transport level (bypassing assertSessionName)
-  // under operator consent + a cleared host, then aborting any session that opens. Left as reviewable
-  // stubs so the shape and the safety requirement are on record without pretending the wire works on
-  // the BPF-blocked host (DR-146/DR-147).
-  it.skip('DEVICE-bound session-name length discovery (#89 item 7 — needs a transport-level opener + cleared host)', () => {
+  // under operator consent + a cleared host, then aborting any session that opens. The CONTAINER half
+  // of both questions landed 2026-11-21 outside this suite — scripts/capture-session-grammar-ceos.{mjs,sh}
+  // IS that transport-level opener (DR-156, docs/evidence/session-grammar.ceos.json): no length
+  // boundary through 8192; `" `' \ backtick # ;` refused by the device with
+  // `Session name <x> is invalid.`; whitespace ACCEPTED as a name truncation (the \S+ split +
+  // re-parse injection class, device-confirmed). These stubs stay skipped for the 7050TX halves,
+  // which the one-scratch-port licence still refuses (STATUS §3, DR-149/DR-150).
+  it.skip('HARDWARE-bound session-name length discovery (#89 item 7 — container half ANSWERED by DR-156; box half operator-gated)', () => {
     // Bisection over raw `configure session <alphanumeric 1..n>`; record max accepted length then
     // abort each opener. Never run past the client bound without a reviewable transport bypass.
+    // Container answer: accepted at every length 64…8192 (the client's 64 is purely ours).
   })
-  it.skip('DEVICE-bound session-name charset discovery (#89 item 7 — needs a transport-level opener + cleared host)', () => {
+  it.skip('HARDWARE-bound session-name charset discovery (#89 item 7 — container half ANSWERED by DR-156; box half operator-gated)', () => {
     // For each single delimiter/quote byte the client also refuses, raw-open and record accept/refuse
-    // then abort. HIGH RISK: bytes like ';' can terminate the opener, so requires a disposable target
-    // (the harness container is one) and operator consent. Not blind-probed here.
+    // then abort. HIGH RISK: whitespace bytes TRUNCATE the name and re-parse the remainder as CLI
+    // arguments (DR-156 proved the mechanism on the container), so requires a disposable target
+    // (the harness container is one) and operator consent. Not blind-probed here. Container answer:
+    // specials draw `Session name <x> is invalid.`; space/tab/newline truncate-and-open.
   })
 })
