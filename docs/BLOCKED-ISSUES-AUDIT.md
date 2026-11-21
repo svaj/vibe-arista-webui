@@ -59,10 +59,23 @@ adjacency formed, route blast 67 ms withdrawn / 6170 ms restored, adjacency blas
 deployment posture and per-protocol blast policy. A green lab does not establish how this single
 physical switch's routing is allowed to fail.
 
+**VRRP SLICE LANDED 2026-11-21.** DR-149's permissive policy + the "each protocol = its own screen"
+rule unblocked the first per-protocol editor: `#/routing/vrrp` (`VrrpManager` + `VrrpManagerView` +
+`vrrp-rules.ts`, `docs/SPEC-vrrp-editor.md`). Create/edit/delete of IPv4 virtual routers, bounded
+field set (advanced fields read-only), every command line composed through the CLIENT's dry-run
+seam (`{ run: false }` on each `node.vrrp` setter — the strongest pin in the repo, no convention
+deviation unlike DR-151; the one literal exception is the client-pinned `no vrrp <n>` delete line).
+The failover confirm is honest-unmeasured copy (owner intake 2026-11-21: no VRRP blast has been
+measured on any target; no fabricated number). `ip routing` stays untouched. OSPF, route-map, and
+BGP editors remain open slices (BGP also has no device read surface on this SKU).
+
 ### Do Not Do
 
 - Do not toggle `ip routing` on the physical switch as an incidental probe.
-- Do not commit OSPF/BGP/VRRP or redistribution changes on hardware.
+- ~~Do not commit OSPF/BGP/VRRP or redistribution changes on hardware.~~ (Narrowed by DR-149: the
+  owner's permissive policy protects live traffic undisturbed; incidental commits are still out, but
+  the operator's deliberate, confirm-gated product use — e.g. committing a staged VRRP change from
+  `#/routing/vrrp` — is the only commit path and is allowed.)
 - Do not represent a configured cEOS route model as 7050TX behavior (DR-043).
 
 ## #88: STP Global Mode Editor
