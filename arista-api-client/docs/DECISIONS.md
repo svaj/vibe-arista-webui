@@ -3064,7 +3064,8 @@ running-config is a credential surface wider than passwords.
 
 **Still owed on this SKU (unchanged, all operator-gated):** `configure replace` on the box,
 `rollback <name>` on the box (needs a replace run or a completed session in the one-slot store),
-and the `no-commit`/quote-depth/embedded-quote session-grammar families (DR-147's skipped stubs).
+and the HARDWARE halves of the `no-commit`/quote-depth/embedded-quote/name-shape session-grammar
+families (DR-147's skipped stubs — the CONTAINER halves landed 2026-11-21 in DR-156).
 **Related:** DR-149 (the authorization this discharges); DR-148 (the cEOS siblings of these
 verdicts); DR-035(c) (the fence — narrowed only for this named lane); DR-011 (secrets out of
 artifacts — this run's addition); DR-043 (hardware facts, no cross-claim to containers either);
@@ -3299,6 +3300,83 @@ source change (docs only).
 evidence never establishes this unit); DR-150 (the redaction/scan pattern the lane reuses);
 DR-032 (device tokens verbatim — the double-space spelling); #87, #88.
 
+### DR-156 — the DR-147 session-grammar families get their CONTAINER halves: the name-length boundary is ≥8192 (the client's 64 is purely ours), the device refuses the special bytes with its own `Session name … is invalid.` but silently TRUNCATES a name at any whitespace byte (the injection class, now device-confirmed), the description stores every embedded quote depth verbatim, `no-commit` is real and refuses commit, and the bare `show session-config` shape lands
+
+DR-147 shipped the commit-timer/session-name live lane verified-offline-only and left the four
+session-grammar families (name-length boundary, name-charset boundary, description quote depth,
+`no-commit`) as concrete not-faked plans, because the hardware lane refuses them BY DESIGN — the
+one-scratch-port licence never covers committing an adversarially-named or -described session
+(STATUS §3, DR-149/DR-150), and the command layer refuses a raw config opener. DR-147's own two
+skipped discovery stubs named the sanctioned target: "a transport-level opener under operator
+consent on a cleared host — the harness container is one." This lane IS that opener:
+`scripts/capture-session-grammar-ceos.{mjs,sh}` speaks raw `runCmds` lines that BYPASS this client's
+own `assertSessionName`/`quoteDescription` bounds on purpose, because the question is where the
+DEVICE's bounds sit, not ours. Ran green on disposable cEOS-lab 4.28.14M
+(`4.28.14M-50015774.42814M`, `cEOSLab`); artifact `docs/evidence/session-grammar.ceos.json`.
+**Every session aborted, nothing committed** — the artifact's `sweep-and-net-zero` finding shows the
+device's own before/after listing identical (`lab-pending-capture`, `lab-provision`), so running-config
+is net-zero by construction and the completed-session slot is never parked. **All container evidence
+(DR-043): none of it settles 7050TX-64 / 4.28.13.1M behavior — the hardware halves stay open.**
+
+**Family A — name-length boundary.** A raw `configure session <name>` ladder at 64/65/96/128/256/
+512/1024/2048/4096/8192 chars (unique safe-charset names, each aborted in-probe) was **accepted at
+every length — no boundary found up to 8192.** `MAX_SESSION_NAME_LENGTH = 64` is therefore confirmed
+to be *purely this port's* readability bound, not a device limit, exactly as DR-047/§3 always said —
+now with the device's agreement that it accepts far more. (The bisection never fired because the
+ladder never refused.)
+
+**Family B — name-charset boundary (the sharpest finding).** For each byte the client's
+`UNSAFE_SESSION_NAME` refuses, placed at the END of an otherwise-safe name: the device **refuses**
+`"`, `'`, `\`, backtick, `#`, `;` with its OWN message — `Session name <x> is invalid.` inside a
+code-1000 error — a real charset verdict, not the generic `could not run command` wrapper the earlier
+hardware runs saw. But **whitespace is categorically different**: space, tab, and newline were
+**ACCEPTED**, because the CLI matches the name with `\S+` (`SessionCli.py:31`) — a whitespace byte
+does not error, it **truncates the name at that byte and re-parses the remainder as further CLI
+arguments.** The run proved the mechanism end-to-end: the `space` opener opened a session named
+`sg-c-space` (truncated at the trailing space), and the abort line `configure session sg-c-space abort`
+succeeded *because the space split the token into name + the `abort` verb* — the exact injection
+class `assertSessionName` exists to block, now device-confirmed on the container. Two honest
+corrections ride with this: (a) `;` did **not** act as a command terminator here (the device folded it
+into the name token and rejected it as an invalid *character*), so the client's stated reason for
+refusing `;` ("can terminate the opener") is not what this container did — the refusal stays correct,
+the rationale sentence is container-scoped; (b) the client's blanket refusal of all these bytes is
+vindicated — every one is either device-invalid or an injection vector.
+
+**Family C — description quote depth.** The hardware run-2 answer covered plain free text; the eight
+raw-CLI depths here (embedded `"`, backslash-escaped `\"` — the shape `quoteDescription()` emits —
+`#`, `;`, `\\`, backtick, `'`) were **all accepted, and the device stored each raw token verbatim**
+(read back from `show configuration sessions detail` while pending, quotes and escapes intact). This
+extends the run-2 "the device stores the CLI token as sent, not unwrapped" finding to every embedded
+depth the hardware lane never asked, and confirms `quoteDescription`'s no-unwrap assumption holds on
+this class.
+
+**Family D — `no-commit`.** The client's hidden-node opener (`ConfigSessionOptions.noCommit`, which
+refuses `commit()` LOCALLY on the strength of the SessionCli.py:295-311 image note, never a capture)
+is **device-real on the container**: the `no-commit` opener ACCEPTED, the session listed `pending`,
+an in-session `show session-config diffs` staged a clean 3-line diff, and the in-session `commit` was
+**REFUSED** (code 1000; the device's own reason string was not captured — only the wrapper — so the
+precise wording stays open). The abort discarded the staged change clean. The client's local refusal
+is now backed by a device that also refuses, rather than by the image note alone.
+
+**Family E — bare `show session-config` (no `diffs`).** The read STATUS §3 recorded as "still missing
+on both targets" **ACCEPTS** and returns the full session-config tree `{header, comments, cmds}` —
+the same command-line-keyed shape as `show running-config` JSON (which is why the lane's redactor now
+walks object KEYS, not just values: the lab `username … secret sha512 $6$…` line is a KEY there — the
+fixtures' `redactionApplied` note, and this lane's run-3 pre-write scan caught exactly that before any
+file was written).
+
+**What this does NOT close:** every hardware half stays open — the 7050TX name-length/charset boundary,
+its description depths, its `no-commit` acceptance, and its bare `show session-config` shape are all
+still device questions the operator fence governs; the `no-commit` commit-refusal's exact device
+wording is uncaptured even on the container. No `arista-api-client` source change (the client's bounds
+are unchanged and this run *vindicates* them); the two DR-147 `it.skip` stubs stay skipped — they now
+point at this artifact for the container half and remain open only for the hardware boundary.
+**Related:** DR-147 (the lane whose skipped stubs this answers on the container); DR-148 (the green
+blocked-issue cEOS lanes this extends); DR-150 (the redaction/scan pattern, plus the ssh-key/secret
+surface this lane re-hits via the config dump); DR-134 (a device refusal is the answer); DR-047
+(the name bounds this confirms are ours); DR-050 (the sessions-grammar open item); DR-043 (every
+claim container-scoped); #89 (items 7/8), #87.
+
 ## Open items (need the device)
 
 Use cEOS first for software behavior and schema exploration, recording its model/version;
@@ -3429,6 +3507,19 @@ config session and are **not read-only**:
    probe lane refuses to test it because the test would have to commit, and committing an adversarially-named
    session is not what "one designated scratch interface" licenses — that family stays with the
    session-grammar follow-up in STATUS.md §3.)**
+   **(CONTAINER HALF ANSWERED 2026-11-21 (DR-156, `docs/evidence/session-grammar.ceos.json`,
+   cEOS-lab 4.28.14M — container evidence only, DR-043; the raw-opener lane
+   `scripts/capture-session-grammar-ceos.{mjs,sh}` bypasses this client's bounds on purpose and aborts
+   every session, so nothing commits): the length boundary is NOT reachable up to 8192 — every ladder
+   length 64…8192 opened, so `MAX_SESSION_NAME_LENGTH = 64` is confirmed purely this port's. The
+   charset boundary is device-enforced for the specials: `"`, `'`, `\\`, backtick, `#`, `;` each draw
+   the device's own `Session name <x> is invalid.` (code 1000) — but whitespace (space/tab/newline)
+   is ACCEPTED as a TRUNCATION: the `\S+` matcher ends the name at the byte and re-parses the rest as
+   CLI arguments (the run's space-probe session opened as the truncated `sg-c-space` and its
+   name+`abort` split proved the injection class). `;` folded into the name token rather than
+   terminating the command on this container — the client's refusal of it stays right, its stated
+   terminator rationale is container-scoped. The 7050TX halves of both boundaries stay open behind the
+   operator fence.)**
 8. **Sessions grammar and which verbs answer `1002` where** (DR-050): `configure session <name>
    description <d>` — how deep the quoting goes, and what an embedded `"` does to the one-token rule this
    port's `quoteDescription` assumes; `configure session <name> no-commit` — accepted, or refused with
@@ -3463,6 +3554,17 @@ config session and are **not read-only**:
    level is 1002 at token 0. Still owed for this item: the session-scoped `rollback` variants, the
    `configure replace`/`copy run start` answers ON THE BOX (operator-only fence, #89), and the
    name-shape/`no-commit`/quote-depth families.)**
+   **(CONTAINER HALF ANSWERED 2026-11-21 (DR-156, same artifact/lane as item 7's note): the
+   description quote-depth family is fully accepted on the container and the device stores every raw
+   token verbatim — embedded `"`, the `quoteDescription`-shaped `\"` escapes, `#`, `;`, `\\`,
+   backtick, `'` all round-trip through `show configuration sessions detail` unchanged, extending the
+   hardware run-2 plain-text finding to every embedded depth. `no-commit` is device-real: the opener
+   ACCEPTS, the session lists `pending`, and an in-session `commit` is REFUSED (code 1000; the
+   device's own reason string uncaptured) — the client's local commit() refusal now stands on a device
+   that also refuses, not on the SessionCli.py image note alone. The bare `show session-config` form
+   ACCEPTS and answers the command-line-keyed `{header, comments, cmds}` tree (the same shape class as
+   `show running-config` JSON — keys are a credential surface, see DR-150/DR-011). The 7050TX halves
+   of all three stay open behind the operator fence.)**
 
 MLAG (`mlag` module, 21 upstream system tests): investigate supported control-plane
 behavior in an isolated two-node cEOS topology. Physical 7050TX-64 MLAG/forwarding
