@@ -204,7 +204,7 @@ Since this was pulled from a feature list, this needs to be turned into relevant
 
 ### OSPF
 
-- [ ] OSPFv2 (multiple instances, multi-agent / default VRF)
+- [x] OSPFv2 (multiple instances, multi-agent / default VRF) *(partial: #87 OSPF slice — `#/routing/ospf` views the first `router ospf` section (process id, VRF, router-id, shutdown state, networks, redistributions) plus `show ip ospf`/`show ip ospf neighbor` panels, and stages the full lifecycle: process create (default or `vrf` arm)/delete, router-id set/clear, network add/remove, redistribution add (optional route-map)/remove, and shutdown/no shutdown — staging through the shared transaction. The ospf client is send-only, so every staged line mirrors the client's own `ospf.test.ts`-pinned verb text (the route-map slice convention, DR-153; the process header opens the submode ONCE per batch). Multiple instances are NOT offered: the client reads and writes the first process only (divergence 7, disclosed on-screen). OSPFv3, TE, graceful restart, BFD, and authentication stay out; the two-node cEOS blast facts (route withdrawal 67 ms, adjacency loss 32.6 s) are quoted with their true mechanisms and marked container evidence (DR-043))*
 - [ ] OSPFv2 TE protocol extensions
 - [ ] OSPFv3 (incl. encryption, BFD, graceful restart)
 - [ ] OSPFv2/v3 graceful restart

@@ -18,6 +18,7 @@ import { StpGlobal } from './features/stp/StpGlobal'
 import { Vrfs } from './features/vrfs/Vrfs'
 import { Acls } from './features/acls/Acls'
 import { StaticRoutes } from './features/routes/StaticRoutes'
+import { OspfManager } from './features/routing/OspfManager'
 import { Routing } from './features/routing/Routing'
 import { RouteMapManager } from './features/routing/RouteMapManager'
 import { VrrpManager } from './features/routing/VrrpManager'
@@ -163,8 +164,9 @@ function App() {
     // B2 (#87) owns `#/routing`: READ-ONLY routing status (OSPF / route maps / VRRP). The
     // container's seam is Pick<Node, 'ospf' | 'routemaps' | 'vrrp' | 'show'> — it cannot even see a
     // config session — and the screen ships no writes: the blast review that once blocked every
-    // routing editor has since narrowed per-protocol (the VRRP editor lives at `#/routing/vrrp`
-    // below; OSPF/route-map/BGP editors stay blocked). BGP renders the recorded double negative.
+    // routing editor has since narrowed per-protocol (the VRRP, route-map, and OSPF editors live at
+    // `#/routing/vrrp`, `#/routing/routemaps`, and `#/routing/ospf` below; BGP stays blocked and
+    // additionally has no device read surface on this SKU). BGP renders the recorded double negative.
     '/routing': {
       title: 'Routing status',
       element: <Routing node={node} proxyConfigured={configured} />,
@@ -184,6 +186,14 @@ function App() {
     '/routing/routemaps': {
       title: 'Route maps',
       element: <RouteMapManager node={node} proxyConfigured={configured} />,
+    },
+    // #87's OSPF slice owns `#/routing/ospf`: the process editor. Like route maps, the client's
+    // ospf verbs are send-only, so every staged line mirrors the client's own `ospf.test.ts`-pinned
+    // composition (the DR-153 convention — SPEC-ospf-editor.md); the confirms quote the two-node
+    // cEOS blasts (67 ms / 6170 ms route, 32636 ms / 12279 ms adjacency) with their true mechanisms.
+    '/routing/ospf': {
+      title: 'OSPF',
+      element: <OspfManager node={node} proxyConfigured={configured} />,
     },
     '/vlans/manage': {
       title: 'VLAN management',

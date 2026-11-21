@@ -203,7 +203,7 @@ export function RoutingView(props: RoutingViewProps): ReactElement {
       {!configKnown && <p className="field-note">No <code>ospf.get()</code> read has answered yet, so the OSPF configuration is unknown — not empty.</p>}
       {configKnown && !ospfConfigured && <EmptyState
         heading="No `router ospf` section exists in the running-config."
-        hint="This is a normal configured state, not an error: the device simply runs no OSPF process. The reader addresses one process in one VRF (resources/ospf.ts); a multi-process box is outside what this client models."
+        hint="This is a normal configured state, not an error: the device simply runs no OSPF process. The reader addresses one process in one VRF (resources/ospf.ts); a multi-process box is outside what this client models. The OSPF editor (#/routing/ospf) stages the first process; this screen never edits."
       />}
       {configKnown && ospfConfigured && <>
         <DataTable columns={fieldColumns} rows={ospfConfigRows} rowKey={(row) => row.field} label="Configured OSPF process fields" />
@@ -212,6 +212,8 @@ export function RoutingView(props: RoutingViewProps): ReactElement {
           : <DataTable columns={networkColumns} rows={ospfNetworkRows} rowKey={(row) => `${row.network}@${row.area}`} label="Configured OSPF networks" />}
         {ospfRedistributionRows.length > 0 && <DataTable columns={redistributionColumns} rows={ospfRedistributionRows} rowKey={(row) => `${row.protocol}/${row.routeMap}`} label="Configured OSPF redistributions" />}
       </>}
+      {/* #87's OSPF slice shipped the editor — the panel points at it instead of dead-ending. */}
+      <p className="field-note">To create, edit, or delete the process, its networks, and its redistributions, use the <a href="#/routing/ospf">OSPF editor</a>.</p>
     </section>
 
     {/* OSPF — device half */}

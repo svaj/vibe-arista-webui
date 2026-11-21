@@ -84,6 +84,25 @@ advertisement withdrawal, NOT a route-map edit (DR-043). Inertness of an unrefer
 stated inference, never a measurement. `ip routing` stays untouched. OSPF and BGP editors remain
 open slices (BGP additionally has no device read surface on this SKU).
 
+**OSPF SLICE LANDED 2026-11-21.** The third per-protocol editor: `#/routing/ospf`
+(`OspfManager` + `OspfManagerView` + `ospf-rules.ts`, `docs/SPEC-ospf-editor.md`, DR-154). Full
+process lifecycle — create (default or `vrf` arm)/delete, router-id set/clear, network add/remove,
+redistribution add (optional route-map)/remove, shutdown/no shutdown — staging through the #141
+coordinator. Like `routemaps`, the `ospf` client is SEND-ONLY, so every staged line mirrors the
+client's own `ospf.test.ts`-pinned verb text (the DR-153 convention; the process header opens the
+submode ONCE per batch, unlike route-maps' per-statement header). Client divergences are disclosed
+on-screen, not silently fixed: first-process-only reads/writes (divergence 7 — a second create is
+refused at zero appends), bare-`area 0` invisibility to the dotted-quad reader (divergence 4 — the
+form defaults areas to `0.0.0.0`), and bare `no redistribute <protocol>` negation (divergence 10 —
+a qualified-line process may keep the route-map variant). Confirms quote the two-node cEOS blasts
+with their TRUE mechanisms (route withdrawal via `no network .../32 area`, 67 ms; adjacency loss
+via transit-network removal, 32.6 s — explicitly NOT by the staged command) and mark them container
+evidence (DR-043); the router-id verb claims no number at all. A redistribution naming an unlisted
+route-map stages with a dangling-reference risk line; a failed `routemaps.getAll()` read says
+"unverified", never "missing". `ip routing` stays untouched (the box runs zero OSPF processes with
+`no ip routing` — the create confirm says so). BGP remains the only closed editor slice (no device
+read surface on this SKU).
+
 ### Do Not Do
 
 - Do not toggle `ip routing` on the physical switch as an incidental probe.

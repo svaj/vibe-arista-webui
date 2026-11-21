@@ -3198,6 +3198,61 @@ DR-151 (the capture-pinning deviation this is NOT); DR-113 (order-stable diff); 
 vocabulary is the device's); DR-057 (device refusals stay the device's answer); DR-043 (container
 evidence never establishes this unit's blast); DR-024 (running-config-only); #87.
 
+### DR-154 — the #87 OSPF slice ships the third per-protocol routing editor (`#/routing/ospf`): the DR-153 send-only mirroring convention reused, with the process header opening the submode ONCE per batch and the client's own divergences disclosed on-screen instead of silently patched
+
+The same DR-149 policy carried the OSPF half: `OspfManager`/`OspfManagerView` plus the pure
+`ospf-rules.ts`, per `docs/SPEC-ospf-editor.md`, staging through the #141 coordinator. Again no
+`arista-api-client` change — `resources/ospf.ts` already ports the whole upstream surface.
+
+**DR-153's convention, with one shape difference.** `resources/ospf.ts` verbs are send-only like
+`routemaps.ts`, so every staged line is byte-for-byte the client's own verb text, cited to its
+composition site and pinned by `ospf.test.ts`: `router ospf <pid>` (+ ` vrf <name>`) (`:373`,
+pyeapi `:224-243`), `no router ospf <pid>` (`:386`), `router-id <value>` / `no router-id`
+(`setRouterId`/`unsetRouterId`, pyeapi `:257-269`), `network <n>/<len> area <area>` /
+`no network …` (`:454`, `:462`), `redistribute <p> [route-map <r>]` / bare `no redistribute <p>`
+(`:478-479`, `:490`), and literal `shutdown` / `no shutdown` (`:435`, `:440`). But where a
+route-map clause header repeats before EVERY statement, the OSPF process header comes from
+`submodeCommands` (`:407`) — `[header, ...lines]`, the header ONCE per batch. The screen's line
+builders mirror that shape exactly, and the tests pin the `router ospf <pid>` header appearing
+once in every staged batch.
+
+**Owner intake 2026-11-21 (this slice):** (1) verb set **full process lifecycle** — create
+(default or `vrf` arm)/delete, router-id set/clear, network add/remove, redistribution add
+(optional route-map)/remove, shutdown/no shutdown; (2) the network-area field defaults to
+**`0.0.0.0`** (not bare `0`) because of divergence 4 below — the dotted-quad spelling is the one
+this client's reader can see, so what the screen stages is what it can later show; (3) the
+redistribution-removal question was skipped, so the screen stays **client-faithful**: bare
+`no redistribute <protocol>`, with divergence 10 disclosed in the confirm whenever a
+route-map-qualified line is being negated.
+
+**Divergences are UI copy, not client patches.** The reader/writer asymmetries the module header
+records stay exactly as shipped, and the screen says them plainly: divergence 7 — reads and
+writes answer the FIRST `router ospf` section only, so a second create over the read process is
+refused in-form at zero appends and the single-process note names the limit; divergence 4 — a bare
+`area 0` in running-config is invisible to the dotted-quad-only network reader, which is the stated
+reason for the `0.0.0.0` default; divergence 10 — a route-map-qualified redistribution negates
+bare, and the confirm states that on a real box the bare form can clear every line for that
+protocol. A redistribution naming a route-map absent from the SOFT `routemaps.getAll()` list
+stages with a dangling-reference risk line; if that soft read FAILED the annotation says
+"unverified", never "missing" — the read that would answer is the one that failed.
+
+**Blast copy quotes the two-node cEOS facts with their TRUE mechanisms.** The network-removal
+confirm quotes the measured route withdrawal (67 ms withdrawn / 6170 ms restored via
+`no network 10.156.0.2/32 area 0`, `ospf-two-node.live.test.ts:229-275`, evidence
+`docs/evidence/ospf-two-node.ceos.json`) and the adjacency facts (32636 ms dropped / 12279 ms
+reformed via transit-network removal) say plainly they were measured by NETWORK removal, **NOT by
+the command being staged**; the router-id and shutdown verbs claim no number at all. All marked
+container evidence, not this unit (DR-043). The create confirm states the box's posture honestly:
+zero OSPF processes and `no ip routing` (DR-141 run 7 staged `router ospf 1` + `router-id` +
+`passive-interface default` fully, then aborted) — `ip routing` is never touched here (the audit's
+#87 Do-Not-Do). `ROUTING_READ_ONLY_NOTE` narrows again to BGP only; BGP remains the sole closed
+editor slice (no device read surface on this SKU).
+
+**Related:** DR-153 (the send-only mirroring convention this reuses); DR-149 (the permissive
+policy); DR-113 (order-stable diff); DR-032/DR-057 (the protocol allow-list and refusals stay
+the client's and the device's); DR-043 (container blasts never establish this unit's blast);
+DR-024 (running-config-only); DR-141 (the hardware grammar run and the box posture); #87.
+
 ## Open items (need the device)
 
 Use cEOS first for software behavior and schema exploration, recording its model/version;

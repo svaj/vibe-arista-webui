@@ -158,6 +158,26 @@ describe('App composition (F6 chrome)', () => {
     expect(screen.getByRole('button', { name: 'Reload route-map state' })).toBeDisabled()
   })
 
+  it('puts the #87 OSPF editor in the nav on #/routing/ospf', () => {
+    render(<App />)
+
+    const ospf = screen.getByRole('link', { name: 'OSPF' })
+    expect(ospf).toHaveAttribute('href', '#/routing/ospf')
+    expect(ospf).not.toHaveAttribute('aria-current', 'page')
+    // Registering the route must not warm anything up: with no proxy the screen prompts and its
+    // six staging triggers stay disabled — no read is attempted.
+    fireEvent.click(ospf)
+    expect(screen.getByRole('heading', { level: 2, name: 'OSPF process' })).toBeInTheDocument()
+    expect(screen.getByRole('alert')).toHaveTextContent('EAPI_HOST')
+    expect(screen.getByRole('button', { name: 'Stage process create' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Stage process delete' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Stage router-id change' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Stage network change' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Stage redistribution change' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Stage shutdown change' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Reload OSPF state' })).toBeDisabled()
+  })
+
   it('puts the S7 (#77) capability probe panel in the nav on #/capabilities', () => {
     render(<App />)
 
