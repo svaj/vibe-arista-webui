@@ -173,6 +173,32 @@ Updated 2026-11-20 after the green lanes and the agent-side implementations:
 - #89: retain `status:blocked` for the physical persistence authorization decision only. Remove stale capture claims, link `docs/evidence/commit-timer-persistence.ceos.json` (DR-148), and name the physical save/replace/rollback authorization explicitly as the sole remaining gate.
 - #159: retain `status:blocked`; the CORS hardware capture (`scripts/capture-hardware-cors.sh`) is ready for a supervised operator run — label it evidence only, then move to a security/spec review rather than implementation.
 
+## Owner decisions (2026-11-20/21, recorded as DR-149)
+
+All four gates above were answered by the owner:
+
+- **#87 — PERMISSIVE blast policy with one hard line:** "as long as live traffic on my production
+  switch is not interfered with, I'm okay with whatever you do." Lab blast scales become confirm
+  disclosure, not blockers; the scratch-port discipline and running-config-only contract stay as
+  strict as they are because they protect exactly that line.
+- **#88 — guard design settled:** F4 confirm carrying the captured blast facts (flip ~67 ms,
+  per-VLAN instance replacement, brief interruption on every VLAN, DR-043 scoping); NO port-hygiene
+  gate (informational note only); MST region name/revision/instance-mapping in the SAME editor as
+  the mode change. The mode editor opens only when that combined spec lands.
+- **#89 — persistence verbs AUTHORIZED** ("copy run start is fine, a minimal change can be run via
+  configure replace and rollback... so long as its scripted and I can review prior to executing
+  it"). The lane is `arista-api-client/src/persistence-hardware.live.test.ts` +
+  `scripts/capture-hw-persistence.sh`: dry-run default, printed plan before any consent prompt,
+  `replace` requires explicit naming plus its own typed echo, self-restoring plan, rollback verbs
+  abort-only. The operator runs it; the typed consents ARE the review gate.
+- **#159 — NO stored credentials:** the owner rejects browser-held credentials ("Those shouldn't be
+  stored..."). EOS basic-auth over CORS cannot honor that posture (a browser can only send
+  `Authorization:` from script-visible sources), so direct-browser/static mode stays
+  unimplemented; the relay mode (password in the Vite process only) is the endorsed shape. The
+  hardware CORS capture remains available as pure evidence. Run steps: see
+  `scripts/capture-hardware-cors.sh --help` (supervised session, exact origin + TLS material,
+  typed model/origin consents, `--go`).
+
 ## Current Local Run Result
 
 On 2026-11-19 this host reported `kernel.unprivileged_bpf_disabled=0`, so container start is no longer blocked by the former BPF `2` gate. A real STP evidence attempt then reached cEOS bootstrap but failed at the management path on a pinned `10.177.179.0/24` bridge: the connected route existed, ARP for the container IP was `FAILED`, and the endpoint answered `EHOSTUNREACH`. The harness tore the run down.
