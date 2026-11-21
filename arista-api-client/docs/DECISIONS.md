@@ -3148,6 +3148,56 @@ contrast case to); DR-116–121 (the client module this composes through); DR-13
 grammar verdicts); DR-057 (device refusals stay the device's answer); DR-043 (container evidence
 never establishes this unit's failover behavior); DR-024 (running-config-only); #87.
 
+### DR-153 — the #87 route-map slice ships the second per-protocol routing editor (`#/routing/routemaps`): a SEND-ONLY client means the screen MIRRORS the client's test-pinned verb text — the convention case between DR-152's dry-run seam and DR-151's deviation
+
+The same DR-149 policy and "each protocol = its own screen" rule carried the route-map half:
+`RouteMapManager`/`RouteMapManagerView` plus the pure `routemap-rules.ts`, per
+`docs/SPEC-routemap-editor.md`, staging through the #141 coordinator. Again no
+`arista-api-client` change — `routemaps.ts` already ports the whole upstream surface.
+
+**The middle case, named for what it is.** `routemaps.ts` verbs are **send-only**: unlike
+`vrrp.ts` (DR-152's `{ run: false }` arm on every setter), there is no way to ask the client for
+the text it would compose. So the screen builds the line sequences itself and every one of them is
+byte-for-byte the client's own verb output, cited to its composition site and guarded by the same
+byte in `routemaps.test.ts`: the clause header (`:614`), the single-line create (`:403-406`) and
+`no route-map NAME ACTION SEQNO` delete (`:414-417`), the `replaceStatements` diff — removals first
+in CURRENT order, additions second in INPUT order, the header repeated before EVERY body line
+exactly as upstream opens the clause per statement (`:465-502`, `routemaps.py:247-255`) — the
+clear-then-set description pair (`:552-560`, upstream pin `test_api_routemaps.py:134-139`), and
+continue set/unset (`:527-540`). This is the **StaticRoutes/Ntp convention** for send-only client
+surfaces, and it is NOT a DR-151 deviation: DR-151 pins to raw captures because the STP command
+text exists nowhere in the client; here every line IS a client-verb text a client test already
+pins, so a client composition regression fails this screen on the same byte. `submodeCommands` is
+unused — the clause header is itself the submode entry and repeats per statement, so the batches
+stay flat line arrays.
+
+**Owner intake 2026-11-21 (this slice):** (1) slice order **route maps before OSPF** (OSPF's
+redistribution writes touch adjacency state and want their own blast review); (2) verb set **full
+clause lifecycle** — create, match/set statement-list replace, description, continue set/clear,
+delete; (3) **free-text, device-authoritative statements**: no match/set vocabulary is invented or
+dropdown-ed, because only `set community <v:v>` is hardware-proven on this unit (batch
+`unblock-route-map-grammar`) — the forms take one statement per line, prefilled from the parsed
+read, and an unsupported keyword is the device's answer at commit time (DR-057).
+
+**Reference status as three honest arms.** The screen's SOFT `ospf.get()` read is the only
+reference surface this unit answers, so the confirm and the table column state exactly one of:
+referenced (the `redistribute … route-map <name>` lines that name it), no reference this UI can
+see, or the read failed — treat it as referenced. Interface-attached policies and BGP (unmodelled
+on this SKU) are named as invisible. The referenced arm quotes the closest measured route blast —
+the two-node cEOS withdrawal, 67 ms / 6170 ms — and says plainly that it was a committed
+advertisement withdrawal, **NOT a route-map edit**, container evidence, not this unit (DR-043). An
+unreferenced map is *inferred* inert and the copy says the inference is not measured. A description
+edit stages risks but carries NO second confirm (it changes no policy); create/replace/continue and
+the destructive delete do. Creating over an existing clause, an empty replace diff (the client
+sends nothing, `:501`), and an already-said description/continue value are refused in-form at zero
+appends. `ip routing` is never touched (the audit's #87 Do-Not-Do); `default` arms stay out.
+`ROUTING_READ_ONLY_NOTE` narrows again to OSPF/BGP only.
+
+**Related:** DR-149 (the permissive policy); DR-152 (the dry-run-seam case this contrasts with);
+DR-151 (the capture-pinning deviation this is NOT); DR-113 (order-stable diff); DR-032 (the keyword
+vocabulary is the device's); DR-057 (device refusals stay the device's answer); DR-043 (container
+evidence never establishes this unit's blast); DR-024 (running-config-only); #87.
+
 ## Open items (need the device)
 
 Use cEOS first for software behavior and schema exploration, recording its model/version;

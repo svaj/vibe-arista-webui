@@ -241,8 +241,11 @@ export function RoutingView(props: RoutingViewProps): ReactElement {
       {!configKnown
         ? <p className="field-note">No <code>routemaps.getAll()</code> read has answered yet.</p>
         : routeMapClauseRows.length === 0
-          ? <EmptyState heading="No `route-map` section exists in the running-config." hint="A normal configured state: route maps appear once configured. Editing them is blocked behind #87's per-protocol blast-radius review." />
+          ? <EmptyState heading="No `route-map` section exists in the running-config." hint="A normal configured state: route maps appear once configured. VRRP-style writes live on the route-map editor (#/routing/routemaps) — this screen never edits them." />
           : <DataTable columns={routeMapClauseColumns} rows={routeMapClauseRows} rowKey={(row) => `${row.name}/${row.action}/${row.seqno}`} label="Configured route-map clauses" />}
+      {/* #87's route-map slice shipped the editor — the panel points at it instead of the old
+          "blocked behind the blast review" dead end. */}
+      <p className="field-note">To create, edit, or delete these clauses, use the <a href="#/routing/routemaps">route-map editor</a>.</p>
     </section>
 
     {/* Route maps — device half */}

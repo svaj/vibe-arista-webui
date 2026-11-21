@@ -19,6 +19,7 @@ import { Vrfs } from './features/vrfs/Vrfs'
 import { Acls } from './features/acls/Acls'
 import { StaticRoutes } from './features/routes/StaticRoutes'
 import { Routing } from './features/routing/Routing'
+import { RouteMapManager } from './features/routing/RouteMapManager'
 import { VrrpManager } from './features/routing/VrrpManager'
 import { TransactionCenter } from './features/sessions/TransactionCenter'
 import { Users } from './features/users/Users'
@@ -175,6 +176,14 @@ function App() {
     '/routing/vrrp': {
       title: 'VRRP',
       element: <VrrpManager node={node} proxyConfigured={configured} />,
+    },
+    // #87's route-map slice owns `#/routing/routemaps`: the clause editor. The client's routemaps
+    // verbs are send-only (no dry-run arm), so every staged line mirrors the client's own
+    // test-pinned composition (the StaticRoutes/Ntp convention — SPEC-routemap-editor.md); the
+    // confirm states the OSPF-read reference status as fact, with the container-only blast proxy.
+    '/routing/routemaps': {
+      title: 'Route maps',
+      element: <RouteMapManager node={node} proxyConfigured={configured} />,
     },
     '/vlans/manage': {
       title: 'VLAN management',
