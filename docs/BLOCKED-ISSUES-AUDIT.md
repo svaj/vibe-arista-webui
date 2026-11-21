@@ -69,6 +69,21 @@ The failover confirm is honest-unmeasured copy (owner intake 2026-11-21: no VRRP
 measured on any target; no fabricated number). `ip routing` stays untouched. OSPF, route-map, and
 BGP editors remain open slices (BGP also has no device read surface on this SKU).
 
+**ROUTE-MAP SLICE LANDED 2026-11-21.** The second per-protocol editor: `#/routing/routemaps`
+(`RouteMapManager` + `RouteMapManagerView` + `routemap-rules.ts`, `docs/SPEC-routemap-editor.md`,
+DR-153). Full clause lifecycle — create, match/set statement-list replace (the client's diff),
+description (the clear-then-set pair), continue set/clear, clause delete — staging through the #141
+coordinator. The `routemaps` client is SEND-ONLY (no dry-run arm like `vrrp.ts` has), so every
+staged line mirrors the client's own `routemaps.test.ts`-pinned verb text — the established
+StaticRoutes/Ntp convention, NOT a DR-151-style capture deviation. Match/set keywords are free
+text, device-authoritative (owner intake 2026-11-21; only `set community <v:v>` is
+hardware-proven — batch `unblock-route-map-grammar`). The confirm states the SOFT `ospf.get()`
+reference status in three arms (referenced / no-visible-reference / read-failed-treat-as-
+referenced) and quotes the two-node withdrawal proxy (67 ms / 6170 ms) as what it is: a container
+advertisement withdrawal, NOT a route-map edit (DR-043). Inertness of an unreferenced map stays a
+stated inference, never a measurement. `ip routing` stays untouched. OSPF and BGP editors remain
+open slices (BGP additionally has no device read surface on this SKU).
+
 ### Do Not Do
 
 - Do not toggle `ip routing` on the physical switch as an incidental probe.

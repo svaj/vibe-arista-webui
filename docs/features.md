@@ -250,7 +250,7 @@ Since this was pulled from a feature list, this needs to be turned into relevant
 ### Policy, VRFs & DHCP/ARP
 
 - [x] VRF instances — create/delete, rd, description, per-VRF IPv4/IPv6 routing flags, port assignment *(S16 #90: `#/vrfs` VRF manager; every staged batch is a run-9-proven or `vrfs.test.ts`-pinned composition (DR-141), the device columns ride the capture-backed `show vrf` contract — both captures are default-only today, so no named-VRF device shape is claimed)*
-- [ ] Route maps
+- [x] Route maps *(partial: #87 route-map slice — `#/routing/routemaps` views every configured clause (name, action, seqno, match/set statements, continue, description) with an OSPF-read reference column, and creates/edits/deletes clauses: create, match/set statement-list replace (client diff), description (clear-then-set pair), continue set/clear, clause delete — staging through the shared transaction with a reference-status second confirm. The routemaps client is send-only, so every staged line mirrors the client's own test-pinned verb text (the StaticRoutes/Ntp convention, NOT a capture deviation). Match/set keywords are free text, device-authoritative (only `set community <v:v>` is hardware-proven here); `default` arms, RCF, and BGP/interface reference surfaces stay out)*
 - [ ] Routing Control Plane Functions / Routing Configuration Functions (RCF)
 - [ ] Selective route download
 - [ ] Route prioritization across protocols and across VRFs

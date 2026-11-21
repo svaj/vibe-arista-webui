@@ -139,6 +139,25 @@ describe('App composition (F6 chrome)', () => {
     expect(screen.getByRole('button', { name: 'Reload VRRP state' })).toBeDisabled()
   })
 
+  it('puts the #87 route-map editor in the nav on #/routing/routemaps', () => {
+    render(<App />)
+
+    const routeMaps = screen.getByRole('link', { name: 'Route maps' })
+    expect(routeMaps).toHaveAttribute('href', '#/routing/routemaps')
+    expect(routeMaps).not.toHaveAttribute('aria-current', 'page')
+    // Registering the route must not warm anything up: with no proxy the screen prompts and its
+    // five staging triggers stay disabled — no read is attempted.
+    fireEvent.click(routeMaps)
+    expect(screen.getByRole('heading', { level: 2, name: 'Route maps' })).toBeInTheDocument()
+    expect(screen.getByRole('alert')).toHaveTextContent('EAPI_HOST')
+    expect(screen.getByRole('button', { name: 'Stage clause create' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Stage statement replace' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Stage description' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Stage continue change' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Stage clause delete' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Reload route-map state' })).toBeDisabled()
+  })
+
   it('puts the S7 (#77) capability probe panel in the nav on #/capabilities', () => {
     render(<App />)
 
