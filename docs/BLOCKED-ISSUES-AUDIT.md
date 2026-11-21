@@ -91,6 +91,17 @@ operational STP panel shipped in the webui. The owner still must decide:
 2. whether an optional port-hygiene gate is required;
 3. whether MST region name/revision/instance mapping is exposed in the same editor or a separate slice.
 
+**SPEC + BUILD DONE 2026-11-21.** All three were answered in DR-149 (facts-at-confirm; no hygiene
+gate; same editor), the intake settled the build shape (mode set includes `rapid-pvst` with a
+container-only-acceptance disclosure; new route `#/stp/global`; webui-only raw-line composition —
+no client slice), and `docs/SPEC-stp-global-editor.md` shipped with the screen: `StpGlobal` +
+`StpGlobalView` + the capture-pinned `stp-global-rules.ts`, staging through the #141 coordinator
+with DR-149 blast-fact confirms. `#/stp` keeps zero mode controls (its note now points at the new
+route). The recorded convention deviation (command text pinned to captures, not client verbs) is
+DR-151. What stays open on the device: `rapid-pvst` acceptance on the 7050TX-64-R (the disclosure
++ refusal fallback cover it until a run answers), region reconvergence timing on this SKU, and the
+`no instance …` removal spelling (removals stay a console operation).
+
 ### Do Not Do
 
 - Do not commit a global STP mode change on the physical switch merely to answer a CLI question.

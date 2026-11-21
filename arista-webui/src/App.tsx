@@ -14,6 +14,7 @@ import { Mlag } from './features/mlag/Mlag'
 import { SystemSettings } from './features/system/SystemSettings'
 import { Ntp } from './features/ntp/Ntp'
 import { Stp } from './features/stp/Stp'
+import { StpGlobal } from './features/stp/StpGlobal'
 import { Vrfs } from './features/vrfs/Vrfs'
 import { Acls } from './features/acls/Acls'
 import { StaticRoutes } from './features/routes/StaticRoutes'
@@ -130,11 +131,19 @@ function App() {
       element: <Mlag node={node} proxyConfigured={configured} />,
     },
     // S15 (#85) owns `#/stp`: per-port bpduguard/portfast guard edits staged the named-session way,
-    // plus a config-only STP summary. `show spanning-tree` is uncaptured (operational state is
-    // "not yet observable"), and no global-mode control renders — mode changes are blocked B3 (#88).
+    // plus a config-only STP summary and the capture-backed operational panel (#88 step 1). No
+    // global-mode control renders here — that lives on `#/stp/global` below (the audit's #88
+    // "Do Not Do": never fold global mode mutation into the per-port guard screen).
     '/stp': {
       title: 'Spanning tree',
       element: <Stp node={node} proxyConfigured={configured} />,
+    },
+    // B3 (#88) step 2 owns `#/stp/global`: the global mode editor (mstp/none/rapid-pvst, the last
+    // with its container-only-acceptance disclosure) and the MST region editor DR-149 settled into
+    // ONE editor. Stages through the shared transaction; the blast facts ride every confirm.
+    '/stp/global': {
+      title: 'Spanning-tree global',
+      element: <StpGlobal node={node} proxyConfigured={configured} />,
     },
     // S9 (#79) owns `#/sessions`: the transaction center (view/abort/preview half; the durable
     // persistence/rollback half stays out of scope until #89's captures land).

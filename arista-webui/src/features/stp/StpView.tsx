@@ -10,8 +10,9 @@
  * `show spanning-tree` is capture-backed on both targets since the #88 step 1 refresh, so live
  * instance/port state renders verbatim from the reply — and when the soft read fails, the panel
  * carries {@link STP_OPERATIONAL_UNAVAILABLE_NOTE} instead of pretending. The two panels never mix
- * sources. No global-mode control renders anywhere (blocked issue B3 #88 — the guard-design
- * decision, not the blast, is what remains) — {@link STP_MODE_EDIT_NOTE} is static copy, not a form.
+ * sources. No global-mode control renders anywhere (B3 #88 step 2 shipped the mode + MST region
+ * editor on its own `#/stp/global` route — the audit's "Do Not Do" keeps it out of this per-port
+ * screen) — {@link STP_MODE_EDIT_NOTE} is static copy pointing there, not a form.
  * The MST/instance half of the CONFIG summary says what it is: this client's reader is upstream's
  * stub ({@link STP_INSTANCES_NOTE}).
  *

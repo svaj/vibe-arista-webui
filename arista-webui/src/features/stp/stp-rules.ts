@@ -133,9 +133,15 @@ export function stpPortRowView(row: StpInterface): StpPortRowView {
   return { interfaceName: row.interfaceName, bpduguard: row.bpduguard, portfast: row.portfast, portfastType: row.portfastType }
 }
 
-/** Static copy: why there is no mode control anywhere on this screen (blocked issue B3 #88). */
+/**
+ * Static copy: why there is no mode control on THIS screen (B3 #88 step 2, 2026-11-21). The
+ * global mode + MST region editor shipped on its own route (`#/stp/global`,
+ * `docs/SPEC-stp-global-editor.md`) after DR-149 settled the guard design; this per-port screen
+ * deliberately keeps none (the audit's #88 "Do Not Do": never fold global mode mutation into the
+ * per-port guard screen). The old "blocked pending #88" sentence is retired here.
+ */
 export const STP_MODE_EDIT_NOTE =
-  'Global spanning-tree mode editing is not offered on this screen. A mode change (`spanning-tree mode …`) is blocked pending issue B3 (#88) — the blast itself is now observed evidence (docs/evidence/stp-mode-change.ceos.json), and what remains blocked is the guard-design DECISIONS entry — so no control here can stage one. The mode line below is read-only config text.'
+  'Global spanning-tree mode editing lives on the dedicated `Spanning-tree global` screen (#/stp/global) — a mode change re-initializes STP instances network-wide, so it is edited there with the measured blast facts at every confirm, never mixed into this per-port guard screen. The mode line below is read-only config text here.'
 
 /**
  * Copy for the ONE case in which the operational panel shows no live state: the soft
