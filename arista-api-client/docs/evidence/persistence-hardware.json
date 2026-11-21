@@ -1,0 +1,77 @@
+{
+  "generatedAt": "2026-11-21T03:21:48.154Z",
+  "targetClass": "hardware",
+  "verbs": [
+    "copy",
+    "rollback"
+  ],
+  "snapshotFile": "flash:hw-persist-mwpud73f.cfg",
+  "observations": [
+    {
+      "step": "identity",
+      "at": "2026-11-21T03:21:43.772Z",
+      "class": "hardware",
+      "version": "4.28.13.1M",
+      "modelName": "DCS-7050TX-64-R"
+    },
+    {
+      "step": "scratch-link",
+      "at": "2026-11-21T03:21:43.927Z",
+      "scratch": "Ethernet33",
+      "linkStatus": "notconnect"
+    },
+    {
+      "step": "copy-baseline-startup",
+      "at": "2026-11-21T03:21:44.078Z",
+      "absent": false,
+      "hasMarker": false,
+      "lines": 210
+    },
+    {
+      "step": "copy-reply",
+      "at": "2026-11-21T03:21:44.790Z",
+      "text": ""
+    },
+    {
+      "step": "copy-after-startup",
+      "at": "2026-11-21T03:21:44.928Z",
+      "lines": 210,
+      "changedFromBaseline": true
+    },
+    {
+      "step": "replace",
+      "at": "2026-11-21T03:21:44.929Z",
+      "skipped": "not in EAPI_HW_PERSISTENCE_VERBS"
+    },
+    {
+      "step": "rollback-clean-diff",
+      "at": "2026-11-21T03:21:47.008Z",
+      "diffLines": 152,
+      "diffHead": [
+        "--- system:/running-config",
+        "+++ session:/hw-persist-rbclean-mwpud73f-session-config",
+        "@@ -4,80 +4,37 @@",
+        " !",
+        " no aaa root",
+        " !",
+        "-username svaj privilege 15 role ops secret <redacted> <redacted>",
+        "- <username ssh-key redacted>"
+      ]
+    },
+    {
+      "step": "rollback-clean-poststate",
+      "at": "2026-11-21T03:21:47.311Z",
+      "sessionStillPending": false
+    },
+    {
+      "step": "rollback-name",
+      "at": "2026-11-21T03:21:47.454Z",
+      "skipped": "no completed session hw-persist-rep-mwpud73f to target (replace step did not run or the slot rotated) \u2014 DR-136 one-slot store"
+    },
+    {
+      "step": "final-scratch-state",
+      "at": "2026-11-21T03:21:48.015Z",
+      "markerPresent": false
+    }
+  ]
+}

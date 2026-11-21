@@ -3027,6 +3027,49 @@ unchanged); DR-035(b/c) (scratch discipline; the persistence fence this DR narro
 named lane); DR-124/DR-132 (the write fence and its first exemption); DR-134; DR-043; DR-013
 (no insecure TLS — the CORS lane keeps it); #87/#88/#89/#159.
 
+### DR-150 — the #89 persistence lane ran GREEN on the PHYSICAL 7050TX-64-R (2026-11-21, operator-supervised): `copy run start` accepted, session-scoped `rollback clean-config` EXISTS on 4.28.13.1M (152-line diff, aborted clean); the run also caught the ssh-key-comment redaction gap
+
+The owner executed `scripts/capture-hw-persistence.sh --go --host <switch> --user svaj --scratch Ethernet33`
+(default verbs `copy,rollback`) against the production unit in their own supervised session — the
+typed model/scratch consents of DR-149's chain were exercised as designed. Artifact:
+`arista-api-client/docs/evidence/persistence-hardware.json` (identity: `DCS-7050TX-64-R` /
+`4.28.13.1M` — the first persistence-verb answers FROM the hardware class, closing the
+"answers ON THE BOX" debt of §5 row 8 / DR-148's still-owed list).
+
+**Verdicts (hardware, this SKU only — DR-043 cuts both ways):**
+- **`copy running-config startup-config`: ACCEPTED on the box.** The proof is the flip, not the
+  reply (the eAPI reply text came back empty on both classes — the re-read is the answer):
+  baseline `show startup-config` existed at 210 lines, post-copy re-read still 210 lines with
+  `changedFromBaseline: true`. The 2026-11-16 cEOS verdict now has its hardware sibling.
+- **Session-scoped `rollback clean-config`: the VERB EXISTS on 4.28.13.1M.** Staged inside named
+  session `hw-persist-rbclean-mwpud73f`, its `session.diff()` answered a 152-line would-be blast,
+  and the session aborted clean (`sessionStillPending: false`). This is the hardware half of open
+  item 8's rollback question for the SESSION form — distinct from the EXEC-level
+  `rollback clean-config`, which stays a captured 1002 (cEOS, 2026-11-16).
+- **`rollback <name>`: still open on hardware** — honestly skipped: its target is the marker
+  session the `replace` step commits, and the operator's run did not name `replace`.
+- **`configure replace`: still unexercised on hardware** (by the operator's choice — `replace`
+  requires explicit naming plus its own typed `CONFIGURE REPLACE` consent; the authorization
+  stands, the run just did not spend it). The scratch port `Ethernet33` read `linkStatus:
+  notconnect` before any write — the unused-scratch contradiction check working as designed — and
+  `final-scratch-state` confirmed no marker left behind.
+
+**The run caught a redaction gap (fixed same day).** The `rollback clean-diff` head carried
+`username svaj ssh-key ssh-ed25519 AAAA… svaj@SVAJTOWER`: the key material fell to the generic
+redactors but the **key comment — an operator workstation identity — survived** (the artifact
+committed here is hand-redacted to `<username ssh-key redacted>`; the suite now redacts the whole
+`username … ssh-key …` line and the pre-write artifact scan rejects `ssh-key ssh-*`/`ecdsa`/`sk-`
+and base64 blob shapes, not just `$6$` hashes). Lesson generalizes to every diff-capturing lane:
+running-config is a credential surface wider than passwords.
+
+**Still owed on this SKU (unchanged, all operator-gated):** `configure replace` on the box,
+`rollback <name>` on the box (needs a replace run or a completed session in the one-slot store),
+and the `no-commit`/quote-depth/embedded-quote session-grammar families (DR-147's skipped stubs).
+**Related:** DR-149 (the authorization this discharges); DR-148 (the cEOS siblings of these
+verdicts); DR-035(c) (the fence — narrowed only for this named lane); DR-011 (secrets out of
+artifacts — this run's addition); DR-043 (hardware facts, no cross-claim to containers either);
+#89.
+
 ## Open items (need the device)
 
 Use cEOS first for software behavior and schema exploration, recording its model/version;

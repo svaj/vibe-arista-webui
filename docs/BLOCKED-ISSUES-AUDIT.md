@@ -122,7 +122,17 @@ device, and a later session opens fine while a timer is armed. The TransactionCe
 the armed-timer semantics in its session rows. The run does not answer or authorize physical
 `copy running-config startup-config`, `configure replace`, or rollback behavior.
 
-The physical persistence half remains intentionally unscripted. It requires an owner authorization and maintenance plan because these verbs persist or wholesale-rewrite running configuration and are mechanically fenced from the hardware probe lane.
+**RUN DONE 2026-11-21 (HARDWARE, owner-executed).** The persistence lane —
+`scripts/capture-hw-persistence.sh` + `persistence-hardware.live.test.ts`, built after DR-149
+recorded the owner's authorization ("the copy run start is fine, a minimal change can be run via
+configure replace and rollback… so long as its scripted and I can review prior to executing it") —
+ran green on the physical 7050TX-64-R (`docs/evidence/persistence-hardware.json`, DR-150):
+`copy running-config startup-config` ACCEPTED on the box (210-line startup, mtime flip),
+session-scoped `rollback clean-config` EXISTS on 4.28.13.1M (152-line staged diff, aborted clean),
+scratch `Ethernet33` verified unused before any write and left clean. `configure replace` and
+`rollback <name>` remain unexercised on hardware — not named in that run's verbs; the
+authorization stands for a future `--verbs copy,rollback,replace` run. The run also caught the
+ssh-key-comment redaction gap (DR-150).
 
 ## #159: Browser-Direct Static Mode / CORS
 
