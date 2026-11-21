@@ -2967,6 +2967,66 @@ its confirm half stays open, the container could not even ask); DR-134; DR-145/D
 gate this run passed); DR-131 (device-spelling corrections); DR-043 (every claim above is
 container-scoped); #87/#88/#89.
 
+### DR-149 — the owner settles the four #166 gate questions: permissive blast policy (#87), F4-confirm-with-facts + no hygiene gate + same-editor MST region (#88), a fenced hardware persistence lane (#89), and a no-stored-credentials CORS posture (#159)
+
+PR #166 merged with four owner gates open; all four were answered on 2026-11-20/21.
+
+**#87 — deployment/blast-radius policy: PERMISSIVE, with one hard line.** The owner's words: "as
+long as live traffic on my production switch is not interfered with, I'm okay with whatever you
+do." Recorded as the standing policy for routing changes: lab-measured blast scales (DR-148) are
+disclosure material for confirms, not blockers; the invariant the policy protects is *live traffic
+undisturbed*, which is why the scratch-port discipline (declared-unused + `linkStatus`
+contradiction check) and the running-config-only commit contract (DR-024) stay exactly as strict
+as they are. Consequence: the read-only routing screen stays read-only not because blast policy
+forbids editors but because no editor has been specified yet — an editor proposal cites this DR
+and the blast numbers instead of re-asking.
+
+**#88 — guard design: F4 confirm carrying the captured blast facts; NO port-hygiene gate
+(informational note only); MST region name/revision/instance-mapping in the SAME editor as the
+mode change.** The confirm text quotes the cEOS measurements (flip ~67 ms, MST0 replaced by
+per-VLAN instances, brief forwarding interruption on every VLAN) with the DR-043 scoping line —
+facts, not adjectives. The per-port guard screen stays separate (unchanged); the mode-change
+editor gains the MST region fields as one slice. The mode editor itself stays closed until that
+combined spec lands — this decision unblocks the spec, it does not open the editor.
+
+**#89 — physical persistence verbs: AUTHORIZED, scripted and reviewable.** The owner's words:
+"the copy run start is fine, a minimal change can be run via configure replace and rollback. I'll
+allow it, so long as it's scripted and I can review prior to executing it." The lane is
+`src/persistence-hardware.live.test.ts` + `scripts/capture-hw-persistence.sh` — dry-run by
+default, plan printed before any consent prompt, per-verb opt-in (`replace` must be named
+explicitly and gets its own typed `CONFIGURE REPLACE` echo), and the second-ever exemption from
+the hardware write fence (`requireScratchInterface({ hardwarePersistence: true })`, gated by
+`requireHwPersistenceConsent`: `EAPI_HW_PERSISTENCE=1` + a typed echo of the scratch port). The
+plan is self-restoring by construction: `copy` writes only startup-config (the authorized file);
+`replace` snapshots running to a scratch flash file, commits a one-line marker on the declared
+scratch port, and `configure replace` re-mounts the snapshot (marker gone = proof, and the
+restore); `rollback clean-config`/`rollback <name>` are captured ABORT-ONLY — the session diff is
+the answer, nothing commits (DR-134: a refusal is also an answer). The cEOS rehearsal
+(`persistence-rehearsal.ceos.json`) proved the copy flip (absent baseline → 91-line startup) and
+the 92-line clean-config diff, and caught a redaction bug: config diffs quote the
+`username … secret sha512 $6$…` line, so diff observations now pass a redactor and the artifact
+scan rejects any `$6$` hash before write. The hardware run itself stays operator-driven — the
+consent chain is typed by hand at the prompt, which is the "review prior to executing" the
+authorization named.
+
+**#159 — credential placement: the owner's posture is NO stored credentials — browser-held basic
+auth is rejected, so static/direct-browser mode stays unimplemented.** Asked directly, the owner
+said credentials "shouldn't be stored, our session only stays authenticated as long as the session
+with the eAPI is authenticated." That is a decision AGAINST the only mechanism EOS basic-auth over
+CORS offers (a browser can only send `Authorization:` from a script-visible source — a form the
+user submits each load, or storage that outlives the tab). The relay mode keeps the password in
+the Vite process env, which is the shape the posture endorses; the hardware CORS capture
+(`capture-hardware-cors.sh`) stays available as pure evidence but no longer gates any plan, and
+direct-browser mode is closed unless EOS gains a token/session auth eAPI supports (it does not on
+4.28.13.1M as captured). The issue's "DR-027" citation was a mis-number — DR-027 is Not-found
+semantics; the credential invariant lives in the webui relay contract (`relay-protocol.ts`,
+playwright config: "Passwords never reach the browser").
+
+**Related:** DR-148 (the blast numbers #87/#88 cite); DR-024 (running-config-only commit —
+unchanged); DR-035(b/c) (scratch discipline; the persistence fence this DR narrows by exactly one
+named lane); DR-124/DR-132 (the write fence and its first exemption); DR-134; DR-043; DR-013
+(no insecure TLS — the CORS lane keeps it); #87/#88/#89/#159.
+
 ## Open items (need the device)
 
 Use cEOS first for software behavior and schema exploration, recording its model/version;

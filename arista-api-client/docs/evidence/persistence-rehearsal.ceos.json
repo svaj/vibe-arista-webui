@@ -1,0 +1,87 @@
+{
+  "generatedAt": "2026-11-21T02:28:44.203Z",
+  "targetClass": "lab",
+  "verbs": [
+    "copy",
+    "rollback",
+    "replace"
+  ],
+  "snapshotFile": "flash:hw-persist-mwpsgxhl.cfg",
+  "observations": [
+    {
+      "step": "identity",
+      "at": "2026-11-21T02:28:38.501Z",
+      "class": "lab",
+      "version": "4.28.14M-50015774.42814M (engineering build)",
+      "modelName": "cEOSLab"
+    },
+    {
+      "step": "copy-baseline-startup",
+      "at": "2026-11-21T02:28:38.577Z",
+      "absent": true,
+      "hasMarker": false,
+      "lines": 1
+    },
+    {
+      "step": "copy-reply",
+      "at": "2026-11-21T02:28:38.897Z",
+      "text": ""
+    },
+    {
+      "step": "copy-after-startup",
+      "at": "2026-11-21T02:28:39.034Z",
+      "lines": 91,
+      "changedFromBaseline": true
+    },
+    {
+      "step": "replace-snapshot",
+      "at": "2026-11-21T02:28:39.367Z",
+      "snapshotFile": "flash:hw-persist-mwpsgxhl.cfg"
+    },
+    {
+      "step": "replace-marker-committed",
+      "at": "2026-11-21T02:28:40.630Z",
+      "markerPresent": true
+    },
+    {
+      "step": "replace-reply",
+      "at": "2026-11-21T02:28:42.737Z",
+      "text": ""
+    },
+    {
+      "step": "replace-after",
+      "at": "2026-11-21T02:28:43.062Z",
+      "markerPresent": false
+    },
+    {
+      "step": "rollback-clean-diff",
+      "at": "2026-11-21T02:28:43.745Z",
+      "diffLines": 92,
+      "diffHead": [
+        "--- system:/running-config",
+        "+++ session:/hw-persist-rbclean-mwpsgxhl-session-config",
+        "@@ -2,87 +2,16 @@",
+        " !",
+        " no aaa root",
+        " !",
+        "-username eapilabyicqsu privilege 15 role network-admin secret <redacted> <redacted>",
+        "-!"
+      ]
+    },
+    {
+      "step": "rollback-clean-poststate",
+      "at": "2026-11-21T02:28:43.887Z",
+      "sessionStillPending": false
+    },
+    {
+      "step": "rollback-name",
+      "at": "2026-11-21T02:28:43.955Z",
+      "skipped": "no completed session hw-persist-rep-mwpsgxhl to target (replace step did not run or the slot rotated) — DR-136 one-slot store"
+    },
+    {
+      "step": "final-scratch-state",
+      "at": "2026-11-21T02:28:44.060Z",
+      "markerPresent": false
+    }
+  ]
+}
