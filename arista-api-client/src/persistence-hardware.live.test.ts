@@ -110,10 +110,17 @@ const observe = (step: string, data: Record<string, unknown>): void => {
 
 /** Config diffs quote the WHOLE running-config, which on a provisioned device includes the
  *  `username … secret sha512 $6$…` line (observed in the 2026-11-20 rehearsal artifact — the
- *  plaintext-password scan alone does not catch a device-stored hash). Every diff-derived
- *  observation passes through here: credential hashes are redacted, structure stays countable. */
+ *  plaintext-password scan alone does not catch a device-stored hash) AND the
+ *  `username … ssh-key ssh-ed25519 AAAA… <comment>` line (observed in the 2026-11-21 HARDWARE
+ *  artifact: the key material fell to the generic redactors but the key COMMENT — an operator
+ *  workstation identity — survived). Every diff-derived observation passes through here:
+ *  credential material is redacted, structure stays countable. */
 function redactConfig(text: string): string {
-  return text.replace(/(secret\s+)\S+/gu, '$1<redacted>').replace(/\$6\$\S+/gu, '<redacted>').replace(/\$1\$\S+/gu, '<redacted>')
+  return text
+    .replace(/(secret\s+)\S+/gu, '$1<redacted>')
+    .replace(/\$6\$\S+/gu, '<redacted>')
+    .replace(/\$1\$\S+/gu, '<redacted>')
+    .replace(/^(\s*[-+]?)\s*username\s+\S+\s+ssh-key\s+.*$/gmu, '$1 <username ssh-key redacted>')
 }
 
 async function textRead(n: Node, command: string): Promise<string> {
@@ -201,8 +208,9 @@ afterAll(async () => {
   const text = JSON.stringify(evidence, null, 2)
   const secret = process.env['EAPI_PASS'] ?? process.env['EAPI_HW_PW']
   if (secret !== undefined && secret !== '') expect(text.includes(secret), 'evidence artifact must never carry a credential').toBe(false)
-  // Device-stored hashes ride config diffs — the redactor above must have caught them all.
-  expect(/\$6\$|\$1\$[a-zA-Z0-9./]{8}/u.test(text), 'evidence artifact must never carry a config secret hash').toBe(false)
+  // Device-stored hashes and ssh key material ride config diffs — the redactor above must have
+  // caught them all (the ssh-key arm joined after the 2026-11-21 hardware run kept a key comment).
+  expect(/\$6\$|\$1\$[a-zA-Z0-9./]{8}|ssh-key\s+\S*(ssh-|ecdsa-|sk-)|\bAAA[ABCEGHJKLMNPRSTVWXYZ]{2}\w{10,}/u.test(text), 'evidence artifact must never carry config secret or ssh-key material').toBe(false)
   writeFileSync(out, `${text}\n`, 'utf8')
   console.log(`persistence-hardware: wrote ${out}${hardware ? '' : ' (REHEARSAL — container only, DR-043)'}`)
 })
