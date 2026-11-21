@@ -13,6 +13,7 @@ import {
   STP_MODE_NONE_FACTS,
   STP_REGION_IDENTITY_RISK,
   STP_REGION_INSTANCE_RISK,
+  STP_REGION_REMOVAL_FACT,
   isStpGlobalModeChoice,
   parseStpRegionSection,
   stpModeConfirmation,
@@ -22,6 +23,7 @@ import {
   stpRegionChildLines,
   stpRegionDraftIsEmpty,
   stpRegionIdentityConfirmation,
+  stpRegionNoInstanceLine,
   stpRegionRisks,
   validateStpInstanceId,
   validateStpRegionName,
@@ -72,9 +74,20 @@ describe('the MST region block (hardware batch unblock-stp-mst-region-grammar)',
     expect(stpRegionDraftIsEmpty({ instances: [{ id: '1', vlans: '10' }] })).toBe(false)
   })
 
-  it('never composes a removal line — `no instance …` is uncaptured (spec Out of scope)', () => {
+  it('a draft with no removals composes no `no …` line at all', () => {
     const lines = stpRegionChildLines({ name: 'X', revision: '2', instances: [{ id: '3', vlans: '30' }] })
     for (const line of lines) expect(line).not.toMatch(/^no\s/u)
+  })
+
+  it('removals compose the capture-backed BARE `no instance <id>` (rea-q2, unblock-grammar-ceos.json), after the adds', () => {
+    expect(stpRegionNoInstanceLine('3')).toBe('no instance 3')
+    const lines = stpRegionChildLines({ instances: [{ id: '4', vlans: '40' }], removeInstances: [{ id: '1' }, { id: '2' }] })
+    expect(lines).toEqual(['instance 4 vlan 40', 'no instance 1', 'no instance 2'])
+  })
+
+  it('a removal-only draft is NOT empty (the container must not refuse it)', () => {
+    expect(stpRegionDraftIsEmpty({ instances: [], removeInstances: [{ id: '1' }] })).toBe(false)
+    expect(stpRegionDraftIsEmpty({ instances: [], removeInstances: [] })).toBe(true)
   })
 })
 
@@ -110,6 +123,14 @@ describe('parseStpRegionSection (the region read model)', () => {
     const view = parseStpRegionSection('spanning-tree mst configuration\n   name R\n   some-future-kernel line\n')
     expect(view.name).toBe('R')
     expect(view.unmodelledLines).toBe(1)
+  })
+
+  it('reads the device\'s OWN double-space spelling (`instance 1 vlan  100,110`, both diffs)', () => {
+    // The device normalizes the stored line to `vlan  100,110` (hardware batch diff AND
+    // unblock-grammar-ceos.json rea-q0) — a single-space-only reader would count it unmodelled.
+    const view = parseStpRegionSection('spanning-tree mst configuration\n   instance 1 vlan  100,110\n')
+    expect(view.instances).toEqual([{ id: '1', vlans: '100,110' }])
+    expect(view.unmodelledLines).toBe(0)
   })
 })
 
@@ -178,6 +199,14 @@ describe('risk + confirm copy (DR-149: the confirm carries the CAPTURED facts)',
     expect(risks.at(-1)).toBe(STP_FAR_END_NOTE)
     expect(STP_FAR_END_NOTE).toMatch(/informational note/u)
     expect(STP_FAR_END_NOTE).toMatch(/no port-hygiene gate/u)
+  })
+
+  it('a removal draft carries the STP_REGION_REMOVAL_FACT line with its DR-043 scoping', () => {
+    const risks = stpRegionRisks({ instances: [], removeInstances: [{ id: '1' }] }, ['spanning-tree mst configuration', 'no instance 1'])
+    expect(risks).toContain(STP_REGION_REMOVAL_FACT)
+    expect(STP_REGION_REMOVAL_FACT).toMatch(/netted the line out of the block/u)
+    expect(STP_REGION_REMOVAL_FACT).toMatch(/container evidence, not this unit, DR-043/u)
+    expect(STP_REGION_REMOVAL_FACT).toMatch(/fallback is not measured on any target/u)
   })
 
   it('region risks: identity edit gets the reconvergence sentence, a pure remap only the instance one', () => {

@@ -111,6 +111,9 @@ function StpGlobalWorkspace({ node, proxyConfigured = true }: StpGlobalProps) {
   const [instanceRows, setInstanceRows] = useState<readonly { id: string; vlans: string }[]>([])
   const [instanceIdDraft, setInstanceIdDraft] = useState('')
   const [instanceVlansDraft, setInstanceVlansDraft] = useState('')
+  // Instance ids marked for removal, taken from the READ block only — the removal line is the
+  // capture-backed bare `no instance <id>` (rea-q2, unblock-grammar-ceos.json).
+  const [removeInstanceIds, setRemoveInstanceIds] = useState<readonly string[]>([])
   const [regionError, setRegionError] = useState<string | undefined>(undefined)
 
   const read = useDeviceRead<ReadData>(
@@ -206,6 +209,12 @@ function StpGlobalWorkspace({ node, proxyConfigured = true }: StpGlobalProps) {
     setInstanceRows((rows) => rows.filter((_, i) => i !== index))
   }
 
+  /** Toggle a READ mapping's removal mark. The id comes from the parsed block, never the form. */
+  function toggleRemoveInstance(id: string): void {
+    clearErrors()
+    setRemoveInstanceIds((ids) => (ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]))
+  }
+
   function beginRegionChange(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault()
     clearErrors()
@@ -214,9 +223,17 @@ function StpGlobalWorkspace({ node, proxyConfigured = true }: StpGlobalProps) {
       ...(regionName === '' ? {} : { name: regionName }),
       ...(regionRevision === '' ? {} : { revision: regionRevision }),
       instances: instanceRows,
+      ...(removeInstanceIds.length === 0 ? {} : { removeInstances: removeInstanceIds.map((id) => ({ id })) }),
     }
     if (stpRegionDraftIsEmpty(draft)) {
-      setRegionError('Nothing to stage — change the name or revision, or add at least one instance mapping row. This screen never stages an empty `spanning-tree mst configuration` block.')
+      setRegionError('Nothing to stage — change the name or revision, add an instance mapping row, or mark a read mapping for removal. This screen never stages an empty `spanning-tree mst configuration` block.')
+      return
+    }
+    // An id can be added and removed in one draft only by accident — the two lines would fight
+    // inside one session. Refuse at zero appends; the operator picks one intent per instance.
+    const collision = removeInstanceIds.find((id) => instanceRows.some((row) => row.id === id))
+    if (collision !== undefined) {
+      setRegionError(`Instance ${collision} is both an added row and marked for removal — one draft stages one intent per instance id.`)
       return
     }
     const nameRefusal = validateStpRegionName(regionName) ?? validateStpRegionRevision(regionRevision)
@@ -240,6 +257,7 @@ function StpGlobalWorkspace({ node, proxyConfigured = true }: StpGlobalProps) {
     setRegionName('')
     setRegionRevision('')
     setInstanceRows([])
+    setRemoveInstanceIds([])
   }
 
   const state = !canAct || read.state.kind === 'error' ? 'failed' : read.state.kind === 'loading' ? 'loading' : 'ready'
@@ -263,6 +281,7 @@ function StpGlobalWorkspace({ node, proxyConfigured = true }: StpGlobalProps) {
     instanceRows,
     instanceIdDraft,
     instanceVlansDraft,
+    removeInstanceIds,
     ...(regionError === undefined ? {} : { regionError }),
     onRegionNameChange: (value) => { setRegionName(value); setRegionError(undefined) },
     onRegionRevisionChange: (value) => { setRegionRevision(value); setRegionError(undefined) },
@@ -270,6 +289,7 @@ function StpGlobalWorkspace({ node, proxyConfigured = true }: StpGlobalProps) {
     onInstanceVlansDraftChange: (value) => { setInstanceVlansDraft(value); setRegionError(undefined) },
     onAddInstanceRow: addInstanceRow,
     onRemoveInstanceRow: removeInstanceRow,
+    onToggleRemoveInstance: toggleRemoveInstance,
     onRegionPreview: beginRegionChange,
     busy: busy || transactionBusy,
     canAct: canAct && state === 'ready',

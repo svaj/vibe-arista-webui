@@ -25,12 +25,20 @@
  *   sequential in-submode application is the proven mechanism. The device diff stays the
  *   authority on what the block keeps.
  *
+ * - `no instance <id>` / `no instance <id> vlan <ranges>` / `no name` / `no revision` —
+ *   cEOS-lab 4.28.14M: `docs/evidence/unblock-grammar-ceos.json` (batch rea-q1..q4, all staged
+ *   and ABORTED; the session diffs show the add+remove pair netting the mapping OUT of the block,
+ *   and `no name`/`no revision` each removing exactly their field). The screen stages the BARE
+ *   `no instance <id>` — the capture showed both spellings stage identically, and the bare form
+ *   cannot misquote the device's own VLAN-list spacing (it normalizes `vlan 100,110` to
+ *   `vlan  100,110` in stored config — see {@link parseStpRegionSection}). Container evidence,
+ *   not this unit (DR-043); the device diff stays the authority.
+ *
  * ## What stays closed (the spec's Out of scope)
  *
  * No `no spanning-tree mode` / `default spanning-tree mode` arm (DR-096's client grammar is the
- * only unset story and this screen offers none); no `no instance …` removal line (uncaptured
- * spelling — removals stay a console operation until captured); no mode value outside the three
- * approved ones; nothing here commits anything (the Transaction Center owns commit/abort, #141).
+ * only unset story and this screen offers none); no mode value outside the three approved ones;
+ * nothing here commits anything (the Transaction Center owns commit/abort, #141).
  */
 
 /** The three mode values the owner approved for the editor (2026-11-21 intake). */
@@ -61,31 +69,44 @@ export function stpRegionInstanceLine(id: string, vlans: string): string {
 }
 
 /**
- * The region-edit batch WITHOUT the parent line: only the lines the operator changed or added
- * (EOS applies the block incrementally; the device diff is the proof). Removals are out of scope
- * for v1 — no `no instance …` line is ever composed here (uncaptured spelling).
+ * The removal line for one mapping — the BARE `no instance <id>`, the spelling
+ * `docs/evidence/unblock-grammar-ceos.json` rea-q2 staged (and rea-q1 proved the quad form
+ * stages identically). Bare is deliberately chosen: it cannot misquote the device's own
+ * double-space VLAN-list spelling, and the diff showed it nets the mapping out of the block.
+ */
+export function stpRegionNoInstanceLine(id: string): string {
+  return `no instance ${id}`
+}
+
+/**
+ * The region-edit batch WITHOUT the parent line: only the lines the operator changed, added, or
+ * removed (EOS applies the block incrementally; the device diff is the proof). Removals ride the
+ * capture-backed bare `no instance <id>` (rea-q2, unblock-grammar-ceos.json).
  */
 export interface MstRegionDraft {
   /** The typed region name, or `undefined` when the operator left it untouched. */
   readonly name?: string
   /** The typed revision, or `undefined` when untouched. */
   readonly revision?: string
-  /** Mapping rows the operator ADDED this session (existing rows are display-only in v1). */
+  /** Mapping rows the operator ADDED this session. */
   readonly instances: readonly { readonly id: string; readonly vlans: string }[]
+  /** Instance ids whose mapping line the operator is REMOVING (each must be in the read). */
+  readonly removeInstances?: readonly { readonly id: string }[]
 }
 
-/** The child lines a draft stages, in capture order: name, revision, then instance rows. */
+/** The child lines a draft stages, in capture order: name, revision, added rows, then removals. */
 export function stpRegionChildLines(draft: MstRegionDraft): readonly string[] {
   const lines: string[] = []
   if (draft.name !== undefined) lines.push(`name ${draft.name}`)
   if (draft.revision !== undefined) lines.push(`revision ${draft.revision}`)
   for (const row of draft.instances) lines.push(stpRegionInstanceLine(row.id, row.vlans))
+  for (const row of draft.removeInstances ?? []) lines.push(stpRegionNoInstanceLine(row.id))
   return lines
 }
 
 /** True when a draft would stage nothing (the container refuses this in-form, at zero sessions). An empty string is "untouched", same as absent. */
 export function stpRegionDraftIsEmpty(draft: MstRegionDraft): boolean {
-  return (draft.name === undefined || draft.name === '') && (draft.revision === undefined || draft.revision === '') && draft.instances.length === 0
+  return (draft.name === undefined || draft.name === '') && (draft.revision === undefined || draft.revision === '') && draft.instances.length === 0 && (draft.removeInstances?.length ?? 0) === 0
 }
 
 // --- region read model (parsed from the chunked running-config section) -------------------------
@@ -122,7 +143,11 @@ export function parseStpRegionSection(sectionText: string): MstRegionView & { re
   for (const line of lines) {
     const nameMatch = /^name (\S+)$/u.exec(line)
     const revisionMatch = /^revision (\S+)$/u.exec(line)
-    const instanceMatch = /^instance (\S+) vlan (\S+)$/u.exec(line)
+    // `vlan\s+` (two spaces allowed): the device NORMALIZES the stored line to
+    // `instance 1 vlan  100,110` — double space — visible in both the hardware batch diff
+    // (unblock-stp-mst-region-grammar) and the cEOS grammar capture. A single-space-only regex
+    // would count the device's own line as unmodelled.
+    const instanceMatch = /^instance (\S+) vlan\s+(\S+)$/u.exec(line)
     if (nameMatch !== null) name = nameMatch[1]
     else if (revisionMatch !== null) revision = revisionMatch[1]
     else if (instanceMatch !== null) instances.push({ id: instanceMatch[1], vlans: instanceMatch[2] })
@@ -211,6 +236,14 @@ export const STP_REGION_IDENTITY_RISK =
 export const STP_REGION_INSTANCE_RISK =
   'Re-maps VLANs to MST instances; ports in the affected instances may re-converge (not measured on this unit).'
 
+/**
+ * What a staged `no instance <id>` removal does, stated from the grammar capture: the mapping
+ * line nets OUT of the block, and the VLANs it named fall back to the default instance — the
+ * fallback itself is NOT measured anywhere, so the copy says what the diff showed and no more.
+ */
+export const STP_REGION_REMOVAL_FACT =
+  'Removes the `instance … vlan …` mapping line for that instance (the bare `no instance <id>` spelling staged on cEOS-lab 4.28.14M and netted the line out of the block — container evidence, not this unit, DR-043). The VLANs it named fall back to the default instance; that fallback is not measured on any target.'
+
 /** The DR-149 informational note — a NOTE, not a gate: no hygiene check is required or offered. */
 export const STP_FAR_END_NOTE =
   'This UI cannot see what is attached on the far end of any port. DR-149 decided this stays an informational note — no port-hygiene gate blocks a global STP change.'
@@ -229,10 +262,12 @@ export function stpModeRisks(mode: StpGlobalModeChoice, lines: readonly string[]
 /** The risk list for a staged region edit. */
 export function stpRegionRisks(draft: MstRegionDraft, lines: readonly string[]): readonly string[] {
   const identity = draft.name !== undefined || draft.revision !== undefined
+  const removals = draft.removeInstances?.length ?? 0
   return [
     stpGlobalReadBack(lines),
     ...(identity ? [STP_REGION_IDENTITY_RISK] : []),
     ...(draft.instances.length > 0 ? [STP_REGION_INSTANCE_RISK] : []),
+    ...(removals > 0 ? [STP_REGION_REMOVAL_FACT] : []),
     STP_FAR_END_NOTE,
   ]
 }

@@ -16,9 +16,9 @@
  *   configured", the form offers to create the first), and configured (name/revision/instance
  *   rows verbatim, plus an honest count of lines this screen does not model).
  * - No commit/abort control exists anywhere on this screen (#141: the Transaction Center owns
- *   them); the forms only stage. Removal of an existing mapping row is NOT offered (uncaptured
- *   `no instance …` spelling — v1 rows are display-only; the added-rows table is removable
- *   because those lines were never on the device).
+ *   them); the forms only stage. A read mapping is removable via a per-row toggle that stages the
+ *   capture-backed bare `no instance <id>` (rea-q2, unblock-grammar-ceos.json); the added-rows
+ *   table is removable because those lines were never on the device.
  */
 import type { FormEvent } from 'react'
 import type { ReactElement } from 'react'
@@ -76,6 +76,9 @@ export interface StpGlobalViewProps {
   readonly onInstanceVlansDraftChange: (value: string) => void
   readonly onAddInstanceRow: () => void
   readonly onRemoveInstanceRow: (index: number) => void
+  /** Instance ids marked for removal (from the READ block; the bare `no instance <id>` verb). */
+  readonly removeInstanceIds: readonly string[]
+  readonly onToggleRemoveInstance: (id: string) => void
   readonly onRegionPreview: (event: FormEvent<HTMLFormElement>) => void
 
   readonly busy: boolean
@@ -122,6 +125,8 @@ export function StpGlobalView(props: StpGlobalViewProps): ReactElement {
     onInstanceVlansDraftChange,
     onAddInstanceRow,
     onRemoveInstanceRow,
+    removeInstanceIds,
+    onToggleRemoveInstance,
     onRegionPreview,
     busy,
     canAct,
@@ -135,6 +140,20 @@ export function StpGlobalView(props: StpGlobalViewProps): ReactElement {
   const configuredInstanceColumns: readonly DataTableColumn<MstRegionView['instances'][number]>[] = [
     { header: 'Instance', cell: (row) => <code>{row.id}</code> },
     { header: 'VLANs', cell: (row) => <code>{row.vlans}</code> },
+    {
+      header: 'Remove',
+      cell: (row) => (
+        <button
+          className="quiet-button"
+          type="button"
+          onClick={() => onToggleRemoveInstance(row.id)}
+          disabled={regionFormDisabled}
+          aria-pressed={removeInstanceIds.includes(row.id)}
+        >
+          {removeInstanceIds.includes(row.id) ? `Undo remove no instance ${row.id}` : `Remove no instance ${row.id}`}
+        </button>
+      ),
+    },
   ]
 
   const regionFormDisabled = !canAct || busy || regionUnavailable === true || !regionKnown
@@ -231,8 +250,8 @@ export function StpGlobalView(props: StpGlobalViewProps): ReactElement {
           : <DataTable columns={configuredInstanceColumns} rows={region.instances} rowKey={(row) => row.id} label="Configured MST instance-to-VLAN mappings" />}
       </>}
 
-      {/* Region edit form — stages the parent + only the changed/added lines. Removals are out of
-          scope for v1 (the `no instance …` spelling is uncaptured); configured rows are display-only. */}
+      {/* Region edit form — stages the parent + only the changed/added/removed lines. Removal of a
+          read mapping rides the capture-backed bare `no instance <id>` (rea-q2). */}
       <form onSubmit={onRegionPreview}>
         <div className="field-row">
           <div>
@@ -266,13 +285,19 @@ export function StpGlobalView(props: StpGlobalViewProps): ReactElement {
             </li>
           ))}
         </ul>}
+        {removeInstanceIds.length > 0 && (
+          <p className="notice" role="status">
+            Marked for removal: {removeInstanceIds.map((id) => <code key={id}>{`no instance ${id}`}</code>)}{' '}
+            — staged as the bare <code>no instance &lt;id&gt;</code> line (cEOS grammar capture rea-q2;
+            container evidence, not this unit — DR-043).
+          </p>
+        )}
         <p className="field-note">
-          Staging sends <code>spanning-tree mst configuration</code> plus only the lines you changed
-          or added — the capture-pinned spelling (<code>name</code> / <code>revision</code> /{' '}
-          <code>instance 1 vlan 100,110</code>, hardware batch <code>unblock-stp-mst-region-grammar</code>).
-          Removing an existing mapping is not offered: its <code>no instance …</code> spelling is not
-          capture-backed on this repo, so removals stay a console operation. The device diff decides
-          what the block keeps.
+          Staging sends <code>spanning-tree mst configuration</code> plus only the lines you changed,
+          added, or marked for removal — the capture-pinned spellings (<code>name</code> /{' '}
+          <code>revision</code> / <code>instance 1 vlan 100,110</code>, hardware batch{' '}
+          <code>unblock-stp-mst-region-grammar</code>; <code>no instance &lt;id&gt;</code>,{' '}
+          <code>unblock-grammar-ceos.json</code>). The device diff decides what the block keeps.
         </p>
         {regionError !== undefined && <p className="notice notice-error" role="alert">{regionError}</p>}
         <div className="review-actions">

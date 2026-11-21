@@ -257,6 +257,53 @@ describe('StpGlobal — region staging (parent + only changed lines)', () => {
     expect(snapshot().entries[0]?.risks.join('\n')).toMatch(/Re-maps VLANs to MST instances/u)
   })
 
+  it('a removal-only draft stages the parent + the BARE `no instance <id>` with the removal fact', async () => {
+    renderScreen(makeFakes())
+    await readyRegion()
+
+    // The read block carries `instance 1 vlan 100,110`; its Remove button is the only way in —
+    // the id is never typed, so a removal can only name a mapping the device actually has.
+    fireEvent.click(screen.getByRole('button', { name: 'Remove no instance 1' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Stage region edit' }))
+
+    await waitFor(() => expect(snapshot().entries).toHaveLength(1))
+    const entry = snapshot().entries[0]
+    expect(entry?.commands).toEqual(['spanning-tree mst configuration', 'no instance 1'])
+    expect(entry?.risks.join('\n')).toMatch(/Removes the `instance … vlan …` mapping line/u)
+    expect(entry?.risks.join('\n')).toMatch(/container evidence, not this unit, DR-043/u)
+    // Same blast class as a remap (narrower than an identity change): risks carry the facts, no
+    // second confirm — the DR-149 posture the pure-remap test above pins.
+    expect(entry?.confirmations).toHaveLength(0)
+  })
+
+  it('marking a removal is undoable before staging (aria-pressed toggles)', async () => {
+    renderScreen(makeFakes())
+    await readyRegion()
+
+    const toggle = screen.getByRole('button', { name: 'Remove no instance 1' })
+    expect(toggle).toHaveAttribute('aria-pressed', 'false')
+    fireEvent.click(toggle)
+    expect(await screen.findByRole('button', { name: 'Undo remove no instance 1' })).toHaveAttribute('aria-pressed', 'true')
+    fireEvent.click(screen.getByRole('button', { name: 'Undo remove no instance 1' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Stage region edit' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Nothing to stage')
+    expect(snapshot().entries).toHaveLength(0)
+  })
+
+  it('an id both added and marked for removal is refused at ZERO appends', async () => {
+    renderScreen(makeFakes())
+    await readyRegion()
+
+    fireEvent.change(screen.getByLabelText('Instance id 0-64'), { target: { value: '1' } })
+    fireEvent.change(screen.getByLabelText(/VLANs \(comma list/), { target: { value: '999' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Add row' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Remove no instance 1' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Stage region edit' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('one intent per instance id')
+    expect(snapshot().entries).toHaveLength(0)
+  })
+
   it('an empty region draft is refused at ZERO appends', async () => {
     renderScreen(makeFakes())
     await readyRegion()
