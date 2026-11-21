@@ -165,11 +165,15 @@ spanning-tree mst configuration
  instance <id> vlan <ranges>        (one line per mapping row)
 ```
 
-- Region edits stage the parent + only the lines the operator changed/added (EOS applies the
-  block incrementally; the device diff is the proof of what changed — the screen never stages
-  `no …` lines it has not captured, so **removing** a mapping row is out of scope for v1; the
-  form can only set name/revision and add-or-remap instance lines. Removals stay a CLI/console
-  operation until a `no instance …` spelling is captured.)
+- Region edits stage the parent + only the lines the operator changed/added/removed (EOS applies
+  the block incrementally; the device diff is the proof of what changed — the screen never stages
+  a `no …` line it has not captured). Mapping **removal** landed post-v1 via the DR-155 grammar
+  lane: `no instance <id> vlan <ranges>` and bare `no instance <id>` both staged on cEOS-lab
+  4.28.14M and netted the mapping out of the block (`docs/evidence/unblock-grammar-ceos.json`,
+  rea-q1/q2, aborted); the screen stages the BARE form (it cannot misquote the device's own
+  double-space VLAN-list spelling), per-row from the read block only. `no name`/`no revision`
+  staged too (rea-q3/q4) but stay unoffered — no owner ask. Hardware acceptance of the removal
+  spellings is still an open device question (DR-043); the risk line says so.
 - In-form validation (client grammar, explicitly *not* device fact): name = 1–32 printable
   non-space tokens; revision = integer 1–65535; instance id = integer 0–64 (IEEE 802.1s
   instance id); VLAN ranges = `<1-4094>` / comma lists / `A-B` spans. Bounds marked
@@ -291,7 +295,7 @@ Vitest 5 + Testing Library + hand-built fake `Node` seams (existing pattern; que
 | `rapid-pvst` acceptance | Disclosure in-form; device refusal surfaces as `CommandError`; nothing applied. |
 | Region name/revision bounds, instance-id max | Client-grammar validation only; device is authority; refusal changes nothing. |
 | Region-change reconvergence on this SKU | Copy says "not measured on this unit"; no timing claimed. |
-| `no instance …` removal spelling | Removal out of scope for v1. |
+| `no instance …` removal spelling | Captured on cEOS (DR-155, container-scoped copy); hardware acceptance answered by the first real removal's diff or refusal. |
 
 Each first real device answer gets a DECISIONS entry (the capture-on-first-use discipline the
 persistence lane used).

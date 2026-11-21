@@ -103,6 +103,15 @@ route-map stages with a dangling-reference risk line; a failed `routemaps.getAll
 `no ip routing` — the create confirm says so). BGP remains the only closed editor slice (no device
 read surface on this SKU).
 
+**GRAMMAR LANE ANSWERED 2026-11-21 (DR-155).** The divergence-10 device question is answered on
+cEOS-lab 4.28.14M (`docs/evidence/unblock-grammar-ceos.json` rea-q6, committed + net-zero
+restored): the bare `no redistribute <proto>` DID remove a route-map-qualified line, and
+`ospfBareNegationFact` now states the measured clearing (container-scoped, DR-043) instead of
+"uncaptured device question". The divergence-4 device half: the container normalizes a bare
+`area 0` to `area 0.0.0.0` at stage time (rea-q8 diffed empty), so the reader-blindness hazard is
+expected invisible on a normalizing box — the note keeps the divergence-4 disclosure and the
+`0.0.0.0` default regardless, and hardware normalization is not claimed.
+
 ### Do Not Do
 
 - Do not toggle `ip routing` on the physical switch as an incidental probe.
@@ -145,9 +154,16 @@ no client slice), and `docs/SPEC-stp-global-editor.md` shipped with the screen: 
 `StpGlobalView` + the capture-pinned `stp-global-rules.ts`, staging through the #141 coordinator
 with DR-149 blast-fact confirms. `#/stp` keeps zero mode controls (its note now points at the new
 route). The recorded convention deviation (command text pinned to captures, not client verbs) is
-DR-151. What stays open on the device: `rapid-pvst` acceptance on the 7050TX-64-R (the disclosure
-+ refusal fallback cover it until a run answers), region reconvergence timing on this SKU, and the
-`no instance …` removal spelling (removals stay a console operation).
+DR-151.
+
+**GRAMMAR LANE ANSWERED 2026-11-21 (DR-155).** The `no instance …` removal spelling is captured on
+cEOS-lab 4.28.14M (`docs/evidence/unblock-grammar-ceos.json`, sessions rea-q1..q4, all aborted):
+both `no instance <id> vlan <ranges>` and bare `no instance <id>` stage and net the mapping out of
+the block; `no name`/`no revision` each remove their field. `#/stp/global` now offers per-row
+mapping removal staging the BARE form (DR-155). What stays open on the device: `rapid-pvst`
+acceptance on the 7050TX-64-R (the disclosure + refusal fallback cover it until a run answers),
+region reconvergence timing on this SKU, and the removal spellings' hardware acceptance (the
+capture is container evidence, DR-043 — the screen's risk line says so).
 
 ### Do Not Do
 

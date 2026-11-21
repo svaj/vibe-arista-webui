@@ -243,16 +243,23 @@ describe('risk / confirm copy — facts, not adjectives (DR-149), container-only
     expect(OSPF_SINGLE_PROCESS_NOTE).toMatch(/divergence 7/u)
   })
 
-  it('the area note states divergence 4 and the 0.0.0.0 default rationale', () => {
-    expect(OSPF_AREA_ASYMMETRY_NOTE).toMatch(/bare `area 0` never appears/u)
+  it('the area note states divergence 4, the measured normalization, and the 0.0.0.0 rationale', () => {
+    expect(OSPF_AREA_ASYMMETRY_NOTE).toMatch(/divergence 4/u)
+    // The grammar capture answer (unblock-grammar-ceos.json rea-q8): the device normalized.
+    expect(OSPF_AREA_ASYMMETRY_NOTE).toMatch(/NORMALIZED a bare `area 0` to `area 0\.0\.0\.0`/u)
+    expect(OSPF_AREA_ASYMMETRY_NOTE).toMatch(/container evidence, not this unit, DR-043/u)
     expect(OSPF_AREA_ASYMMETRY_NOTE).toMatch(/round-trips into the table/u)
   })
 
-  it('the bare-negation fact names divergence 10 and the qualified-line count', () => {
+  it('the bare-negation fact names divergence 10, the count, and the MEASURED clearing', () => {
     const fact = ospfBareNegationFact('bgp', 2)
     expect(fact).toMatch(/no redistribute bgp/u)
     expect(fact).toMatch(/divergence 10/u)
     expect(fact).toMatch(/2 line\(s\) for `bgp`/u)
+    // The grammar capture answer (unblock-grammar-ceos.json rea-q6): the bare form cleared the
+    // qualified line on the container — stated with its DR-043 scoping, never as this unit.
+    expect(fact).toMatch(/bare form DID remove a route-map-qualified line/u)
+    expect(fact).toMatch(/container evidence, not this unit, DR-043/u)
   })
 
   it('edit risks are readBack + blast facts + the far-end note', () => {

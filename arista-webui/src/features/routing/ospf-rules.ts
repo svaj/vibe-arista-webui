@@ -259,11 +259,11 @@ export const OSPF_SINGLE_PROCESS_NOTE =
 
 /** The area asymmetry note (divergence 4), shown on the network form. */
 export const OSPF_AREA_ASYMMETRY_NOTE =
-  'The area field accepts bare digits or a dotted quad. This client\'s own reader only sees dotted-quad areas (module divergence 4), so a line written with a bare `area 0` never appears back in this table — the console is the escape hatch for removing one. The default here is `0.0.0.0` so a staged line round-trips into the table.'
+  'The area field accepts bare digits or a dotted quad. On the cEOS-lab 4.28.14M grammar capture the device NORMALIZED a bare `area 0` to `area 0.0.0.0` at stage time (a remove-and-re-add session diffed empty — container evidence, not this unit, DR-043), so the hazard is expected to be invisible on a box that normalizes the same way. This client\'s own reader still only sees dotted-quad areas (module divergence 4), so the default here stays `0.0.0.0` and a staged line round-trips into the table either way.'
 
 /** The bare-negation note (divergence 10), shown on the redistribution-remove confirm. */
 export function ospfBareNegationFact(protocol: string, qualifiedCount: number): string {
-  return `This client negates a redistribution with the BARE \`no redistribute ${protocol}\` (module divergence 10 — it takes no route-map argument). The running-config read lists ${String(qualifiedCount)} line(s) for \`${protocol}\`; whether one bare negation clears all of them on a real 4.28 box is an uncaptured device question, so review the committed diff.`
+  return `This client negates a redistribution with the BARE \`no redistribute ${protocol}\` (module divergence 10 — it takes no route-map argument). The running-config read lists ${String(qualifiedCount)} line(s) for \`${protocol}\`. On the cEOS-lab 4.28.14M grammar capture the bare form DID remove a route-map-qualified line (the session diff netted \`redistribute … route-map …\` out — container evidence, not this unit, DR-043), so expect every \`${protocol}\` line to go; the committed diff is the authority on this box.`
 }
 
 /** The dangling route-map annotation (a risk line, never a refusal). */

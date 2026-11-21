@@ -1,0 +1,638 @@
+{
+  "kind": "unblock-grammar-ceos-review-artifact",
+  "warning": "CONTAINER EVIDENCE ONLY — cEOS-lab 4.28.14M. NOT a 7050TX-64 / 4.28.13.1M verdict (DR-043). MST sessions all aborted; OSPF redistribute commits restored to net-zero (see findings.netZero).",
+  "generatedAt": "2026-11-21T21:08:49.063Z",
+  "containerIdentity": {
+    "version": "4.28.14M-50015774.42814M (engineering build)",
+    "modelName": "cEOSLab"
+  },
+  "findings": [
+    {
+      "id": "baseline-spanning-tree-region",
+      "hasRegionStanza": false,
+      "note": "Expect false on the provisioned container — the MST sessions below then prove add+remove in-session, independent of running-config state."
+    },
+    {
+      "id": "mst-region-removal",
+      "addStaged": true,
+      "addDiffShowsInstanceLine": true,
+      "noInstanceQuadStaged": true,
+      "noInstanceQuadDiff": "--- system:/running-config\n+++ session:/rea-q1-mst-noinst-quad-session-config\n@@ -21,6 +21,10 @@\n spanning-tree mode mstp\n spanning-tree mst 0 priority 4096\n !\n+spanning-tree mst configuration\n+   name LAB-UNBLOCK\n+   revision 1\n+!\n vlan 10\n    name LAB-NATIVE\n !\n",
+      "noInstanceBareStaged": true,
+      "noInstanceBareDiff": "--- system:/running-config\n+++ session:/rea-q2-mst-noinst-bare-session-config\n@@ -21,6 +21,10 @@\n spanning-tree mode mstp\n spanning-tree mst 0 priority 4096\n !\n+spanning-tree mst configuration\n+   name LAB-UNBLOCK\n+   revision 1\n+!\n vlan 10\n    name LAB-NATIVE\n !\n",
+      "noNameStaged": true,
+      "noNameDiff": "--- system:/running-config\n+++ session:/rea-q3-mst-noname-session-config\n@@ -21,6 +21,9 @@\n spanning-tree mode mstp\n spanning-tree mst 0 priority 4096\n !\n+spanning-tree mst configuration\n+   revision 1\n+!\n vlan 10\n    name LAB-NATIVE\n !\n",
+      "noRevisionStaged": true,
+      "noRevisionDiff": "--- system:/running-config\n+++ session:/rea-q4-mst-norevision-session-config\n@@ -21,6 +21,9 @@\n spanning-tree mode mstp\n spanning-tree mst 0 priority 4096\n !\n+spanning-tree mst configuration\n+   name LAB-UNBLOCK\n+!\n vlan 10\n    name LAB-NATIVE\n !\n",
+      "note": "All sessions ABORTED. A diff that nets the instance line OUT (or shows add+remove cancelling to an empty diff) proves the removal spelling stages; the exact device-normalized spelling is the diff of the ADD session."
+    },
+    {
+      "id": "ospf-divergence-10-bare-negation",
+      "addCommitted": true,
+      "qualifiedLineCommitted": true,
+      "bareNegationStaged": true,
+      "bareNegationDiff": "--- system:/running-config\n+++ session:/rea-q6-ospf-bare-negate-session-config\n@@ -81,7 +81,6 @@\n !\n router ospf 1\n    router-id 10.0.110.1\n-   redistribute connected route-map RM-LAB-IMPORT\n    network 10.0.100.0/24 area 0.0.0.0\n    network 10.0.110.0/24 area 0.0.0.0\n    max-lsa 12000\n",
+      "bareFormClearedQualifiedLine": true,
+      "netZero": true,
+      "note": "Divergence 10 (resources/ospf.ts): the client ALWAYS sends bare `no redistribute <proto>`. bareFormClearedQualifiedLine=true means the bare form clears a route-map-qualified line on this container; false means the qualified line SURVIVES the bare negation."
+    },
+    {
+      "id": "ospf-divergence-4-area-normalization",
+      "staged": true,
+      "diff": "",
+      "note": "The provisioned section was composed by the device from `area 0` (see the ceos-lab.mjs note). This session removes the dotted-quad line and re-adds with a BARE `area 0` in one session: a diff netting to nothing means the device normalized bare 0 to 0.0.0.0 at stage time; a diff showing `area 0` means the two spellings are distinct config text — which is what makes the dotted-quad-only reader (divergence 4) visible. ABORTED either way."
+    }
+  ],
+  "captures": [
+    {
+      "question": "baseline: full running-config (OSPF + spanning-tree derived locally)",
+      "cmds": [
+        "enable",
+        "show running-config"
+      ],
+      "response": {
+        "ok": true,
+        "status": 200,
+        "result": [
+          {
+            "output": ""
+          },
+          {
+            "output": "! Command: show running-config\n! device: af97adae7199 (cEOSLab, EOS-4.28.14M-50015774.42814M (engineering build))\n!\nno aaa root\n!\nusername <lab-run-user> privilege 15 role network-admin secret <redacted-lab-secret> qsfp default-mode 4x10G\n!\nservice routing protocols model ribd\n!\nagent Bfd shutdown\nagent PowerManager shutdown\nagent LedPolicy shutdown\nagent Thermostat shutdown\nagent PowerFuse shutdown\nagent StandbyCpld shutdown\nagent LicenseManager shutdown\n!\nhostname af97adae7199\n!\nspanning-tree mode mstp\nspanning-tree mst 0 priority 4096\n!\nvlan 10\n   name LAB-NATIVE\n!\nvlan 100\n   name LAB-ACCESS\n!\nvlan 110\n   name LAB-SPARE\n!\nmanagement api http-commands\n   no shutdown\n!\ninterface Port-Channel1\n   description LAB-LACP\n   switchport trunk native vlan 10\n   switchport trunk allowed vlan 100-110\n   switchport mode trunk\n   switchport trunk group LABGRP\n!\ninterface Ethernet1\n   switchport access vlan 100\n   spanning-tree portfast\n   spanning-tree bpduguard enable\n!\ninterface Ethernet2\n   channel-group 1 mode active\n!\ninterface Vlan100\n   ip address 10.0.100.1/24\n!\ninterface Vlan110\n   ip address 10.0.110.1/24\n!\nip access-list EXT-ACL-1\n   10 permit tcp any host 10.0.100.1 eq https\n   20 permit icmp any any\n!\nip access-list standard STD-ACL-1\n   10 permit 10.0.0.0/8\n!\nip routing\n!\nip prefix-list PL-LAB-STATIC seq 5 permit 10.20.0.0/24 le 32\n!\nip route 10.20.0.0/24 10.0.100.2\n!\nntp server 10.20.0.2\n!\nroute-map RM-LAB-IMPORT permit 10\n   match ip address prefix-list PL-LAB-STATIC\n!\nroute-map RM-LAB-IMPORT deny 20\n!\nrouter bgp 65001\n   router-id 10.0.110.1\n   neighbor 10.0.110.2 remote-as 65002\n   network 10.20.0.0/24\n!\nrouter ospf 1\n   router-id 10.0.110.1\n   network 10.0.100.0/24 area 0.0.0.0\n   network 10.0.110.0/24 area 0.0.0.0\n   max-lsa 12000\n!\nend\n",
+            "warnings": [
+              "Command: show running-config"
+            ]
+          }
+        ],
+        "raw": "{\"jsonrpc\": \"2.0\", \"id\": \"unblock-grammar\", \"result\": [{\"output\": \"\"}, {\"output\": \"! Command: show running-config\\n! device: af97adae7199 (cEOSLab, EOS-4.28.14M-50015774.42814M (engineering build))\\n!\\nno aaa root\\n!\\nusername <lab-run-user> privilege 15 role network-admin secret <redacted-lab-secret> qsfp default-mode 4x10G\\n!\\nservice routing protocols model ribd\\n!\\nagent Bfd shutdown\\nagent PowerManager shutdown\\nagent LedPolicy shutdown\\nagent Thermostat shutdown\\nagent PowerFuse shutdown\\nagent StandbyCpld shutdown\\nagent LicenseManager shutdown\\n!\\nhostname af97adae7199\\n!\\nspanning-tree mode mstp\\nspanning-tree mst 0 priority 4096\\n!\\nvlan 10\\n   name LAB-NATIVE\\n!\\nvlan 100\\n   name LAB-ACCESS\\n!\\nvlan 110\\n   name LAB-SPARE\\n!\\nmanagement api http-commands\\n   no shutdown\\"
+      }
+    },
+    {
+      "question": "MST region add (hardware-pinned spelling, re-proved on cEOS as the diff baseline) — staging turn",
+      "cmds": [
+        "enable",
+        "configure session rea-q0-mst-add description \"rea grammar: MST region add (hardware-pinned spelling, re-proved on cEOS \"",
+        "spanning-tree mst configuration",
+        "   name LAB-UNBLOCK",
+        "   revision 1",
+        "   instance 1 vlan 100,110"
+      ],
+      "response": {
+        "ok": true,
+        "status": 200,
+        "result": [
+          {},
+          {},
+          {},
+          {},
+          {},
+          {}
+        ],
+        "raw": "{\"jsonrpc\": \"2.0\", \"id\": \"unblock-grammar\", \"result\": [{}, {}, {}, {}, {}, {}]}"
+      }
+    },
+    {
+      "question": "MST region add (hardware-pinned spelling, re-proved on cEOS as the diff baseline) — session diff",
+      "cmds": [
+        "show session-config diffs"
+      ],
+      "response": {
+        "ok": true,
+        "status": 200,
+        "result": [
+          {
+            "output": ""
+          },
+          {
+            "output": ""
+          },
+          {
+            "output": "--- system:/running-config\n+++ session:/rea-q0-mst-add-session-config\n@@ -21,6 +21,11 @@\n spanning-tree mode mstp\n spanning-tree mst 0 priority 4096\n !\n+spanning-tree mst configuration\n+   name LAB-UNBLOCK\n+   revision 1\n+   instance 1 vlan  100,110\n+!\n vlan 10\n    name LAB-NATIVE\n !\n"
+          }
+        ],
+        "raw": "{\"jsonrpc\": \"2.0\", \"id\": \"unblock-grammar\", \"result\": [{\"output\": \"\"}, {\"output\": \"\"}, {\"output\": \"--- system:/running-config\\n+++ session:/rea-q0-mst-add-session-config\\n@@ -21,6 +21,11 @@\\n spanning-tree mode mstp\\n spanning-tree mst 0 priority 4096\\n !\\n+spanning-tree mst configuration\\n+   name LAB-UNBLOCK\\n+   revision 1\\n+   instance 1 vlan  100,110\\n+!\\n vlan 10\\n    name LAB-NATIVE\\n !\\n\"}]}"
+      },
+      "diffText": "--- system:/running-config\n+++ session:/rea-q0-mst-add-session-config\n@@ -21,6 +21,11 @@\n spanning-tree mode mstp\n spanning-tree mst 0 priority 4096\n !\n+spanning-tree mst configuration\n+   name LAB-UNBLOCK\n+   revision 1\n+   instance 1 vlan  100,110\n+!\n vlan 10\n    name LAB-NATIVE\n !\n"
+    },
+    {
+      "question": "MST region add (hardware-pinned spelling, re-proved on cEOS as the diff baseline) — abort",
+      "cmds": [
+        "abort"
+      ],
+      "response": {
+        "ok": true,
+        "status": 200,
+        "result": [
+          {},
+          {},
+          {}
+        ],
+        "raw": "{\"jsonrpc\": \"2.0\", \"id\": \"unblock-grammar\", \"result\": [{}, {}, {}]}"
+      }
+    },
+    {
+      "question": "MST region removal: `no instance 1 vlan 100,110` (exact spacing of the add line in the hardware diff) — staging turn",
+      "cmds": [
+        "enable",
+        "configure session rea-q1-mst-noinst-quad description \"rea grammar: MST region removal no instance 1 vlan 100,110 (exact spacing\"",
+        "spanning-tree mst configuration",
+        "   name LAB-UNBLOCK",
+        "   revision 1",
+        "   instance 1 vlan 100,110",
+        "   no instance 1 vlan 100,110"
+      ],
+      "response": {
+        "ok": true,
+        "status": 200,
+        "result": [
+          {},
+          {},
+          {},
+          {},
+          {},
+          {},
+          {}
+        ],
+        "raw": "{\"jsonrpc\": \"2.0\", \"id\": \"unblock-grammar\", \"result\": [{}, {}, {}, {}, {}, {}, {}]}"
+      }
+    },
+    {
+      "question": "MST region removal: `no instance 1 vlan 100,110` (exact spacing of the add line in the hardware diff) — session diff",
+      "cmds": [
+        "show session-config diffs"
+      ],
+      "response": {
+        "ok": true,
+        "status": 200,
+        "result": [
+          {
+            "output": ""
+          },
+          {
+            "output": ""
+          },
+          {
+            "output": "--- system:/running-config\n+++ session:/rea-q1-mst-noinst-quad-session-config\n@@ -21,6 +21,10 @@\n spanning-tree mode mstp\n spanning-tree mst 0 priority 4096\n !\n+spanning-tree mst configuration\n+   name LAB-UNBLOCK\n+   revision 1\n+!\n vlan 10\n    name LAB-NATIVE\n !\n"
+          }
+        ],
+        "raw": "{\"jsonrpc\": \"2.0\", \"id\": \"unblock-grammar\", \"result\": [{\"output\": \"\"}, {\"output\": \"\"}, {\"output\": \"--- system:/running-config\\n+++ session:/rea-q1-mst-noinst-quad-session-config\\n@@ -21,6 +21,10 @@\\n spanning-tree mode mstp\\n spanning-tree mst 0 priority 4096\\n !\\n+spanning-tree mst configuration\\n+   name LAB-UNBLOCK\\n+   revision 1\\n+!\\n vlan 10\\n    name LAB-NATIVE\\n !\\n\"}]}"
+      },
+      "diffText": "--- system:/running-config\n+++ session:/rea-q1-mst-noinst-quad-session-config\n@@ -21,6 +21,10 @@\n spanning-tree mode mstp\n spanning-tree mst 0 priority 4096\n !\n+spanning-tree mst configuration\n+   name LAB-UNBLOCK\n+   revision 1\n+!\n vlan 10\n    name LAB-NATIVE\n !\n"
+    },
+    {
+      "question": "MST region removal: `no instance 1 vlan 100,110` (exact spacing of the add line in the hardware diff) — abort",
+      "cmds": [
+        "abort"
+      ],
+      "response": {
+        "ok": true,
+        "status": 200,
+        "result": [
+          {},
+          {},
+          {}
+        ],
+        "raw": "{\"jsonrpc\": \"2.0\", \"id\": \"unblock-grammar\", \"result\": [{}, {}, {}]}"
+      }
+    },
+    {
+      "question": "MST region removal: bare `no instance 1` — staging turn",
+      "cmds": [
+        "enable",
+        "configure session rea-q2-mst-noinst-bare description \"rea grammar: MST region removal bare no instance 1\"",
+        "spanning-tree mst configuration",
+        "   name LAB-UNBLOCK",
+        "   revision 1",
+        "   instance 1 vlan 100,110",
+        "   no instance 1"
+      ],
+      "response": {
+        "ok": true,
+        "status": 200,
+        "result": [
+          {},
+          {},
+          {},
+          {},
+          {},
+          {},
+          {}
+        ],
+        "raw": "{\"jsonrpc\": \"2.0\", \"id\": \"unblock-grammar\", \"result\": [{}, {}, {}, {}, {}, {}, {}]}"
+      }
+    },
+    {
+      "question": "MST region removal: bare `no instance 1` — session diff",
+      "cmds": [
+        "show session-config diffs"
+      ],
+      "response": {
+        "ok": true,
+        "status": 200,
+        "result": [
+          {
+            "output": ""
+          },
+          {
+            "output": ""
+          },
+          {
+            "output": "--- system:/running-config\n+++ session:/rea-q2-mst-noinst-bare-session-config\n@@ -21,6 +21,10 @@\n spanning-tree mode mstp\n spanning-tree mst 0 priority 4096\n !\n+spanning-tree mst configuration\n+   name LAB-UNBLOCK\n+   revision 1\n+!\n vlan 10\n    name LAB-NATIVE\n !\n"
+          }
+        ],
+        "raw": "{\"jsonrpc\": \"2.0\", \"id\": \"unblock-grammar\", \"result\": [{\"output\": \"\"}, {\"output\": \"\"}, {\"output\": \"--- system:/running-config\\n+++ session:/rea-q2-mst-noinst-bare-session-config\\n@@ -21,6 +21,10 @@\\n spanning-tree mode mstp\\n spanning-tree mst 0 priority 4096\\n !\\n+spanning-tree mst configuration\\n+   name LAB-UNBLOCK\\n+   revision 1\\n+!\\n vlan 10\\n    name LAB-NATIVE\\n !\\n\"}]}"
+      },
+      "diffText": "--- system:/running-config\n+++ session:/rea-q2-mst-noinst-bare-session-config\n@@ -21,6 +21,10 @@\n spanning-tree mode mstp\n spanning-tree mst 0 priority 4096\n !\n+spanning-tree mst configuration\n+   name LAB-UNBLOCK\n+   revision 1\n+!\n vlan 10\n    name LAB-NATIVE\n !\n"
+    },
+    {
+      "question": "MST region removal: bare `no instance 1` — abort",
+      "cmds": [
+        "abort"
+      ],
+      "response": {
+        "ok": true,
+        "status": 200,
+        "result": [
+          {},
+          {},
+          {}
+        ],
+        "raw": "{\"jsonrpc\": \"2.0\", \"id\": \"unblock-grammar\", \"result\": [{}, {}, {}]}"
+      }
+    },
+    {
+      "question": "MST region field removal: `no name` — staging turn",
+      "cmds": [
+        "enable",
+        "configure session rea-q3-mst-noname description \"rea grammar: MST region field removal no name\"",
+        "spanning-tree mst configuration",
+        "   name LAB-UNBLOCK",
+        "   revision 1",
+        "   no name"
+      ],
+      "response": {
+        "ok": true,
+        "status": 200,
+        "result": [
+          {},
+          {},
+          {},
+          {},
+          {},
+          {}
+        ],
+        "raw": "{\"jsonrpc\": \"2.0\", \"id\": \"unblock-grammar\", \"result\": [{}, {}, {}, {}, {}, {}]}"
+      }
+    },
+    {
+      "question": "MST region field removal: `no name` — session diff",
+      "cmds": [
+        "show session-config diffs"
+      ],
+      "response": {
+        "ok": true,
+        "status": 200,
+        "result": [
+          {
+            "output": ""
+          },
+          {
+            "output": ""
+          },
+          {
+            "output": "--- system:/running-config\n+++ session:/rea-q3-mst-noname-session-config\n@@ -21,6 +21,9 @@\n spanning-tree mode mstp\n spanning-tree mst 0 priority 4096\n !\n+spanning-tree mst configuration\n+   revision 1\n+!\n vlan 10\n    name LAB-NATIVE\n !\n"
+          }
+        ],
+        "raw": "{\"jsonrpc\": \"2.0\", \"id\": \"unblock-grammar\", \"result\": [{\"output\": \"\"}, {\"output\": \"\"}, {\"output\": \"--- system:/running-config\\n+++ session:/rea-q3-mst-noname-session-config\\n@@ -21,6 +21,9 @@\\n spanning-tree mode mstp\\n spanning-tree mst 0 priority 4096\\n !\\n+spanning-tree mst configuration\\n+   revision 1\\n+!\\n vlan 10\\n    name LAB-NATIVE\\n !\\n\"}]}"
+      },
+      "diffText": "--- system:/running-config\n+++ session:/rea-q3-mst-noname-session-config\n@@ -21,6 +21,9 @@\n spanning-tree mode mstp\n spanning-tree mst 0 priority 4096\n !\n+spanning-tree mst configuration\n+   revision 1\n+!\n vlan 10\n    name LAB-NATIVE\n !\n"
+    },
+    {
+      "question": "MST region field removal: `no name` — abort",
+      "cmds": [
+        "abort"
+      ],
+      "response": {
+        "ok": true,
+        "status": 200,
+        "result": [
+          {},
+          {},
+          {}
+        ],
+        "raw": "{\"jsonrpc\": \"2.0\", \"id\": \"unblock-grammar\", \"result\": [{}, {}, {}]}"
+      }
+    },
+    {
+      "question": "MST region field removal: `no revision` — staging turn",
+      "cmds": [
+        "enable",
+        "configure session rea-q4-mst-norevision description \"rea grammar: MST region field removal no revision\"",
+        "spanning-tree mst configuration",
+        "   name LAB-UNBLOCK",
+        "   revision 1",
+        "   no revision"
+      ],
+      "response": {
+        "ok": true,
+        "status": 200,
+        "result": [
+          {},
+          {},
+          {},
+          {},
+          {},
+          {}
+        ],
+        "raw": "{\"jsonrpc\": \"2.0\", \"id\": \"unblock-grammar\", \"result\": [{}, {}, {}, {}, {}, {}]}"
+      }
+    },
+    {
+      "question": "MST region field removal: `no revision` — session diff",
+      "cmds": [
+        "show session-config diffs"
+      ],
+      "response": {
+        "ok": true,
+        "status": 200,
+        "result": [
+          {
+            "output": ""
+          },
+          {
+            "output": ""
+          },
+          {
+            "output": "--- system:/running-config\n+++ session:/rea-q4-mst-norevision-session-config\n@@ -21,6 +21,9 @@\n spanning-tree mode mstp\n spanning-tree mst 0 priority 4096\n !\n+spanning-tree mst configuration\n+   name LAB-UNBLOCK\n+!\n vlan 10\n    name LAB-NATIVE\n !\n"
+          }
+        ],
+        "raw": "{\"jsonrpc\": \"2.0\", \"id\": \"unblock-grammar\", \"result\": [{\"output\": \"\"}, {\"output\": \"\"}, {\"output\": \"--- system:/running-config\\n+++ session:/rea-q4-mst-norevision-session-config\\n@@ -21,6 +21,9 @@\\n spanning-tree mode mstp\\n spanning-tree mst 0 priority 4096\\n !\\n+spanning-tree mst configuration\\n+   name LAB-UNBLOCK\\n+!\\n vlan 10\\n    name LAB-NATIVE\\n !\\n\"}]}"
+      },
+      "diffText": "--- system:/running-config\n+++ session:/rea-q4-mst-norevision-session-config\n@@ -21,6 +21,9 @@\n spanning-tree mode mstp\n spanning-tree mst 0 priority 4096\n !\n+spanning-tree mst configuration\n+   name LAB-UNBLOCK\n+!\n vlan 10\n    name LAB-NATIVE\n !\n"
+    },
+    {
+      "question": "MST region field removal: `no revision` — abort",
+      "cmds": [
+        "abort"
+      ],
+      "response": {
+        "ok": true,
+        "status": 200,
+        "result": [
+          {},
+          {},
+          {}
+        ],
+        "raw": "{\"jsonrpc\": \"2.0\", \"id\": \"unblock-grammar\", \"result\": [{}, {}, {}]}"
+      }
+    },
+    {
+      "question": "OSPF: stage `redistribute connected route-map RM-LAB-IMPORT` on the provisioned process — staging turn",
+      "cmds": [
+        "enable",
+        "configure session rea-q5-ospf-redist-add description \"rea grammar: OSPF stage redistribute connected route-map RM-LAB-IMPORT on\"",
+        "router ospf 1",
+        "   redistribute connected route-map RM-LAB-IMPORT"
+      ],
+      "response": {
+        "ok": true,
+        "status": 200,
+        "result": [
+          {},
+          {},
+          {},
+          {}
+        ],
+        "raw": "{\"jsonrpc\": \"2.0\", \"id\": \"unblock-grammar\", \"result\": [{}, {}, {}, {}]}"
+      }
+    },
+    {
+      "question": "OSPF: stage `redistribute connected route-map RM-LAB-IMPORT` on the provisioned process — session diff",
+      "cmds": [
+        "show session-config diffs"
+      ],
+      "response": {
+        "ok": true,
+        "status": 200,
+        "result": [
+          {
+            "output": ""
+          },
+          {
+            "output": ""
+          },
+          {
+            "output": "--- system:/running-config\n+++ session:/rea-q5-ospf-redist-add-session-config\n@@ -81,6 +81,7 @@\n !\n router ospf 1\n    router-id 10.0.110.1\n+   redistribute connected route-map RM-LAB-IMPORT\n    network 10.0.100.0/24 area 0.0.0.0\n    network 10.0.110.0/24 area 0.0.0.0\n    max-lsa 12000\n"
+          }
+        ],
+        "raw": "{\"jsonrpc\": \"2.0\", \"id\": \"unblock-grammar\", \"result\": [{\"output\": \"\"}, {\"output\": \"\"}, {\"output\": \"--- system:/running-config\\n+++ session:/rea-q5-ospf-redist-add-session-config\\n@@ -81,6 +81,7 @@\\n !\\n router ospf 1\\n    router-id 10.0.110.1\\n+   redistribute connected route-map RM-LAB-IMPORT\\n    network 10.0.100.0/24 area 0.0.0.0\\n    network 10.0.110.0/24 area 0.0.0.0\\n    max-lsa 12000\\n\"}]}"
+      },
+      "diffText": "--- system:/running-config\n+++ session:/rea-q5-ospf-redist-add-session-config\n@@ -81,6 +81,7 @@\n !\n router ospf 1\n    router-id 10.0.110.1\n+   redistribute connected route-map RM-LAB-IMPORT\n    network 10.0.100.0/24 area 0.0.0.0\n    network 10.0.110.0/24 area 0.0.0.0\n    max-lsa 12000\n"
+    },
+    {
+      "question": "OSPF: stage `redistribute connected route-map RM-LAB-IMPORT` on the provisioned process — commit",
+      "cmds": [
+        "commit"
+      ],
+      "response": {
+        "ok": true,
+        "status": 200,
+        "result": [
+          {},
+          {},
+          {}
+        ],
+        "raw": "{\"jsonrpc\": \"2.0\", \"id\": \"unblock-grammar\", \"result\": [{}, {}, {}]}"
+      }
+    },
+    {
+      "question": "running-config after the add commit (expect a redistribute connected route-map RM-LAB-IMPORT line)",
+      "cmds": [
+        "enable",
+        "show running-config"
+      ],
+      "response": {
+        "ok": true,
+        "status": 200,
+        "result": [
+          {
+            "output": ""
+          },
+          {
+            "output": "! Command: show running-config\n! device: af97adae7199 (cEOSLab, EOS-4.28.14M-50015774.42814M (engineering build))\n!\nno aaa root\n!\nusername <lab-run-user> privilege 15 role network-admin secret <redacted-lab-secret> qsfp default-mode 4x10G\n!\nservice routing protocols model ribd\n!\nagent Bfd shutdown\nagent PowerManager shutdown\nagent LedPolicy shutdown\nagent Thermostat shutdown\nagent PowerFuse shutdown\nagent StandbyCpld shutdown\nagent LicenseManager shutdown\n!\nhostname af97adae7199\n!\nspanning-tree mode mstp\nspanning-tree mst 0 priority 4096\n!\nvlan 10\n   name LAB-NATIVE\n!\nvlan 100\n   name LAB-ACCESS\n!\nvlan 110\n   name LAB-SPARE\n!\nmanagement api http-commands\n   no shutdown\n!\ninterface Port-Channel1\n   description LAB-LACP\n   switchport trunk native vlan 10\n   switchport trunk allowed vlan 100-110\n   switchport mode trunk\n   switchport trunk group LABGRP\n!\ninterface Ethernet1\n   switchport access vlan 100\n   spanning-tree portfast\n   spanning-tree bpduguard enable\n!\ninterface Ethernet2\n   channel-group 1 mode active\n!\ninterface Vlan100\n   ip address 10.0.100.1/24\n!\ninterface Vlan110\n   ip address 10.0.110.1/24\n!\nip access-list EXT-ACL-1\n   10 permit tcp any host 10.0.100.1 eq https\n   20 permit icmp any any\n!\nip access-list standard STD-ACL-1\n   10 permit 10.0.0.0/8\n!\nip routing\n!\nip prefix-list PL-LAB-STATIC seq 5 permit 10.20.0.0/24 le 32\n!\nip route 10.20.0.0/24 10.0.100.2\n!\nntp server 10.20.0.2\n!\nroute-map RM-LAB-IMPORT permit 10\n   match ip address prefix-list PL-LAB-STATIC\n!\nroute-map RM-LAB-IMPORT deny 20\n!\nrouter bgp 65001\n   router-id 10.0.110.1\n   neighbor 10.0.110.2 remote-as 65002\n   network 10.20.0.0/24\n!\nrouter ospf 1\n   router-id 10.0.110.1\n   redistribute connected route-map RM-LAB-IMPORT\n   network 10.0.100.0/24 area 0.0.0.0\n   network 10.0.110.0/24 area 0.0.0.0\n   max-lsa 12000\n!\nend\n",
+            "warnings": [
+              "Command: show running-config"
+            ]
+          }
+        ],
+        "raw": "{\"jsonrpc\": \"2.0\", \"id\": \"unblock-grammar\", \"result\": [{\"output\": \"\"}, {\"output\": \"! Command: show running-config\\n! device: af97adae7199 (cEOSLab, EOS-4.28.14M-50015774.42814M (engineering build))\\n!\\nno aaa root\\n!\\nusername <lab-run-user> privilege 15 role network-admin secret <redacted-lab-secret> qsfp default-mode 4x10G\\n!\\nservice routing protocols model ribd\\n!\\nagent Bfd shutdown\\nagent PowerManager shutdown\\nagent LedPolicy shutdown\\nagent Thermostat shutdown\\nagent PowerFuse shutdown\\nagent StandbyCpld shutdown\\nagent LicenseManager shutdown\\n!\\nhostname af97adae7199\\n!\\nspanning-tree mode mstp\\nspanning-tree mst 0 priority 4096\\n!\\nvlan 10\\n   name LAB-NATIVE\\n!\\nvlan 100\\n   name LAB-ACCESS\\n!\\nvlan 110\\n   name LAB-SPARE\\n!\\nmanagement api http-commands\\n   no shutdown\\"
+      }
+    },
+    {
+      "question": "OSPF divergence 10: bare `no redistribute connected` over the committed qualified line — does the diff remove the QUALIFIED line? — staging turn",
+      "cmds": [
+        "enable",
+        "configure session rea-q6-ospf-bare-negate description \"rea grammar: OSPF divergence 10 bare no redistribute connected over the c\"",
+        "router ospf 1",
+        "   no redistribute connected"
+      ],
+      "response": {
+        "ok": true,
+        "status": 200,
+        "result": [
+          {},
+          {},
+          {},
+          {}
+        ],
+        "raw": "{\"jsonrpc\": \"2.0\", \"id\": \"unblock-grammar\", \"result\": [{}, {}, {}, {}]}"
+      }
+    },
+    {
+      "question": "OSPF divergence 10: bare `no redistribute connected` over the committed qualified line — does the diff remove the QUALIFIED line? — session diff",
+      "cmds": [
+        "show session-config diffs"
+      ],
+      "response": {
+        "ok": true,
+        "status": 200,
+        "result": [
+          {
+            "output": ""
+          },
+          {
+            "output": ""
+          },
+          {
+            "output": "--- system:/running-config\n+++ session:/rea-q6-ospf-bare-negate-session-config\n@@ -81,7 +81,6 @@\n !\n router ospf 1\n    router-id 10.0.110.1\n-   redistribute connected route-map RM-LAB-IMPORT\n    network 10.0.100.0/24 area 0.0.0.0\n    network 10.0.110.0/24 area 0.0.0.0\n    max-lsa 12000\n"
+          }
+        ],
+        "raw": "{\"jsonrpc\": \"2.0\", \"id\": \"unblock-grammar\", \"result\": [{\"output\": \"\"}, {\"output\": \"\"}, {\"output\": \"--- system:/running-config\\n+++ session:/rea-q6-ospf-bare-negate-session-config\\n@@ -81,7 +81,6 @@\\n !\\n router ospf 1\\n    router-id 10.0.110.1\\n-   redistribute connected route-map RM-LAB-IMPORT\\n    network 10.0.100.0/24 area 0.0.0.0\\n    network 10.0.110.0/24 area 0.0.0.0\\n    max-lsa 12000\\n\"}]}"
+      },
+      "diffText": "--- system:/running-config\n+++ session:/rea-q6-ospf-bare-negate-session-config\n@@ -81,7 +81,6 @@\n !\n router ospf 1\n    router-id 10.0.110.1\n-   redistribute connected route-map RM-LAB-IMPORT\n    network 10.0.100.0/24 area 0.0.0.0\n    network 10.0.110.0/24 area 0.0.0.0\n    max-lsa 12000\n"
+    },
+    {
+      "question": "OSPF divergence 10: bare `no redistribute connected` over the committed qualified line — does the diff remove the QUALIFIED line? — commit",
+      "cmds": [
+        "commit"
+      ],
+      "response": {
+        "ok": true,
+        "status": 200,
+        "result": [
+          {},
+          {},
+          {}
+        ],
+        "raw": "{\"jsonrpc\": \"2.0\", \"id\": \"unblock-grammar\", \"result\": [{}, {}, {}]}"
+      }
+    },
+    {
+      "question": "running-config after the bare negation (no redistribute connected line at all = the bare form DID clear the qualified line)",
+      "cmds": [
+        "enable",
+        "show running-config"
+      ],
+      "response": {
+        "ok": true,
+        "status": 200,
+        "result": [
+          {
+            "output": ""
+          },
+          {
+            "output": "! Command: show running-config\n! device: af97adae7199 (cEOSLab, EOS-4.28.14M-50015774.42814M (engineering build))\n!\nno aaa root\n!\nusername <lab-run-user> privilege 15 role network-admin secret <redacted-lab-secret> qsfp default-mode 4x10G\n!\nservice routing protocols model ribd\n!\nagent Bfd shutdown\nagent PowerManager shutdown\nagent LedPolicy shutdown\nagent Thermostat shutdown\nagent PowerFuse shutdown\nagent StandbyCpld shutdown\nagent LicenseManager shutdown\n!\nhostname af97adae7199\n!\nspanning-tree mode mstp\nspanning-tree mst 0 priority 4096\n!\nvlan 10\n   name LAB-NATIVE\n!\nvlan 100\n   name LAB-ACCESS\n!\nvlan 110\n   name LAB-SPARE\n!\nmanagement api http-commands\n   no shutdown\n!\ninterface Port-Channel1\n   description LAB-LACP\n   switchport trunk native vlan 10\n   switchport trunk allowed vlan 100-110\n   switchport mode trunk\n   switchport trunk group LABGRP\n!\ninterface Ethernet1\n   switchport access vlan 100\n   spanning-tree portfast\n   spanning-tree bpduguard enable\n!\ninterface Ethernet2\n   channel-group 1 mode active\n!\ninterface Vlan100\n   ip address 10.0.100.1/24\n!\ninterface Vlan110\n   ip address 10.0.110.1/24\n!\nip access-list EXT-ACL-1\n   10 permit tcp any host 10.0.100.1 eq https\n   20 permit icmp any any\n!\nip access-list standard STD-ACL-1\n   10 permit 10.0.0.0/8\n!\nip routing\n!\nip prefix-list PL-LAB-STATIC seq 5 permit 10.20.0.0/24 le 32\n!\nip route 10.20.0.0/24 10.0.100.2\n!\nntp server 10.20.0.2\n!\nroute-map RM-LAB-IMPORT permit 10\n   match ip address prefix-list PL-LAB-STATIC\n!\nroute-map RM-LAB-IMPORT deny 20\n!\nrouter bgp 65001\n   router-id 10.0.110.1\n   neighbor 10.0.110.2 remote-as 65002\n   network 10.20.0.0/24\n!\nrouter ospf 1\n   router-id 10.0.110.1\n   network 10.0.100.0/24 area 0.0.0.0\n   network 10.0.110.0/24 area 0.0.0.0\n   max-lsa 12000\n!\nend\n",
+            "warnings": [
+              "Command: show running-config"
+            ]
+          }
+        ],
+        "raw": "{\"jsonrpc\": \"2.0\", \"id\": \"unblock-grammar\", \"result\": [{\"output\": \"\"}, {\"output\": \"! Command: show running-config\\n! device: af97adae7199 (cEOSLab, EOS-4.28.14M-50015774.42814M (engineering build))\\n!\\nno aaa root\\n!\\nusername <lab-run-user> privilege 15 role network-admin secret <redacted-lab-secret> qsfp default-mode 4x10G\\n!\\nservice routing protocols model ribd\\n!\\nagent Bfd shutdown\\nagent PowerManager shutdown\\nagent LedPolicy shutdown\\nagent Thermostat shutdown\\nagent PowerFuse shutdown\\nagent StandbyCpld shutdown\\nagent LicenseManager shutdown\\n!\\nhostname af97adae7199\\n!\\nspanning-tree mode mstp\\nspanning-tree mst 0 priority 4096\\n!\\nvlan 10\\n   name LAB-NATIVE\\n!\\nvlan 100\\n   name LAB-ACCESS\\n!\\nvlan 110\\n   name LAB-SPARE\\n!\\nmanagement api http-commands\\n   no shutdown\\"
+      }
+    },
+    {
+      "question": "final running-config (net-zero check: expect NO redistribute line)",
+      "cmds": [
+        "enable",
+        "show running-config"
+      ],
+      "response": {
+        "ok": true,
+        "status": 200,
+        "result": [
+          {
+            "output": ""
+          },
+          {
+            "output": "! Command: show running-config\n! device: af97adae7199 (cEOSLab, EOS-4.28.14M-50015774.42814M (engineering build))\n!\nno aaa root\n!\nusername <lab-run-user> privilege 15 role network-admin secret <redacted-lab-secret> qsfp default-mode 4x10G\n!\nservice routing protocols model ribd\n!\nagent Bfd shutdown\nagent PowerManager shutdown\nagent LedPolicy shutdown\nagent Thermostat shutdown\nagent PowerFuse shutdown\nagent StandbyCpld shutdown\nagent LicenseManager shutdown\n!\nhostname af97adae7199\n!\nspanning-tree mode mstp\nspanning-tree mst 0 priority 4096\n!\nvlan 10\n   name LAB-NATIVE\n!\nvlan 100\n   name LAB-ACCESS\n!\nvlan 110\n   name LAB-SPARE\n!\nmanagement api http-commands\n   no shutdown\n!\ninterface Port-Channel1\n   description LAB-LACP\n   switchport trunk native vlan 10\n   switchport trunk allowed vlan 100-110\n   switchport mode trunk\n   switchport trunk group LABGRP\n!\ninterface Ethernet1\n   switchport access vlan 100\n   spanning-tree portfast\n   spanning-tree bpduguard enable\n!\ninterface Ethernet2\n   channel-group 1 mode active\n!\ninterface Vlan100\n   ip address 10.0.100.1/24\n!\ninterface Vlan110\n   ip address 10.0.110.1/24\n!\nip access-list EXT-ACL-1\n   10 permit tcp any host 10.0.100.1 eq https\n   20 permit icmp any any\n!\nip access-list standard STD-ACL-1\n   10 permit 10.0.0.0/8\n!\nip routing\n!\nip prefix-list PL-LAB-STATIC seq 5 permit 10.20.0.0/24 le 32\n!\nip route 10.20.0.0/24 10.0.100.2\n!\nntp server 10.20.0.2\n!\nroute-map RM-LAB-IMPORT permit 10\n   match ip address prefix-list PL-LAB-STATIC\n!\nroute-map RM-LAB-IMPORT deny 20\n!\nrouter bgp 65001\n   router-id 10.0.110.1\n   neighbor 10.0.110.2 remote-as 65002\n   network 10.20.0.0/24\n!\nrouter ospf 1\n   router-id 10.0.110.1\n   network 10.0.100.0/24 area 0.0.0.0\n   network 10.0.110.0/24 area 0.0.0.0\n   max-lsa 12000\n!\nend\n",
+            "warnings": [
+              "Command: show running-config"
+            ]
+          }
+        ],
+        "raw": "{\"jsonrpc\": \"2.0\", \"id\": \"unblock-grammar\", \"result\": [{\"output\": \"\"}, {\"output\": \"! Command: show running-config\\n! device: af97adae7199 (cEOSLab, EOS-4.28.14M-50015774.42814M (engineering build))\\n!\\nno aaa root\\n!\\nusername <lab-run-user> privilege 15 role network-admin secret <redacted-lab-secret> qsfp default-mode 4x10G\\n!\\nservice routing protocols model ribd\\n!\\nagent Bfd shutdown\\nagent PowerManager shutdown\\nagent LedPolicy shutdown\\nagent Thermostat shutdown\\nagent PowerFuse shutdown\\nagent StandbyCpld shutdown\\nagent LicenseManager shutdown\\n!\\nhostname af97adae7199\\n!\\nspanning-tree mode mstp\\nspanning-tree mst 0 priority 4096\\n!\\nvlan 10\\n   name LAB-NATIVE\\n!\\nvlan 100\\n   name LAB-ACCESS\\n!\\nvlan 110\\n   name LAB-SPARE\\n!\\nmanagement api http-commands\\n   no shutdown\\"
+      }
+    },
+    {
+      "question": "OSPF divergence 4: stage network 10.0.110.0/24 area 0 (provisioned as area 0.0.0.0) — does the diff show a bare area 0 or the dotted-quad? — staging turn",
+      "cmds": [
+        "enable",
+        "configure session rea-q8-ospf-area-zero description \"rea grammar: OSPF divergence 4 stage network 10.0.110.0/24 area 0 (provis\"",
+        "router ospf 1",
+        "   no network 10.0.110.0/24 area 0.0.0.0",
+        "   network 10.0.110.0/24 area 0"
+      ],
+      "response": {
+        "ok": true,
+        "status": 200,
+        "result": [
+          {},
+          {},
+          {},
+          {},
+          {}
+        ],
+        "raw": "{\"jsonrpc\": \"2.0\", \"id\": \"unblock-grammar\", \"result\": [{}, {}, {}, {}, {}]}"
+      }
+    },
+    {
+      "question": "OSPF divergence 4: stage network 10.0.110.0/24 area 0 (provisioned as area 0.0.0.0) — does the diff show a bare area 0 or the dotted-quad? — session diff",
+      "cmds": [
+        "show session-config diffs"
+      ],
+      "response": {
+        "ok": true,
+        "status": 200,
+        "result": [
+          {
+            "output": ""
+          },
+          {
+            "output": ""
+          },
+          {
+            "output": ""
+          }
+        ],
+        "raw": "{\"jsonrpc\": \"2.0\", \"id\": \"unblock-grammar\", \"result\": [{\"output\": \"\"}, {\"output\": \"\"}, {\"output\": \"\"}]}"
+      },
+      "diffText": ""
+    },
+    {
+      "question": "OSPF divergence 4: stage network 10.0.110.0/24 area 0 (provisioned as area 0.0.0.0) — does the diff show a bare area 0 or the dotted-quad? — abort",
+      "cmds": [
+        "abort"
+      ],
+      "response": {
+        "ok": true,
+        "status": 200,
+        "result": [
+          {},
+          {},
+          {}
+        ],
+        "raw": "{\"jsonrpc\": \"2.0\", \"id\": \"unblock-grammar\", \"result\": [{}, {}, {}]}"
+      }
+    }
+  ]
+}

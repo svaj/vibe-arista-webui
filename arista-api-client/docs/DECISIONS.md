@@ -3253,6 +3253,52 @@ policy); DR-113 (order-stable diff); DR-032/DR-057 (the protocol allow-list and 
 the client's and the device's); DR-043 (container blasts never establish this unit's blast);
 DR-024 (running-config-only); DR-141 (the hardware grammar run and the box posture); #87.
 
+### DR-155 — the cEOS grammar lane answers MST-region removal and OSPF divergence 10/4: `#/stp/global` gains the bare `no instance <id>` verb, and the OSPF copy upgrades two "uncaptured device question" sentences to measured container facts
+
+Three shipped screens each carried one deliberate gap whose only blocker was an uncaptured
+command spelling. A single disposable cEOS-lab 4.28.14M run —
+`scripts/capture-unblock-grammar-ceos.{mjs,sh}` (the `capture-unblock-ceos` pattern: loopback-only
+guards, cert-pinned `runCmds`, one new question per named session, refuse-and-log reads, DR-150
+redaction + pre-write scan) — answered all of them. Artifact: `docs/evidence/unblock-grammar-ceos.json`.
+All MST sessions ABORTED; the OSPF redistribute commit restored to net-zero (`findings.netZero`).
+Every answer is CONTAINER evidence (DR-043) — the copy says so in the sentence itself.
+
+**MST region removal (`#/stp/global`, #88).** `no instance 1 vlan 100,110` (rea-q1) and bare
+`no instance 1` (rea-q2) both stage, and each session diff nets the mapping OUT of the block (the
+add+remove pair cancels to `name`+`revision` only); `no name` (rea-q3) and `no revision` (rea-q4)
+each remove exactly their field. The screen stages the **bare** form: both spellings staged
+identically, and the bare line cannot misquote the device's own VLAN-list spacing — the capture
+re-confirms the device normalizes the stored line to `instance 1 vlan  100,110` (double space),
+which is also why `parseStpRegionSection`'s regex now allows `vlan\s+` (a single-space-only reader
+would count the device's own line unmodelled). The removal risk line states what the diff showed
+(mapping nets out; VLANs fall back to the default instance — the fallback itself NOT measured) and
+carries no second confirm, the same blast class as a pure remap per DR-149. A read mapping is
+removable only via a per-row toggle (the id comes from the parsed block, never typed), and an id
+both added and marked-for-removal is refused in-form at zero appends.
+
+**OSPF divergence 10 (`#/routing/ospf`, #87).** Over a committed `redistribute connected
+route-map RM-LAB-IMPORT`, the client's bare `no redistribute connected` **DID remove the qualified
+line** (rea-q6's diff). `ospfBareNegationFact` no longer calls it "an uncaptured device question" —
+it states the measured clearing with its DR-043 scoping and keeps "the committed diff is the
+authority on this box".
+
+**OSPF divergence 4 (the device half).** A session removing the dotted-quad line and re-adding
+`network 10.0.110.0/24 area 0` diffed **empty** (rea-q8): the container normalizes a bare `area 0`
+to `area 0.0.0.0` at stage time, so the reader-blindness hazard is expected to be invisible on a
+box that normalizes the same way. `OSPF_AREA_ASYMMETRY_NOTE` now says that — and keeps the
+`0.0.0.0` default and the divergence-4 disclosure anyway, because the reader asymmetry is still
+real in this client and normalization on the 7050TX is not claimed.
+
+**What this does NOT close:** none of these answers is a 7050TX verdict — MST removal on hardware,
+the VLAN-fallback blast, and area normalization on the box all stay open device questions; the
+copy says "container evidence" in every sentence that came from this lane. No `arista-api-client`
+source change (docs only).
+
+**Related:** DR-151 (the capture-pinning convention this extends to a new verb); DR-154/DR-153
+(the OSPF screen whose copy this upgrades); DR-149 (facts-at-confirm posture); DR-043 (container
+evidence never establishes this unit); DR-150 (the redaction/scan pattern the lane reuses);
+DR-032 (device tokens verbatim — the double-space spelling); #87, #88.
+
 ## Open items (need the device)
 
 Use cEOS first for software behavior and schema exploration, recording its model/version;
