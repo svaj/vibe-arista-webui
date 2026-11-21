@@ -32,7 +32,7 @@ import type { ShowIpOspfNeighborReply, ShowIpOspfReply, ShowRouteMapReply, ShowV
  *  when #87's VRRP slice shipped `#/routing/vrrp` — VRRP writes now live there, so this banner
  *  names only the protocols whose editors the per-protocol blast review still holds. */
 export const ROUTING_READ_ONLY_NOTE =
-  'Routing configuration editors are not offered on THIS screen: OSPF and BGP writes stay blocked behind #87\u2019s per-protocol blast-radius review, because these are the most traffic-impacting edits available on this switch. VRRP has its own editor at #/routing/vrrp and route maps at #/routing/routemaps. This screen reads status only.'
+  'Routing configuration editors are not offered on THIS screen: BGP writes stay blocked behind #87\u2019s per-protocol blast-radius review (and BGP monitoring is a recorded hardware negative on this SKU), because these are the most traffic-impacting edits available on this switch. VRRP has its own editor at #/routing/vrrp, route maps at #/routing/routemaps, and the OSPF process at #/routing/ospf. This screen reads status only.'
 
 /** The BGP negative, stated verbatim — no BGP panel data exists to render. */
 export const BGP_NOT_MODELLED_NOTE =
