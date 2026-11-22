@@ -335,8 +335,9 @@ function formatDelays(vrrp: Vrrp): string {
 
 // ------------------------------------------------------------------------------------------------
  // Risk / confirm copy (SPEC-vrrp-editor.md, "Risk/confirm copy"). Facts, not adjectives (DR-149):
- // NO VRRP failover blast has ever been measured on any target, so the copy says exactly that —
- // never a fabricated number (the spec's Never list).
+ // the failover blast is measured on disposable cEOS-lab containers ONLY (DR-157, run
+// lab-1926138-47bd56) — the copy cites those numbers AS container evidence and never presents
+// them as this unit's behavior (DR-043). Hardware timing stays unmeasured; no fabricated number.
 // ------------------------------------------------------------------------------------------------
 
 /** The staged-line restatement every entry's risks open with (the S15 `readBack` pattern). */
@@ -344,9 +345,15 @@ export function vrrpReadBack(lines: readonly string[]): string {
   return `The staged lines: ${lines.map((line) => `\`${line}\``).join(' + ')} — byte-for-byte the text the client's own dry-run setters composed with { run: false }; the device diff, not this screen, decides what running-config actually keeps.`
 }
 
-/** The failover blast — honest unmeasured (owner decision 2026-11-21, intake 2). */
+/**
+ * The failover blast — container-measured (DR-157, run lab-1926138-47bd56: a two-node cEOS-lab
+ * pair where disabling the master's group promoted the backup in 70 ms — an immediate release,
+ * not a master_down expiry — and re-enabling let the master preempt back at 3391 ms, ≈ the
+ * master_down interval at default timers). The numbers are cited AS container evidence; the
+ * hardware timing stays unmeasured (DR-043).
+ */
 export function vrrpFailoverFacts(interfaceName: string): string {
-  return `Changing this virtual router can trigger a VRRP master switchover for ${interfaceName}'s default-gateway traffic: the backup takes over the virtual IP and in-flight traffic for that VLAN's hosts is interrupted until it does. Failover timing is NOT measured on any target — the first real use on this unit is the measurement opportunity (no fabricated number). Container evidence does not establish this unit's behavior (DR-043).`
+  return `Changing this virtual router can trigger a VRRP master switchover for ${interfaceName}'s default-gateway traffic: the backup takes over the virtual IP and in-flight traffic for that VLAN's hosts is interrupted until it does. The only measured VRRP blast (two-node cEOS-lab 4.28.14M: the backup promoted 70 ms after the master disabled its group; the master preempted back 3391 ms after re-enable) is container evidence, not measured on this unit (DR-157, DR-043) — this unit's own timing stays unmeasured, and its first real use is the measurement opportunity.`
 }
 
 /** What a delete removes — the whole group, unrecoverable from running-config. */
@@ -360,7 +367,7 @@ export const VRRP_CREATE_IP_ROUTING_NOTE =
 
 /** Why an advertisement-interval edit carries risks but no second confirm (spec: risks only). */
 export function vrrpAdvertiseIntervalRisk(): string {
-  return 'Changing the advertisement interval changes how quickly peers declare this master down — no measured switchover timing exists on any target, so this screen states the mechanism, not a number.'
+  return 'Changing the advertisement interval changes how quickly peers declare this master down and how long a preempt-back takes — on the measured container pair (cEOS-lab 4.28.14M, default 1 s timers) the preempt-back settled at 3391 ms, roughly the master_down interval; container evidence, not this unit (DR-157, DR-043).'
 }
 
 /** The far-end note (non-gating, the DR-149 informational pattern). */
@@ -424,7 +431,7 @@ export const VRRP_L3_READ_UNAVAILABLE_NOTE =
 
 /** The standing banner: what this screen is and what it never does. */
 export const VRRP_EDITOR_STANDING_NOTE =
-  'This screen edits VRRP virtual routers — the most traffic-impacting per-interface state on a default gateway. No VRRP failover blast has been measured on any target, so every confirm states the mechanism and says the timing is unmeasured (no fabricated number). Writes stage into the shared transaction; the device diff is reviewed in Transaction Center before that commit, which touches running-config only (DR-024). `ip routing` is never touched (#87 Do-Not-Do).'
+  'This screen edits VRRP virtual routers — the most traffic-impacting per-interface state on a default gateway. The only measured VRRP failover blast is the two-node cEOS-lab lane (backup promoted in 70 ms, preempt-back in 3391 ms — container evidence, not this unit, DR-157/DR-043), and every confirm cites it as exactly that. Writes stage into the shared transaction; the device diff is reviewed in Transaction Center before that commit, which touches running-config only (DR-024). `ip routing` is never touched (#87 Do-Not-Do).'
 
 /** Narrow seam alias used by the container's props. */
 export type VrrpManagerNode = Pick<Node, 'vrrp' | 'ipinterfaces' | 'show' | 'configSession'>

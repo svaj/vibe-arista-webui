@@ -23,8 +23,9 @@
  * All three forms stage through the shared transaction coordinator (#141) and open no session
  * themselves; commit/abort belong to the Transaction Center. Create, delete, and the
  * enable/priority/preempt edits carry a per-entry second confirm whose body states the failover
- * blast honestly — measured on NO target (owner decision 2026-11-21: honest unmeasured copy, no
- * fabricated number). Description and advertisement-interval edits ship risks only. Creating a
+ * blast with the only measured numbers in the repo — the two-node cEOS-lab lane (backup promoted
+ * 70 ms, preempt-back 3391 ms), cited as container evidence and never as this unit's behavior
+ * (DR-157, DR-043). Description and advertisement-interval edits ship risks only. Creating a
  * (interface, vrid) the read already lists is refused in-form at zero appends; staging the value
  * the config already states is refused the same way (the StpGlobal already-says pattern). A device
  * refusal surfaces as its own `CommandError` at commit time (DR-057) and changes nothing.

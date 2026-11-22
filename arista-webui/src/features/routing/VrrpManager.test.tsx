@@ -7,7 +7,7 @@
  * The acceptance lines SPEC-vrrp-editor.md names, pinned below:
  * - every staged batch is byte-for-byte `interface <name>` + the client-composed lines (create:
  *   enable line first; edit: the one field line; delete: the client-pinned `no vrrp <n>`);
- * - create and the master-moving edits carry the honest-unmeasured second confirm;
+ * - create and the master-moving edits carry the container-measured (DR-157) second confirm;
  * - creating an existing (interface, vrid) and staging an already-said value are refused at ZERO
  *   coordinator appends;
  * - four states: the HARD `vrrp.getAll()` failure fails the screen; an EMPTY table is a normal
@@ -258,10 +258,10 @@ describe('VrrpManager — create staging (client dry-run text, byte-for-byte)', 
     expect(fakes.setPriority).toHaveBeenCalledWith('Vlan80', 10, { value: 150, run: false })
     expect(fakes.setDescription).toHaveBeenCalledWith('Vlan80', 10, { value: 'gw', run: false })
     expect(fakes.setPreempt).toHaveBeenCalledWith('Vlan80', 10, { value: true, run: false })
-    // The honest-unmeasured second confirm rides the entry.
+    // The container-measured (DR-157) second confirm rides the entry.
     expect(entry.confirmations).toHaveLength(1)
     expect(entry.confirmations[0].title).toBe('Second confirm: VRRP create on Vlan80 (vrid 10)')
-    expect(entry.confirmations[0].body).toMatch(/NOT measured on any target/u)
+    expect(entry.confirmations[0].body).toMatch(/container evidence, not measured on this unit/u)
     expect(entry.risks.some((risk) => /no ip routing/u.test(risk))).toBe(true)
   })
 

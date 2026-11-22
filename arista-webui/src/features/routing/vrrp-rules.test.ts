@@ -259,12 +259,14 @@ describe('vrrp-rules — row mapping', () => {
   })
 })
 
-describe('vrrp-rules — risk/confirm copy (honest unmeasured, owner decision 2026-11-21)', () => {
-  it('the failover facts name the interface, state the mechanism, and refuse to fabricate timing', () => {
+describe('vrrp-rules — risk/confirm copy (container-measured blast, DR-157; hardware stays unmeasured)', () => {
+  it('the failover facts name the interface, state the mechanism, and scope the measured timing to containers', () => {
     const facts = vrrpFailoverFacts('Vlan70')
     expect(facts).toContain("Vlan70's default-gateway traffic")
-    expect(facts).toMatch(/NOT measured on any target/u)
-    expect(facts).toMatch(/no fabricated number/u)
+    expect(facts).toMatch(/backup promoted 70 ms/u)
+    expect(facts).toMatch(/preempted back 3391 ms/u)
+    expect(facts).toMatch(/container evidence, not measured on this unit/u)
+    expect(facts).toMatch(/DR-157/u)
     expect(facts).toMatch(/DR-043/u)
   })
 

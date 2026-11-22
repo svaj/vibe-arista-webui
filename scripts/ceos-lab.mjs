@@ -1129,7 +1129,10 @@ async function cmdUp(cfg) {
     }
     const mgmtIp = `${mgmtSubnet.octetBase}.10`
     // #154 --nodes=2: the peer bridge joins the family of run-owned bridges created here;
-    // it carries the back-to-back wire between the two nodes' front panels.
+    // it carries the back-to-back wire between the two nodes' front panels. #87 --vrrp
+    // REUSES this same wire as the shared-L2 VRRP segment (no extra NIC: the 2026-11-22
+    // debugging run proved a 5-NIC shape lets cEOS bind NICs out of attach order and
+    // consume a data bridge as its internal NIC — the 4-NIC topology is the proven one).
     const extraNets = cfg.nodes === 2 ? [names.peer] : []
     for (const net of [names.data1, names.data2, ...extraNets]) {
       docker(['network', 'create', `--label=${LABEL_RUN}=${runId}`, `--label=${LABEL_MANAGER}=${MANAGER}`, net])
@@ -1154,8 +1157,16 @@ async function cmdUp(cfg) {
       // bridge IP answered perfectly). Docker's CLI has no way to qualify `-p`
       // with the container-side endpoint, so `up` runs the loopback endpoint
       // itself via scripts/eapi-port-forward.mjs after bootstrap.
-      `--network=${names.mgmt}`,
-      `--ip=${mgmtIp}`,
+      //
+      // The `ifname=eth0` driver-opt pins the mgmt endpoint to kernel eth0. cEOS
+      // maps EOS `Management1` to kernel eth0 and `EthernetN` to kernel ethN, and
+      // Docker's kernel-index assignment is NOT reliably attach-order (two
+      // 2026-11-22 runs bound mgmt as a front-panel Ethernet and consumed a data
+      // bridge as Management1, so eAPI answered on no IP and the OSPF/VRRP wires
+      // landed on the wrong ports). Pinning eth0 here — and eth1/eth2/eth3 on the
+      // data/peer connects below — makes the positional frontPanels[0..2] mapping
+      // the provisioning code relies on correct by construction.
+      `--network=${`name=${names.mgmt},ip=${mgmtIp},driver-opt=com.docker.network.endpoint.ifname=eth0`}`,
     ]
     for (const [k, v] of VENDOR_ENV) createArgs.push('-e', `${k}=${v}`)
     createArgs.push('-i', image.tag, '/sbin/init')
@@ -1172,8 +1183,11 @@ async function cmdUp(cfg) {
     // binds them as front-panel ports, while create-time attachment stays a single
     // endpoint for the port-forward resolution (topology note above). The peer bridge
     // (nodes=2) rides the same pre-start attach — a runtime connect inserts nothing.
-    for (const net of [names.data1, names.data2, ...extraNets]) {
-      docker(['network', 'connect', net, names.container])
+    // Each connect pins the container-side ifname (eth1=data1, eth2=data2, eth3=peer)
+    // so cEOS binds them as Ethernet1/2/3 in that fixed order — the positional
+    // frontPanels[0..2] the provisioning relies on (see the createArgs note).
+    for (const [net, ifname] of [[names.data1, 'eth1'], [names.data2, 'eth2'], ...extraNets.map((n, i) => [n, `eth${String(i + 3)}`])]) {
+      docker(['network', 'connect', '--driver-opt', `com.docker.network.endpoint.ifname=${ifname}`, net, names.container])
     }
     const privileged = docker(['container', 'inspect', '--format', '{{.HostConfig.Privileged}}', names.container]).trim()
     const imageRef = docker(['container', 'inspect', '--format', '{{.Config.Image}}', names.container]).trim()
@@ -1227,12 +1241,16 @@ async function cmdUp(cfg) {
     // #154 nodes=2: attach order (data1, data2, peer) maps to the Ethernet numbers cEOS
     // assigns at boot; the peer NIC must be the THIRD front panel or provisioning would
     // put the transit address on a port the representative config also owns. Refusing on
-    // a mismatch beats capturing an adjacency that never forms for a naming reason.
+    // a mismatch beats capturing an adjacency that never forms for a naming reason. This
+    // 4-NIC topology is the proven one (#154's green OSPF runs); #87 --vrrp REUSES the
+    // peer NIC as the shared-L2 segment precisely to stay inside it — the 2026-11-22
+    // debugging run showed a 5th NIC lets cEOS bind mgmt as a front panel and consume a
+    // data bridge internally, which is exactly the silent mis-provisioning to avoid.
     if (cfg.nodes === 2 && (frontPanels.length !== 3 || frontPanels[2] === undefined)) {
       refuse(
         `--nodes=2 expects exactly 3 front-panel ports on the primary (data1+data2+peer), got ` +
           `${JSON.stringify(frontPanels)} — the peer bridge did not bind at boot, or the NIC→Ethernet ` +
-          'mapping changed; refusing rather than stage the transit onto the wrong port.',
+          'mapping changed; refusing rather than stage the transit/VRRP onto the wrong port.',
         EXIT.readiness,
       )
     }
@@ -1261,7 +1279,12 @@ async function cmdUp(cfg) {
     // so `up` now provisions that shape before anything is read. A refusal here lands in
     // the catch below: teardown runs, no probe is taken, no half-configured capture set exists.
     const provisionStart = Date.now()
-    const provision = provisionLab(names.container, frontPanels[0], frontPanels[1], cfg.nodes === 2 ? { peerPort: frontPanels[2] } : undefined)
+    const provision = provisionLab(
+      names.container,
+      frontPanels[0],
+      frontPanels[1],
+      cfg.nodes === 2 ? { peerPort: frontPanels[2], vrrp: cfg.vrrp } : undefined,
+    )
     const provisionMs = Date.now() - provisionStart
     if (!provision.ok) {
       const detail =
@@ -1369,6 +1392,7 @@ async function cmdUp(cfg) {
       provisionTranscript: redactCopy(`${provision.staged}\n--commit--\n${provision.committed ?? ''}`.slice(0, 6000)),
       pendingSession: PENDING_SESSION,
       dockerIps,
+      ...(cfg.vrrp ? { vrrp: true } : {}),
       versionJson,
       interfacesJson,
       httpCommandsJson,
@@ -1525,10 +1549,32 @@ const PEER_LINK = /** @type {const} */ {
 }
 
 /**
+ * #87 `--vrrp` — the VRRP pair that lives on the REUSED nodes=2 peer wire. The wire
+ * itself is PEER_LINK's bridge; `--vrrp` simply provisions both peer NICs as Vlan200
+ * access ports instead of the routed /30, so VRRP gets its broadcast/multicast L2
+ * domain (224.0.0.18) with a real SVI on each node. Fixed addresses again
+ * (harness-defined topology): Vlan200 is outside the single-node 10/100/110 set and
+ * outside the >=2000 per-case block the SVI suites use, and the .254 VIP sits above both
+ * nodes' SVI addresses (.1 / .2) so neither owns it. A is the intended MASTER (higher
+ * priority); B is the BACKUP whose promotion the failover lane measures.
+ */
+const VRRP_LINK = /** @type {const} */ {
+  vlan: 200,
+  name: 'LAB-VRRP',
+  subnet: '10.0.200.0/24',
+  aIp: '10.0.200.1',
+  bIp: '10.0.200.2',
+  vip: '10.0.200.254',
+  vrid: 1,
+  aPriority: 150,
+  bPriority: 100,
+}
+
+/**
  * The staging lines, in apply order, aimed at the OBSERVED front-panel ports.
  * Indentation mirrors the CLI's sub-mode style used by `bootstrapLab`, so the
  * transcript is readable to a reviewer.
- * @param {string} ethA @param {string} ethB @param {{ peerPort: string } | undefined} peer
+ * @param {string} ethA @param {string} ethB @param {{ peerPort?: string, vrrp?: boolean } | undefined} peer
  */
 function provisionStaging(ethA, ethB, peer) {
   return [
@@ -1617,22 +1663,49 @@ function provisionStaging(ethA, ethB, peer) {
   '   10 permit tcp any host 10.0.100.1 eq 443',
   '   20 permit icmp any any',
   'exit',
-  // #154 --nodes=2 only: the routed transit to the peer node + OSPF over it. Re-entering
+  // #154 --nodes=2 only: the transit to the peer node + OSPF over it. Re-entering
   // `router ospf 1` is normal EOS — the block above already created the process.
-  ...(peer === undefined ? [] : [
-    'interface Loopback1',
-    `   ip address ${PEER_LINK.aLoopback}/32`,
-    'exit',
-    `interface ${peer.peerPort}`,
-    '   no switchport',
-    `   ip address ${PEER_LINK.aIp}/30`,
-    '   no shutdown',
-    'exit',
-    'router ospf 1',
-    `   network ${PEER_LINK.subnet} area ${PEER_LINK.ospfArea}`,
-    `   network ${PEER_LINK.aLoopback}/32 area ${PEER_LINK.ospfArea}`,
-    'exit',
-  ]),
+  // #87 --vrrp flips the SAME wire from routed /30 to a shared-L2 segment: the peer NIC
+  // becomes a Vlan200 access port, the SVI carries the addressing + VRRP pair, and OSPF
+  // runs over the SVI network instead of the /30. One wire, one topology, both lanes.
+  ...(peer === undefined || peer.peerPort === undefined
+    ? []
+    : peer.vrrp === true
+      ? [
+          'interface Loopback1',
+          `   ip address ${PEER_LINK.aLoopback}/32`,
+          'exit',
+          `vlan ${String(VRRP_LINK.vlan)}`,
+          `   name ${VRRP_LINK.name}`,
+          'exit',
+          `interface ${peer.peerPort}`,
+          '   switchport',
+          '   switchport mode access',
+          `   switchport access vlan ${String(VRRP_LINK.vlan)}`,
+          '   no shutdown',
+          'exit',
+          `interface Vlan${String(VRRP_LINK.vlan)}`,
+          `   ip address ${VRRP_LINK.aIp}/24`,
+          '   no shutdown',
+          `   vrrp ${String(VRRP_LINK.vrid)} ipv4 ${VRRP_LINK.vip}`,
+          `   vrrp ${String(VRRP_LINK.vrid)} priority-level ${String(VRRP_LINK.aPriority)}`,
+          `   vrrp ${String(VRRP_LINK.vrid)} preempt`,
+          'exit',
+        ]
+      : [
+          'interface Loopback1',
+          `   ip address ${PEER_LINK.aLoopback}/32`,
+          'exit',
+          `interface ${peer.peerPort}`,
+          '   no switchport',
+          `   ip address ${PEER_LINK.aIp}/30`,
+          '   no shutdown',
+          'exit',
+          'router ospf 1',
+          `   network ${PEER_LINK.subnet} area ${PEER_LINK.ospfArea}`,
+          `   network ${PEER_LINK.aLoopback}/32 area ${PEER_LINK.ospfArea}`,
+          'exit',
+        ]),
   ]
 }
 
@@ -1723,7 +1796,7 @@ function provisionLab(container, ethA, ethB, peer) {
   // commit transcript alone (a Cli echo can render success for a partial apply).
   const vlanModel = cliJson(container, 'show vlan')
   const present = Object.keys(vlanModel?.vlans ?? {}).map((v) => String(v))
-  const missingVlans = ['10', '100', '110'].filter((v) => !present.includes(v))
+  const missingVlans = ['10', '100', '110', ...(peer?.vrrp === true ? [String(VRRP_LINK.vlan)] : [])].filter((v) => !present.includes(v))
   if (missingVlans.length > 0) {
     return { ok: false, stage: 'verification', errors, fatal: [], staged: staged + '\n' + committed, aborted: '', missingVlans }
   }
@@ -1797,23 +1870,48 @@ async function waitForRoutingFeatures(container, opts = {}) {
  * abort) discipline as `provisionLab`. Deliberately NOT the full single-node config: the
  * peer exists so adjacency-dependent reads answer with real neighbor state, and every
  * extra stanza on B only widens the drift surface between the two nodes' captures.
- * @param {string} container @param {string} peerPort
+ * @param {string} container @param {string} peerPort @param {boolean} [vrrp]
  */
-function provisionPeer(container, peerPort) {
+function provisionPeer(container, peerPort, vrrp) {
   const stagingInput = [
     `configure session ${PEER_SESSION}`,
     'ip routing',
-    `interface ${peerPort}`,
-    '   no switchport',
-    `   ip address ${PEER_LINK.bIp}/30`,
-    '   no shutdown',
-    'exit',
+    // #87 --vrrp: the peer NIC is a Vlan200 access port and the SVI carries the BACKUP
+    // (lower priority, preempt); without it the NIC is the routed /30 transit for OSPF.
+    ...(vrrp === true
+      ? [
+          `vlan ${String(VRRP_LINK.vlan)}`,
+          `   name ${VRRP_LINK.name}`,
+          'exit',
+          `interface ${peerPort}`,
+          '   switchport',
+          '   switchport mode access',
+          `   switchport access vlan ${String(VRRP_LINK.vlan)}`,
+          '   no shutdown',
+          'exit',
+          `interface Vlan${String(VRRP_LINK.vlan)}`,
+          `   ip address ${VRRP_LINK.bIp}/24`,
+          '   no shutdown',
+          `   vrrp ${String(VRRP_LINK.vrid)} ipv4 ${VRRP_LINK.vip}`,
+          `   vrrp ${String(VRRP_LINK.vrid)} priority-level ${String(VRRP_LINK.bPriority)}`,
+          `   vrrp ${String(VRRP_LINK.vrid)} preempt`,
+          'exit',
+        ]
+      : [
+          `interface ${peerPort}`,
+          '   no switchport',
+          `   ip address ${PEER_LINK.bIp}/30`,
+          '   no shutdown',
+          'exit',
+        ]),
     'interface Loopback1',
     `   ip address ${PEER_LINK.bLoopback}/32`,
     'exit',
     'router ospf 1',
     `   router-id ${PEER_LINK.bLoopback}`,
-    `   network ${PEER_LINK.subnet} area ${PEER_LINK.ospfArea}`,
+    // On the --vrrp shape the transit is the VRRP segment: OSPF stays off it (no hello
+    // traffic onto the measured wire) and keeps only the loopback advertisement.
+    ...(vrrp === true ? [] : [`   network ${PEER_LINK.subnet} area ${PEER_LINK.ospfArea}`]),
     `   network ${PEER_LINK.bLoopback}/32 area ${PEER_LINK.ospfArea}`,
     'exit',
   ]
@@ -1897,14 +1995,17 @@ async function bringUpPeerNode(cfg, opts) {
     '--privileged',
     `--label=${LABEL_RUN}=${runId}`,
     `--label=${LABEL_MANAGER}=${MANAGER}`,
-    `--network=${bmgmt}`,
-    `--ip=${bMgmtIp}`,
+    // Same ifname pinning as the primary: bmgmt=eth0 (Management1), peer=eth1
+    // (Ethernet1 — B's single front panel, the transit/VRRP wire).
+    `--network=${`name=${bmgmt},ip=${bMgmtIp},driver-opt=com.docker.network.endpoint.ifname=eth0`}`,
   ]
   for (const [k, v] of VENDOR_ENV) createArgs.push('-e', `${k}=${v}`)
   createArgs.push('-i', image.tag, '/sbin/init')
   for (const [k, v] of VENDOR_ENV) createArgs.push(`systemd.setenv=${k}=${v}`)
   const cidB = docker(createArgs).trim()
-  docker(['network', 'connect', peer, containerB]) // pre-START: NICs bind at boot only
+  // #87 --vrrp: the SAME peer bridge carries the shared-L2 VRRP segment — B's single peer
+  // NIC becomes a Vlan200 access port instead of the routed /30 (provisionPeer below).
+  docker(['network', 'connect', '--driver-opt', 'com.docker.network.endpoint.ifname=eth1', peer, containerB]) // pre-START: NICs bind at boot only
   const privileged = docker(['container', 'inspect', '--format', '{{.HostConfig.Privileged}}', containerB]).trim()
   if (privileged !== 'true') refuse(`docker recorded HostConfig.Privileged=${privileged} for ${containerB}`, EXIT.privileged)
   docker(['start', containerB])
@@ -1919,7 +2020,7 @@ async function bringUpPeerNode(cfg, opts) {
   const bFeatures = await waitForRoutingFeatures(containerB)
   if (!bFeatures.ready) refuse('peer node: routing canary never went ready (license-daemon race) — recreate the run', EXIT.readiness)
   const bPorts = bPanels[0]
-  const bProv = provisionPeer(containerB, bPorts)
+  const bProv = provisionPeer(containerB, bPorts, cfg.vrrp)
   if (!bProv.ok) {
     const why = 'routingDown' in bProv ? `peer routing not live after commit (${bProv.routingDown})` : bProv.errors.map((e) => `${e.command} -> ${e.line}`).join('; ')
     refuse(`peer provisioning (session ${PEER_SESSION}) failed: ${why}`, EXIT.internal)
@@ -2454,7 +2555,7 @@ const CAPTURE_CATALOG = [
   { command: 'show configuration sessions detail', format: 'json', id: 'ceos-lab-capability', note: 'verbatim per #62; feeds the same field-set questions' },
   { command: 'show vrf', format: 'json', id: 'ceos-lab-capability', note: 'read-only prerequisite of B6 (#90); answered `vrfs` on the probed container (cEOS-lab defaults to the default VRF only); empty/1002 answers are recorded as negative results, never files' },
   { command: 'show ip route', format: 'json', id: 'ceos-lab-capability', note: 'populated by the provisioned SVI connected routes + the provisioned static route; prerequisite of S10 (#80). Since #154 routing is LIVE at capture time (run lab-1841022-612e1d answered vrf `default` with both routes and the `routingDisabled` field visible) — the historic capture answered with routing globally unavailable, which was the license-boot race, not a platform refusal; the `ip routing` verdict on the hardware stays #14 §3' },
-  { command: 'show vrrp', format: 'json', id: 'ceos-lab-capability', note: 'recorded as a negative result (never a file): the provisioned SVI line stays the OLD spelling `vrrp 1 ip …`, which 2026-11-18 (run lab-1841022-612e1d) refuses with "% Unavailable command (This command is deprecated by \'vrrp ipv4\')" — wording changed from the 2026-11-07 platform refusal, and the successor order `vrrp <id> ipv4 <addr>` stages FULL abort-only on the same image (bench lab-1858323-0626ae). A configured-VRRP capture is therefore possible on this container, which touches the out-of-scope line of #154 and the posture of #90 — deliberate owner decision before provisioning changes' },
+  { command: 'show vrrp', format: 'json', id: 'ceos-lab-capability', note: 'empty HERE is a provisioning artifact, NOT a read-capability negative (DR-157 corrects DR-122\'s 1002/empty verdict): the provisioned SVI line stays the OLD spelling `vrrp 1 ip …`, which 2026-11-18 (run lab-1841022-612e1d) refuses with "% Unavailable command (This command is deprecated by \'vrrp ipv4\')" — wording changed from the 2026-11-07 platform refusal, and the successor order `vrrp <id> ipv4 <addr>` stages FULL abort-only on the same image (bench lab-1858323-0626ae). With a group actually configured (the `--vrrp` two-node shape, run lab-1926138-47bd56) and read after initialisation through the enable-prefixed path, `show vrrp` answers with the FULL populated model — see docs/evidence/vrrp-failover-two-node.ceos.json. `show vrrp detail` stays a real 1002 on this image. A configured-VRRP capture in THIS probe is still a deliberate owner decision before provisioning changes (touches the out-of-scope line of #154 and the posture of #90)' },
   /* ---- 2026-11-15 unblock reads (companion to the hardware lane in src/testing/hw-capture.ts).
    * Since #154 the provisioning block carries a CONFIGURED routing shape (OSPF process, BGP
    * neighbor, route-map + prefix-list), gated by the license-readiness canary, so the routing
@@ -3212,6 +3313,19 @@ async function cmdRun(cfg, childArgv) {
     // provisioned 10/100/110, outside EOS's reserved 1006-1199, and outside the >=2000 block the
     // SVI-owning suites (varp/ipinterfaces/vrrp) create per-case. Guard still validates the value.
     EAPI_SCRATCH_VLAN: '1201',
+    // #87 --vrrp: the shared-L2 VRRP pair the harness provisioned, exported so the failover
+    // lane asserts against the topology it was handed instead of re-inventing literals.
+    ...(cfg.vrrp
+      ? {
+          EAPI_VRRP_VLAN: String(VRRP_LINK.vlan),
+          EAPI_VRRP_VIP: VRRP_LINK.vip,
+          EAPI_VRRP_VRID: String(VRRP_LINK.vrid),
+          EAPI_VRRP_A_IP: VRRP_LINK.aIp,
+          EAPI_VRRP_B_IP: VRRP_LINK.bIp,
+          EAPI_VRRP_A_PRIORITY: String(VRRP_LINK.aPriority),
+          EAPI_VRRP_B_PRIORITY: String(VRRP_LINK.bPriority),
+        }
+      : {}),
   }
   let childExit = null
   let childSignal = null
@@ -3254,7 +3368,7 @@ async function cmdRun(cfg, childArgv) {
 
 /** @param {string} name */
 function isKnownBoolFlag(name) {
-  return ['fixtures', 'no-fixtures', 'fixtures-force', 'yes', 'all', 'list', 'quiet', 'help', 'no-digest', 'no-full-write'].includes(name)
+  return ['fixtures', 'no-fixtures', 'fixtures-force', 'yes', 'all', 'list', 'quiet', 'help', 'no-digest', 'no-full-write', 'vrrp'].includes(name)
 }
 
 /** @param {string[]} argv */
@@ -3334,6 +3448,15 @@ function labConfig(flags) {
       if (n !== 1 && n !== 2) refuse(`--nodes supports 1 or 2, got ${String(n)}`, EXIT.usage)
       return n
     })(),
+    /**
+     * #87 VRRP failover lane: `--vrrp` repurposes the nodes=2 peer wire as a SHARED L2
+     * segment — both nodes' peer NICs become Vlan200 access ports and a VRRP pair (A
+     * master 150 / B backup 100, one VIP) lives on the SVI. It is meaningless without a
+     * second node (a lone VRRP group is always MASTER), so it requires `--nodes 2` and
+     * refuses otherwise — a typo must never silently build a single-node "failover" run
+     * that can only ever observe one master.
+     */
+    vrrp: flags['vrrp'] === true,
     fixtureDir: flags['fixtures'] === false || flags['no-fixtures'] === true ? null : str('fixtures', FIXTURE_DIR),
     /**
      * DR-126 full-write lab lane: `lab:run` against a run-owned disposable container **is** the
@@ -3367,6 +3490,9 @@ function labConfig(flags) {
   if (!['auto', 'eapi', 'cli'].includes(cfg.captureVia)) {
     refuse(`--capture-via must be auto, eapi, or cli, got ${JSON.stringify(cfg.captureVia)}`, EXIT.usage)
   }
+  if (cfg.vrrp && cfg.nodes !== 2) {
+    refuse('--vrrp builds a shared-L2 VRRP pair and is meaningless on one node (a lone group is always MASTER); pass --nodes 2 with --vrrp', EXIT.usage)
+  }
   if (!/^[A-Za-z0-9][A-Za-z0-9._:/@-]*$/.test(cfg.image.tag)) {
     refuse(`--image is not a valid docker reference: ${cfg.image.tag}`, EXIT.usage)
   }
@@ -3387,6 +3513,11 @@ usage: node scripts/ceos-lab.mjs <command> [flags] [-- <child args>]
           --nodes 2 adds a second labelled container wired back-to-back to the first
           (#154: OSPF adjacency + blast evidence; its endpoint reaches child suites as
           EAPI_PEER_*). The fixtures command refuses --nodes 2 — captures stay single-node.
+          --vrrp (needs --nodes 2) repurposes the peer wire as a SHARED L2 segment and
+          provisions a VRRP pair on Vlan200 (A master 150 / B backup 100, VIP
+          10.0.200.254) for the #87 failover-blast lane; the topology reaches child
+          suites as EAPI_VRRP_*. The OSPF adjacency does not form on this shape (the
+          transit is L2, not the routed /30) — run --nodes 2 without --vrrp for OSPF.
   probe   poll authenticated eAPI "show version" with a bounded deadline, assert the
           pinned release and the container model, then print identity, TLS pin,
           interface and capability observations (negative results included verbatim).
