@@ -1,0 +1,98 @@
+{
+  "format": "arista-eapi-recording/v1",
+  "identity": {
+    "targetSlug": "7050tx-64-r-4.28.13.1M",
+    "targetClass": "hardware",
+    "modelName": "DCS-7050TX-64-R",
+    "aristaVersion": "4.28.13.1M",
+    "versionNumber": "4.28.13.1",
+    "provenance": "captured",
+    "endpoint": "https://<hw-redacted>:443/command-api",
+    "topology": "supervised session; scratch=Ethernet33"
+  },
+  "captures": [
+    {
+      "requestId": "4050140a2a91-1",
+      "commands": [
+        "enable",
+        "configure session hw-probe-unblock3-subinterface-context description \"does `interface <name>.<vlan>` open a context on this un\"",
+        "interface Ethernet33.100",
+        "   description HW-PROBE-SUBIF"
+      ],
+      "format": "json",
+      "result": [
+        {},
+        {},
+        {},
+        {}
+      ]
+    },
+    {
+      "requestId": "4050140a2a91-2",
+      "commands": [
+        "enable",
+        "configure session hw-probe-unblock3-subinterface-context description \"does `interface <name>.<vlan>` open a context on this un\"",
+        "show session-config diffs"
+      ],
+      "format": "text",
+      "result": [
+        {
+          "output": ""
+        },
+        {
+          "output": ""
+        },
+        {
+          "output": "--- system:/running-config\n+++ session:/hw-probe-unblock3-subinterface-context-session-config\n@@ -122,6 +122,9 @@\n !\n interface Ethernet33\n !\n+interface Ethernet33.100\n+   description HW-PROBE-SUBIF\n+!\n interface Ethernet34\n !\n interface Ethernet35\n"
+        }
+      ]
+    },
+    {
+      "requestId": "4050140a2a91-3",
+      "commands": [
+        "enable",
+        "configure session hw-probe-unblock3-subinterface-context description \"does `interface <name>.<vlan>` open a context on this un\"",
+        "abort"
+      ],
+      "format": "json",
+      "result": [
+        {},
+        {},
+        {}
+      ]
+    },
+    {
+      "requestId": "4050140a2a91-4",
+      "commands": [
+        "enable",
+        "show configuration sessions"
+      ],
+      "format": "json",
+      "result": [
+        {},
+        {
+          "maxSavedSessions": 1,
+          "maxOpenSessions": 5,
+          "sessions": {}
+        }
+      ]
+    },
+    {
+      "requestId": "4050140a2a91-5",
+      "commands": [
+        "enable",
+        "show configuration sessions detail"
+      ],
+      "format": "json",
+      "result": [
+        {},
+        {
+          "maxSavedSessions": 1,
+          "maxOpenSessions": 5,
+          "sessions": {}
+        }
+      ]
+    }
+  ],
+  "incomplete": []
+}

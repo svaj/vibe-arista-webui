@@ -12,7 +12,7 @@
   },
   "captures": [
     {
-      "requestId": "b9bb8b2328e2-1",
+      "requestId": "5b44dd093636-1",
       "commands": [
         "enable",
         "show version"
@@ -23,7 +23,7 @@
           "output": ""
         },
         {
-          "output": "Arista DCS-7050TX-64-R\nHardware version: 11.12\nSerial number: <hw-redacted-serial>\nHardware MAC address: 0000.0000.0000\nSystem MAC address: 0000.0000.0000\n\nSoftware image version: 4.28.13.1M\nArchitecture: i686\nInternal build version: 4.28.13.1M-41622611.428131M\nInternal build ID: 79df91a6-df08-40bc-b28b-185dc1d05e55\nImage format version: 3.0\nImage optimization: Strata-4GB\n\nUptime: 3 weeks, 0 days, 2 hours and 48 minutes\nTotal memory: 3982512 kB\nFree memory: 2548768 kB\n\n"
+          "output": "Arista DCS-7050TX-64-R\nHardware version: 11.12\nSerial number: <hw-redacted-serial>\nHardware MAC address: 0000.0000.0000\nSystem MAC address: 0000.0000.0000\n\nSoftware image version: 4.28.13.1M\nArchitecture: i686\nInternal build version: 4.28.13.1M-41622611.428131M\nInternal build ID: 79df91a6-df08-40bc-b28b-185dc1d05e55\nImage format version: 3.0\nImage optimization: Strata-4GB\n\nUptime: 3 weeks, 0 days, 15 hours and 10 minutes\nTotal memory: 3982512 kB\nFree memory: 2547032 kB\n\n"
         }
       ]
     }

@@ -172,8 +172,9 @@ describe('StpGlobal — mode staging (capture-pinned lines, DR-149 confirms)', (
     await readyRegion()
 
     fireEvent.change(modeSelect(), { target: { value: 'rapid-pvst' } })
-    // The disclosure is IN-FORM before anything stages (owner decision 2026-11-21).
-    expect(screen.getByText(/proven on cEOS-lab 4.28.14M only/u)).toBeInTheDocument()
+    // The disclosure is IN-FORM before anything stages (owner decision 2026-11-21); since the
+    // 2026-11-22 capture day it reads stage-accepted-here / committed-container-only (DR-159).
+    expect(screen.getByText(/STAGE-ACCEPTED on this 7050TX-64-R/u)).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Stage mode change' }))
     await waitFor(() => expect(snapshot().entries).toHaveLength(1))
@@ -270,7 +271,7 @@ describe('StpGlobal — region staging (parent + only changed lines)', () => {
     const entry = snapshot().entries[0]
     expect(entry?.commands).toEqual(['spanning-tree mst configuration', 'no instance 1'])
     expect(entry?.risks.join('\n')).toMatch(/Removes the `instance … vlan …` mapping line/u)
-    expect(entry?.risks.join('\n')).toMatch(/container evidence, not this unit, DR-043/u)
+    expect(entry?.risks.join('\n')).toMatch(/staged on this 7050TX-64-R on 2026-11-22/u)
     // Same blast class as a remap (narrower than an identity change): risks carry the facts, no
     // second confirm — the DR-149 posture the pure-remap test above pins.
     expect(entry?.confirmations).toHaveLength(0)

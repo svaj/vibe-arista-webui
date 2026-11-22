@@ -1,0 +1,104 @@
+{
+  "format": "arista-eapi-recording/v1",
+  "identity": {
+    "targetSlug": "7050tx-64-r-4.28.13.1M",
+    "targetClass": "hardware",
+    "modelName": "DCS-7050TX-64-R",
+    "aristaVersion": "4.28.13.1M",
+    "versionNumber": "4.28.13.1",
+    "provenance": "captured",
+    "endpoint": "https://<hw-redacted>:443/command-api",
+    "topology": "supervised session; scratch=Ethernet33"
+  },
+  "captures": [
+    {
+      "requestId": "2b7e694f9842-1",
+      "commands": [
+        "enable",
+        "configure session hw-probe-unblock3-stp-mst-no-name-revision description \"do `no name` and `no revision` each stage on 4.28.13.1M \"",
+        "spanning-tree mst configuration",
+        "   name HWUNB3",
+        "   revision 9",
+        "   no name",
+        "   no revision"
+      ],
+      "format": "json",
+      "result": [
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {}
+      ]
+    },
+    {
+      "requestId": "2b7e694f9842-2",
+      "commands": [
+        "enable",
+        "configure session hw-probe-unblock3-stp-mst-no-name-revision description \"do `no name` and `no revision` each stage on 4.28.13.1M \"",
+        "show session-config diffs"
+      ],
+      "format": "text",
+      "result": [
+        {
+          "output": ""
+        },
+        {
+          "output": ""
+        },
+        {
+          "output": ""
+        }
+      ]
+    },
+    {
+      "requestId": "2b7e694f9842-3",
+      "commands": [
+        "enable",
+        "configure session hw-probe-unblock3-stp-mst-no-name-revision description \"do `no name` and `no revision` each stage on 4.28.13.1M \"",
+        "abort"
+      ],
+      "format": "json",
+      "result": [
+        {},
+        {},
+        {}
+      ]
+    },
+    {
+      "requestId": "2b7e694f9842-4",
+      "commands": [
+        "enable",
+        "show configuration sessions"
+      ],
+      "format": "json",
+      "result": [
+        {},
+        {
+          "maxSavedSessions": 1,
+          "maxOpenSessions": 5,
+          "sessions": {}
+        }
+      ]
+    },
+    {
+      "requestId": "2b7e694f9842-5",
+      "commands": [
+        "enable",
+        "show configuration sessions detail"
+      ],
+      "format": "json",
+      "result": [
+        {},
+        {
+          "maxSavedSessions": 1,
+          "maxOpenSessions": 5,
+          "sessions": {}
+        }
+      ]
+    }
+  ],
+  "incomplete": []
+}

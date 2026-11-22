@@ -12,7 +12,7 @@
   },
   "captures": [
     {
-      "requestId": "68b297764982-1",
+      "requestId": "0ea5f9f05a4a-1",
       "commands": [
         "enable",
         "show management api http-commands"
@@ -23,7 +23,7 @@
           "output": ""
         },
         {
-          "output": "Enabled:            Yes\nHTTPS server:       running, set to use port 443\nHTTP server:        shutdown, set to use port 80\nLocal HTTP server:  shutdown, no authentication, set to use port 8080\nUnix Socket server: shutdown, no authentication\nVRFs:               default\nHits:               1360\nLast hit:           0 seconds ago\nBytes in:           236116\nBytes out:          59552613\nRequests:           1124\nCommands:           2758\nDuration:           713.628 seconds\nSSL Profile:        none\nFIPS Mode:          No\nQoS DSCP:           0\nLog Level:          none\nCSP Frame Ancestor: None\nTLS Protocols:      1.0 1.1 1.2\n   User       Requests       Bytes in       Bytes out    Last hit     \n---------- -------------- -------------- --------------- -------------\n   svaj       1124           236116         59552613     0 seconds ago\n\nURLs                                   \n---------------------------------------\nManagement1 : https://<hw-redacted>:443\n\n"
+          "output": "Enabled:            Yes\nHTTPS server:       running, set to use port 443\nHTTP server:        shutdown, set to use port 80\nLocal HTTP server:  shutdown, no authentication, set to use port 8080\nUnix Socket server: shutdown, no authentication\nVRFs:               default\nHits:               1470\nLast hit:           0 seconds ago\nBytes in:           254943\nBytes out:          60848976\nRequests:           1218\nCommands:           2976\nDuration:           751.227 seconds\nSSL Profile:        none\nFIPS Mode:          No\nQoS DSCP:           0\nLog Level:          none\nCSP Frame Ancestor: None\nTLS Protocols:      1.0 1.1 1.2\n   User       Requests       Bytes in       Bytes out    Last hit     \n---------- -------------- -------------- --------------- -------------\n   svaj       1218           254943         60848976     0 seconds ago\n\nURLs                                   \n---------------------------------------\nManagement1 : https://<hw-redacted>:443\n\n"
         }
       ]
     }

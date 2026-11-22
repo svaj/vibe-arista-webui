@@ -38,7 +38,7 @@ import { CommandError } from './errors'
 import { buildRecording, createRecorder } from './testing/recording'
 import { writeRecording } from './testing/recorder-node'
 import { describeLiveTarget, liveTransportOptions, matchesDeviceIdentity, resolveLiveEnv, unwrapLiveTarget, type LiveTarget } from './testing/live-guard'
-import { HW_INVENTORY_CATALOG, HW_TEXT_SCENARIO, hwCaseName, hwDeviceIdentity, sanitizeHwRecording } from './testing/hw-capture'
+import { HW_INVENTORY_CATALOG, HW_TEXT_SCENARIO, hwCaseName, hwDerivedSecrets, hwDeviceIdentity, sanitizeHwRecording } from './testing/hw-capture'
 import type { VersionProperties } from './command-layer'
 
 const resolution = resolveLiveEnv(process.env)
@@ -70,13 +70,16 @@ describe.skipIf(!runnable)('hardware batch 1: read-only inventory of the 7050TX-
   let negatives = 0
   let written = 0
 
-  const scrub = extraSecrets()
+  // Operator literals first; the DERIVED ones (dialed host + device hostname) join in beforeAll
+  // once the device has answered — the 2026-11-22 day proved an unread warning defends nothing
+  // (hwDerivedSecrets' doc in testing/hw-capture.ts carries the incident).
+  let scrub = extraSecrets()
 
   beforeAll(async () => {
     target = unwrapLiveTarget(resolution)
     console.log(`hw-inventory: target = ${describeLiveTarget(target)}`)
     if (extraSecrets().length === 0) {
-      console.warn('hw-inventory: WARNING — EAPI_HW_SCRUB is unset/empty; hostname and address literals will NOT be scrubbed from config captures. Set it (comma-separated) before committing this tree.')
+      console.warn('hw-inventory: WARNING — EAPI_HW_SCRUB is unset/empty; the dialed host and the device hostname are still scrubbed (derived), but gateway/DNS/other-name literals will NOT be. Set it (comma-separated) before committing this tree.')
     }
     // Identity gate once, on a quiet node (no recorder): what the guard requires vs what the device says.
     const probeNode = createNode(liveTransportOptions(target))
@@ -86,7 +89,11 @@ describe.skipIf(!runnable)('hardware batch 1: read-only inventory of the 7050TX-
       throw new Error(`hw-inventory: refusing to capture — ${mismatch.reason}`)
     }
     reported = reportedNow
-    console.log(`hw-inventory: device self-report ok — version=${reportedNow.version} modelName=${reportedNow.modelName}`)
+    // The device's own hostname (from its running-config, read-only) joins the scrub list — the
+    // `! device:` line and the `hostname` line carry it into every config capture verbatim.
+    const deviceName = await probeNode.system.get().then((s) => s.hostname).catch(() => '')
+    scrub = [...scrub, ...hwDerivedSecrets({ dialedHost: target.host, reportedHostname: deviceName })]
+    console.log(`hw-inventory: device self-report ok — version=${reportedNow.version} modelName=${reportedNow.modelName}; scrub set = ${String(scrub.length)} literal(s) (${String(extraSecrets().length)} operator + derived host/name)`)
   })
 
   it('captures the whole catalog in one session, file-per-case, negatives recorded-not-dropped', async () => {

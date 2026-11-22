@@ -3532,6 +3532,75 @@ one-slot store this measures against); DR-141 (the round-1/2 spec lineage round 
 DR-151/DR-155 (the disclosures round 3 retires or confirms); DR-043 (every fact here is this unit,
 never generalized to containers, and vice versa); #88, #89.
 
+### DR-159 — run 11 executes round 3: ALL FIVE stage-accepts on the physical 7050TX-64-R (rapid-pvst mode line, the three MST-region removal spellings, the `Ethernet33.100` subinterface context), every batch aborted net-zero — plus the third scrub regression this port has caught and the derived-secret auto-scrub that ends it
+
+The operator ran `capture-unblock-hw.sh --spec3 --scratch Ethernet33` on the production unit
+2026-11-22 (the same supervised window as run 10, ~12 h later — box uptime runs continuously
+1 824 506 s → 1 869 014 s, no reboot). Five recordings, `configure-session-unblock3-*--hw-session-probe.json`,
+identity `DCS-7050TX-64-R` / `4.28.13.1M`, `incomplete: []` in all five, post-state
+`show configuration sessions` = `sessions: {}` in all five (every batch aborted, nothing committed):
+
+- **`spanning-tree mode rapid-pvst`: STAGE-ACCEPTED.** The session diff is exactly
+  `-spanning-tree mode mstp` / `+spanning-tree mode rapid-pvst`, then aborted. This retires the
+  first half of DR-151's container-only-acceptance disclosure — the unit does NOT refuse the line —
+  while the COMMITTED flip + its reconvergence blast stays a cEOS-lab 4.28.14M measurement
+  (DR-148; the probe fence refuses non-scratch commits, so committed timing remains the screen's
+  confirm-gated product path, DR-149). The webui disclosure (`stpRapidPvstDisclosure`) now reads
+  stage-accepted-here / committed-container-only.
+- **MST-region removal spellings: all three stage on this unit.** `no instance 1` (bare),
+  `no instance 1 vlan 100,110` (quad), and `no name` + `no revision` each staged inside a session
+  that first re-added the mapping/fields — and every session's `show session-config diffs` came
+  back EMPTY, the add+remove pair netting to nothing. An empty net diff after both halves are
+  accepted is the positive answer (a refusal would have errored the stage command, as every 1002
+  capture in this catalog shows); the aborted post-state confirms it. DR-155's bare-removal
+  disclosure moves from container-only to hardware-confirmed (first proven cEOS rea-q1..q4).
+- **`interface Ethernet33.100` + `description HW-PROBE-SUBIF`: staged FULL.** The diff shows the
+  whole `interface Ethernet33.100` block materializing between `Ethernet33` and `Ethernet34`, then
+  aborted. This answers the subinterface half of open item 7's device question: the `.100` context
+  EXISTS on 4.28.13.1M and takes submode children. What it does NOT decide is whether
+  `assertInterfaceName` should widen — that stays M10 (#12)'s parser decision, now made on captured
+  truth instead of principle. `Peer-Ethernet` remains unexercised.
+
+**The third scrub regression (and the fix that ends the class).** The operator invoked the script
+without `--scrub`; the lanes only WARN on an unset list, and the dialed host (`192.168.1.254`,
+71 occurrences including every `endpoint`) and the device's self-reported hostname
+(the unit's self-reported FQDN, 8 occurrences — deliberately unnamed here; it had never appeared in this repo before and stays out of it) entered all 58 touched recordings — HEAD had zero of either. This is
+the third time the same human-step failed (run 9 gateway, run 10 gateway-in-diff-context, run 11
+host+hostname). Remediation, in order: (1) hand re-scrub of all 58 files to `<hw-redacted>` with
+the census re-verified at zero and the `https://<hw-redacted>:443/command-api` endpoint convention
+restored; (2) the class-ender — `hwDerivedSecrets({dialedHost, reportedHostname})` in
+`src/testing/hw-capture.ts`, wired into BOTH hardware lanes' beforeAll, so the literal the lane
+dials and the hostname the device itself reports are ALWAYS scrubbed and are never `--scrub`
+optional (operator `--scrub` stays for what the lanes cannot know: gateways, DNS, third hosts);
+(3) `scan_scrub()` in `capture-unblock-hw.sh` — after every run, HARD-FAIL if the dialed `$HOST`
+survives in any changed recording, WARN on new RFC1918 literals versus HEAD; (4) three unit pins
+in `hw-capture.test.ts`.
+
+**One-slot store observation (recorded, not concluded).** The completed-session slot held
+`ui-127-0-0-1-e2e76c64` (`webui vlan create 20`, completed 2026-11-06) in every inventory refresh
+through run 10; run 11's plain AND detail forms read `sessions: {}`. No reboot (continuous uptime),
+no commit on this day (all five batches aborted), and no persistence verb was run. DR-158's
+replace-window finding stays the leading candidate — the run-10 inventory that still showed the
+entry was taken the same day without ordering-conclusive timing — but this day offers no new
+mechanism evidence, so it stands as an observation: **the one-slot completed store can empty
+between supervised days without any visible commit.** `rollback <name>` remains open (DR-158).
+
+**Refreshed inventory (53 files, committed as-is).** Unlike run 10's byte-identical round-2
+re-recordings (restored per the run-8 precedent), these are the current-day evidence and every key
+read re-answered with zero substantive change. The only drift is passive: counter increments
+(`bpduSent`, ACL `packetCount`s) and uptime-clock-relative timestamps that shifted by EXACTLY the
+uptime delta (44 508 s) — notably `lastTopologyChangeTime` moved 688 467 → 732 975, the SAME event
+re-expressed on the newer clock, so **no new topology change happened** (the aborted probes
+changed nothing). `show startup-config` mtime advanced to 2026-11-22 03:01 (the nightly autosave
+cadence, content unchanged).
+
+**Related:** DR-158 (the spec this executes and the slot story this extends); DR-151/DR-155 (the
+disclosures this retires or hardware-confirms — both webui copies updated in the same PR);
+DR-141 (the round-1/2/3 spec lineage); DR-135/DR-141 (probe discipline held: zero refusals, zero
+invented tokens); DR-043 (stage-accept here ≠ committed behavior anywhere; container numbers stay
+container-scoped); DR-043's scrub sibling — the run-9/run-10 `--scrub` lessons this finally
+mechanizes; open item 7 (subinterface half answered); #88, #89.
+
 ## Open items (need the device)
 
 Use cEOS first for software behavior and schema exploration, recording its model/version;
@@ -3642,6 +3711,11 @@ config session and are **not read-only**:
    subinterface or `Peer-Ethernet` form appears anywhere in the 80-key configs read. The slash-split
    class is now device-confirmed, so M10 (#12) can widen the grammar to PLAN's discriminated union on
    captured truth; `Ethernet1.100`-style subinterfaces and `Peer-Ethernet` remain unexercised.)**
+   **(Subinterface half ANSWERED 2026-11-22 (run 11, DR-159, `configure-session-unblock3-subinterface-
+   context--hw-session-probe.json`): `interface Ethernet33.100` + a `description` child staged FULL on
+   this unit — the `.100` context exists on 4.28.13.1M and takes submode children (aborted, net-zero).
+   The parser widening stays M10 (#12)'s decision, now made on captured truth; `Peer-Ethernet` is the
+   only form here still unexercised.)**
 
 7. **Config-session name grammar on the 4.28.13.1M target and in cEOS** (DR-047): the longest
    `configure session <name>` EOS accepts and the character set it matches. `MAX_SESSION_NAME_LENGTH = 64`

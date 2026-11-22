@@ -183,13 +183,14 @@ describe('risk + confirm copy (DR-149: the confirm carries the CAPTURED facts)',
     expect(STP_MODE_NONE_FACTS).toMatch(/Not measured on any target/u)
   })
 
-  it('rapid-pvst carries its container-only disclosure in risks AND in the second confirm', () => {
+  it('rapid-pvst carries its stage-accepted/committed-split disclosure in risks AND in the second confirm', () => {
     const risks = stpModeRisks('rapid-pvst', ['spanning-tree mode rapid-pvst'])
+    expect(risks.some((risk) => risk.includes('STAGE-ACCEPTED on this 7050TX-64-R'))).toBe(true)
     expect(risks.some((risk) => risk.includes('cEOS-lab 4.28.14M only'))).toBe(true)
-    expect(risks.some((risk) => risk.includes('A refusal changes nothing'))).toBe(true)
-    expect(stpModeRisks('mstp', ['spanning-tree mode mstp']).some((risk) => risk.includes('cEOS-lab 4.28.14M only'))).toBe(false)
+    expect(stpModeRisks('mstp', ['spanning-tree mode mstp']).some((risk) => risk.includes('STAGE-ACCEPTED on this 7050TX-64-R'))).toBe(false)
     const confirmation = stpModeConfirmation('rapid-pvst')
-    expect(confirmation.body).toMatch(/proven on cEOS-lab 4.28.14M only/u)
+    expect(confirmation.body).toMatch(/STAGE-ACCEPTED on this 7050TX-64-R/u)
+    expect(confirmation.body).toMatch(/measured on cEOS-lab 4.28.14M only/u)
     expect(confirmation.title).toMatch(/rapid-pvst/u)
   })
 
@@ -201,11 +202,11 @@ describe('risk + confirm copy (DR-149: the confirm carries the CAPTURED facts)',
     expect(STP_FAR_END_NOTE).toMatch(/no port-hygiene gate/u)
   })
 
-  it('a removal draft carries the STP_REGION_REMOVAL_FACT line with its DR-043 scoping', () => {
+  it('a removal draft carries the STP_REGION_REMOVAL_FACT line with its hardware (DR-159) scoping', () => {
     const risks = stpRegionRisks({ instances: [], removeInstances: [{ id: '1' }] }, ['spanning-tree mst configuration', 'no instance 1'])
     expect(risks).toContain(STP_REGION_REMOVAL_FACT)
     expect(STP_REGION_REMOVAL_FACT).toMatch(/netted the line out of the block/u)
-    expect(STP_REGION_REMOVAL_FACT).toMatch(/container evidence, not this unit, DR-043/u)
+    expect(STP_REGION_REMOVAL_FACT).toMatch(/staged on this 7050TX-64-R on 2026-11-22/u)
     expect(STP_REGION_REMOVAL_FACT).toMatch(/fallback is not measured on any target/u)
   })
 
@@ -228,6 +229,7 @@ describe('risk + confirm copy (DR-149: the confirm carries the CAPTURED facts)',
   })
 
   it('the disclosure sentence exists standalone for the in-form copy', () => {
-    expect(stpRapidPvstDisclosure()).toMatch(/may refuse it/u)
+    expect(stpRapidPvstDisclosure()).toMatch(/STAGE-ACCEPTED on this 7050TX-64-R/u)
+    expect(stpRapidPvstDisclosure()).toMatch(/DR-159/u)
   })
 })

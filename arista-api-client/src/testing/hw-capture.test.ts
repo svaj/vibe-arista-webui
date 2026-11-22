@@ -25,6 +25,7 @@ import {
   HW_ZEROED_MAC_DOTTED,
   HW_PROBE_SESSION_PREFIX,
   hwCaseName,
+  hwDerivedSecrets,
   hwDeviceIdentity,
   hwProbeCaseName,
   hwProbePendingRevertSessions,
@@ -370,6 +371,41 @@ describe('the probe-spec parser (policy made mechanical)', () => {
       message = (err as Error).message
     }
     expect(message).not.toContain('SUPERSECRETVALUE')
+  })
+})
+
+describe('hwDerivedSecrets — the literals a hardware lane scrubs WITHOUT operator input', () => {
+  // The 2026-11-22 capture day: the operator ran the runner without --scrub, the lanes' warning went
+  // unread, and 79 hostname/mgmt-address occurrences rode 58 recordings (all re-scrubbed by hand).
+  // These pins keep the derived set non-optional for both lanes.
+  it('carries the dialed host and the device hostname, deduped and trimmed', () => {
+    expect(hwDerivedSecrets({ dialedHost: '192.168.1.254', reportedHostname: 'switch.example.invalid' })).toEqual(['192.168.1.254', 'switch.example.invalid'])
+    // Dialing BY the address the device reports is the common case — one literal, not two.
+    expect(hwDerivedSecrets({ dialedHost: ' switch1 ', reportedHostname: 'switch1' })).toEqual(['switch1'])
+  })
+  it('drops empty/absent inputs so a hostname read failure degrades to host-only', () => {
+    expect(hwDerivedSecrets({ dialedHost: '10.0.0.1' })).toEqual(['10.0.0.1'])
+    expect(hwDerivedSecrets({ dialedHost: '10.0.0.1', reportedHostname: '   ' })).toEqual(['10.0.0.1'])
+    expect(hwDerivedSecrets({ dialedHost: '' })).toEqual([])
+  })
+  it('the derived literals actually scrub through sanitizeHwRecording (endpoint + config line)', () => {
+    const secrets = hwDerivedSecrets({ dialedHost: '192.168.1.254', reportedHostname: 'switch.example.invalid' })
+    const built = {
+      format: 'arista-eapi-recording/v1' as const,
+      identity: {
+        targetSlug: '7050tx-64-r-4.28.13.1M', targetClass: 'hardware' as const, modelName: 'DCS-7050TX-64-R',
+        aristaVersion: '4.28.13.1M', versionNumber: '4.28.13.1', provenance: 'captured' as const,
+        endpoint: 'https://192.168.1.254:443/command-api',
+      },
+      captures: [{ requestId: 'r-1', commands: ['show running-config'], format: 'text' as const, result: [{ output: 'hostname switch.example.invalid\n' }] }],
+      incomplete: [],
+    }
+    const { fixture, log } = sanitizeHwRecording(built, { extraSecrets: secrets })
+    const text = JSON.stringify(fixture)
+    expect(text).not.toContain('192.168.1.254')
+    expect(text).not.toContain('switch.example')
+    expect(text).toContain('<hw-redacted>')
+    expect(log.length).toBeGreaterThanOrEqual(2)
   })
 })
 
