@@ -1,0 +1,88 @@
+{
+  "$comment": [
+    "Round 3 of the 7050TX-64 unblock probes (DRAFT — NOT yet executed; prepared 2026-11-22 after",
+    "run 10, for the next supervised capture day). Rounds 1-2 (runs 7/9, DR-141) settled the VRF/BGP/",
+    "VXLAN/STP-mode-none grammar. This round asks ONLY the device questions the shipped screens now",
+    "carry as disclosures: the #88 `rapid-pvst` acceptance (DR-151's container-only-acceptance note),",
+    "the MST-region removal spellings `no instance <id>` / `no instance <id> vlan <ranges>` / `no name`",
+    "/ `no revision` (DR-155 captured them on cEOS-lab 4.28.14M only — rea-q1..q4, all aborted), and",
+    "the open-item-7 subinterface context form (`interface <name>.<vlan>`, never exercised on any",
+    "target; DECISIONS open item 7).",
+    "PROBE TEXT PROVENANCE (DR-141: no invented tokens): `spanning-tree mode rapid-pvst` is composed",
+    "byte-for-byte by the shipped screen (arista-webui/src/features/stp/stp-global-rules.ts",
+    "stpModeLine); `instance 1 vlan 100,110` and bare `no instance 1` are stpRegionInstanceLine /",
+    "stpRegionNoInstanceLine spellings; the quad `no instance 1 vlan 100,110` and `no name`/`no",
+    "revision` are the device-captured cEOS spellings (docs/evidence/unblock-grammar-ceos.json) — the",
+    "screen does NOT yet compose removals for name/revision, and a positive hardware answer is",
+    "exactly what would justify adding the arm. `interface {{SCRATCH}}.100` is the open-item-7 form",
+    "itself (assertInterfaceName, src/resources/interfaces.ts — the subinterface class the parser",
+    "refuses on principle, never on device evidence).",
+    "Every batch is allowCommit:false: stage -> record `show session-config diffs` -> ABORT. Nothing",
+    "reaches running-config; STP never reconverges; default forwarding is untouched (the 2026-11-15",
+    "authorization). Refusals (1002/1004) are recorded as answers and the loop continues (DR-134).",
+    "WHAT THIS ROUND CANNOT ANSWER: committed `rapid-pvst` reconvergence timing on this SKU (needs a",
+    "COMMIT — the probe lane's fence refuses committing any non-scratch line; that half belongs to the",
+    "screen's own confirm-gated product use, DR-149), and the MST-region reconvergence timing.",
+    "UNLIKE ROUNDS 1-2, THIS SPEC NEEDS THE SCRATCH PORT: batch unblock3-subinterface-context names",
+    "{{SCRATCH}}. Run with EAPI_SCRATCH_INTERFACE set to the proven-unused port (Ethernet33 was",
+    "verified unused in the 2026-11-21/22 persistence runs, DR-150/DR-158).",
+    "RUN (from the repo root, after the section-2 env chain in docs/HARDWARE-CAPTURE.md):",
+    "  bash scripts/capture-unblock-hw.sh --spec3 --go ...   (dry run first, without --go)",
+    "or manually:",
+    "  export EAPI_HW_SESSION_PROBE=1",
+    "  export EAPI_HW_PROBE_SPEC=$PWD/arista-api-client/docs/hw-capture-unblock3.draft.json",
+    "  export EAPI_SCRATCH_INTERFACE=Ethernet33",
+    "  npm -w arista-api-client run test:live -- src/hw-session-probe.live.test.ts"
+  ],
+  "batches": [
+    {
+      "name": "unblock3-stp-rapid-pvst",
+      "question": "does 4.28.13.1M accept `spanning-tree mode rapid-pvst` STAGED (abort-only)? The shipped #/stp/global screen offers this mode with a mandatory container-only-acceptance disclosure (DR-151); cEOS-lab 4.28.14M accepted the committed flip (DR-148, stp-mode-change.ceos.json). A stage-accept here retires the disclosure's first half; a 1002 makes the screen's refusal fallback the designed steady state. Text = stp-global-rules.ts stpModeLine verbatim",
+      "commands": [
+        "spanning-tree mode rapid-pvst"
+      ],
+      "allowCommit": false
+    },
+    {
+      "name": "unblock3-stp-mst-remove-bare",
+      "question": "does the BARE `no instance <id>` removal stage on 4.28.13.1M? cEOS rea-q2 (unblock-grammar-ceos.json) showed it nets the mapping line out of the region block; the shipped screen stages exactly this spelling per row (stp-global-rules.ts stpRegionNoInstanceLine). Shape: add-then-remove in one session — a 1002 at the removal line is a grammar refusal; a clean stage whose NET diff is empty means both lines were accepted and cancelled (the net-out itself is the container-captured half, not re-asked here). Aborted either way",
+      "commands": [
+        "spanning-tree mst configuration",
+        "   instance 1 vlan 100,110",
+        "   no instance 1"
+      ],
+      "allowCommit": false
+    },
+    {
+      "name": "unblock3-stp-mst-remove-quad",
+      "question": "does the QUAD `no instance <id> vlan <ranges>` removal stage on 4.28.13.1M (cEOS rea-q1: stages identically to the bare form)? Recorded for completeness of the removal-spelling matrix; the screen stays on the bare form regardless",
+      "commands": [
+        "spanning-tree mst configuration",
+        "   instance 1 vlan 100,110",
+        "   no instance 1 vlan 100,110"
+      ],
+      "allowCommit": false
+    },
+    {
+      "name": "unblock3-stp-mst-no-name-revision",
+      "question": "do `no name` and `no revision` each stage on 4.28.13.1M (cEOS rea-q3/q4 removed exactly their field)? The screen has NO name/revision removal arm today (DR-151: uncaptured spellings stay out) — a positive hardware answer is the precondition for adding one. Add-then-remove of both fields in one session (same refusal-vs-cancelled-net reading as unblock3-stp-mst-remove-bare); aborted",
+      "commands": [
+        "spanning-tree mst configuration",
+        "   name HWUNB3",
+        "   revision 9",
+        "   no name",
+        "   no revision"
+      ],
+      "allowCommit": false
+    },
+    {
+      "name": "unblock3-subinterface-context",
+      "question": "does `interface <name>.<vlan>` open a context on this unit (DECISIONS open item 7: subinterface forms were refused by assertInterfaceName on principle, never on device evidence; the slash-split class is already device-confirmed)? Staged on the declared scratch port's subinterface with a marker description; ABORTED — nothing applies. A 1002 at the opener is the answer the parser needs to stay closed; acceptance widens open item 7 toward PLAN's discriminated union",
+      "commands": [
+        "interface {{SCRATCH}}.100",
+        "   description HW-PROBE-SUBIF"
+      ],
+      "allowCommit": false
+    }
+  ]
+}

@@ -27,15 +27,20 @@ SCRUB="${EAPI_HW_SCRUB:-}"   # comma list: hostname,mgmt-ip,lab-domain,default-g
 DO_INVENTORY=1
 DO_PROBE=1
 # Run 8 (2026-11-16) proved the silent-default hazard: re-running "the unblock script" without
-# EAPI_HW_PROBE_SPEC re-stages ROUND 1 (already-answered) batches. Round 2 is the current default;
-# --spec1 goes back for a deliberate re-confirm, any other EAPI_HW_PROBE_SPEC prefix still overrides.
+# EAPI_HW_PROBE_SPEC re-stages ROUND 1 (already-answered) batches. Round 2 stays the default (it is
+# the last EXECUTED round); --spec1/--spec2 re-confirm, --spec3 selects the DRAFT round-3 spec
+# (rapid-pvst + MST-region removals + subinterface context, DR-158 — needs --scratch). Any explicit
+# EAPI_HW_PROBE_SPEC prefix still overrides.
 SPEC_SELECT=2
+SCRATCH="${EAPI_SCRATCH_INTERFACE:-}"
 
 usage() {
   sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'
   echo
-  echo "usage: $0 --go [--host H] [--user U] [--port 443] [--ca /tmp/eapi.pem] [--fp AA:BB:..] [--scrub h,ip,domain,gateway,dns] [--spec1|--spec2]"
-  echo "       (no --go -> dry run only; --spec2 default = round-2 port-composed probes, --spec1 = run-7 set)"
+  echo "usage: $0 --go [--host H] [--user U] [--port 443] [--ca /tmp/eapi.pem] [--fp AA:BB:..] [--scrub h,ip,domain,gateway,dns] [--spec1|--spec2|--spec3 [--scratch Ethernet33]]"
+  echo "       (no --go -> dry run only; --spec2 default = round-2 port-composed probes, --spec1 = run-7 set,"
+  echo "        --spec3 = DRAFT round 3 (DR-158): rapid-pvst + MST-region removals + subinterface context;"
+  echo "        round 3 names {{SCRATCH}}, so --spec3 requires --scratch <proven-unused-port>)"
   echo "       --scrub MUST include every literal that maps YOUR network: hostname, mgmt ip, lab domain,"
   echo "       DEFAULT GATEWAY and LAN DNS server -- diff-context lines and read replies carry those."
   echo "       (no --go  -> dry run only)"
@@ -61,6 +66,8 @@ while [ $# -gt 0 ]; do
     --scrub) SCRUB="$2"; shift ;;
     --spec1) SPEC_SELECT=1 ;;
     --spec2) SPEC_SELECT=2 ;;
+    --spec3) SPEC_SELECT=3 ;;
+    --scratch) SCRATCH="$2"; shift ;;
     -h|--help) usage; exit 0 ;;
     *) echo "unknown arg: $1" >&2; usage; exit 2 ;;
   esac
@@ -73,12 +80,34 @@ done
 # A missing file is a hard exit BEFORE the password prompt.
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 # NOTE the asymmetric file names: round 1 shipped as hw-capture-unblock.draft.json (no digit).
-if [ "$SPEC_SELECT" = "1" ]; then SPEC_DEFAULT="$REPO_ROOT/arista-api-client/docs/hw-capture-unblock.draft.json"; else SPEC_DEFAULT="$REPO_ROOT/arista-api-client/docs/hw-capture-unblock2.draft.json"; fi
+if [ "$SPEC_SELECT" = "1" ]; then
+  SPEC_DEFAULT="$REPO_ROOT/arista-api-client/docs/hw-capture-unblock.draft.json"
+elif [ "$SPEC_SELECT" = "3" ]; then
+  SPEC_DEFAULT="$REPO_ROOT/arista-api-client/docs/hw-capture-unblock3.draft.json"
+else
+  SPEC_DEFAULT="$REPO_ROOT/arista-api-client/docs/hw-capture-unblock2.draft.json"
+fi
 SPEC="${EAPI_HW_PROBE_SPEC:-$SPEC_DEFAULT}"
 if [ ! -f "$SPEC" ]; then
   echo "probe spec not found: $SPEC" >&2
-  echo "  round files: arista-api-client/docs/hw-capture-unblock.draft.json (run 7) / hw-capture-unblock2.draft.json (round 2)" >&2
+  echo "  round files: arista-api-client/docs/hw-capture-unblock.draft.json (run 7) / hw-capture-unblock2.draft.json (round 2) / hw-capture-unblock3.draft.json (round 3, DRAFT)" >&2
   exit 2
+fi
+# Round 3 is the first unblock round whose spec names {{SCRATCH}} (the subinterface-context batch),
+# so --spec3 (or any scratch-naming spec) requires the declared unused port up front -- the lane's
+# requireScratchInterface gate would refuse later anyway; failing here keeps it out of the password
+# prompt. Parsed from the batches, not grepped: round 2's $comment literally says "NO batch uses
+# {{SCRATCH}}", and a text grep would false-positive on that sentence.
+if node -e '
+  const fs = require("node:fs")
+  const spec = JSON.parse(fs.readFileSync(process.argv[1], "utf8"))
+  const hit = (spec.batches ?? []).some((b) => (b.commands ?? []).some((c) => String(c).includes("{{SCRATCH}}")))
+  process.exit(hit ? 0 : 1)
+' "$SPEC"; then
+  if [ -z "$SCRATCH" ]; then
+    echo "the selected spec names {{SCRATCH}}: pass --scratch <proven-unused-interface> (e.g. Ethernet33, verified unused in the DR-150/DR-158 persistence runs)" >&2
+    exit 2
+  fi
 fi
 
 if [ "$GO" -ne 1 ]; then
@@ -88,9 +117,9 @@ if [ "$GO" -ne 1 ]; then
   echo "           EAPI_CA_FILE=$CA_FILE EAPI_FINGERPRINT=<set?> EAPI_SERVER_NAME=self.signed"
   echo "           EAPI_HW_SCRUB=$SCRUB"
   echo "would run 1: EAPI_HW_CAPTURE=1 npm -w arista-api-client run test:live -- src/hw-inventory.live.test.ts"
-  echo "would run 2: EAPI_HW_SESSION_PROBE=1 EAPI_HW_PROBE_SPEC=$SPEC \\"
+  echo "would run 2: EAPI_HW_SESSION_PROBE=1 EAPI_HW_PROBE_SPEC=$SPEC${SCRATCH:+ EAPI_SCRATCH_INTERFACE=$SCRATCH} \\"
   echo "                 npm -w arista-api-client run test:live -- src/hw-session-probe.live.test.ts"
-  echo "(spec resolves from --spec1/--spec2 or an explicit EAPI_HW_PROBE_SPEC; a missing spec file hard-exits)"
+  echo "(spec resolves from --spec1/--spec2/--spec3 or an explicit EAPI_HW_PROBE_SPEC; a missing spec file hard-exits)"
   echo "(npm -w, NOT 'npx vitest run -w ... --project live': the live project is defined only in"
   echo " arista-api-client/vitest.config.ts, and --project resolution from the repo root fails --"
   echo " ci.yml records the same fix for the lab lane, probed 2026-11-08)"
@@ -121,7 +150,9 @@ export EAPI_USER="$USER_NAME" EAPI_PASS_VAR=EAPI_HW_PW
 export EAPI_ALLOW_MODEL="$MODEL" EAPI_ALLOW_VERSION="$VERSION" EAPI_HW_CONSENT="$MODEL"
 export EAPI_CA_FILE="$CA_FILE" EAPI_FINGERPRINT="$FINGERPRINT" EAPI_SERVER_NAME=self.signed
 export EAPI_HW_SCRUB="$SCRUB"
-# NOTE: EAPI_SCRATCH_INTERFACE is intentionally NOT exported -- the unblock spec names no {{SCRATCH}}.
+# Rounds 1-2 name no {{SCRATCH}}, so EAPI_SCRATCH_INTERFACE stays unset for them. Round 3 does name
+# it (subinterface-context batch) -- export only when the operator declared a port.
+if [ -n "$SCRATCH" ]; then export EAPI_SCRATCH_INTERFACE="$SCRATCH"; fi
 
 cd "$REPO_ROOT"
 RECORDINGS_DIR=arista-api-client/test/fixtures/recordings/7050tx-64-r-4.28.13.1M

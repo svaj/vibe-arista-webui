@@ -3461,6 +3461,77 @@ DR-103/DR-104 (the harness write/redaction machinery reused); #154 (the OSPF two
 NIC-binding bug this fixes); #87 (blast item 1 — this lands its container half; the hardware half is
 Open item 11 below).
 
+### DR-158 — run 10 on the box: `configure replace` ACCEPTED on the physical 7050TX-64-R (snapshot→marker-commit→replace-restore, self-restoring), the completed-session slot did NOT hold the marker after the replace (`rollback <name>` stays open, now with a measured reason), and the round-3 probe spec (rapid-pvst + MST-region removals + subinterface context) is drafted for the next capture day
+
+The operator executed both prepared lanes on the production unit 2026-11-21/22 (the DR-149
+authorization chain, typed consents as designed):
+
+**Persistence lane with `replace` named** (`capture-hw-persistence.sh --verbs copy,rollback,replace`,
+artifact `docs/evidence/persistence-hardware.json`, identity `DCS-7050TX-64-R` / `4.28.13.1M`):
+- **`configure replace flash:<snapshot>`: ACCEPTED on the box — the DR-150 "still unexercised" line
+  is CLOSED.** The lane snapshotted running to `flash:hw-persist-mwr95182.cfg`, committed a
+  one-line scratch-port marker through session `hw-persist-rep-mwr95182` (`replace-marker-committed:
+  markerPresent true`), then `configure replace` re-mounted the snapshot: `replace-after:
+  markerPresent false`, `final-scratch-state: markerPresent false`. As with `copy` (DR-150), the
+  eAPI reply text came back EMPTY — the reads around it are the answer, not the reply. Hardware
+  fact for this SKU only (DR-043 cuts both ways). The snapshot file stays in flash for hand-cleanup
+  (the lane never `delete`s — prompt hang hazard).
+- **`copy running-config startup-config`: re-accepted** (210-line startup, `changedFromBaseline:
+  true`), reproducing DR-150 cleanly.
+- **`rollback clean-config` (session form): re-confirmed** — 152-line would-be diff, aborted clean,
+  byte-comparable to DR-150's capture.
+- **`rollback <name>`: STILL OPEN, and the skip now has a measured reason instead of the lane's
+  guess.** Seven seconds after the marker commit — with `configure replace` the only intervening
+  operation — `show configuration sessions detail` no longer listed `hw-persist-rep-mwr95182`; the
+  step skipped because its target was absent. Whatever the mechanism (replace wholesale-swapping the
+  one-slot completed-session store, or the store being part of the replaced state), the operational
+  sentence stands: **after a `configure replace`, the most recent commit's name is not a rollback
+  target on this box.** The lane now records `completedSlotHolds` (the detail form's completed
+  entries) inside that skip, so the next run distinguishes "replace cleared the slot" from "replace
+  restored the snapshot's store" — the inventory recording taken the same day still showed the
+  pre-run `ui-127-0-0-1-e2e76c64` entry, consistent with the restore-store reading but not ordering-
+  conclusive. `rollback <name>` therefore remains un-staged on hardware: the lane refuses to invent
+  a target name (DR-135).
+- The artifact passed the DR-150 pre-write scan (no secret/ssh-key material, no LAN literals).
+
+**Unblock lane (inventory + round-2 re-confirmation)**: 53 inventory recordings refreshed; every
+key read (`show bgp summary|neighbors`, `show ip ospf[ neighbor]`, `show route-map`, `show vrrp`)
+re-answered with ZERO substantive change — the same platform negatives DR-141 recorded. The 7
+round-2 probe re-recordings were checked field-by-field: **byte-identical answers, requestId/
+timestamp noise only — and restored (`git restore`) per the run-8 precedent so the evidence keeps
+run 9's provenance.** (The `commit-timer` recording was not re-asked at all this day — the
+unblock-lane spec never includes it; it belongs to the §3 probe spec.) The restore also erased this run's one scrub regression: the re-recorded
+`stp-mode-none` diff-context line carried the LAN gateway plain where run 9's committed file has
+`<hw-redacted>` (the capture-time `--scrub` list again lacked the gateway literal — the run-9 lesson
+re-earned; the pre-existing gateway/`SVAJTOWER` occurrences in older committed captures are
+byte-count-unchanged by this run and stay the operator's open history-sweep call). One real box
+drift surfaced and is kept: `aaa authorization exec default local` now appears in running- AND
+startup-config (an operator change between runs — the startup mtime reads 2026-11-21 03:20:11, the
+DR-150 copy run).
+
+**Round 3 drafted, not executed** (`docs/hw-capture-unblock3.draft.json`, machine-checked by
+`hw-capture.test.ts`, selected by `capture-unblock-hw.sh --spec3`): five abort-only batches asking
+exactly the questions the shipped screens carry as disclosures — `spanning-tree mode rapid-pvst`
+staged (the text is `stp-global-rules.ts` `stpModeLine` verbatim; a stage-accept retires half of
+DR-151's container-only-acceptance disclosure, a 1002 makes the refusal fallback the steady state),
+the MST-region removal spellings `no instance <id>` / quad / `no name` / `no revision` (cEOS
+rea-q1..q4 spellings; a positive answer is the precondition for the screen's name/revision removal
+arm), and `interface {{SCRATCH}}.100` (open item 7's subinterface class, refused by
+`assertInterfaceName` on principle, never on device evidence). Round 3 is the FIRST unblock spec
+naming `{{SCRATCH}}`, so the script gained `--scratch` with a JSON-parsed gate (a text grep
+false-positives on round 2's `$comment` sentence — hit live during this PR's own testing). What
+round 3 still cannot answer: committed `rapid-pvst` reconvergence timing (needs a COMMIT — the
+probe fence refuses non-scratch commits; that half belongs to the screen's confirm-gated product
+use, DR-149).
+
+**Not run: the #159 CORS capture** (no `cors-hardware.json` artifact) — consistent with DR-149:
+the credential-placement decision already settled the outcome, the capture is pure evidence and
+gates nothing. **Related:** DR-150 (the copy/rollback-clean facts this reproduces and the redaction
+scan this re-passes); DR-149 (the authorization this spends the `replace` half of); DR-136 (the
+one-slot store this measures against); DR-141 (the round-1/2 spec lineage round 3 extends);
+DR-151/DR-155 (the disclosures round 3 retires or confirms); DR-043 (every fact here is this unit,
+never generalized to containers, and vice versa); #88, #89.
+
 ## Open items (need the device)
 
 Use cEOS first for software behavior and schema exploration, recording its model/version;
@@ -3649,6 +3720,14 @@ config session and are **not read-only**:
    ACCEPTS and answers the command-line-keyed `{header, comments, cmds}` tree (the same shape class as
    `show running-config` JSON — keys are a credential surface, see DR-150/DR-011). The 7050TX halves
    of all three stay open behind the operator fence.)**
+   **(HARDWARE PERSISTENCE VERBS ANSWERED 2026-11-22 (run 10, DR-158, `docs/evidence/
+   persistence-hardware.json` with `replace` named): `configure replace flash:<snapshot>` is ACCEPTED
+   on the box — snapshot→marker-commit→replace-restore, self-restoring, `final-scratch-state` clean;
+   `copy run start` re-accepted; session-scoped `rollback clean-config` re-confirmed (152-line diff,
+   aborted). `rollback <name>` stays OPEN with a MEASURED reason: seven seconds after its commit,
+   `configure replace` had displaced the marker session from the one-slot store (DR-136) — after a
+   replace, the last commit's name is not a rollback target on this box. The lane now records
+   `completedSlotHolds` in that skip to pin the mechanism next run.)**
 
 MLAG (`mlag` module, 21 upstream system tests): investigate supported control-plane
 behavior in an isolated two-node cEOS topology. Physical 7050TX-64 MLAG/forwarding

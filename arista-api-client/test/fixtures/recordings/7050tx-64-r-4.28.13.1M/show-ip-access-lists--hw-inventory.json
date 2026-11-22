@@ -12,7 +12,7 @@
   },
   "captures": [
     {
-      "requestId": "2a7983c74ecc-1",
+      "requestId": "2ac787341336-1",
       "commands": [
         "enable",
         "show ip access-lists"
@@ -210,9 +210,9 @@
                     }
                   },
                   "counterData": {
-                    "lastChangedTime": 1308729.773858423,
+                    "lastChangedTime": 1824512.324859903,
                     "checkpointPacketCount": 0,
-                    "packetCount": 27184
+                    "packetCount": 32884
                   }
                 },
                 {
@@ -795,9 +795,9 @@
                     }
                   },
                   "counterData": {
-                    "lastChangedTime": 1308729.773858423,
+                    "lastChangedTime": 1824512.324859903,
                     "checkpointPacketCount": 0,
-                    "packetCount": 993
+                    "packetCount": 1397
                   }
                 },
                 {
@@ -901,9 +901,9 @@
                     }
                   },
                   "counterData": {
-                    "lastChangedTime": 1307647.418966157,
+                    "lastChangedTime": 1823768.105945108,
                     "checkpointPacketCount": 0,
-                    "packetCount": 20695
+                    "packetCount": 20916
                   }
                 },
                 {

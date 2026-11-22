@@ -12,7 +12,7 @@
   },
   "captures": [
     {
-      "requestId": "ff9c1ea68275-1",
+      "requestId": "dff46607c0d9-1",
       "commands": [
         "enable",
         "show running-config all"
@@ -16431,7 +16431,6 @@
             "no hardware access-list mechanism": null,
             "ip igmp snooping fast-leave": null,
             "no port-channel speed minimum review interval": null,
-            "no aaa authorization exec default": null,
             "management api external-services": {
               "comments": [],
               "cmds": {
@@ -21528,6 +21527,7 @@
             },
             "ip nat translation low-mark 90": null,
             "logging level LAUNCHER debugging": null,
+            "aaa authorization exec default local": null,
             "no service running-config copy use-config-session": null,
             "no radius-server dynamic-authorization tls ssl-profile": null,
             "no transceiver media 100gbase-srbd temperature cooling-target": null,

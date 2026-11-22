@@ -1,55 +1,71 @@
 {
-  "generatedAt": "2026-11-21T03:21:48.154Z",
+  "generatedAt": "2026-11-22T03:03:14.681Z",
   "targetClass": "hardware",
   "verbs": [
     "copy",
-    "rollback"
+    "rollback",
+    "replace"
   ],
-  "snapshotFile": "flash:hw-persist-mwpud73f.cfg",
+  "snapshotFile": "flash:hw-persist-mwr95182.cfg",
   "observations": [
     {
       "step": "identity",
-      "at": "2026-11-21T03:21:43.772Z",
+      "at": "2026-11-22T03:03:03.217Z",
       "class": "hardware",
       "version": "4.28.13.1M",
       "modelName": "DCS-7050TX-64-R"
     },
     {
       "step": "scratch-link",
-      "at": "2026-11-21T03:21:43.927Z",
+      "at": "2026-11-22T03:03:03.479Z",
       "scratch": "Ethernet33",
       "linkStatus": "notconnect"
     },
     {
       "step": "copy-baseline-startup",
-      "at": "2026-11-21T03:21:44.078Z",
+      "at": "2026-11-22T03:03:03.620Z",
       "absent": false,
       "hasMarker": false,
       "lines": 210
     },
     {
       "step": "copy-reply",
-      "at": "2026-11-21T03:21:44.790Z",
+      "at": "2026-11-22T03:03:04.350Z",
       "text": ""
     },
     {
       "step": "copy-after-startup",
-      "at": "2026-11-21T03:21:44.928Z",
+      "at": "2026-11-22T03:03:04.490Z",
       "lines": 210,
       "changedFromBaseline": true
     },
     {
-      "step": "replace",
-      "at": "2026-11-21T03:21:44.929Z",
-      "skipped": "not in EAPI_HW_PERSISTENCE_VERBS"
+      "step": "replace-snapshot",
+      "at": "2026-11-22T03:03:05.251Z",
+      "snapshotFile": "flash:hw-persist-mwr95182.cfg"
+    },
+    {
+      "step": "replace-marker-committed",
+      "at": "2026-11-22T03:03:06.948Z",
+      "markerPresent": true
+    },
+    {
+      "step": "replace-reply",
+      "at": "2026-11-22T03:03:09.880Z",
+      "text": ""
+    },
+    {
+      "step": "replace-after",
+      "at": "2026-11-22T03:03:10.498Z",
+      "markerPresent": false
     },
     {
       "step": "rollback-clean-diff",
-      "at": "2026-11-21T03:21:47.008Z",
+      "at": "2026-11-22T03:03:13.385Z",
       "diffLines": 152,
       "diffHead": [
         "--- system:/running-config",
-        "+++ session:/hw-persist-rbclean-mwpud73f-session-config",
+        "+++ session:/hw-persist-rbclean-mwr95182-session-config",
         "@@ -4,80 +4,37 @@",
         " !",
         " no aaa root",
@@ -60,17 +76,17 @@
     },
     {
       "step": "rollback-clean-poststate",
-      "at": "2026-11-21T03:21:47.311Z",
+      "at": "2026-11-22T03:03:13.696Z",
       "sessionStillPending": false
     },
     {
       "step": "rollback-name",
-      "at": "2026-11-21T03:21:47.454Z",
-      "skipped": "no completed session hw-persist-rep-mwpud73f to target (replace step did not run or the slot rotated) \u2014 DR-136 one-slot store"
+      "at": "2026-11-22T03:03:13.836Z",
+      "skipped": "no completed session hw-persist-rep-mwr95182 to target (replace step did not run or the slot rotated) — DR-136 one-slot store"
     },
     {
       "step": "final-scratch-state",
-      "at": "2026-11-21T03:21:48.015Z",
+      "at": "2026-11-22T03:03:14.404Z",
       "markerPresent": false
     }
   ]

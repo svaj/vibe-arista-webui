@@ -12,7 +12,7 @@
   },
   "captures": [
     {
-      "requestId": "66a9b7adccdd-1",
+      "requestId": "f97358a1ef83-1",
       "commands": [
         "enable",
         "show vlan"

@@ -12,7 +12,7 @@
   },
   "captures": [
     {
-      "requestId": "be85bc1d48b5-1",
+      "requestId": "e882fcd9e718-1",
       "commands": [
         "enable",
         "show interfaces"
@@ -23,7 +23,7 @@
         {
           "interfaces": {
             "Ethernet8": {
-              "lastStatusChangeTimestamp": 1793492112.8911593,
+              "lastStatusChangeTimestamp": 1793492112.8911612,
               "lanes": 0,
               "name": "Ethernet8",
               "interfaceStatus": "notconnect",
@@ -49,9 +49,9 @@
                 "outBroadcastPkts": 0,
                 "outTotalPkts": 0,
                 "outUcastPkts": 0,
-                "lastClear": 1793491834.365747,
+                "lastClear": 1793491834.3657472,
                 "inMulticastPkts": 0,
-                "counterRefreshTime": 1794800562.677176,
+                "counterRefreshTime": 1795316345.231361,
                 "inBroadcastPkts": 0,
                 "outputErrorsDetail": {
                   "deferredTransmissions": 0,
@@ -83,7 +83,7 @@
               "description": ""
             },
             "Ethernet9": {
-              "lastStatusChangeTimestamp": 1794518955.8388913,
+              "lastStatusChangeTimestamp": 1794518955.8388917,
               "lanes": 0,
               "name": "Ethernet9",
               "interfaceStatus": "connected",
@@ -92,11 +92,11 @@
               "burnedInAddress": "00:00:00:00:00:00",
               "l2Mru": 0,
               "interfaceStatistics": {
-                "inBitsRate": 91378.15697762217,
-                "inPktsRate": 59.36979246285716,
-                "outBitsRate": 100006.30777924624,
+                "inBitsRate": 90514.85450765037,
+                "inPktsRate": 58.79767271526746,
+                "outBitsRate": 97950.37126567708,
                 "updateInterval": 300,
-                "outPktsRate": 63.40945485781344
+                "outPktsRate": 62.44783450213863
               },
               "mtu": 9214,
               "hardware": "ethernet",
@@ -106,12 +106,12 @@
               "lineProtocolStatus": "up",
               "l3MtuConfigured": false,
               "interfaceCounters": {
-                "outBroadcastPkts": 22434,
-                "outTotalPkts": 51790510,
-                "outUcastPkts": 19300807,
+                "outBroadcastPkts": 54323,
+                "outTotalPkts": 212273752,
+                "outUcastPkts": 178771098,
                 "lastClear": 1793491834.3657475,
                 "inMulticastPkts": 24,
-                "counterRefreshTime": 1794800562.778227,
+                "counterRefreshTime": 1795316345.333425,
                 "inBroadcastPkts": 113,
                 "outputErrorsDetail": {
                   "deferredTransmissions": 0,
@@ -119,11 +119,11 @@
                   "collisions": 0,
                   "lateCollisions": 0
                 },
-                "inOctets": 2965677425,
-                "outDiscards": 4248376,
-                "outOctets": 10105534330,
-                "inUcastPkts": 15317935,
-                "inTotalPkts": 15318072,
+                "inOctets": 8773444223,
+                "outDiscards": 169794393,
+                "outOctets": 90831870189,
+                "inUcastPkts": 45484665,
+                "inTotalPkts": 45484802,
                 "inputErrorsDetail": {
                   "runtFrames": 0,
                   "rxPause": 0,
@@ -133,7 +133,7 @@
                   "symbolErrors": 0
                 },
                 "linkStatusChanges": 12,
-                "outMulticastPkts": 32467269,
+                "outMulticastPkts": 33448331,
                 "totalInErrors": 0,
                 "inDiscards": 0,
                 "totalOutErrors": 0
@@ -143,7 +143,7 @@
               "description": "prox2 mgmt"
             },
             "Ethernet49/3": {
-              "lastStatusChangeTimestamp": 1793492096.9182017,
+              "lastStatusChangeTimestamp": 1793492096.918202,
               "lanes": 0,
               "name": "Ethernet49/3",
               "interfaceStatus": "notconnect",
@@ -169,9 +169,9 @@
                 "outBroadcastPkts": 0,
                 "outTotalPkts": 0,
                 "outUcastPkts": 0,
-                "lastClear": 1793491834.3657475,
+                "lastClear": 1793491834.3657472,
                 "inMulticastPkts": 0,
-                "counterRefreshTime": 1794800562.64366,
+                "counterRefreshTime": 1795316345.197203,
                 "inBroadcastPkts": 0,
                 "outputErrorsDetail": {
                   "deferredTransmissions": 0,
@@ -203,7 +203,7 @@
               "description": ""
             },
             "Ethernet2": {
-              "lastStatusChangeTimestamp": 1793493057.4703906,
+              "lastStatusChangeTimestamp": 1793493057.4703898,
               "lanes": 0,
               "name": "Ethernet2",
               "interfaceStatus": "notconnect",
@@ -229,9 +229,9 @@
                 "outBroadcastPkts": 68,
                 "outTotalPkts": 115,
                 "outUcastPkts": 0,
-                "lastClear": 1793491834.3657484,
+                "lastClear": 1793491834.3657477,
                 "inMulticastPkts": 2,
-                "counterRefreshTime": 1794800562.738182,
+                "counterRefreshTime": 1795316345.292923,
                 "inBroadcastPkts": 0,
                 "outputErrorsDetail": {
                   "deferredTransmissions": 0,
@@ -263,7 +263,7 @@
               "description": ""
             },
             "Ethernet3": {
-              "lastStatusChangeTimestamp": 1793669644.838905,
+              "lastStatusChangeTimestamp": 1793669644.838904,
               "lanes": 0,
               "name": "Ethernet3",
               "interfaceStatus": "notconnect",
@@ -289,9 +289,9 @@
                 "outBroadcastPkts": 13619,
                 "outTotalPkts": 853842,
                 "outUcastPkts": 288020,
-                "lastClear": 1793491834.3657477,
+                "lastClear": 1793491834.365746,
                 "inMulticastPkts": 558,
-                "counterRefreshTime": 1794800562.90653,
+                "counterRefreshTime": 1795316345.467405,
                 "inBroadcastPkts": 340,
                 "outputErrorsDetail": {
                   "deferredTransmissions": 0,
@@ -323,7 +323,7 @@
               "description": "prox1_wan_gfiber_mirror"
             },
             "Ethernet1": {
-              "lastStatusChangeTimestamp": 1794245152.5306957,
+              "lastStatusChangeTimestamp": 1794245152.5306952,
               "lanes": 0,
               "name": "Ethernet1",
               "interfaceStatus": "connected",
@@ -332,11 +332,11 @@
               "burnedInAddress": "00:00:00:00:00:00",
               "l2Mru": 0,
               "interfaceStatistics": {
-                "inBitsRate": 417417.7237947522,
-                "inPktsRate": 117.40740763283759,
-                "outBitsRate": 2933698.9598513604,
+                "inBitsRate": 6803141.511976041,
+                "inPktsRate": 601.5269524779333,
+                "outBitsRate": 2681513.3335577417,
                 "updateInterval": 300,
-                "outPktsRate": 317.1239233836962
+                "outPktsRate": 506.7087617905541
               },
               "mtu": 9214,
               "hardware": "ethernet",
@@ -346,24 +346,24 @@
               "lineProtocolStatus": "up",
               "l3MtuConfigured": false,
               "interfaceCounters": {
-                "outBroadcastPkts": 119962,
-                "outTotalPkts": 775098625,
-                "outUcastPkts": 732704126,
-                "lastClear": 1793491834.3657484,
-                "inMulticastPkts": 104353,
-                "counterRefreshTime": 1794800562.87326,
-                "inBroadcastPkts": 4507,
+                "outBroadcastPkts": 150987,
+                "outTotalPkts": 1583890523,
+                "outUcastPkts": 1540496205,
+                "lastClear": 1793491834.3657475,
+                "inMulticastPkts": 134759,
+                "counterRefreshTime": 1795316345.431763,
+                "inBroadcastPkts": 5405,
                 "outputErrorsDetail": {
                   "deferredTransmissions": 0,
                   "txPause": 0,
                   "collisions": 0,
                   "lateCollisions": 0
                 },
-                "inOctets": 75096287927,
+                "inOctets": 117884552826,
                 "outDiscards": 0,
-                "outOctets": 1056444859566,
-                "inUcastPkts": 292614423,
-                "inTotalPkts": 292723283,
+                "outOctets": 1995888819978,
+                "inUcastPkts": 471348655,
+                "inTotalPkts": 471488819,
                 "inputErrorsDetail": {
                   "runtFrames": 0,
                   "rxPause": 0,
@@ -373,7 +373,7 @@
                   "symbolErrors": 0
                 },
                 "linkStatusChanges": 12,
-                "outMulticastPkts": 42274537,
+                "outMulticastPkts": 43243331,
                 "totalInErrors": 0,
                 "inDiscards": 0,
                 "totalOutErrors": 0
@@ -383,7 +383,7 @@
               "description": "to_10g_multigig_switch"
             },
             "Ethernet6": {
-              "lastStatusChangeTimestamp": 1793634062.4091582,
+              "lastStatusChangeTimestamp": 1793634062.409157,
               "lanes": 0,
               "name": "Ethernet6",
               "interfaceStatus": "notconnect",
@@ -409,9 +409,9 @@
                 "outBroadcastPkts": 11823,
                 "outTotalPkts": 1348509,
                 "outUcastPkts": 812709,
-                "lastClear": 1793491834.3657475,
+                "lastClear": 1793491834.3657467,
                 "inMulticastPkts": 18,
-                "counterRefreshTime": 1794800562.981862,
+                "counterRefreshTime": 1795316345.546935,
                 "inBroadcastPkts": 0,
                 "outputErrorsDetail": {
                   "deferredTransmissions": 0,
@@ -443,7 +443,7 @@
               "description": ""
             },
             "Ethernet7": {
-              "lastStatusChangeTimestamp": 1793669799.709214,
+              "lastStatusChangeTimestamp": 1793669799.7092137,
               "lanes": 0,
               "name": "Ethernet7",
               "interfaceStatus": "notconnect",
@@ -469,9 +469,9 @@
                 "outBroadcastPkts": 134,
                 "outTotalPkts": 25326,
                 "outUcastPkts": 21458,
-                "lastClear": 1793491834.3657475,
+                "lastClear": 1793491834.365747,
                 "inMulticastPkts": 29,
-                "counterRefreshTime": 1794800562.663846,
+                "counterRefreshTime": 1795316345.217758,
                 "inBroadcastPkts": 597,
                 "outputErrorsDetail": {
                   "deferredTransmissions": 0,
@@ -503,7 +503,7 @@
               "description": "s2_wan_gfiber_mirror"
             },
             "Ethernet4": {
-              "lastStatusChangeTimestamp": 1794528836.0898294,
+              "lastStatusChangeTimestamp": 1794528836.089829,
               "lanes": 0,
               "name": "Ethernet4",
               "interfaceStatus": "connected",
@@ -512,11 +512,11 @@
               "burnedInAddress": "00:00:00:00:00:00",
               "l2Mru": 0,
               "interfaceStatistics": {
-                "inBitsRate": 1460872.3988632408,
-                "inPktsRate": 157.02639943235053,
-                "outBitsRate": 361283.29510410567,
+                "inBitsRate": 1884903.945721205,
+                "inPktsRate": 442.6905023926014,
+                "outBitsRate": 801423.092415333,
                 "updateInterval": 300,
-                "outPktsRate": 179.71191126113038
+                "outPktsRate": 105.39900633042184
               },
               "mtu": 9214,
               "hardware": "ethernet",
@@ -526,12 +526,12 @@
               "lineProtocolStatus": "up",
               "l3MtuConfigured": false,
               "interfaceCounters": {
-                "outBroadcastPkts": 46254,
-                "outTotalPkts": 275322175,
-                "outUcastPkts": 265346540,
-                "lastClear": 1793491834.3657475,
-                "inMulticastPkts": 127769,
-                "counterRefreshTime": 1794800562.852983,
+                "outBroadcastPkts": 61950,
+                "outTotalPkts": 685184043,
+                "outUcastPkts": 674642042,
+                "lastClear": 1793491834.3657467,
+                "inMulticastPkts": 184266,
+                "counterRefreshTime": 1795316345.410111,
                 "inBroadcastPkts": 145,
                 "outputErrorsDetail": {
                   "deferredTransmissions": 0,
@@ -539,21 +539,21 @@
                   "collisions": 0,
                   "lateCollisions": 0
                 },
-                "inOctets": 1211935848740,
+                "inOctets": 1677597022544,
                 "outDiscards": 0,
-                "outOctets": 69042204337,
-                "inUcastPkts": 850490962,
-                "inTotalPkts": 850618876,
+                "outOctets": 281804277788,
+                "inUcastPkts": 1175478350,
+                "inTotalPkts": 1175663514,
                 "inputErrorsDetail": {
                   "runtFrames": 0,
-                  "rxPause": 0,
+                  "rxPause": 753,
                   "fcsErrors": 0,
                   "alignmentErrors": 0,
                   "giantFrames": 0,
                   "symbolErrors": 0
                 },
                 "linkStatusChanges": 28,
-                "outMulticastPkts": 9929381,
+                "outMulticastPkts": 10480051,
                 "totalInErrors": 0,
                 "inDiscards": 0,
                 "totalOutErrors": 0
@@ -564,7 +564,7 @@
               "description": "Proxmox_LAN_1"
             },
             "Ethernet5": {
-              "lastStatusChangeTimestamp": 1794528836.0975053,
+              "lastStatusChangeTimestamp": 1794528836.0975046,
               "lanes": 0,
               "name": "Ethernet5",
               "interfaceStatus": "connected",
@@ -573,11 +573,11 @@
               "burnedInAddress": "00:00:00:00:00:00",
               "l2Mru": 0,
               "interfaceStatistics": {
-                "inBitsRate": 7267340.121813223,
-                "inPktsRate": 746.957983684123,
-                "outBitsRate": 241655.43937282704,
+                "inBitsRate": 1115084.7180568092,
+                "inPktsRate": 122.28865864238236,
+                "outBitsRate": 6890968.819723265,
                 "updateInterval": 300,
-                "outPktsRate": 61.683302136370635
+                "outPktsRate": 626.844849988514
               },
               "mtu": 9214,
               "hardware": "ethernet",
@@ -587,24 +587,24 @@
               "lineProtocolStatus": "up",
               "l3MtuConfigured": false,
               "interfaceCounters": {
-                "outBroadcastPkts": 73882,
-                "outTotalPkts": 331249032,
-                "outUcastPkts": 298830763,
-                "lastClear": 1793491834.3657472,
-                "inMulticastPkts": 118216,
-                "counterRefreshTime": 1794800562.913504,
-                "inBroadcastPkts": 2638,
+                "outBroadcastPkts": 88640,
+                "outTotalPkts": 455024458,
+                "outUcastPkts": 422193419,
+                "lastClear": 1793491834.3657455,
+                "inMulticastPkts": 179198,
+                "counterRefreshTime": 1795316345.474876,
+                "inBroadcastPkts": 4107,
                 "outputErrorsDetail": {
                   "deferredTransmissions": 0,
                   "txPause": 0,
                   "collisions": 0,
                   "lateCollisions": 0
                 },
-                "inOctets": 917646788613,
+                "inOctets": 1567007053768,
                 "outDiscards": 0,
-                "outOctets": 62764828363,
-                "inUcastPkts": 644884306,
-                "inTotalPkts": 645005160,
+                "outOctets": 99054764459,
+                "inUcastPkts": 1094536476,
+                "inTotalPkts": 1094719781,
                 "inputErrorsDetail": {
                   "runtFrames": 0,
                   "rxPause": 0,
@@ -614,7 +614,7 @@
                   "symbolErrors": 0
                 },
                 "linkStatusChanges": 28,
-                "outMulticastPkts": 32344387,
+                "outMulticastPkts": 32742399,
                 "totalInErrors": 0,
                 "inDiscards": 0,
                 "totalOutErrors": 0
@@ -625,7 +625,7 @@
               "description": "Proxmox_LAN_2"
             },
             "Ethernet52/1": {
-              "lastStatusChangeTimestamp": 1793492096.9181385,
+              "lastStatusChangeTimestamp": 1793492096.9181392,
               "lanes": 0,
               "name": "Ethernet52/1",
               "interfaceStatus": "notconnect",
@@ -651,9 +651,9 @@
                 "outBroadcastPkts": 0,
                 "outTotalPkts": 0,
                 "outUcastPkts": 0,
-                "lastClear": 1793491834.3657477,
+                "lastClear": 1793491834.3657467,
                 "inMulticastPkts": 0,
-                "counterRefreshTime": 1794800562.621638,
+                "counterRefreshTime": 1795316345.175423,
                 "inBroadcastPkts": 0,
                 "outputErrorsDetail": {
                   "deferredTransmissions": 0,
@@ -685,7 +685,7 @@
               "description": ""
             },
             "Ethernet52/3": {
-              "lastStatusChangeTimestamp": 1793492096.918982,
+              "lastStatusChangeTimestamp": 1793492096.9189808,
               "lanes": 0,
               "name": "Ethernet52/3",
               "interfaceStatus": "notconnect",
@@ -711,9 +711,9 @@
                 "outBroadcastPkts": 0,
                 "outTotalPkts": 0,
                 "outUcastPkts": 0,
-                "lastClear": 1793491834.365748,
+                "lastClear": 1793491834.3657467,
                 "inMulticastPkts": 0,
-                "counterRefreshTime": 1794800562.845452,
+                "counterRefreshTime": 1795316345.402655,
                 "inBroadcastPkts": 0,
                 "outputErrorsDetail": {
                   "deferredTransmissions": 0,
@@ -745,7 +745,7 @@
               "description": ""
             },
             "Ethernet52/2": {
-              "lastStatusChangeTimestamp": 1793492096.9193852,
+              "lastStatusChangeTimestamp": 1793492096.919385,
               "lanes": 0,
               "name": "Ethernet52/2",
               "interfaceStatus": "notconnect",
@@ -771,9 +771,9 @@
                 "outBroadcastPkts": 0,
                 "outTotalPkts": 0,
                 "outUcastPkts": 0,
-                "lastClear": 1793491834.3657475,
+                "lastClear": 1793491834.3657463,
                 "inMulticastPkts": 0,
-                "counterRefreshTime": 1794800562.94087,
+                "counterRefreshTime": 1795316345.503603,
                 "inBroadcastPkts": 0,
                 "outputErrorsDetail": {
                   "deferredTransmissions": 0,
@@ -805,7 +805,7 @@
               "description": ""
             },
             "Ethernet52/4": {
-              "lastStatusChangeTimestamp": 1793492096.9194942,
+              "lastStatusChangeTimestamp": 1793492096.9194927,
               "lanes": 0,
               "name": "Ethernet52/4",
               "interfaceStatus": "notconnect",
@@ -831,9 +831,9 @@
                 "outBroadcastPkts": 0,
                 "outTotalPkts": 0,
                 "outUcastPkts": 0,
-                "lastClear": 1793491834.365748,
+                "lastClear": 1793491834.365746,
                 "inMulticastPkts": 0,
-                "counterRefreshTime": 1794800562.968317,
+                "counterRefreshTime": 1795316345.532543,
                 "inBroadcastPkts": 0,
                 "outputErrorsDetail": {
                   "deferredTransmissions": 0,
@@ -865,7 +865,7 @@
               "description": ""
             },
             "Ethernet22": {
-              "lastStatusChangeTimestamp": 1793492112.8425083,
+              "lastStatusChangeTimestamp": 1793492112.842507,
               "lanes": 0,
               "name": "Ethernet22",
               "interfaceStatus": "notconnect",
@@ -891,9 +891,9 @@
                 "outBroadcastPkts": 0,
                 "outTotalPkts": 0,
                 "outUcastPkts": 0,
-                "lastClear": 1793491834.3657472,
+                "lastClear": 1793491834.365748,
                 "inMulticastPkts": 0,
-                "counterRefreshTime": 1794800562.711137,
+                "counterRefreshTime": 1795316345.265633,
                 "inBroadcastPkts": 0,
                 "outputErrorsDetail": {
                   "deferredTransmissions": 0,
@@ -934,11 +934,11 @@
               "burnedInAddress": "00:00:00:00:00:00",
               "l2Mru": 0,
               "interfaceStatistics": {
-                "inBitsRate": 92028.12647146784,
-                "inPktsRate": 95.89046630032196,
-                "outBitsRate": 5189426.462482393,
+                "inBitsRate": 1441599.3983137843,
+                "inPktsRate": 131.8878882857405,
+                "outBitsRate": 33097.62275875658,
                 "updateInterval": 300,
-                "outPktsRate": 515.6262606865287
+                "outPktsRate": 11.16647511361366
               },
               "mtu": 9214,
               "hardware": "ethernet",
@@ -948,24 +948,24 @@
               "lineProtocolStatus": "up",
               "l3MtuConfigured": false,
               "interfaceCounters": {
-                "outBroadcastPkts": 77061,
-                "outTotalPkts": 240546336,
-                "outUcastPkts": 201071047,
-                "lastClear": 1793491834.3657477,
-                "inMulticastPkts": 1930104,
-                "counterRefreshTime": 1794800563.008837,
-                "inBroadcastPkts": 33554,
+                "outBroadcastPkts": 98101,
+                "outTotalPkts": 353742363,
+                "outUcastPkts": 314026135,
+                "lastClear": 1793491834.365748,
+                "inMulticastPkts": 2727078,
+                "counterRefreshTime": 1795316345.574172,
+                "inBroadcastPkts": 44437,
                 "outputErrorsDetail": {
                   "deferredTransmissions": 0,
                   "txPause": 0,
                   "collisions": 0,
                   "lateCollisions": 0
                 },
-                "inOctets": 35135132238,
+                "inOctets": 223615551995,
                 "outDiscards": 0,
-                "outOctets": 268947584632,
-                "inUcastPkts": 66935085,
-                "inTotalPkts": 68898743,
+                "outOctets": 416743432152,
+                "inUcastPkts": 384173409,
+                "inTotalPkts": 386944924,
                 "inputErrorsDetail": {
                   "runtFrames": 0,
                   "rxPause": 0,
@@ -975,7 +975,7 @@
                   "symbolErrors": 0
                 },
                 "linkStatusChanges": 8,
-                "outMulticastPkts": 39398229,
+                "outMulticastPkts": 39618128,
                 "totalInErrors": 0,
                 "inDiscards": 0,
                 "totalOutErrors": 0
@@ -985,7 +985,7 @@
               "description": "to_gfiber_LAN"
             },
             "Ethernet50/4": {
-              "lastStatusChangeTimestamp": 1793492096.9190252,
+              "lastStatusChangeTimestamp": 1793492096.9190245,
               "lanes": 0,
               "name": "Ethernet50/4",
               "interfaceStatus": "notconnect",
@@ -1011,9 +1011,9 @@
                 "outBroadcastPkts": 0,
                 "outTotalPkts": 0,
                 "outUcastPkts": 0,
-                "lastClear": 1793491834.3657467,
+                "lastClear": 1793491834.3657465,
                 "inMulticastPkts": 0,
-                "counterRefreshTime": 1794800562.859838,
+                "counterRefreshTime": 1795316345.417414,
                 "inBroadcastPkts": 0,
                 "outputErrorsDetail": {
                   "deferredTransmissions": 0,
@@ -1045,7 +1045,7 @@
               "description": ""
             },
             "Ethernet50/3": {
-              "lastStatusChangeTimestamp": 1793492096.9187484,
+              "lastStatusChangeTimestamp": 1793492096.9187474,
               "lanes": 0,
               "name": "Ethernet50/3",
               "interfaceStatus": "notconnect",
@@ -1071,9 +1071,9 @@
                 "outBroadcastPkts": 0,
                 "outTotalPkts": 0,
                 "outUcastPkts": 0,
-                "lastClear": 1793491834.3657482,
+                "lastClear": 1793491834.365748,
                 "inMulticastPkts": 0,
-                "counterRefreshTime": 1794800562.791513,
+                "counterRefreshTime": 1795316345.346964,
                 "inBroadcastPkts": 0,
                 "outputErrorsDetail": {
                   "deferredTransmissions": 0,
@@ -1131,9 +1131,9 @@
                 "outBroadcastPkts": 0,
                 "outTotalPkts": 0,
                 "outUcastPkts": 0,
-                "lastClear": 1793491834.3657477,
+                "lastClear": 1793491834.3657475,
                 "inMulticastPkts": 0,
-                "counterRefreshTime": 1794800562.697577,
+                "counterRefreshTime": 1795316345.251867,
                 "inBroadcastPkts": 0,
                 "outputErrorsDetail": {
                   "deferredTransmissions": 0,
@@ -1165,7 +1165,7 @@
               "description": ""
             },
             "Ethernet50/1": {
-              "lastStatusChangeTimestamp": 1793492096.919205,
+              "lastStatusChangeTimestamp": 1793492096.9192033,
               "lanes": 0,
               "name": "Ethernet50/1",
               "interfaceStatus": "notconnect",
@@ -1191,9 +1191,9 @@
                 "outBroadcastPkts": 0,
                 "outTotalPkts": 0,
                 "outUcastPkts": 0,
-                "lastClear": 1793491834.365748,
+                "lastClear": 1793491834.3657465,
                 "inMulticastPkts": 0,
-                "counterRefreshTime": 1794800562.899877,
+                "counterRefreshTime": 1795316345.460057,
                 "inBroadcastPkts": 0,
                 "outputErrorsDetail": {
                   "deferredTransmissions": 0,
@@ -1225,7 +1225,7 @@
               "description": ""
             },
             "Ethernet36": {
-              "lastStatusChangeTimestamp": 1793492112.846765,
+              "lastStatusChangeTimestamp": 1793492112.8467646,
               "lanes": 0,
               "name": "Ethernet36",
               "interfaceStatus": "notconnect",
@@ -1253,7 +1253,7 @@
                 "outUcastPkts": 0,
                 "lastClear": 1793491834.365748,
                 "inMulticastPkts": 0,
-                "counterRefreshTime": 1794800562.683941,
+                "counterRefreshTime": 1795316345.238164,
                 "inBroadcastPkts": 0,
                 "outputErrorsDetail": {
                   "deferredTransmissions": 0,
@@ -1285,7 +1285,7 @@
               "description": ""
             },
             "Ethernet51/4": {
-              "lastStatusChangeTimestamp": 1793492096.9189389,
+              "lastStatusChangeTimestamp": 1793492096.9189377,
               "lanes": 0,
               "name": "Ethernet51/4",
               "interfaceStatus": "notconnect",
@@ -1311,9 +1311,9 @@
                 "outBroadcastPkts": 0,
                 "outTotalPkts": 0,
                 "outUcastPkts": 0,
-                "lastClear": 1793491834.365748,
+                "lastClear": 1793491834.3657453,
                 "inMulticastPkts": 0,
-                "counterRefreshTime": 1794800562.83217,
+                "counterRefreshTime": 1795316345.388014,
                 "inBroadcastPkts": 0,
                 "outputErrorsDetail": {
                   "deferredTransmissions": 0,
@@ -1345,7 +1345,7 @@
               "description": ""
             },
             "Ethernet51/2": {
-              "lastStatusChangeTimestamp": 1793492096.9193192,
+              "lastStatusChangeTimestamp": 1793492096.9193184,
               "lanes": 0,
               "name": "Ethernet51/2",
               "interfaceStatus": "notconnect",
@@ -1371,9 +1371,9 @@
                 "outBroadcastPkts": 0,
                 "outTotalPkts": 0,
                 "outUcastPkts": 0,
-                "lastClear": 1793491834.3657482,
+                "lastClear": 1793491834.3657465,
                 "inMulticastPkts": 0,
-                "counterRefreshTime": 1794800562.926893,
+                "counterRefreshTime": 1795316345.489192,
                 "inBroadcastPkts": 0,
                 "outputErrorsDetail": {
                   "deferredTransmissions": 0,
@@ -1405,7 +1405,7 @@
               "description": ""
             },
             "Ethernet51/3": {
-              "lastStatusChangeTimestamp": 1793492096.9182477,
+              "lastStatusChangeTimestamp": 1793492096.9182472,
               "lanes": 0,
               "name": "Ethernet51/3",
               "interfaceStatus": "notconnect",
@@ -1431,9 +1431,9 @@
                 "outBroadcastPkts": 0,
                 "outTotalPkts": 0,
                 "outUcastPkts": 0,
-                "lastClear": 1793491834.365748,
+                "lastClear": 1793491834.365747,
                 "inMulticastPkts": 0,
-                "counterRefreshTime": 1794800562.657142,
+                "counterRefreshTime": 1795316345.210918,
                 "inBroadcastPkts": 0,
                 "outputErrorsDetail": {
                   "deferredTransmissions": 0,
@@ -1465,7 +1465,7 @@
               "description": ""
             },
             "Ethernet51/1": {
-              "lastStatusChangeTimestamp": 1793492096.9185214,
+              "lastStatusChangeTimestamp": 1793492096.9185207,
               "lanes": 0,
               "name": "Ethernet51/1",
               "interfaceStatus": "notconnect",
@@ -1493,7 +1493,7 @@
                 "outUcastPkts": 0,
                 "lastClear": 1793491834.3657484,
                 "inMulticastPkts": 0,
-                "counterRefreshTime": 1794800562.724572,
+                "counterRefreshTime": 1795316345.279173,
                 "inBroadcastPkts": 0,
                 "outputErrorsDetail": {
                   "deferredTransmissions": 0,
@@ -1525,7 +1525,7 @@
               "description": ""
             },
             "Port-Channel30": {
-              "lastStatusChangeTimestamp": 1794520095.0835664,
+              "lastStatusChangeTimestamp": 1794520095.0835662,
               "name": "Port-Channel30",
               "interfaceStatus": "connected",
               "memberInterfaces": {
@@ -1540,11 +1540,11 @@
               },
               "l2Mru": 0,
               "interfaceStatistics": {
-                "inBitsRate": 65.67405460721618,
-                "inPktsRate": 0.06405656765564513,
-                "outBitsRate": 5735.311456060342,
+                "inBitsRate": 66.95835537242017,
+                "inPktsRate": 0.06538616114332932,
+                "outBitsRate": 4477.715782992296,
                 "updateInterval": 300,
-                "outPktsRate": 2.1369513824645705
+                "outPktsRate": 1.68455484091855
               },
               "mtu": 9214,
               "hardware": "portChannel",
@@ -1554,20 +1554,20 @@
               "lineProtocolStatus": "up",
               "l3MtuConfigured": false,
               "interfaceCounters": {
-                "outBroadcastPkts": 22024,
-                "outTotalPkts": 52011588,
-                "outUcastPkts": 19506566,
+                "outBroadcastPkts": 53947,
+                "outTotalPkts": 346933835,
+                "outUcastPkts": 313363787,
                 "totalOutErrors": 0,
-                "inMulticastPkts": 18012,
-                "counterRefreshTime": 1794800563.0778,
+                "inMulticastPkts": 51076,
+                "counterRefreshTime": 1795316345.642394,
                 "inBroadcastPkts": 12,
-                "inOctets": 596311653,
+                "inOctets": 601647187,
                 "outDiscards": 0,
-                "outOctets": 27319458156,
-                "inUcastPkts": 766606,
-                "inTotalPkts": 784630,
+                "outOctets": 206101412833,
+                "inUcastPkts": 773157,
+                "inTotalPkts": 826063,
                 "linkStatusChanges": 2,
-                "outMulticastPkts": 32482998,
+                "outMulticastPkts": 33516101,
                 "totalInErrors": 0,
                 "inDiscards": 0
               },
@@ -1586,11 +1586,11 @@
               "burnedInAddress": "00:00:00:00:00:00",
               "l2Mru": 0,
               "interfaceStatistics": {
-                "inBitsRate": 242.96366348571996,
-                "inPktsRate": 0.27009600835213426,
-                "outBitsRate": 5853.959923689541,
+                "inBitsRate": 233.6044128425405,
+                "inPktsRate": 0.266514488141481,
+                "outBitsRate": 4640.935815025108,
                 "updateInterval": 300,
-                "outPktsRate": 2.2022353694112002
+                "outPktsRate": 1.769398533043242
               },
               "mtu": 9214,
               "hardware": "ethernet",
@@ -1600,12 +1600,12 @@
               "lineProtocolStatus": "up",
               "l3MtuConfigured": false,
               "interfaceCounters": {
-                "outBroadcastPkts": 103817,
-                "outTotalPkts": 51895052,
-                "outUcastPkts": 10918945,
-                "lastClear": 1793491834.3657472,
-                "inMulticastPkts": 172673,
-                "counterRefreshTime": 1794800562.818822,
+                "outBroadcastPkts": 135740,
+                "outTotalPkts": 346798013,
+                "outUcastPkts": 304830987,
+                "lastClear": 1793491834.3657477,
+                "inMulticastPkts": 195211,
+                "counterRefreshTime": 1795316345.374088,
                 "inBroadcastPkts": 7910,
                 "outputErrorsDetail": {
                   "deferredTransmissions": 0,
@@ -1613,11 +1613,11 @@
                   "collisions": 0,
                   "lateCollisions": 0
                 },
-                "inOctets": 5687903685,
+                "inOctets": 5703346549,
                 "outDiscards": 0,
-                "outOctets": 14687737569,
-                "inUcastPkts": 12901586,
-                "inTotalPkts": 13082169,
+                "outOctets": 193391007027,
+                "inUcastPkts": 13018926,
+                "inTotalPkts": 13222047,
                 "inputErrorsDetail": {
                   "runtFrames": 0,
                   "rxPause": 0,
@@ -1627,7 +1627,7 @@
                   "symbolErrors": 0
                 },
                 "linkStatusChanges": 26,
-                "outMulticastPkts": 40872290,
+                "outMulticastPkts": 41831286,
                 "totalInErrors": 0,
                 "inDiscards": 0,
                 "totalOutErrors": 0
@@ -1637,7 +1637,7 @@
               "description": "to_gfiber_WAN"
             },
             "Ethernet39": {
-              "lastStatusChangeTimestamp": 1793492112.9485044,
+              "lastStatusChangeTimestamp": 1793492112.9485028,
               "lanes": 0,
               "name": "Ethernet39",
               "interfaceStatus": "notconnect",
@@ -1663,9 +1663,9 @@
                 "outBroadcastPkts": 0,
                 "outTotalPkts": 0,
                 "outUcastPkts": 0,
-                "lastClear": 1793491834.3657482,
+                "lastClear": 1793491834.3657475,
                 "inMulticastPkts": 0,
-                "counterRefreshTime": 1794800562.975142,
+                "counterRefreshTime": 1795316345.539696,
                 "inBroadcastPkts": 0,
                 "outputErrorsDetail": {
                   "deferredTransmissions": 0,
@@ -1697,7 +1697,7 @@
               "description": ""
             },
             "Ethernet18": {
-              "lastStatusChangeTimestamp": 1794707966.3402593,
+              "lastStatusChangeTimestamp": 1795224139.7296786,
               "lanes": 0,
               "name": "Ethernet18",
               "interfaceStatus": "connected",
@@ -1706,11 +1706,11 @@
               "burnedInAddress": "00:00:00:00:00:00",
               "l2Mru": 0,
               "interfaceStatistics": {
-                "inBitsRate": 109567.22060469883,
-                "inPktsRate": 30.189138392436558,
-                "outBitsRate": 632817.7844028444,
+                "inBitsRate": 0.36406580966981533,
+                "inPktsRate": 0.0007001265570573369,
+                "outBitsRate": 4361.364904977037,
                 "updateInterval": 300,
-                "outPktsRate": 77.66857486972707
+                "outPktsRate": 1.5859837538850219
               },
               "mtu": 9214,
               "hardware": "ethernet",
@@ -1720,34 +1720,34 @@
               "lineProtocolStatus": "up",
               "l3MtuConfigured": false,
               "interfaceCounters": {
-                "outBroadcastPkts": 103791,
-                "outTotalPkts": 411545887,
-                "outUcastPkts": 370210323,
-                "lastClear": 1793491834.365747,
-                "inMulticastPkts": 1078684,
-                "counterRefreshTime": 1794800562.758255,
-                "inBroadcastPkts": 16227,
+                "outBroadcastPkts": 130001,
+                "outTotalPkts": 427473650,
+                "outUcastPkts": 385229506,
+                "lastClear": 1793491834.3657477,
+                "inMulticastPkts": 1110980,
+                "counterRefreshTime": 1795316345.313215,
+                "inBroadcastPkts": 19443,
                 "outputErrorsDetail": {
                   "deferredTransmissions": 0,
                   "txPause": 0,
                   "collisions": 0,
                   "lateCollisions": 0
                 },
-                "inOctets": 20881981537,
-                "outDiscards": 2,
-                "outOctets": 483441914972,
-                "inUcastPkts": 88248194,
-                "inTotalPkts": 90009737,
+                "inOctets": 26033786334,
+                "outDiscards": 4,
+                "outOctets": 500590643326,
+                "inUcastPkts": 94109899,
+                "inTotalPkts": 95908615,
                 "inputErrorsDetail": {
                   "runtFrames": 0,
-                  "rxPause": 666632,
+                  "rxPause": 668293,
                   "fcsErrors": 0,
                   "alignmentErrors": 0,
                   "giantFrames": 0,
                   "symbolErrors": 0
                 },
-                "linkStatusChanges": 554,
-                "outMulticastPkts": 41231773,
+                "linkStatusChanges": 608,
+                "outMulticastPkts": 42114143,
                 "totalInErrors": 0,
                 "inDiscards": 0,
                 "totalOutErrors": 0
@@ -1757,7 +1757,7 @@
               "description": "SVAJTOWER_LAN_2"
             },
             "Ethernet19": {
-              "lastStatusChangeTimestamp": 1793492113.0105107,
+              "lastStatusChangeTimestamp": 1793492113.0105095,
               "lanes": 0,
               "name": "Ethernet19",
               "interfaceStatus": "notconnect",
@@ -1783,9 +1783,9 @@
                 "outBroadcastPkts": 0,
                 "outTotalPkts": 0,
                 "outUcastPkts": 0,
-                "lastClear": 1793491834.365748,
+                "lastClear": 1793491834.3657472,
                 "inMulticastPkts": 0,
-                "counterRefreshTime": 1794800562.954461,
+                "counterRefreshTime": 1795316345.51824,
                 "inBroadcastPkts": 0,
                 "outputErrorsDetail": {
                   "deferredTransmissions": 0,
@@ -1817,7 +1817,7 @@
               "description": ""
             },
             "Ethernet14": {
-              "lastStatusChangeTimestamp": 1793492112.8199291,
+              "lastStatusChangeTimestamp": 1793492112.819929,
               "lanes": 0,
               "name": "Ethernet14",
               "interfaceStatus": "notconnect",
@@ -1843,9 +1843,9 @@
                 "outBroadcastPkts": 0,
                 "outTotalPkts": 0,
                 "outUcastPkts": 0,
-                "lastClear": 1793491834.3657475,
+                "lastClear": 1793491834.3657465,
                 "inMulticastPkts": 0,
-                "counterRefreshTime": 1794800562.934023,
+                "counterRefreshTime": 1795316345.496377,
                 "inBroadcastPkts": 0,
                 "outputErrorsDetail": {
                   "deferredTransmissions": 0,
@@ -1877,7 +1877,7 @@
               "description": ""
             },
             "Ethernet33": {
-              "lastStatusChangeTimestamp": 1793667935.8494456,
+              "lastStatusChangeTimestamp": 1793667935.849446,
               "lanes": 0,
               "name": "Ethernet33",
               "interfaceStatus": "notconnect",
@@ -1903,9 +1903,9 @@
                 "outBroadcastPkts": 29355,
                 "outTotalPkts": 11572121,
                 "outUcastPkts": 10932425,
-                "lastClear": 1793491834.365748,
+                "lastClear": 1793491834.3657484,
                 "inMulticastPkts": 1626,
-                "counterRefreshTime": 1794800563.056311,
+                "counterRefreshTime": 1795316345.621234,
                 "inBroadcastPkts": 6199,
                 "outputErrorsDetail": {
                   "deferredTransmissions": 0,
@@ -1937,7 +1937,7 @@
               "description": ""
             },
             "Ethernet16": {
-              "lastStatusChangeTimestamp": 1793492112.9653444,
+              "lastStatusChangeTimestamp": 1793492112.9653447,
               "lanes": 0,
               "name": "Ethernet16",
               "interfaceStatus": "notconnect",
@@ -1965,7 +1965,7 @@
                 "outUcastPkts": 0,
                 "lastClear": 1793491834.3657472,
                 "inMulticastPkts": 0,
-                "counterRefreshTime": 1794800562.825512,
+                "counterRefreshTime": 1795316345.380815,
                 "inBroadcastPkts": 0,
                 "outputErrorsDetail": {
                   "deferredTransmissions": 0,
@@ -1997,7 +1997,7 @@
               "description": ""
             },
             "Ethernet17": {
-              "lastStatusChangeTimestamp": 1794707966.3308518,
+              "lastStatusChangeTimestamp": 1795224139.7210777,
               "lanes": 0,
               "name": "Ethernet17",
               "interfaceStatus": "connected",
@@ -2006,11 +2006,11 @@
               "burnedInAddress": "00:00:00:00:00:00",
               "l2Mru": 0,
               "interfaceStatistics": {
-                "inBitsRate": 0.09847018676511639,
-                "inPktsRate": 0.00018936574377906981,
-                "outBitsRate": 5587.643095741123,
+                "inBitsRate": 941749.6818937712,
+                "inPktsRate": 143.19086726096333,
+                "outBitsRate": 1741961.2243408111,
                 "updateInterval": 300,
-                "outPktsRate": 2.031146548395028
+                "outPktsRate": 190.7714217130243
               },
               "mtu": 9214,
               "hardware": "ethernet",
@@ -2020,34 +2020,34 @@
               "lineProtocolStatus": "up",
               "l3MtuConfigured": false,
               "interfaceCounters": {
-                "outBroadcastPkts": 114140,
-                "outTotalPkts": 318307352,
-                "outUcastPkts": 275964544,
-                "lastClear": 1793491834.3657482,
-                "inMulticastPkts": 72980,
-                "counterRefreshTime": 1794800562.771588,
-                "inBroadcastPkts": 5426,
+                "outBroadcastPkts": 138298,
+                "outTotalPkts": 460126275,
+                "outUcastPkts": 416894023,
+                "lastClear": 1793491834.3657477,
+                "inMulticastPkts": 122974,
+                "counterRefreshTime": 1795316345.326645,
+                "inBroadcastPkts": 10770,
                 "outputErrorsDetail": {
                   "deferredTransmissions": 0,
                   "txPause": 0,
                   "collisions": 0,
                   "lateCollisions": 0
                 },
-                "inOctets": 20244441429,
-                "outDiscards": 3,
-                "outOctets": 400495839640,
-                "inUcastPkts": 141666972,
-                "inTotalPkts": 142118936,
+                "inOctets": 60362451241,
+                "outDiscards": 6,
+                "outOctets": 594704779589,
+                "inUcastPkts": 192642391,
+                "inTotalPkts": 193211231,
                 "inputErrorsDetail": {
                   "runtFrames": 0,
-                  "rxPause": 373558,
+                  "rxPause": 435096,
                   "fcsErrors": 0,
                   "alignmentErrors": 0,
                   "giantFrames": 0,
                   "symbolErrors": 0
                 },
-                "linkStatusChanges": 562,
-                "outMulticastPkts": 42228668,
+                "linkStatusChanges": 618,
+                "outMulticastPkts": 43093954,
                 "totalInErrors": 0,
                 "inDiscards": 0,
                 "totalOutErrors": 0
@@ -2057,7 +2057,7 @@
               "description": "SVAJTOWER_LAN_1"
             },
             "Ethernet10": {
-              "lastStatusChangeTimestamp": 1793492112.8510165,
+              "lastStatusChangeTimestamp": 1793492112.851016,
               "lanes": 0,
               "name": "Ethernet10",
               "interfaceStatus": "notconnect",
@@ -2083,9 +2083,9 @@
                 "outBroadcastPkts": 0,
                 "outTotalPkts": 0,
                 "outUcastPkts": 0,
-                "lastClear": 1793491834.365748,
+                "lastClear": 1793491834.3657482,
                 "inMulticastPkts": 0,
-                "counterRefreshTime": 1794800563.02251,
+                "counterRefreshTime": 1795316345.587594,
                 "inBroadcastPkts": 0,
                 "outputErrorsDetail": {
                   "deferredTransmissions": 0,
@@ -2143,9 +2143,9 @@
                 "outBroadcastPkts": 6027,
                 "outTotalPkts": 9188909,
                 "outUcastPkts": 9073095,
-                "lastClear": 1793491834.3657482,
+                "lastClear": 1793491834.3657463,
                 "inMulticastPkts": 455279,
-                "counterRefreshTime": 1794800562.838805,
+                "counterRefreshTime": 1795316345.395292,
                 "inBroadcastPkts": 5751,
                 "outputErrorsDetail": {
                   "deferredTransmissions": 0,
@@ -2177,7 +2177,7 @@
               "description": "wan_from_gfiber_ont"
             },
             "Ethernet34": {
-              "lastStatusChangeTimestamp": 1793492112.8779063,
+              "lastStatusChangeTimestamp": 1793492112.8779056,
               "lanes": 0,
               "name": "Ethernet34",
               "interfaceStatus": "notconnect",
@@ -2203,9 +2203,9 @@
                 "outBroadcastPkts": 0,
                 "outTotalPkts": 0,
                 "outUcastPkts": 0,
-                "lastClear": 1793491834.365748,
+                "lastClear": 1793491834.3657472,
                 "inMulticastPkts": 0,
-                "counterRefreshTime": 1794800562.670499,
+                "counterRefreshTime": 1795316345.224571,
                 "inBroadcastPkts": 0,
                 "outputErrorsDetail": {
                   "deferredTransmissions": 0,
@@ -2237,7 +2237,7 @@
               "description": ""
             },
             "Ethernet35": {
-              "lastStatusChangeTimestamp": 1794520435.2390008,
+              "lastStatusChangeTimestamp": 1794520435.2390006,
               "lanes": 0,
               "name": "Ethernet35",
               "interfaceStatus": "notconnect",
@@ -2246,11 +2246,11 @@
               "burnedInAddress": "00:00:00:00:00:00",
               "l2Mru": 0,
               "interfaceStatistics": {
-                "inBitsRate": 3.7e-322,
-                "inPktsRate": 3.7e-322,
-                "outBitsRate": 3.7e-322,
+                "inBitsRate": 3.66e-322,
+                "inPktsRate": 3.66e-322,
+                "outBitsRate": 3.66e-322,
                 "updateInterval": 300,
-                "outPktsRate": 3.7e-322
+                "outPktsRate": 3.66e-322
               },
               "mtu": 9214,
               "hardware": "ethernet",
@@ -2263,9 +2263,9 @@
                 "outBroadcastPkts": 49434,
                 "outTotalPkts": 10036326,
                 "outUcastPkts": 893073,
-                "lastClear": 1793491834.365748,
+                "lastClear": 1793491834.3657477,
                 "inMulticastPkts": 172835,
-                "counterRefreshTime": 1794800562.704328,
+                "counterRefreshTime": 1795316345.258745,
                 "inBroadcastPkts": 17524,
                 "outputErrorsDetail": {
                   "deferredTransmissions": 0,
@@ -2297,7 +2297,7 @@
               "description": ""
             },
             "Ethernet28": {
-              "lastStatusChangeTimestamp": 1793492112.9738739,
+              "lastStatusChangeTimestamp": 1793492112.9738727,
               "lanes": 0,
               "name": "Ethernet28",
               "interfaceStatus": "notconnect",
@@ -2325,7 +2325,7 @@
                 "outUcastPkts": 0,
                 "lastClear": 1793491834.3657477,
                 "inMulticastPkts": 0,
-                "counterRefreshTime": 1794800563.042755,
+                "counterRefreshTime": 1795316345.607862,
                 "inBroadcastPkts": 0,
                 "outputErrorsDetail": {
                   "deferredTransmissions": 0,
@@ -2357,7 +2357,7 @@
               "description": ""
             },
             "Port-Channel10": {
-              "lastStatusChangeTimestamp": 1794528841.1466794,
+              "lastStatusChangeTimestamp": 1794528841.1466792,
               "name": "Port-Channel10",
               "interfaceStatus": "connected",
               "memberInterfaces": {
@@ -2372,11 +2372,11 @@
               },
               "l2Mru": 0,
               "interfaceStatistics": {
-                "inBitsRate": 8724712.50978298,
-                "inPktsRate": 903.1763112054605,
-                "outBitsRate": 602634.309220408,
+                "inBitsRate": 2996355.19493648,
+                "inPktsRate": 564.3342186250582,
+                "outBitsRate": 7684143.718554691,
                 "updateInterval": 300,
-                "outPktsRate": 241.21470121465396
+                "outPktsRate": 731.4469853339638
               },
               "mtu": 9214,
               "hardware": "portChannel",
@@ -2386,20 +2386,20 @@
               "lineProtocolStatus": "up",
               "l3MtuConfigured": false,
               "interfaceCounters": {
-                "outBroadcastPkts": 108126,
-                "outTotalPkts": 605659269,
-                "outUcastPkts": 563809780,
+                "outBroadcastPkts": 138580,
+                "outTotalPkts": 1139296990,
+                "outUcastPkts": 1096468364,
                 "totalOutErrors": 0,
-                "inMulticastPkts": 245790,
-                "counterRefreshTime": 1794800563.070618,
-                "inBroadcastPkts": 2678,
-                "inOctets": 2129569258067,
+                "inMulticastPkts": 363269,
+                "counterRefreshTime": 1795316345.635342,
+                "inBroadcastPkts": 4147,
+                "inOctets": 3244592467927,
                 "outDiscards": 0,
-                "outOctets": 131054924820,
-                "inUcastPkts": 1495289518,
-                "inTotalPkts": 1495537986,
+                "outOctets": 380107061821,
+                "inUcastPkts": 2269930683,
+                "inTotalPkts": 2270298852,
                 "linkStatusChanges": 26,
-                "outMulticastPkts": 41741363,
+                "outMulticastPkts": 42690046,
                 "totalInErrors": 0,
                 "inDiscards": 0
               },
@@ -2435,9 +2435,9 @@
                 "outBroadcastPkts": 0,
                 "outTotalPkts": 0,
                 "outUcastPkts": 0,
-                "lastClear": 1793491834.3657477,
+                "lastClear": 1793491834.3657475,
                 "inMulticastPkts": 0,
-                "counterRefreshTime": 1794800562.879941,
+                "counterRefreshTime": 1795316345.438487,
                 "inBroadcastPkts": 0,
                 "outputErrorsDetail": {
                   "deferredTransmissions": 0,
@@ -2469,7 +2469,7 @@
               "description": ""
             },
             "Ethernet49/4": {
-              "lastStatusChangeTimestamp": 1793492096.9194713,
+              "lastStatusChangeTimestamp": 1793492096.9194722,
               "lanes": 0,
               "name": "Ethernet49/4",
               "interfaceStatus": "notconnect",
@@ -2495,9 +2495,9 @@
                 "outBroadcastPkts": 0,
                 "outTotalPkts": 0,
                 "outUcastPkts": 0,
-                "lastClear": 1793491834.3657475,
+                "lastClear": 1793491834.3657465,
                 "inMulticastPkts": 0,
-                "counterRefreshTime": 1794800562.961513,
+                "counterRefreshTime": 1795316345.525384,
                 "inBroadcastPkts": 0,
                 "outputErrorsDetail": {
                   "deferredTransmissions": 0,
@@ -2529,7 +2529,7 @@
               "description": ""
             },
             "Ethernet21": {
-              "lastStatusChangeTimestamp": 1793492112.9908333,
+              "lastStatusChangeTimestamp": 1793492112.9908326,
               "lanes": 0,
               "name": "Ethernet21",
               "interfaceStatus": "notconnect",
@@ -2555,9 +2555,9 @@
                 "outBroadcastPkts": 0,
                 "outTotalPkts": 0,
                 "outUcastPkts": 0,
-                "lastClear": 1793491834.3657482,
+                "lastClear": 1793491834.365748,
                 "inMulticastPkts": 0,
-                "counterRefreshTime": 1794800563.036041,
+                "counterRefreshTime": 1795316345.60116,
                 "inBroadcastPkts": 0,
                 "outputErrorsDetail": {
                   "deferredTransmissions": 0,
@@ -2589,7 +2589,7 @@
               "description": ""
             },
             "Ethernet30": {
-              "lastStatusChangeTimestamp": 1793492112.9315112,
+              "lastStatusChangeTimestamp": 1793492112.9315104,
               "lanes": 0,
               "name": "Ethernet30",
               "interfaceStatus": "notconnect",
@@ -2615,9 +2615,9 @@
                 "outBroadcastPkts": 0,
                 "outTotalPkts": 0,
                 "outUcastPkts": 0,
-                "lastClear": 1793491834.365748,
+                "lastClear": 1793491834.3657472,
                 "inMulticastPkts": 0,
-                "counterRefreshTime": 1794800562.798179,
+                "counterRefreshTime": 1795316345.353766,
                 "inBroadcastPkts": 0,
                 "outputErrorsDetail": {
                   "deferredTransmissions": 0,
@@ -2649,7 +2649,7 @@
               "description": ""
             },
             "Management1": {
-              "lastStatusChangeTimestamp": 1793762869.9378352,
+              "lastStatusChangeTimestamp": 1793762869.937836,
               "lanes": 0,
               "name": "Management1",
               "interfaceStatus": "connected",
@@ -2658,11 +2658,11 @@
               "burnedInAddress": "00:00:00:00:00:00",
               "l2Mru": 0,
               "interfaceStatistics": {
-                "inBitsRate": 1455.1136666482716,
-                "inPktsRate": 0.7992536050022885,
-                "outBitsRate": 5226.128242016279,
+                "inBitsRate": 7317.478071720867,
+                "inPktsRate": 3.8752614199429583,
+                "outBitsRate": 36872.4644086572,
                 "updateInterval": 300,
-                "outPktsRate": 0.8534247538669569
+                "outPktsRate": 5.113413468310928
               },
               "mtu": 1500,
               "hardware": "ethernet",
@@ -2672,24 +2672,24 @@
               "lineProtocolStatus": "up",
               "l3MtuConfigured": false,
               "interfaceCounters": {
-                "outBroadcastPkts": 73,
-                "outTotalPkts": 88124,
-                "outUcastPkts": 44528,
-                "lastClear": 1793491834.3657477,
-                "inMulticastPkts": 43802,
-                "counterRefreshTime": 1794800562.636867,
-                "inBroadcastPkts": 124288,
+                "outBroadcastPkts": 80,
+                "outTotalPkts": 116025,
+                "outUcastPkts": 55231,
+                "lastClear": 1793491834.3657475,
+                "inMulticastPkts": 60995,
+                "counterRefreshTime": 1795316345.190399,
+                "inBroadcastPkts": 156204,
                 "outputErrorsDetail": {
                   "deferredTransmissions": 0,
                   "txPause": 0,
                   "collisions": 0,
                   "lateCollisions": 0
                 },
-                "inOctets": 24283522,
+                "inOctets": 30259847,
                 "outDiscards": 0,
-                "outOctets": 43033453,
-                "inUcastPkts": 31531,
-                "inTotalPkts": 199621,
+                "outOctets": 54910467,
+                "inUcastPkts": 39136,
+                "inTotalPkts": 256335,
                 "inputErrorsDetail": {
                   "runtFrames": 0,
                   "rxPause": 0,
@@ -2699,7 +2699,7 @@
                   "symbolErrors": 0
                 },
                 "linkStatusChanges": 12,
-                "outMulticastPkts": 43523,
+                "outMulticastPkts": 60714,
                 "totalInErrors": 0,
                 "inDiscards": 0,
                 "totalOutErrors": 0
@@ -2726,7 +2726,7 @@
               "description": ""
             },
             "Ethernet31": {
-              "lastStatusChangeTimestamp": 1793492112.9084766,
+              "lastStatusChangeTimestamp": 1793492112.908476,
               "lanes": 0,
               "name": "Ethernet31",
               "interfaceStatus": "notconnect",
@@ -2754,7 +2754,7 @@
                 "outUcastPkts": 0,
                 "lastClear": 1793491834.365748,
                 "inMulticastPkts": 0,
-                "counterRefreshTime": 1794800562.995249,
+                "counterRefreshTime": 1795316345.560877,
                 "inBroadcastPkts": 0,
                 "outputErrorsDetail": {
                   "deferredTransmissions": 0,
@@ -2795,11 +2795,11 @@
               "burnedInAddress": "00:00:00:00:00:00",
               "l2Mru": 0,
               "interfaceStatistics": {
-                "inBitsRate": 94405.42820941922,
-                "inPktsRate": 61.35251496990436,
-                "outBitsRate": 96944.51316811271,
+                "inBitsRate": 93035.06143926107,
+                "inPktsRate": 60.50819173768614,
+                "outBitsRate": 94291.57006624962,
                 "updateInterval": 300,
-                "outPktsRate": 61.37458428389905
+                "outPktsRate": 60.021390547649695
               },
               "mtu": 9214,
               "hardware": "ethernet",
@@ -2809,12 +2809,12 @@
               "lineProtocolStatus": "up",
               "l3MtuConfigured": false,
               "interfaceCounters": {
-                "outBroadcastPkts": 111717,
-                "outTotalPkts": 71442489,
-                "outUcastPkts": 29521945,
-                "lastClear": 1793491834.365748,
+                "outBroadcastPkts": 143606,
+                "outTotalPkts": 230867340,
+                "outUcastPkts": 187933855,
+                "lastClear": 1793491834.3657475,
                 "inMulticastPkts": 16,
-                "counterRefreshTime": 1794800562.988535,
+                "counterRefreshTime": 1795316345.554008,
                 "inBroadcastPkts": 207,
                 "outputErrorsDetail": {
                   "deferredTransmissions": 0,
@@ -2822,21 +2822,21 @@
                   "collisions": 0,
                   "lateCollisions": 0
                 },
-                "inOctets": 3366366803,
-                "outDiscards": 4247036,
-                "outOctets": 16410972787,
-                "inUcastPkts": 16325694,
-                "inTotalPkts": 16325917,
+                "inOctets": 9365064633,
+                "outDiscards": 169789475,
+                "outOctets": 96940335813,
+                "inUcastPkts": 47533560,
+                "inTotalPkts": 47534199,
                 "inputErrorsDetail": {
                   "runtFrames": 0,
-                  "rxPause": 0,
+                  "rxPause": 416,
                   "fcsErrors": 0,
                   "alignmentErrors": 0,
                   "giantFrames": 0,
                   "symbolErrors": 0
                 },
                 "linkStatusChanges": 22,
-                "outMulticastPkts": 41808826,
+                "outMulticastPkts": 42789878,
                 "totalInErrors": 0,
                 "inDiscards": 0,
                 "totalOutErrors": 0
@@ -2846,7 +2846,7 @@
               "description": "prox1_management"
             },
             "Ethernet47": {
-              "lastStatusChangeTimestamp": 1793492112.903845,
+              "lastStatusChangeTimestamp": 1793492112.9038458,
               "lanes": 0,
               "name": "Ethernet47",
               "interfaceStatus": "notconnect",
@@ -2872,9 +2872,9 @@
                 "outBroadcastPkts": 0,
                 "outTotalPkts": 0,
                 "outUcastPkts": 0,
-                "lastClear": 1793491834.365747,
+                "lastClear": 1793491834.3657482,
                 "inMulticastPkts": 0,
-                "counterRefreshTime": 1794800563.002027,
+                "counterRefreshTime": 1795316345.567524,
                 "inBroadcastPkts": 0,
                 "outputErrorsDetail": {
                   "deferredTransmissions": 0,
@@ -2906,7 +2906,7 @@
               "description": ""
             },
             "Ethernet49/1": {
-              "lastStatusChangeTimestamp": 1793492096.9188395,
+              "lastStatusChangeTimestamp": 1793492096.918841,
               "lanes": 0,
               "name": "Ethernet49/1",
               "interfaceStatus": "notconnect",
@@ -2932,9 +2932,9 @@
                 "outBroadcastPkts": 0,
                 "outTotalPkts": 0,
                 "outUcastPkts": 0,
-                "lastClear": 1793491834.3657482,
+                "lastClear": 1793491834.365748,
                 "inMulticastPkts": 0,
-                "counterRefreshTime": 1794800562.812162,
+                "counterRefreshTime": 1795316345.36733,
                 "inBroadcastPkts": 0,
                 "outputErrorsDetail": {
                   "deferredTransmissions": 0,
@@ -2966,7 +2966,7 @@
               "description": ""
             },
             "Ethernet45": {
-              "lastStatusChangeTimestamp": 1793979167.2985668,
+              "lastStatusChangeTimestamp": 1793979167.2985678,
               "lanes": 0,
               "name": "Ethernet45",
               "interfaceStatus": "notconnect",
@@ -2992,9 +2992,9 @@
                 "outBroadcastPkts": 8115,
                 "outTotalPkts": 8164225,
                 "outUcastPkts": 191551,
-                "lastClear": 1793491834.3657482,
+                "lastClear": 1793491834.3657472,
                 "inMulticastPkts": 22721,
-                "counterRefreshTime": 1794800562.717863,
+                "counterRefreshTime": 1795316345.272411,
                 "inBroadcastPkts": 15773,
                 "outputErrorsDetail": {
                   "deferredTransmissions": 0,
@@ -3026,7 +3026,7 @@
               "description": ""
             },
             "Port-Channel20": {
-              "lastStatusChangeTimestamp": 1793634514.7698536,
+              "lastStatusChangeTimestamp": 1793634514.7698545,
               "name": "Port-Channel20",
               "interfaceStatus": "notconnect",
               "memberInterfaces": {},
@@ -3051,7 +3051,7 @@
                 "outUcastPkts": 0,
                 "totalOutErrors": 0,
                 "inMulticastPkts": 0,
-                "counterRefreshTime": 1794800563.063434,
+                "counterRefreshTime": 1795316345.628265,
                 "inBroadcastPkts": 0,
                 "inOctets": 0,
                 "outDiscards": 0,
@@ -3069,7 +3069,7 @@
               "description": ""
             },
             "Ethernet43": {
-              "lastStatusChangeTimestamp": 1794683021.1494904,
+              "lastStatusChangeTimestamp": 1794683021.1494892,
               "lanes": 0,
               "name": "Ethernet43",
               "interfaceStatus": "notconnect",
@@ -3078,11 +3078,11 @@
               "burnedInAddress": "00:00:00:00:00:00",
               "l2Mru": 0,
               "interfaceStatistics": {
-                "inBitsRate": 1.6822389871370977e-168,
-                "inPktsRate": 2.31084766698011e-171,
-                "outBitsRate": 4.52771505174502e-167,
+                "inBitsRate": 3.66e-322,
+                "inPktsRate": 3.66e-322,
+                "outBitsRate": 3.66e-322,
                 "updateInterval": 300,
-                "outPktsRate": 2.048193901522843e-170
+                "outPktsRate": 3.66e-322
               },
               "mtu": 9214,
               "hardware": "ethernet",
@@ -3095,9 +3095,9 @@
                 "outBroadcastPkts": 28107,
                 "outTotalPkts": 33072909,
                 "outUcastPkts": 404483,
-                "lastClear": 1793491834.3657477,
+                "lastClear": 1793491834.3657467,
                 "inMulticastPkts": 7396378,
-                "counterRefreshTime": 1794800562.866542,
+                "counterRefreshTime": 1795316345.424735,
                 "inBroadcastPkts": 4778,
                 "outputErrorsDetail": {
                   "deferredTransmissions": 0,
@@ -3129,7 +3129,7 @@
               "description": "to_cell_LAN"
             },
             "Ethernet42": {
-              "lastStatusChangeTimestamp": 1793492113.0059977,
+              "lastStatusChangeTimestamp": 1793492113.0059972,
               "lanes": 0,
               "name": "Ethernet42",
               "interfaceStatus": "notconnect",
@@ -3157,7 +3157,7 @@
                 "outUcastPkts": 0,
                 "lastClear": 1793491834.3657477,
                 "inMulticastPkts": 0,
-                "counterRefreshTime": 1794800562.744842,
+                "counterRefreshTime": 1795316345.299627,
                 "inBroadcastPkts": 0,
                 "outputErrorsDetail": {
                   "deferredTransmissions": 0,
@@ -3189,7 +3189,7 @@
               "description": ""
             },
             "Ethernet41": {
-              "lastStatusChangeTimestamp": 1793492112.838158,
+              "lastStatusChangeTimestamp": 1793492112.8381574,
               "lanes": 0,
               "name": "Ethernet41",
               "interfaceStatus": "notconnect",
@@ -3215,9 +3215,9 @@
                 "outBroadcastPkts": 0,
                 "outTotalPkts": 0,
                 "outUcastPkts": 0,
-                "lastClear": 1793491834.3657477,
+                "lastClear": 1793491834.365748,
                 "inMulticastPkts": 0,
-                "counterRefreshTime": 1794800562.784858,
+                "counterRefreshTime": 1795316345.340233,
                 "inBroadcastPkts": 0,
                 "outputErrorsDetail": {
                   "deferredTransmissions": 0,
@@ -3249,7 +3249,7 @@
               "description": ""
             },
             "Ethernet40": {
-              "lastStatusChangeTimestamp": 1793492112.8953946,
+              "lastStatusChangeTimestamp": 1793492112.895394,
               "lanes": 0,
               "name": "Ethernet40",
               "interfaceStatus": "notconnect",
@@ -3275,9 +3275,9 @@
                 "outBroadcastPkts": 0,
                 "outTotalPkts": 0,
                 "outUcastPkts": 0,
-                "lastClear": 1793491834.3657472,
+                "lastClear": 1793491834.3657484,
                 "inMulticastPkts": 0,
-                "counterRefreshTime": 1794800562.805111,
+                "counterRefreshTime": 1795316345.360581,
                 "inBroadcastPkts": 0,
                 "outputErrorsDetail": {
                   "deferredTransmissions": 0,
@@ -3309,7 +3309,7 @@
               "description": ""
             },
             "Ethernet29": {
-              "lastStatusChangeTimestamp": 1793492113.0148585,
+              "lastStatusChangeTimestamp": 1793492113.014859,
               "lanes": 0,
               "name": "Ethernet29",
               "interfaceStatus": "notconnect",
@@ -3337,7 +3337,7 @@
                 "outUcastPkts": 0,
                 "lastClear": 1793491834.3657482,
                 "inMulticastPkts": 0,
-                "counterRefreshTime": 1794800562.764958,
+                "counterRefreshTime": 1795316345.319939,
                 "inBroadcastPkts": 0,
                 "outputErrorsDetail": {
                   "deferredTransmissions": 0,
@@ -3369,7 +3369,7 @@
               "description": ""
             },
             "Ethernet15": {
-              "lastStatusChangeTimestamp": 1793492112.8736086,
+              "lastStatusChangeTimestamp": 1793492112.8736084,
               "lanes": 0,
               "name": "Ethernet15",
               "interfaceStatus": "notconnect",
@@ -3395,9 +3395,9 @@
                 "outBroadcastPkts": 0,
                 "outTotalPkts": 0,
                 "outUcastPkts": 0,
-                "lastClear": 1793491834.3657477,
+                "lastClear": 1793491834.3657472,
                 "inMulticastPkts": 0,
-                "counterRefreshTime": 1794800562.89322,
+                "counterRefreshTime": 1795316345.45287,
                 "inBroadcastPkts": 0,
                 "outputErrorsDetail": {
                   "deferredTransmissions": 0,
@@ -3429,7 +3429,7 @@
               "description": ""
             },
             "Ethernet11": {
-              "lastStatusChangeTimestamp": 1794520091.8698535,
+              "lastStatusChangeTimestamp": 1794520091.869852,
               "lanes": 0,
               "name": "Ethernet11",
               "interfaceStatus": "connected",
@@ -3438,11 +3438,11 @@
               "burnedInAddress": "00:00:00:00:00:00",
               "l2Mru": 0,
               "interfaceStatistics": {
-                "inBitsRate": 32.52257208888559,
-                "inPktsRate": 0.0317738696575206,
-                "outBitsRate": 4999.553152206582,
+                "inBitsRate": 33.44690005612393,
+                "inPktsRate": 0.03266348815047742,
+                "outBitsRate": 4146.407177886816,
                 "updateInterval": 300,
-                "outPktsRate": 1.7612996610521323
+                "outPktsRate": 1.5017625948835795
               },
               "mtu": 9214,
               "hardware": "ethernet",
@@ -3452,12 +3452,12 @@
               "lineProtocolStatus": "up",
               "l3MtuConfigured": false,
               "interfaceCounters": {
-                "outBroadcastPkts": 8113,
-                "outTotalPkts": 14052464,
-                "outUcastPkts": 12275906,
-                "lastClear": 1793491834.365748,
-                "inMulticastPkts": 9020,
-                "counterRefreshTime": 1794800562.947757,
+                "outBroadcastPkts": 23820,
+                "outTotalPkts": 308765814,
+                "outUcastPkts": 306125171,
+                "lastClear": 1793491834.365747,
+                "inMulticastPkts": 25552,
+                "counterRefreshTime": 1795316345.511086,
                 "inBroadcastPkts": 17,
                 "outputErrorsDetail": {
                   "deferredTransmissions": 0,
@@ -3465,21 +3465,21 @@
                   "collisions": 0,
                   "lateCollisions": 0
                 },
-                "inOctets": 9425961,
+                "inOctets": 11786821,
                 "outDiscards": 0,
-                "outOctets": 13799974755,
-                "inUcastPkts": 63926,
-                "inTotalPkts": 72963,
+                "outOctets": 192526686170,
+                "inUcastPkts": 65079,
+                "inTotalPkts": 92466,
                 "inputErrorsDetail": {
                   "runtFrames": 0,
-                  "rxPause": 0,
+                  "rxPause": 1818,
                   "fcsErrors": 0,
                   "alignmentErrors": 0,
                   "giantFrames": 0,
                   "symbolErrors": 0
                 },
                 "linkStatusChanges": 16,
-                "outMulticastPkts": 1768445,
+                "outMulticastPkts": 2616823,
                 "totalInErrors": 0,
                 "inDiscards": 0,
                 "totalOutErrors": 0
@@ -3490,7 +3490,7 @@
               "description": "prox2 team"
             },
             "Ethernet12": {
-              "lastStatusChangeTimestamp": 1794520092.9199688,
+              "lastStatusChangeTimestamp": 1794520092.919969,
               "lanes": 0,
               "name": "Ethernet12",
               "interfaceStatus": "connected",
@@ -3499,11 +3499,11 @@
               "burnedInAddress": "00:00:00:00:00:00",
               "l2Mru": 0,
               "interfaceStatistics": {
-                "inBitsRate": 32.810053462391025,
-                "inPktsRate": 0.03194981953839566,
-                "outBitsRate": 714.3984783937894,
+                "inBitsRate": 33.57748808303484,
+                "inPktsRate": 0.03278715542936056,
+                "outBitsRate": 335.03149118789804,
                 "updateInterval": 300,
-                "outPktsRate": 0.37411025482906035
+                "outPktsRate": 0.18429586470923462
               },
               "mtu": 9214,
               "hardware": "ethernet",
@@ -3513,12 +3513,12 @@
               "lineProtocolStatus": "up",
               "l3MtuConfigured": false,
               "interfaceCounters": {
-                "outBroadcastPkts": 14944,
-                "outTotalPkts": 37987079,
-                "outUcastPkts": 7232054,
+                "outBroadcastPkts": 31160,
+                "outTotalPkts": 38195973,
+                "outUcastPkts": 7240010,
                 "lastClear": 1793491834.365748,
-                "inMulticastPkts": 9014,
-                "counterRefreshTime": 1794800562.7315,
+                "inMulticastPkts": 25546,
+                "counterRefreshTime": 1795316345.286182,
                 "inBroadcastPkts": 0,
                 "outputErrorsDetail": {
                   "deferredTransmissions": 0,
@@ -3526,11 +3526,11 @@
                   "collisions": 0,
                   "lateCollisions": 0
                 },
-                "inOctets": 589320243,
+                "inOctets": 592294917,
                 "outDiscards": 0,
-                "outOctets": 13528755956,
-                "inUcastPkts": 704819,
-                "inTotalPkts": 713833,
+                "outOctets": 13583998839,
+                "inUcastPkts": 710217,
+                "inTotalPkts": 735763,
                 "inputErrorsDetail": {
                   "runtFrames": 0,
                   "rxPause": 0,
@@ -3540,7 +3540,7 @@
                   "symbolErrors": 0
                 },
                 "linkStatusChanges": 14,
-                "outMulticastPkts": 30740081,
+                "outMulticastPkts": 30924803,
                 "totalInErrors": 0,
                 "inDiscards": 0,
                 "totalOutErrors": 0
@@ -3551,7 +3551,7 @@
               "description": "prox2 team"
             },
             "Ethernet46": {
-              "lastStatusChangeTimestamp": 1793492112.8822036,
+              "lastStatusChangeTimestamp": 1793492112.8822038,
               "lanes": 0,
               "name": "Ethernet46",
               "interfaceStatus": "notconnect",
@@ -3577,9 +3577,9 @@
                 "outBroadcastPkts": 0,
                 "outTotalPkts": 0,
                 "outUcastPkts": 0,
-                "lastClear": 1793491834.365748,
+                "lastClear": 1793491834.3657482,
                 "inMulticastPkts": 0,
-                "counterRefreshTime": 1794800562.690816,
+                "counterRefreshTime": 1795316345.245049,
                 "inBroadcastPkts": 0,
                 "outputErrorsDetail": {
                   "deferredTransmissions": 0,
@@ -3611,7 +3611,7 @@
               "description": ""
             },
             "Ethernet44": {
-              "lastStatusChangeTimestamp": 1794683021.3279555,
+              "lastStatusChangeTimestamp": 1794683021.3279552,
               "lanes": 0,
               "name": "Ethernet44",
               "interfaceStatus": "notconnect",
@@ -3620,11 +3620,11 @@
               "burnedInAddress": "00:00:00:00:00:00",
               "l2Mru": 0,
               "interfaceStatistics": {
-                "inBitsRate": 4.462121755400108e-168,
-                "inPktsRate": 6.270381252122987e-171,
-                "outBitsRate": 4.8478882121577784e-167,
+                "inBitsRate": 3.66e-322,
+                "inPktsRate": 3.66e-322,
+                "outBitsRate": 3.66e-322,
                 "updateInterval": 300,
-                "outPktsRate": 2.4265264574374544e-170
+                "outPktsRate": 3.66e-322
               },
               "mtu": 9214,
               "hardware": "ethernet",
@@ -3637,9 +3637,9 @@
                 "outBroadcastPkts": 8741,
                 "outTotalPkts": 2145503,
                 "outUcastPkts": 376174,
-                "lastClear": 1793491834.365747,
+                "lastClear": 1793491834.365748,
                 "inMulticastPkts": 30286999,
-                "counterRefreshTime": 1794800563.029272,
+                "counterRefreshTime": 1795316345.5944,
                 "inBroadcastPkts": 182,
                 "outputErrorsDetail": {
                   "deferredTransmissions": 0,
@@ -3671,7 +3671,7 @@
               "description": "to_cell_WAN"
             },
             "Ethernet20": {
-              "lastStatusChangeTimestamp": 1793492112.9400754,
+              "lastStatusChangeTimestamp": 1793492112.9400752,
               "lanes": 0,
               "name": "Ethernet20",
               "interfaceStatus": "notconnect",
@@ -3697,9 +3697,9 @@
                 "outBroadcastPkts": 0,
                 "outTotalPkts": 0,
                 "outUcastPkts": 0,
-                "lastClear": 1793491834.3657482,
+                "lastClear": 1793491834.3657475,
                 "inMulticastPkts": 0,
-                "counterRefreshTime": 1794800562.751488,
+                "counterRefreshTime": 1795316345.306481,
                 "inBroadcastPkts": 0,
                 "outputErrorsDetail": {
                   "deferredTransmissions": 0,
@@ -3731,7 +3731,7 @@
               "description": ""
             },
             "Ethernet23": {
-              "lastStatusChangeTimestamp": 1793492112.859447,
+              "lastStatusChangeTimestamp": 1793492112.859446,
               "lanes": 0,
               "name": "Ethernet23",
               "interfaceStatus": "notconnect",
@@ -3757,9 +3757,9 @@
                 "outBroadcastPkts": 0,
                 "outTotalPkts": 0,
                 "outUcastPkts": 0,
-                "lastClear": 1793491834.365748,
+                "lastClear": 1793491834.3657477,
                 "inMulticastPkts": 0,
-                "counterRefreshTime": 1794800562.886555,
+                "counterRefreshTime": 1795316345.445405,
                 "inBroadcastPkts": 0,
                 "outputErrorsDetail": {
                   "deferredTransmissions": 0,
@@ -3817,9 +3817,9 @@
                 "outBroadcastPkts": 0,
                 "outTotalPkts": 0,
                 "outUcastPkts": 0,
-                "lastClear": 1793491834.365748,
+                "lastClear": 1793491834.3657482,
                 "inMulticastPkts": 0,
-                "counterRefreshTime": 1794800563.015654,
+                "counterRefreshTime": 1795316345.580879,
                 "inBroadcastPkts": 0,
                 "outputErrorsDetail": {
                   "deferredTransmissions": 0,
@@ -3851,7 +3851,7 @@
               "description": ""
             },
             "Ethernet25": {
-              "lastStatusChangeTimestamp": 1794520439.2540784,
+              "lastStatusChangeTimestamp": 1795200031.2487895,
               "lanes": 0,
               "name": "Ethernet25",
               "interfaceStatus": "connected",
@@ -3860,11 +3860,11 @@
               "burnedInAddress": "00:00:00:00:00:00",
               "l2Mru": 0,
               "interfaceStatistics": {
-                "inBitsRate": 304.62074199522584,
-                "inPktsRate": 0.29220071516311896,
-                "outBitsRate": 5732.07157367851,
+                "inBitsRate": 249.36293640334648,
+                "inPktsRate": 0.2320779508254873,
+                "outBitsRate": 4357.376006069425,
                 "updateInterval": 300,
-                "outPktsRate": 2.142109868826696
+                "outPktsRate": 1.643689691722313
               },
               "mtu": 9214,
               "hardware": "ethernet",
@@ -3874,24 +3874,24 @@
               "lineProtocolStatus": "up",
               "l3MtuConfigured": false,
               "interfaceCounters": {
-                "outBroadcastPkts": 15494,
-                "outTotalPkts": 35956033,
-                "outUcastPkts": 4088088,
-                "lastClear": 1793491834.3657482,
-                "inMulticastPkts": 601949,
-                "counterRefreshTime": 1794800563.049497,
-                "inBroadcastPkts": 6554,
+                "outBroadcastPkts": 36992,
+                "outTotalPkts": 185266096,
+                "outUcastPkts": 152400131,
+                "lastClear": 1793491834.365748,
+                "inMulticastPkts": 606367,
+                "counterRefreshTime": 1795316345.614568,
+                "inBroadcastPkts": 16947,
                 "outputErrorsDetail": {
                   "deferredTransmissions": 0,
                   "txPause": 0,
                   "collisions": 0,
                   "lateCollisions": 0
                 },
-                "inOctets": 756410267,
-                "outDiscards": 4246489,
-                "outOctets": 6641157285,
-                "inUcastPkts": 966801,
-                "inTotalPkts": 1575304,
+                "inOctets": 1499744120,
+                "outDiscards": 169801494,
+                "outOctets": 108527179533,
+                "inUcastPkts": 4719096,
+                "inTotalPkts": 5342410,
                 "inputErrorsDetail": {
                   "runtFrames": 0,
                   "rxPause": 0,
@@ -3900,8 +3900,8 @@
                   "giantFrames": 0,
                   "symbolErrors": 0
                 },
-                "linkStatusChanges": 4,
-                "outMulticastPkts": 31852451,
+                "linkStatusChanges": 8,
+                "outMulticastPkts": 32828973,
                 "totalInErrors": 0,
                 "inDiscards": 0,
                 "totalOutErrors": 0
@@ -3911,7 +3911,7 @@
               "description": "diskstation"
             },
             "Ethernet24": {
-              "lastStatusChangeTimestamp": 1793492112.9138596,
+              "lastStatusChangeTimestamp": 1793492112.9138587,
               "lanes": 0,
               "name": "Ethernet24",
               "interfaceStatus": "notconnect",
@@ -3937,9 +3937,9 @@
                 "outBroadcastPkts": 0,
                 "outTotalPkts": 0,
                 "outUcastPkts": 0,
-                "lastClear": 1793491834.3657475,
+                "lastClear": 1793491834.3657467,
                 "inMulticastPkts": 0,
-                "counterRefreshTime": 1794800562.920199,
+                "counterRefreshTime": 1795316345.482105,
                 "inBroadcastPkts": 0,
                 "outputErrorsDetail": {
                   "deferredTransmissions": 0,
@@ -3971,7 +3971,7 @@
               "description": ""
             },
             "Ethernet27": {
-              "lastStatusChangeTimestamp": 1793492112.8996189,
+              "lastStatusChangeTimestamp": 1793492112.899618,
               "lanes": 0,
               "name": "Ethernet27",
               "interfaceStatus": "notconnect",
@@ -3999,7 +3999,7 @@
                 "outUcastPkts": 0,
                 "lastClear": 1793491834.3657482,
                 "inMulticastPkts": 0,
-                "counterRefreshTime": 1794800562.650371,
+                "counterRefreshTime": 1795316345.204095,
                 "inBroadcastPkts": 0,
                 "outputErrorsDetail": {
                   "deferredTransmissions": 0,
@@ -4031,7 +4031,7 @@
               "description": ""
             },
             "Ethernet26": {
-              "lastStatusChangeTimestamp": 1793492112.9571967,
+              "lastStatusChangeTimestamp": 1793492112.957197,
               "lanes": 0,
               "name": "Ethernet26",
               "interfaceStatus": "notconnect",
@@ -4057,9 +4057,9 @@
                 "outBroadcastPkts": 0,
                 "outTotalPkts": 0,
                 "outUcastPkts": 0,
-                "lastClear": 1793491834.3657463,
+                "lastClear": 1793491834.3657477,
                 "inMulticastPkts": 0,
-                "counterRefreshTime": 1794800562.628692,
+                "counterRefreshTime": 1795316345.182302,
                 "inBroadcastPkts": 0,
                 "outputErrorsDetail": {
                   "deferredTransmissions": 0,

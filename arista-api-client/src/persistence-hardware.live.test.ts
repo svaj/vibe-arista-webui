@@ -294,7 +294,19 @@ describe.skipIf(!runnable)('physical persistence verbs (#89, owner-authorized 20
     const lastCommit = `hw-persist-rep-${runTag}`
     const target0 = await findSession(lastCommit, true)
     if (target0 === undefined) {
-      observe('rollback-name', { skipped: `no completed session ${lastCommit} to target (replace step did not run or the slot rotated) — DR-136 one-slot store` })
+      // The 2026-11-22 hardware run (DR-158) proved this skip message's guess is not safe: the
+      // replace step HAD run (replace-after markerPresent:false) yet the marker session was gone
+      // from the slot three seconds after its commit. Whether `configure replace` itself clears the
+      // one-slot completed-session store is a device question — so record what the detail form DOES
+      // list instead of guessing. Read failure must never mask the skip itself.
+      const slotContents = await (node as Node)
+        .listSessions({ detail: true })
+        .then((r) => r.sessions.filter((s) => /completed/iu.test(s.state)).map((s) => s.name))
+        .catch(() => ['<detail read refused>'])
+      observe('rollback-name', {
+        skipped: `no completed session ${lastCommit} to target (replace step did not run or the slot rotated) — DR-136 one-slot store`,
+        completedSlotHolds: slotContents,
+      })
       return
     }
     const name = `hw-persist-rbname-${runTag}`

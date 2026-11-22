@@ -12,7 +12,7 @@
   },
   "captures": [
     {
-      "requestId": "0f09a5953022-1",
+      "requestId": "fe4a2262793a-1",
       "commands": [
         "enable",
         "show environment temperature"

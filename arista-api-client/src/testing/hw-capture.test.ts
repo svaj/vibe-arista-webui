@@ -374,6 +374,22 @@ describe('the probe-spec parser (policy made mechanical)', () => {
 })
 
 describe('the committed draft probe spec is itself machine-checked (review-before-run)', () => {
+  it('docs/hw-capture-unblock3.draft.json (round 3, DRAFT) parses abort-only with product/capture-pinned text', async () => {
+    const { readFileSync } = await import('node:fs')
+    const spec = parseHwProbeSpec(readFileSync(new URL('../../docs/hw-capture-unblock3.draft.json', import.meta.url), 'utf8'))
+    // Round 3 asks grammar questions only — nothing on it may ever commit (DR-149 keeps the committed
+    // rapid-pvst timing question on the screen's confirm-gated path, not the probe lane).
+    for (const batch of spec.batches) expect(batch.allowCommit, `round-3 batch ${batch.name} must stay abort-only`).toBe(false)
+    // The rapid-pvst line must equal what the shipped screen composes (stp-global-rules.ts stpModeLine).
+    const rapid = spec.batches.find((batch) => batch.name === 'unblock3-stp-rapid-pvst')
+    expect(rapid?.commands).toEqual(['spanning-tree mode rapid-pvst'])
+    // The bare removal must equal the screen's spelling (stpRegionNoInstanceLine).
+    const bare = spec.batches.find((batch) => batch.name === 'unblock3-stp-mst-remove-bare')
+    expect(bare?.commands).toContain('   no instance 1')
+    // Round 3 is the first unblock round naming {{SCRATCH}} (the subinterface-context batch) — the
+    // capture script's --scratch gate keys off exactly this.
+    expect(spec.batches.flatMap((batch) => batch.commands).some((cmd) => cmd.includes('{{SCRATCH}}'))).toBe(true)
+  })
   it('docs/hw-session-probes.draft.json parses under the same policy the live probe enforces', async () => {
     const { readFileSync } = await import('node:fs')
     const spec = parseHwProbeSpec(readFileSync(new URL('../../docs/hw-session-probes.draft.json', import.meta.url), 'utf8'))
