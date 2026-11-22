@@ -12,7 +12,7 @@
   },
   "captures": [
     {
-      "requestId": "ad2e3b4d54b7-1",
+      "requestId": "9dd10e01fb65-1",
       "commands": [
         "enable",
         "show lldp neighbors"
@@ -21,9 +21,9 @@
       "result": [
         {},
         {
-          "tablesLastChangeTime": 1794711566.6724753,
-          "tablesAgeOuts": 4,
-          "tablesInserts": 84,
+          "tablesLastChangeTime": 1795224139.3362052,
+          "tablesAgeOuts": 6,
+          "tablesInserts": 110,
           "lldpNeighbors": [
             {
               "ttl": 120,
@@ -62,7 +62,7 @@
               "port": "Management1"
             }
           ],
-          "tablesDeletes": 78,
+          "tablesDeletes": 104,
           "tablesDrops": 0
         }
       ]

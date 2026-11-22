@@ -12,7 +12,7 @@
   },
   "captures": [
     {
-      "requestId": "b212a69e54bf-1",
+      "requestId": "dc2d94c14980-1",
       "commands": [
         "enable",
         "show ip interface brief"

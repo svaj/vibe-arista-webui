@@ -388,6 +388,24 @@ source (pyeapi 1.0.4-rc0).
 > them. **Open item 2 is now DECIDED (VXLAN config-grammar-present / feature-absent → #86 not
 > shipping; #90 editor grammar proven) — DR-141 executed exactly as designed.**
 
+> **2026-11-22, run 10 (two lanes, one supervised day; DR-158).** The persistence lane ran with
+> `replace` named for the first time: **`configure replace flash:<snapshot>` is ACCEPTED on the
+> box** — snapshot → scratch-port marker commit → wholesale replace back to the snapshot,
+> self-restoring, `final-scratch-state` clean; the reply text is empty exactly as with `copy`, so
+> the reads are the answer. `copy run start` and session-scoped `rollback clean-config`
+> re-confirmed DR-150 byte-comparably. New device fact: **seven seconds after its commit the
+> marker session was gone from the one-slot completed-session store** — after a `configure replace`
+> the last commit's name is not a `rollback <name>` target on this unit (DR-136's store is
+> replace-sensitive; the lane now records `completedSlotHolds` in that skip to pin the mechanism).
+> The unblock lane re-confirmed: 53 inventory refreshes with zero substantive change on every key
+> read; the 7 round-2 probe re-recordings byte-identical → restored (run-8 precedent, run 9
+> provenance kept — the restore also erased a one-file gateway scrub regression, the run-9
+> `--scrub` lesson re-earned). One real drift kept: `aaa authorization exec default local` now in
+> running+startup (operator change; startup mtime 2026-11-21 03:20). Round-3 probe spec drafted,
+> not executed (`hw-capture-unblock3.draft.json` + `--spec3 --scratch`): rapid-pvst stage, the four
+> MST-region removal spellings, `interface {{SCRATCH}}.100` (open item 7). The #159 CORS capture
+> was deliberately skipped — DR-149 settled that outcome; it is pure evidence and gates nothing.
+
 Run the software/schema subset against cEOS first and store captures under
 `test/fixtures/recordings/ceos-4.28.14M/`; repeat target-sensitive checks on the
 7050TX-64 under `recordings/7050tx-64-4.28.13.1M/`. Keep exact version/model metadata,

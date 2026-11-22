@@ -12,7 +12,7 @@
   },
   "captures": [
     {
-      "requestId": "37696ef79fd7-1",
+      "requestId": "904e35877b35-1",
       "commands": [
         "enable",
         "show management api http-commands"
@@ -28,19 +28,19 @@
           },
           "users": {
             "svaj": {
-              "requestCount": 769,
-              "bytesOut": 50138926,
-              "lastHitTime": 1794800561.8666148,
-              "bytesIn": 153361
+              "requestCount": 1092,
+              "bytesOut": 58436638,
+              "lastHitTime": 1795316344.443612,
+              "bytesIn": 230884
             }
           },
-          "bytesOut": 50138926,
+          "bytesOut": 58436638,
           "logLevel": "none",
           "dscpValue": 0,
           "corsOrigins": [],
-          "hitCount": 832,
+          "hitCount": 1322,
           "vrf": "default",
-          "lastHitTime": 1794800561.8662674,
+          "lastHitTime": 1795316344.443285,
           "tlsProtocol": [
             "1.0",
             "1.1",
@@ -51,7 +51,7 @@
             "configured": false,
             "port": 8080
           },
-          "executionTime": 570.5095968730402,
+          "executionTime": 704.8916539193251,
           "enabled": true,
           "fipsEnabled": false,
           "httpsServer": {
@@ -59,7 +59,7 @@
             "configured": true,
             "port": 443
           },
-          "requestCount": 769,
+          "requestCount": 1092,
           "vrfs": [
             "default"
           ],
@@ -70,8 +70,8 @@
             "running": false,
             "configured": false
           },
-          "bytesIn": 153361,
-          "commandCount": 1950,
+          "bytesIn": 230884,
+          "commandCount": 2694,
           "iframeAncestors": []
         }
       ]

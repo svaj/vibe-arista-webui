@@ -12,7 +12,7 @@
   },
   "captures": [
     {
-      "requestId": "6f43424ed008-1",
+      "requestId": "768788e14855-1",
       "commands": [
         "enable",
         "show mlag detail"

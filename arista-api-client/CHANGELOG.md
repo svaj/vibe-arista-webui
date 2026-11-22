@@ -9,6 +9,27 @@ surprise here — this file records what shipped, the migration map records what
 
 ## [Unreleased]
 
+### Evidence — run 10: `configure replace` ACCEPTED on the physical box; the completed-session slot does not survive it; round-3 probe spec drafted (2026-11-22; DR-158, §5 row 244, STATUS run-10 blockquote)
+- **`capture-hw-persistence.sh --verbs copy,rollback,replace` ran GREEN on the 7050TX-64-R**
+  (`docs/evidence/persistence-hardware.json`, DR-149's typed-consent chain): `configure replace
+  flash:<snapshot>` is ACCEPTED — snapshot → scratch-port marker commit → wholesale replace back to
+  the snapshot, self-restoring, `final-scratch-state` clean. The eAPI reply text is empty (as with
+  `copy`): the reads around the verb are the answer. `copy run start` and the session-scoped
+  `rollback clean-config` (152-line diff, aborted) re-confirmed DR-150 byte-comparably.
+- **New device fact (`rollback <name>` stays open, now measured):** seven seconds after its commit,
+  the marker session was gone from the box's one-slot completed-session store (DR-136) — after a
+  `configure replace`, the most recent commit's name is not a rollback target on this unit. The lane
+  now records `completedSlotHolds` inside that skip so the next run pins the mechanism.
+- **Unblock lane:** 53 inventory recordings refreshed — every key read re-answered with zero
+  substantive change (same platform negatives as DR-141). The 7 round-2 probe re-recordings were
+  byte-identical and RESTORED per the run-8 precedent (run 9 provenance kept; the restore also
+  erased a one-file gateway scrub regression — the `--scrub` gateway literal lesson re-earned).
+  One real box drift kept: `aaa authorization exec default local` now in running+startup config.
+- **Round 3 drafted, not executed:** `docs/hw-capture-unblock3.draft.json` (abort-only: `rapid-pvst`
+  stage, the four MST-region removal spellings, `interface {{SCRATCH}}.100`) + `--spec3`/`--scratch`
+  in `capture-unblock-hw.sh` + a machine-check pin in `hw-capture.test.ts`. The #159 CORS capture
+  was deliberately not run — DR-149 already settled that outcome; it gates nothing.
+
 ### Evidence — run 9 answers the last grammar questions; open item 2 decided (2026-11-16; DR-141 addendum, §5 row 243, STATUS run-8/9 blockquotes)
 - **Run 8 = re-confirmation only:** the round-1 probe answers were re-captured **byte-identical** to
   run 7 (7/7, including the three invented-token refusals) — the volatile-refreshed inventory files

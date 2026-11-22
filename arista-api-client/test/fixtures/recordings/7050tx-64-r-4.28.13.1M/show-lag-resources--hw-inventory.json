@@ -12,7 +12,7 @@
   },
   "captures": [
     {
-      "requestId": "29d9734b0901-1",
+      "requestId": "6b864d6255d7-1",
       "commands": [
         "enable",
         "show lag resources"
