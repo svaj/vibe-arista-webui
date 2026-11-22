@@ -26,6 +26,7 @@ Without --go this prints the exact commands and exits without starting Docker.
 
 Lanes:
   #87  OSPF two-node adjacency / route-withdraw blast evidence
+       + VRRP two-node failover blast measurement (--nodes 2 --vrrp shared-L2 pair)
   #88  STP configured-state + mode-change blast evidence
   #89  commit-timer/persistence mechanics and the cEOS persistence artifact
 
@@ -55,6 +56,7 @@ esac
 cd "$(dirname "$0")/.."
 
 cmd_ospf="EAPI_TWO_NODE_EVIDENCE=$EVIDENCE npm run lab:run -- --quiet --no-fixtures --port $PORT --band $BAND_2NODE --nodes 2 -- npm -w arista-api-client run test:live -- src/ospf-two-node.live.test.ts"
+cmd_vrrp="EAPI_TWO_NODE_EVIDENCE=$EVIDENCE npm run lab:run -- --quiet --no-fixtures --port $PORT --band $BAND_2NODE --nodes 2 --vrrp -- npm -w arista-api-client run test:live -- src/vrrp-failover-two-node.live.test.ts"
 cmd_stp="EAPI_TWO_NODE_EVIDENCE=$EVIDENCE npm run lab:run -- --quiet --no-fixtures --port $PORT --band $BAND -- npm -w arista-api-client run test:live -- src/stp-mode-change.live.test.ts"
 cmd_timer="EAPI_TWO_NODE_EVIDENCE=$EVIDENCE npm run lab:run -- --quiet --no-fixtures --port $PORT --band $BAND -- npm -w arista-api-client run test:live -- src/commit-timer-persistence.live.test.ts"
 cmd_persist="npm run lab:run -- --quiet --no-fixtures --port $PORT --band $BAND -- node scripts/capture-unblock-ceos.mjs"
@@ -62,7 +64,8 @@ cmd_persist="npm run lab:run -- --quiet --no-fixtures --port $PORT --band $BAND 
 if [ "$GO" -ne 1 ]; then
   echo "== DRY RUN: no Docker, cEOS, or EOS device call will occur =="
   echo "[host gate] cat /proc/sys/kernel/unprivileged_bpf_disabled; expected 0 or 1, never 2"
-  [ "$ISSUE" = 87 ] || [ "$ISSUE" = all ] && echo "#87: $cmd_ospf"
+  [ "$ISSUE" = 87 ] || [ "$ISSUE" = all ] && echo "#87 ospf: $cmd_ospf"
+  [ "$ISSUE" = 87 ] || [ "$ISSUE" = all ] && echo "#87 vrrp: $cmd_vrrp"
   [ "$ISSUE" = 88 ] || [ "$ISSUE" = all ] && echo "#88: $cmd_stp"
   if [ "$ISSUE" = 89 ] || [ "$ISSUE" = all ]; then
     echo "#89 timers: $cmd_timer"
@@ -94,7 +97,10 @@ run() {
   eval "$*"
 }
 
-if [ "$ISSUE" = 87 ] || [ "$ISSUE" = all ]; then run "$cmd_ospf"; fi
+if [ "$ISSUE" = 87 ] || [ "$ISSUE" = all ]; then
+  run "$cmd_ospf"
+  run "$cmd_vrrp"
+fi
 if [ "$ISSUE" = 88 ] || [ "$ISSUE" = all ]; then run "$cmd_stp"; fi
 if [ "$ISSUE" = 89 ] || [ "$ISSUE" = all ]; then
   run "$cmd_timer"

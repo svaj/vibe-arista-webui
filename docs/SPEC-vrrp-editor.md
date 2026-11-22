@@ -9,7 +9,8 @@ the shared transaction coordinator (#141) — this screen stages through it and 
 
 Give the single operator one screen to see every VRRP virtual router configured on the switch and
 to create, edit, and delete them — staging through the shared transaction with a confirm that
-states the failover blast honestly (it has never been measured on any target).
+states the failover blast honestly (post-ship: measured on the two-node cEOS-lab, DR-157; never
+presented as this unit's behavior, DR-043).
 
 Today the read-only Routing screen (`#/routing`) renders the configured VRRP table
 (`node.vrrp.getAll()`) and the `show vrrp` count, and `ROUTING_READ_ONLY_NOTE` says every routing
@@ -31,9 +32,11 @@ Answered by the owner on 2026-11-21 (this spec's intake), on top of DR-149:
    recommended scope). Advanced fields (secondary IPs, tracked objects, BFD, ip-version,
    mac-address advertisement-interval, the three delays) are **read-only columns** in v1 — their
    client verbs exist but each adds blast surface; they land in a v2 only if asked for.
-2. **Blast copy: honest unmeasured.** No VRRP failover blast has been measured on any target
-   (unlike OSPF/STP), so the confirm says so and names the first real use as the measurement
-   opportunity — facts, no invented numbers.
+2. **Blast copy: honest unmeasured** at ship time (owner decision 2026-11-21). **Updated
+   post-ship (DR-157):** the first measured blast landed on the two-node cEOS-lab lane
+   (`docs/evidence/vrrp-failover-two-node.ceos.json`: backup promoted 70 ms after the master
+   disabled its group; preempt-back 3391 ms), so the confirm now cites those numbers AS container
+   evidence — still facts, still no invented numbers, still never this unit's behavior (DR-043).
 3. **Command text comes from the CLIENT's own dry-run seam** (`{ run: false }` on each setter,
    which returns the composed line). This is the strongest pin in the repo — NOT the raw-line
    capture-pinning the #88 MST-region editor had to use — because `vrrp.ts` is a fully ported
@@ -58,7 +61,7 @@ Answered by the owner on 2026-11-21 (this spec's intake), on top of DR-149:
 | `node.vrrp.getAll()` / `get()` read the configured table fully | client | `resources/vrrp.ts` (W3c #51) |
 | every field setter has a `{ run: false }` dry-run arm returning the composed line | client | `runCommand`/`runCommandList` (`vrrp.ts:560-568`); pins at `vrrp.test.ts:1070-1077` |
 | `create()` has NO dry-run arm (always sends) — so the screen composes a create via the per-field dry-run setters in `_vrrp_set` order | client | `create`/`vrrpSet` (`vrrp.ts:580,912`); order pinned `vrrp.test.ts:404-424` |
-| VRRP failover timing on this SKU | **UNVERIFIED** | — (honest unmeasured copy) |
+| VRRP failover timing on this SKU | **UNVERIFIED on hardware**; container half ANSWERED post-ship (DR-157: cEOS-lab promote 70 ms / preempt-back 3391 ms, `docs/evidence/vrrp-failover-two-node.ceos.json`) | container evidence only (DR-043) |
 
 ## User Stories
 
@@ -272,7 +275,7 @@ Vitest 5 + Testing Library + hand-built fake `Node` seams (query by role/label).
 
 | Unknown (UNVERIFIED on 7050TX-64-R) | Degradation path |
 | --- | --- |
-| VRRP failover timing / switchover blast | Honest unmeasured copy; first real use is the measurement. |
+| VRRP failover timing / switchover blast | Container-measured (DR-157) cited as container evidence; this unit's first real use is still the measurement. |
 | VRID max, priority bounds on this image | Client grammar only; device refusal is the answer. |
 | Whether a VRRP group on a routed port (vs SVI) behaves the same | Candidate list is read-driven; device authoritative. |
 

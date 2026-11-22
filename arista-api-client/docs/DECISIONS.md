@@ -3377,6 +3377,90 @@ surface this lane re-hits via the config dump); DR-134 (a device refusal is the 
 (the name bounds this confirms are ours); DR-050 (the sessions-grammar open item); DR-043 (every
 claim container-scoped); #89 (items 7/8), #87.
 
+### DR-157 — the VRRP failover blast gets its CONTAINER half: `show vrrp` over eAPI is NOT a capability negative (DR-122's read was unconfigured + read-too-soon + unprivileged), a backup promotes 70 ms after the master disables its group (immediate release, not `master_down` expiry), a preempt-back lands at ≈ the master_down interval, and the whole two-node harness gains deterministic NIC binding
+
+#87's blast item said "never measured on any target" and DR-122 recorded `show vrrp` as an eAPI
+capability negative (1002/empty). **Both were wrong, and the wrongness was the finding.** On a
+disposable cEOS-lab pair (`4.28.14M-50015774.42814M`, `cEOSLab`, run `lab-1926138-47bd56`) with a
+VRRP group actually configured, actually initialised, and read through the client's `exec`/`runCommands`
+(which prepend the `enable` privilege prefix by default — `roundTrip` sendEnable, command-layer.ts:648/660),
+`show vrrp` answers with a **fully populated model** — per-group entries carrying `state`, `priority`,
+`virtualIp`, `masterAddr`, `preempt`, `skewTime`, `masterDownInterval`, `virtualMac`, `version`, etc.
+DR-122's "empty" was three stacked artifacts, none of them a capability verdict: (a) the container had
+**no configured group** (its SVI write used the deprecated `vrrp 1 ip …` spelling the same image refuses,
+so nothing existed to report); (b) a **read-too-soon** immediately after commit — VRRP needs an
+initialisation window before the model populates, and a single post-commit read saw the empty pre-init
+state; (c) the **missing `enable` prefix** on the raw read path. `show vrrp detail` is a genuine negative
+though: refused with code 1002 `Invalid input (at token 2: 'detail')` — the `detail` sibling does not
+exist on this image, only the bare `show vrrp` does. The harness capability-probe note
+(`scripts/ceos-lab.mjs`, `ceos-lab-capability` row) is corrected in place to say the empty reply was
+unconfigured-because-the-write-was-refused, not a read-capability negative.
+
+**The blast, measured (container-only, DR-043 — none of this settles 7050TX-64 / 4.28.13.1M).**
+`arista-api-client/src/vrrp-failover-two-node.live.test.ts` builds a two-node VRRP pair (A priority 150,
+B priority 100, VIP `10.0.200.254`, vrid 1, preempt both, default 1 s advertisement timers), confirms the
+pair forms (A MASTER / B BACKUP within ~66–68 ms of the read settling), then disables the group on the
+master (`interface Vlan200` + `vrrp 1 disabled`, committed) and polls the backup's state. **B promoted to
+MASTER 70 ms after the disable committed** (A left MASTER at 72 ms) — an **immediate release**, not a
+`master_down`-interval expiry: a disabled master sends a priority-0 / leaves the group rather than going
+silent and waiting out the ~3.4 s `masterDownInterval` the entries report (A 3410 ms, B 3600 ms).
+Re-enabling (`no vrrp 1 disabled`) let A **preempt back at 3391 ms** — ≈ the master_down interval at the
+default timers (the backup holds master until the higher-priority master's next advertisement beats its
+skew timer), and B yielded at 102 ms after that. A manual bench on the same shape earlier measured
+158 ms / 3563 ms, so the order of magnitude reproduces. Net-zero: both nodes' runtime models return to
+the provisioning shape (A prio 150 preempt true MASTER, B prio 100 preempt true BACKUP) and only the
+lane's own `vrrp-blast*` config sessions are gone. Artifact `docs/evidence/vrrp-failover-two-node.ceos.json`.
+
+**Harness root cause — deterministic NIC binding (this is the load-bearing change).** cEOS maps EOS
+`Management1` → kernel `eth0` and `EthernetN` → kernel `ethN`, but Docker's kernel-index assignment for a
+container's endpoints is **neither attach-order nor reliably mgmt-first**, so a positional
+`frontPanels[N]` aimed at a specific front-panel port could land on Management1 or a data NIC. Two
+topologies scrambled on this host: a 5-NIC shape bound mgmt as `Ethernet4` and consumed a data NIC
+internally; even the 4-NIC shape put mgmt on `Ethernet2` (into Po1) and dropped the peer NIC on
+`Ethernet1`, where the primary's bpduguard err-disabled it. Fix: pin the container-side interface name at
+endpoint creation with `--driver-opt com.docker.network.endpoint.ifname=ethN` (create-time form
+`--network=name=<net>,ip=<ip>,driver-opt=com.docker.network.endpoint.ifname=eth0` — the `name=` key is
+required when combining with `ip=`/`driver-opt=`). Management1 always lands on `eth0`, each data/peer
+bridge on its own `ethN`. **This fixes a latent bug in the merged #154 OSPF two-node lane**, which only
+ever passed on lucky index draws. Verified: pinned endpoint MACs match the intended `eth0/eth1/eth2`, and
+a plain `--nodes 2` (no `--vrrp`) re-run formed the OSPF adjacency and passed all four functional tests.
+
+**Design choice — `--vrrp` reuses the peer wire.** A shared-L2 VRRP segment needs both nodes on one
+broadcast domain; adding a fifth NIC to carry it re-triggers the binding scramble, so `--vrrp` (requires
+`--nodes 2`) repurposes the existing peer bridge: both peer NICs become Vlan200 access ports (A `.1`/150,
+B `.2`/100, VIP `.254`). The OSPF adjacency does **not** form on this shape (the transit is L2, not the
+routed /30 OSPF expects), so the usage text says run `--nodes 2` *without* `--vrrp` for OSPF. VRRP
+multicast (224.0.0.18) crosses the docker bridge fine (snooping on, querier off) — an earlier "both
+masters" symptom was the wrong-NIC bug, not a bridge limitation.
+
+**EOS running-config storage facts (drove the net-zero assertions).** EOS reorders the VRRP stanza lines
+(`priority-level` before `ipv4`) and does **not** store default-valued lines — B's `priority-level 100`
+and both nodes' `preempt` never appear in `show running-config`. So the net-zero check asserts
+priority/preempt/state on the **runtime `show vrrp` model**, not on running-config text, and filters
+config sessions by the lane's own `vrrp-blast*` names rather than a blanket `pending|open|committed`
+match (which would catch the harness's deliberately-open `lab-pending-capture`).
+
+**Pre-existing inconsistency flagged, not fixed (out of scope).** The merged
+`docs/evidence/ospf-two-node.ceos.json` carries **zero** `net-zero` observations despite its file having
+five tests — that lane's net-zero test uses the same blanket session filter and has always matched
+`lab-pending-capture`, so it never reached `observe()`. A fresh `--nodes 2` run on the pinned harness
+reproduces it: the four functional OSPF tests pass (adjacency, peer route, blast route, blast adjacency)
+and only the net-zero assertion fails on `lab-pending-capture` being `pending`. The VRRP lane's
+name-scoped filter is the correct pattern; the OSPF lane should adopt it in a follow-up.
+
+**What this does NOT close:** the 7050TX-64 / 4.28.13.1M halves stay operator-gated — the hardware VRRP
+failover timing, whether a hardware master's `disabled` also releases immediately vs. waiting out
+master_down, and `show vrrp detail`'s absence being container-specific are all still device questions;
+they are recorded as **Open item 11** of this file's device list (the #14 hardware-sweep path, like
+DR-155's hardware halves — deliberately NOT #89, which tracks the session-grammar items). No
+`arista-api-client` source change (the read path already sends `enable`; the client's VRRP
+guards are unchanged). **Related:** DR-122 (the `show vrrp` capability-negative this corrects); DR-116–121
+(the vrrp module this exercises); DR-135 (the hardware VRRP modern-arm staging this does not repeat);
+DR-155 (the sibling container-answers-a-hardware-question pattern); DR-043 (every claim container-scoped);
+DR-103/DR-104 (the harness write/redaction machinery reused); #154 (the OSPF two-node lane whose latent
+NIC-binding bug this fixes); #87 (blast item 1 — this lands its container half; the hardware half is
+Open item 11 below).
+
 ## Open items (need the device)
 
 Use cEOS first for software behavior and schema exploration, recording its model/version;
@@ -3574,3 +3658,12 @@ validation still needs a second physical device; do not mark it verified from co
     in cEOS), and which keys and transport spellings does it actually carry? DR-045's report and DR-046's alias
     table were written against this machine's `configparser` and pyeapi's fixtures — capture the device file in
     M12 (#14) and diff both against the image's own Python before claiming parity for hand-edited device files.
+
+11. **VRRP failover timing on the 7050TX-64** (DR-157): the container half is measured
+    (`docs/evidence/vrrp-failover-two-node.ceos.json` — backup promoted 70 ms after the master disabled its
+    group, an immediate release rather than a `master_down` expiry; preempt-back 3391 ms ≈ the master_down
+    interval at default 1 s timers). The hardware halves stay open behind the operator fence and are **not
+    read-only** (they commit a `vrrp 1 disabled` blast on a live gateway): whether a hardware master's
+    `disabled` also releases immediately, this unit's promote/preempt timings, and whether `show vrrp detail`
+    (a real 1002 on cEOS) exists on 4.28.13.1M. Until captured, the webui blast copy cites the container
+    numbers as container evidence only (DR-043).
