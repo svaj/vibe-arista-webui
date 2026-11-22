@@ -9,6 +9,32 @@ surprise here — this file records what shipped, the migration map records what
 
 ## [Unreleased]
 
+### Evidence — run 11 executes round 3: five for five STAGE-ACCEPTED on the physical box; the scrub human-step ends in code (2026-11-22; DR-159, §5 row 245, STATUS run-11 blockquote)
+- **`capture-unblock-hw.sh --spec3 --scratch Ethernet33` ran on the 7050TX-64-R — all five round-3
+  batches STAGE-ACCEPTED, zero refusals, all aborted net-zero** (`incomplete: []`, `sessions: {}`
+  post-states; recordings `configure-session-unblock3-*`): `spanning-tree mode rapid-pvst` (the
+  session diff shows the mode swap — the unit does NOT refuse it, retiring DR-151's
+  container-only-acceptance half; the COMMITTED flip stays a cEOS measurement, DR-148); the
+  MST-region removal spellings `no instance 1` / quad / `no name`+`no revision` (each add+remove
+  pair nets an EMPTY session diff — the positive answer; DR-155 hardware-confirmed); and
+  `interface Ethernet33.100` + a `description` child staged FULL — **open item 7's subinterface
+  half ANSWERED** (widening `assertInterfaceName` stays M10's decision on this truth). The webui
+  STP disclosures (`stp-global-rules.ts`, `StpGlobalView.tsx`) moved to the
+  stage-accepted-here/committed-container-only split in the same PR.
+- **The third scrub regression, and the class-ender:** the run was invoked without `--scrub` and
+  the lanes only warn — the dialed host and the device's self-reported hostname entered all 58
+  touched recordings (hand re-scrub restored the census to zero). Now `hwDerivedSecrets`
+  (`src/testing/hw-capture.ts`) auto-scrubs the dialed host + reported hostname in BOTH hardware
+  lanes — those literals are never `--scrub` optional — `scan_scrub()` in
+  `scripts/capture-unblock-hw.sh` hard-fails a run whose recordings still contain the dialed host,
+  and `hw-capture.test.ts` gained 3 pins.
+- **Inventory:** 53 refreshes committed as current-day evidence — passive drift only (counters;
+  uptime-clock-relative timestamps shifted by exactly the 44 508 s uptime delta, so
+  `lastTopologyChangeTime` re-expresses the SAME event: no new topology change). Observation
+  (mechanism unproven): the one-slot completed-session store, holding
+  `ui-127-0-0-1-e2e76c64` since 2026-11-06, read EMPTY in both forms this day — no reboot, no
+  commit, no persistence verb.
+
 ### Evidence — run 10: `configure replace` ACCEPTED on the physical box; the completed-session slot does not survive it; round-3 probe spec drafted (2026-11-22; DR-158, §5 row 244, STATUS run-10 blockquote)
 - **`capture-hw-persistence.sh --verbs copy,rollback,replace` ran GREEN on the 7050TX-64-R**
   (`docs/evidence/persistence-hardware.json`, DR-149's typed-consent chain): `configure replace

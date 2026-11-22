@@ -94,7 +94,7 @@ export interface StpGlobalViewProps {
 const MODE_OPTION_COPY: Readonly<Record<StpGlobalModeChoice, string>> = {
   'mstp': 'mstp — Multiple Spanning Tree (this unit boots this way; hardware-verified)',
   'none': 'none — disables spanning-tree on every port (hardware stage-verified; loop protection gone)',
-  'rapid-pvst': 'rapid-pvst — Rapid per-VLAN STP (acceptance proven on cEOS-lab only — may be refused)',
+  'rapid-pvst': 'rapid-pvst — Rapid per-VLAN STP (stage-accepted on this unit, DR-159; committed behavior measured on cEOS-lab only)',
 }
 
 export function StpGlobalView(props: StpGlobalViewProps): ReactElement {
@@ -288,8 +288,8 @@ export function StpGlobalView(props: StpGlobalViewProps): ReactElement {
         {removeInstanceIds.length > 0 && (
           <p className="notice" role="status">
             Marked for removal: {removeInstanceIds.map((id) => <code key={id}>{`no instance ${id}`}</code>)}{' '}
-            — staged as the bare <code>no instance &lt;id&gt;</code> line (cEOS grammar capture rea-q2;
-            container evidence, not this unit — DR-043).
+            — staged as the bare <code>no instance &lt;id&gt;</code> line (hardware capture
+            2026-11-22, DR-159; first proven on the cEOS grammar lane, rea-q2).
           </p>
         )}
         <p className="field-note">

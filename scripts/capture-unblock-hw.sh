@@ -183,6 +183,46 @@ fi
 
 guard_nothing_recorded   # both lanes skip with exit 0 -- this is the step that turns a silent skip into a failure
 
+# Post-run scrub scan (2026-11-22, DR-159): the 2026-11-22 day committed 58 recordings carrying the
+# dialed host and the device hostname because --scrub was skipped and the lanes only WARNED. The
+# lanes now scrub those two derived literals unconditionally (hwDerivedSecrets), so the dialed host
+# surviving into a changed file means the defense itself broke -> hard fail. Any OTHER RFC1918
+# literal that is NEW relative to HEAD's copy of the same file is the operator-literal gap
+# (gateway/DNS/other hosts) -> loud warning with the file list, never a silent pass.
+scan_scrub() {
+  local changed f hits newlits
+  changed=$(git status --porcelain "$RECORDINGS_DIR" | awk '{print $2}')
+  [ -z "$changed" ] && return 0
+  hits=""
+  for f in $changed; do
+    [ -f "$f" ] || continue
+    # (the executing path guarantees HOST is non-empty; the -n guard keeps the function safe standalone)
+    if [ -n "$HOST" ] && grep -qF "$HOST" "$f"; then hits="$hits $f"; fi
+  done
+  if [ -n "$hits" ]; then
+    echo "FATAL: the dialed host $HOST survived into:$hits" >&2
+    echo "       -- the derived scrub (hwDerivedSecrets) did NOT fire. Do not commit; re-scrub by hand" >&2
+    echo "          (sed 's/<host>/<hw-redacted>/g') and open an issue against the lane." >&2
+    exit 1
+  fi
+  newlits=""
+  for f in $changed; do
+    [ -f "$f" ] || continue
+    # RFC1918 literals present now but absent from HEAD's copy of the same file (new files: all).
+    local now head
+    now=$(grep -oE '\b(10\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}|172\.(1[6-9]|2[0-9]|3[01])\.[0-9]{1,3}\.[0-9]{1,3}|192\.168\.[0-9]{1,3}\.[0-9]{1,3})\b' "$f" | sort -u)
+    head=$(git show "HEAD:$f" 2>/dev/null | grep -oE '\b(10\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}|172\.(1[6-9]|2[0-9]|3[01])\.[0-9]{1,3}\.[0-9]{1,3}|192\.168\.[0-9]{1,3}\.[0-9]{1,3})\b' | sort -u)
+    newlits_now=$(comm -23 <(echo "$now") <(echo "$head") | tr '\n' ' ')
+    [ -n "${newlits_now// /}" ] && newlits="$newlits\n  $f: $newlits_now"
+  done
+  if [ -n "$newlits" ]; then
+    echo "WARNING: NEW RFC1918 literals appeared in this run's recordings (gateway/DNS/other-host" >&2
+    echo "         gap -- EAPI_HW_SCRUB/--scrub must name them; re-scrub before committing):" >&2
+    printf "%b\n" "$newlits" >&2
+  fi
+}
+scan_scrub
+
 echo "== done. Review 'git status' under $RECORDINGS_DIR =="
 echo "   1) confirm each NEW file has an identity envelope matching this box,"
 echo "   2) check the stage-then-abort diff recordings show the staged grammar + 'aborted',"

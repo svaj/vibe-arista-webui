@@ -12,7 +12,7 @@
   },
   "captures": [
     {
-      "requestId": "427a2ccf2d41-1",
+      "requestId": "d2e91c960876-1",
       "commands": [
         "enable",
         "show interfaces trunk"

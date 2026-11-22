@@ -185,6 +185,25 @@ export function hwDeviceIdentity(reported: { version: string; modelName: string 
   }
 }
 
+/**
+ * The identifying literals a hardware lane knows WITHOUT operator input — the two that broke on the
+ * 2026-11-22 capture day when the operator ran the runner without `--scrub` and the lanes' warning
+ * went unread: the dialed management address rode every recording's identity `endpoint`, and the
+ * device's self-reported hostname rode the `show version` `! device:` line and the running-config
+ * `hostname` line (79 occurrences across 58 files, all re-scrubbed by hand — the third scrub
+ * regression in three capture days after run 9's and run 10's gateway literals).
+ *
+ * Both lanes merge this into `extraSecrets` unconditionally: `EAPI_HW_SCRUB` stays the operator's
+ * channel for what the lane CANNOT know (gateway, LAN DNS, lab domain, other hosts named in
+ * configs), while the dialed host and the device's own name are never again scrub-optional.
+ * Empty/whitespace inputs drop out; duplicates collapse (the common case is dialing by the same
+ * address the device reports).
+ */
+export function hwDerivedSecrets(opts: { dialedHost: string; reportedHostname?: string | undefined }): string[] {
+  const literals = [opts.dialedHost.trim(), (opts.reportedHostname ?? '').trim()]
+  return [...new Set(literals.filter((literal) => literal !== ''))]
+}
+
 // --- hardware redaction ---------------------------------------------------------------------------------
 
 /** Zero placeholder written for every MAC the scrubber rewrites (the lab lane's existing constant). */

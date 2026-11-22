@@ -12,7 +12,7 @@
   },
   "captures": [
     {
-      "requestId": "770233b90ac9-1",
+      "requestId": "a8621d53d8e1-1",
       "commands": [
         "enable",
         "show environment power"
@@ -23,8 +23,8 @@
         {
           "powerSupplies": {
             "1": {
-              "outputPower": 80.375,
-              "uptime": 1793502108.8744683,
+              "outputPower": 81.875,
+              "uptime": 1793502108.8744695,
               "modelName": "PWR-500AC-R",
               "capacity": 500,
               "tempSensors": {
@@ -44,21 +44,21 @@
                 }
               },
               "state": "ok",
-              "inputCurrent": 0.76953125,
+              "inputCurrent": 0.7890625,
               "dominant": false,
-              "inputVoltage": 120.25,
-              "outputCurrent": 6.703125,
+              "inputVoltage": 118.875,
+              "outputCurrent": 6.8203125,
               "managed": true
             },
             "2": {
-              "outputPower": 85.75,
-              "uptime": 1793503987.4088566,
+              "outputPower": 84.375,
+              "uptime": 1793503987.4088573,
               "modelName": "PWR-500AC-R",
               "capacity": 500,
               "tempSensors": {
                 "TempSensorP2/1": {
                   "status": "ok",
-                  "temperature": 34
+                  "temperature": 33
                 },
                 "TempSensorP2/2": {
                   "status": "ok",
@@ -72,10 +72,10 @@
                 }
               },
               "state": "ok",
-              "inputCurrent": 0.806640625,
+              "inputCurrent": 0.814453125,
               "dominant": false,
-              "inputVoltage": 120.25,
-              "outputCurrent": 7.03125,
+              "inputVoltage": 118.75,
+              "outputCurrent": 7.09375,
               "managed": true
             }
           }

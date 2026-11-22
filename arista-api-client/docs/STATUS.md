@@ -406,6 +406,32 @@ source (pyeapi 1.0.4-rc0).
 > MST-region removal spellings, `interface {{SCRATCH}}.100` (open item 7). The #159 CORS capture
 > was deliberately skipped — DR-149 settled that outcome; it is pure evidence and gates nothing.
 
+> **2026-11-22, run 11 — round 3 EXECUTED: five for five on the box (DR-159).**
+> `capture-unblock-hw.sh --spec3 --scratch Ethernet33`, ~12 h after run 10's inventory refresh
+> (uptime runs continuous 1 824 506 s → 1 869 014 s, no reboot). **All five batches STAGE-ACCEPTED, zero
+> refusals, all aborted net-zero** (`incomplete: []`, post-state `sessions: {}` everywhere):
+> `spanning-tree mode rapid-pvst` (session diff `-spanning-tree mode mstp` / `+… rapid-pvst` — the
+> unit does NOT refuse the line, retiring DR-151's container-only-acceptance half; the COMMITTED
+> flip stays a cEOS measurement, DR-148/DR-043); the MST-region removal spellings `no instance 1`,
+> quad `no instance 1 vlan 100,110`, and `no name`+`no revision` (each add+remove pair nets an
+> EMPTY session diff — the positive answer shape; DR-155's bare-removal disclosure is now
+> hardware-confirmed); and `interface Ethernet33.100` + a `description` child staged FULL —
+> **open item 7's subinterface half is ANSWERED** (the context exists on 4.28.13.1M; widening
+> `assertInterfaceName` remains M10's decision on this truth). The webui STP disclosures
+> (`stp-global-rules.ts`) were rewritten to the stage-accepted/committed split the same day.
+> **Scrub incident #3:** the run was invoked without `--scrub`, and the lanes only warn — the
+> dialed host and the device's own hostname entered all 58 touched recordings (HEAD had zero of
+> either). Hand re-scrub restored the census to zero; the class is then ENDED in code:
+> `hwDerivedSecrets` auto-scrubs the dialed host + reported hostname in both hardware lanes (never
+> `--scrub` optional), `scan_scrub()` hard-fails the script when the dialed host survives, +3 unit
+> pins. Observation (no conclusion): the one-slot completed store — `ui-127-0-0-1-e2e76c64` since
+> 2026-11-06 — read EMPTY in both session-list forms this day with no reboot, no commit, and no
+> persistence verb run; DR-158's replace window remains the leading candidate, unproven.
+> 53 inventory refreshes committed as current-day evidence: passive drift only (counters, and
+> uptime-clock-relative timestamps shifted by exactly the 44 508 s uptime delta —
+> `lastTopologyChangeTime` moved 688 467 → 732 975, the SAME event re-expressed, so no new
+> topology change).
+
 Run the software/schema subset against cEOS first and store captures under
 `test/fixtures/recordings/ceos-4.28.14M/`; repeat target-sensitive checks on the
 7050TX-64 under `recordings/7050tx-64-4.28.13.1M/`. Keep exact version/model metadata,

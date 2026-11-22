@@ -1,0 +1,100 @@
+{
+  "format": "arista-eapi-recording/v1",
+  "identity": {
+    "targetSlug": "7050tx-64-r-4.28.13.1M",
+    "targetClass": "hardware",
+    "modelName": "DCS-7050TX-64-R",
+    "aristaVersion": "4.28.13.1M",
+    "versionNumber": "4.28.13.1",
+    "provenance": "captured",
+    "endpoint": "https://<hw-redacted>:443/command-api",
+    "topology": "supervised session; scratch=Ethernet33"
+  },
+  "captures": [
+    {
+      "requestId": "e66c7def5881-1",
+      "commands": [
+        "enable",
+        "configure session hw-probe-unblock3-stp-mst-remove-quad description \"does the QUAD `no instance <id> vlan <ranges>` removal s\"",
+        "spanning-tree mst configuration",
+        "   instance 1 vlan 100,110",
+        "   no instance 1 vlan 100,110"
+      ],
+      "format": "json",
+      "result": [
+        {},
+        {},
+        {},
+        {},
+        {}
+      ]
+    },
+    {
+      "requestId": "e66c7def5881-2",
+      "commands": [
+        "enable",
+        "configure session hw-probe-unblock3-stp-mst-remove-quad description \"does the QUAD `no instance <id> vlan <ranges>` removal s\"",
+        "show session-config diffs"
+      ],
+      "format": "text",
+      "result": [
+        {
+          "output": ""
+        },
+        {
+          "output": ""
+        },
+        {
+          "output": ""
+        }
+      ]
+    },
+    {
+      "requestId": "e66c7def5881-3",
+      "commands": [
+        "enable",
+        "configure session hw-probe-unblock3-stp-mst-remove-quad description \"does the QUAD `no instance <id> vlan <ranges>` removal s\"",
+        "abort"
+      ],
+      "format": "json",
+      "result": [
+        {},
+        {},
+        {}
+      ]
+    },
+    {
+      "requestId": "e66c7def5881-4",
+      "commands": [
+        "enable",
+        "show configuration sessions"
+      ],
+      "format": "json",
+      "result": [
+        {},
+        {
+          "maxSavedSessions": 1,
+          "maxOpenSessions": 5,
+          "sessions": {}
+        }
+      ]
+    },
+    {
+      "requestId": "e66c7def5881-5",
+      "commands": [
+        "enable",
+        "show configuration sessions detail"
+      ],
+      "format": "json",
+      "result": [
+        {},
+        {
+          "maxSavedSessions": 1,
+          "maxOpenSessions": 5,
+          "sessions": {}
+        }
+      ]
+    }
+  ],
+  "incomplete": []
+}

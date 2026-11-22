@@ -76,7 +76,7 @@ import type { ConfigSession } from './config-session'
 import { buildRecording, createRecorder } from './testing/recording'
 import { writeRecording } from './testing/recorder-node'
 import { describeLiveTarget, liveTransportOptions, matchesDeviceIdentity, requireScratchInterface, resolveLiveEnv, unwrapLiveTarget, type LiveTarget } from './testing/live-guard'
-import { hwDeviceIdentity, hwProbeCaseName, hwProbePendingRevertSessions, hwProbeRetrySessionName, hwProbeRunTag, hwProbeSessionName, hwProbeTimerWaitMs, hwReadBackOutput, hwScratchReadBackCommand, parseHwProbeSpec, resolveHwScratchToken, sanitizeHwRecording, selectHwProbeBatches, type HwProbeBatch } from './testing/hw-capture'
+import { hwDerivedSecrets, hwDeviceIdentity, hwProbeCaseName, hwProbePendingRevertSessions, hwProbeRetrySessionName, hwProbeRunTag, hwProbeSessionName, hwProbeTimerWaitMs, hwReadBackOutput, hwScratchReadBackCommand, parseHwProbeSpec, resolveHwScratchToken, sanitizeHwRecording, selectHwProbeBatches, type HwProbeBatch } from './testing/hw-capture'
 import type { VersionProperties } from './command-layer'
 
 const resolution = resolveLiveEnv(process.env)
@@ -107,6 +107,8 @@ describe.skipIf(!runnable)('hardware session probes: named config sessions on th
   let reported: VersionProperties
   let scratch: string | undefined
   let batches: readonly HwProbeBatch[] = []
+  // Operator literals + the derived ones assembled in beforeAll (see hwDerivedSecrets).
+  let scrub: string[] = extraSecrets()
 
   beforeAll(async () => {
     target = unwrapLiveTarget(resolution)
@@ -135,6 +137,12 @@ describe.skipIf(!runnable)('hardware session probes: named config sessions on th
     reported = await probeNode.getVersion()
     const identityMismatch = matchesDeviceIdentity(target, { version: reported.version, modelName: reported.modelName })
     if (identityMismatch !== undefined) throw new Error(`hw-session-probe: refusing to write anywhere — ${identityMismatch.reason}`)
+    // Derived scrub literals (dialed host + device hostname) join the operator list unconditionally —
+    // the 2026-11-22 day leaked 79 hostname/address occurrences when --scrub was skipped (see
+    // hwDerivedSecrets in testing/hw-capture.ts). The device hostname comes from a read-only
+    // running-config; a read failure degrades to host-only, never blocks the run.
+    const deviceName = await probeNode.system.get().then((s) => s.hostname).catch(() => '')
+    scrub = [...extraSecrets(), ...hwDerivedSecrets({ dialedHost: target.host, reportedHostname: deviceName })]
   })
 
   // The live project's 60 s default cannot hold a batch that deliberately sits out an armed revert timer
@@ -148,7 +156,6 @@ describe.skipIf(!runnable)('hardware session probes: named config sessions on th
   it('runs each reviewed batch in a named session and records the diff before commit/abort', async () => {
     expect(batches.length).toBeGreaterThan(0)
     const identity = hwDeviceIdentity({ version: reported.version, modelName: reported.modelName }, { topology: `supervised session; scratch=${scratch ?? 'none'}` })
-    const scrub = extraSecrets()
     const enablePassword = process.env['EAPI_ENABLE_PASS']
     let committedBatches = 0
     let negatives = 0

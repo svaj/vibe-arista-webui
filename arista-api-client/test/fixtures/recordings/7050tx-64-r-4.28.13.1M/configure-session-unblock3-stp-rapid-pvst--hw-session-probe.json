@@ -1,0 +1,96 @@
+{
+  "format": "arista-eapi-recording/v1",
+  "identity": {
+    "targetSlug": "7050tx-64-r-4.28.13.1M",
+    "targetClass": "hardware",
+    "modelName": "DCS-7050TX-64-R",
+    "aristaVersion": "4.28.13.1M",
+    "versionNumber": "4.28.13.1",
+    "provenance": "captured",
+    "endpoint": "https://<hw-redacted>:443/command-api",
+    "topology": "supervised session; scratch=Ethernet33"
+  },
+  "captures": [
+    {
+      "requestId": "813173949185-1",
+      "commands": [
+        "enable",
+        "configure session hw-probe-unblock3-stp-rapid-pvst description \"does 4.28.13.1M accept `spanning-tree mode rapid-pvst` S\"",
+        "spanning-tree mode rapid-pvst"
+      ],
+      "format": "json",
+      "result": [
+        {},
+        {},
+        {}
+      ]
+    },
+    {
+      "requestId": "813173949185-2",
+      "commands": [
+        "enable",
+        "configure session hw-probe-unblock3-stp-rapid-pvst description \"does 4.28.13.1M accept `spanning-tree mode rapid-pvst` S\"",
+        "show session-config diffs"
+      ],
+      "format": "text",
+      "result": [
+        {
+          "output": ""
+        },
+        {
+          "output": ""
+        },
+        {
+          "output": "--- system:/running-config\n+++ session:/hw-probe-unblock3-stp-rapid-pvst-session-config\n@@ -18,7 +18,7 @@\n ip name-server vrf default 8.8.8.8\n ip name-server vrf default <hw-redacted>\n !\n-spanning-tree mode mstp\n+spanning-tree mode rapid-pvst\n !\n environment fan-speed override 30\n !\n"
+        }
+      ]
+    },
+    {
+      "requestId": "813173949185-3",
+      "commands": [
+        "enable",
+        "configure session hw-probe-unblock3-stp-rapid-pvst description \"does 4.28.13.1M accept `spanning-tree mode rapid-pvst` S\"",
+        "abort"
+      ],
+      "format": "json",
+      "result": [
+        {},
+        {},
+        {}
+      ]
+    },
+    {
+      "requestId": "813173949185-4",
+      "commands": [
+        "enable",
+        "show configuration sessions"
+      ],
+      "format": "json",
+      "result": [
+        {},
+        {
+          "maxSavedSessions": 1,
+          "maxOpenSessions": 5,
+          "sessions": {}
+        }
+      ]
+    },
+    {
+      "requestId": "813173949185-5",
+      "commands": [
+        "enable",
+        "show configuration sessions detail"
+      ],
+      "format": "json",
+      "result": [
+        {},
+        {
+          "maxSavedSessions": 1,
+          "maxOpenSessions": 5,
+          "sessions": {}
+        }
+      ]
+    }
+  ],
+  "incomplete": []
+}

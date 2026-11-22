@@ -12,7 +12,7 @@
   },
   "captures": [
     {
-      "requestId": "4d7ae7e04895-1",
+      "requestId": "fc07c8d6edbd-1",
       "commands": [
         "enable",
         "show environment cooling"

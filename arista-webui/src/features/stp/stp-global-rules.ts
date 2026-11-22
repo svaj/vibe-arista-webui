@@ -11,11 +11,13 @@
  *
  * - `spanning-tree mode mstp` / `spanning-tree mode none` — hardware: boot mode is `mstp`
  *   (hw captures, DR-096 note); `none` staged FULL on the 7050TX-64-R (DR-141 round 2, run 9).
- * - `spanning-tree mode rapid-pvst` — cEOS-lab 4.28.14M ONLY: the committed flip + reverse
- *   (`docs/evidence/stp-mode-change.ceos.json`, DR-148). OFFERED with a mandatory in-form
- *   disclosure that acceptance is not proven on this unit; a device refusal is the fallback
- *   (DR-057). The camelCase `rapidPvst` belongs to `show` JSON only — the CONFIG line is
- *   hyphenated, as the capture sent it.
+ * - `spanning-tree mode rapid-pvst` — STAGE-ACCEPTED on the 7050TX-64-R (2026-11-22 capture
+ *   day, batch `unblock3-stp-rapid-pvst`, DR-159: the diff showed `-spanning-tree mode mstp` /
+ *   `+spanning-tree mode rapid-pvst`, aborted, nothing committed). The COMMITTED flip + reverse
+ *   stays a cEOS-lab 4.28.14M measurement (`docs/evidence/stp-mode-change.ceos.json`, DR-148);
+ *   the mandatory in-form disclosure ({@link stpRapidPvstDisclosure}) carries that split. The
+ *   camelCase `rapidPvst` belongs to `show` JSON only — the CONFIG line is hyphenated, as the
+ *   capture sent it.
  * - `spanning-tree mst configuration` + `name …` + `revision …` + `instance … vlan …` —
  *   hardware: batch `unblock-stp-mst-region-grammar`
  *   (`arista-api-client/docs/hw-capture-unblock.draft.json`) staged the exact shape
@@ -26,13 +28,14 @@
  *   authority on what the block keeps.
  *
  * - `no instance <id>` / `no instance <id> vlan <ranges>` / `no name` / `no revision` —
- *   cEOS-lab 4.28.14M: `docs/evidence/unblock-grammar-ceos.json` (batch rea-q1..q4, all staged
- *   and ABORTED; the session diffs show the add+remove pair netting the mapping OUT of the block,
- *   and `no name`/`no revision` each removing exactly their field). The screen stages the BARE
- *   `no instance <id>` — the capture showed both spellings stage identically, and the bare form
- *   cannot misquote the device's own VLAN-list spacing (it normalizes `vlan 100,110` to
- *   `vlan  100,110` in stored config — see {@link parseStpRegionSection}). Container evidence,
- *   not this unit (DR-043); the device diff stays the authority.
+ *   first on cEOS-lab 4.28.14M (`docs/evidence/unblock-grammar-ceos.json`, batch rea-q1..q4),
+ *   then HARDWARE-CONFIRMED on the 7050TX-64-R (2026-11-22, batches `unblock3-stp-mst-remove-
+ *   bare`/`-quad`/`unblock3-stp-mst-no-name-revision`, DR-159): all three shapes stage on this
+ *   unit, and the add+remove pair nets to an EMPTY session diff — the device accepted both
+ *   halves and the block came back unchanged. The screen stages the BARE `no instance <id>` —
+ *   both captures showed the spellings stage identically, and the bare form cannot misquote the
+ *   device's own VLAN-list spacing (it normalizes `vlan 100,110` to `vlan  100,110` in stored
+ *   config — see {@link parseStpRegionSection}). The device diff stays the authority.
  *
  * ## What stays closed (the spec's Out of scope)
  *
@@ -53,8 +56,9 @@ export function isStpGlobalModeChoice(value: string): value is StpGlobalModeChoi
 /**
  * The mode-change line — spelling pinned to the committed cEOS flip
  * (`stp-mode-change.ceos.json`: `spanning-tree mode rapid-pvst`) and the hardware stage-abort of
- * `spanning-tree mode none` (DR-141 round 2). `rapid-pvst` is offered ONLY with its disclosure
- * ({@link stpRapidPvstDisclosure}); acceptance on the 7050TX-64-R is UNVERIFIED.
+ * `spanning-tree mode none` (DR-141 round 2). `rapid-pvst` is stage-accepted on this unit
+ * (DR-159) but offered ONLY with its disclosure ({@link stpRapidPvstDisclosure}) — the COMMITTED
+ * behavior is still the container measurement.
  */
 export function stpModeLine(mode: StpGlobalModeChoice): string {
   return `spanning-tree mode ${mode}`
@@ -223,9 +227,13 @@ export const STP_MODE_BLAST_FACTS =
 export const STP_MODE_NONE_FACTS =
   'Disables spanning-tree on every port. Loop protection is gone network-wide until a mode is set again. Not measured on any target.'
 
-/** The mandatory `rapid-pvst` disclosure (owner decision 2026-11-21: offered, disclosed, device-refusal fallback). */
+/**
+ * The mandatory `rapid-pvst` disclosure (owner decision 2026-11-21: offered, disclosed). The
+ * 2026-11-22 capture day (DR-159) moved the first half to hardware fact — the unit STAGE-ACCEPTS
+ * the line — so the residual uncertainty is the COMMITTED behavior, still container-only.
+ */
 export function stpRapidPvstDisclosure(): string {
-  return 'Acceptance of `rapid-pvst` is proven on cEOS-lab 4.28.14M only (the committed flip, DR-148) — this unit may refuse it. A refusal changes nothing.'
+  return '`rapid-pvst` is STAGE-ACCEPTED on this 7050TX-64-R (2026-11-22 capture day, DR-159 — the session diff showed the mode swap, aborted, nothing committed). The committed flip is measured on cEOS-lab 4.28.14M only (DR-148); its blast numbers stay a container proxy (DR-043).'
 }
 
 /** Region name/revision: the IEEE 802.1s forced-reconvergence sentence, marked not-measured-here. */
@@ -242,7 +250,7 @@ export const STP_REGION_INSTANCE_RISK =
  * fallback itself is NOT measured anywhere, so the copy says what the diff showed and no more.
  */
 export const STP_REGION_REMOVAL_FACT =
-  'Removes the `instance … vlan …` mapping line for that instance (the bare `no instance <id>` spelling staged on cEOS-lab 4.28.14M and netted the line out of the block — container evidence, not this unit, DR-043). The VLANs it named fall back to the default instance; that fallback is not measured on any target.'
+  'Removes the `instance … vlan …` mapping line for that instance (the bare `no instance <id>` spelling staged on this 7050TX-64-R on 2026-11-22 and netted the line out of the block — DR-159; first proven on cEOS-lab 4.28.14M). The VLANs it named fall back to the default instance; that fallback is not measured on any target.'
 
 /** The DR-149 informational note — a NOTE, not a gate: no hygiene check is required or offered. */
 export const STP_FAR_END_NOTE =
