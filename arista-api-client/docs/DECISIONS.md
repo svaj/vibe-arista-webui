@@ -3601,6 +3601,56 @@ invented tokens); DR-043 (stage-accept here ≠ committed behavior anywhere; con
 container-scoped); DR-043's scrub sibling — the run-9/run-10 `--scrub` lessons this finally
 mechanizes; open item 7 (subinterface half answered); #88, #89.
 
+### DR-160 — the B4 (transaction persistence) product decisions are recorded: the Transaction Center gains ONE explicit Save-to-startup action (option B); `configure replace` stays a scripted operator act with no UI; rollback ships only after a `rollback <name>` hardware capture; commit timers stay surfacing-only; the session-name cap moves 64 → 256 and becomes configurable
+
+The five owner decisions `docs/SPEC-transaction-persistence.md` (PR #180) surfaced were answered
+on 2026-11-23 (owner, recorded verbatim in the #89 thread). These are **product-scope** decisions
+on captured evidence — DR-149 authorized the physical verbs, DR-150/DR-158 captured them; what was
+missing was what the UI may expose. Recorded answers:
+
+1. **`copy running-config startup-config` → option B.** The Transaction Center gains an explicit,
+   separate **"Save to startup"** action, distinct from commit, behind its own F4 confirm whose copy
+   quotes that it persists the **whole running-config** (not just the staged transaction) to flash.
+   DR-024 stays the spine: durability remains always-explicit — the confirm must never be phrased as
+   completing a commit, and commit copy keeps saying "Startup-config was not changed." The
+   `DRAFT_FORBIDDEN_LINES` entry for `copy running-config startup-config` stays: the action is a
+   first-class button that calls the client verb (`copyRunningToStartup`/`writeMemory`) directly,
+   NOT a draft-texture line — the textarea guard's job (nothing persistence-shaped smuggled into a
+   reviewed batch) is unchanged.
+2. **`configure replace` → no UI.** Deliberate product exclude, not a capture gap (the hardware
+   answer is ACCEPTED, DR-158 — the verb stays available as the scripted, consent-gated capture-lane
+   operator act it is today). `session-rules.ts` keeps its fence line, but the rationale is amended
+   from "needs per-platform captures before any UI may reach for it" (stale — the capture exists) to
+   "decided product exclude (this entry): wholesale replace stays a scripted operator act."
+3. **Rollback → wanted, gated on capture.** The owner wants `rollbackToSession(name)` ("rollback to
+   a named session") supported. Blocked on the S1 capture in `docs/SPEC-transaction-persistence.md`:
+   `rollback <name>` has never been staged on hardware and the one-slot completed store is
+   demonstrated to empty between supervised days (DR-159) — a UI offering a rollback target it
+   cannot promise exists is dishonest-by-default. S1 is scripted and reviewable (persistence-lane
+   addition); the UI slice (S4) waits for its verdict.
+4. **Commit timers → surfacing-only (as recommended).** The Transaction Center keeps the
+   `pendingCommitTimer` row + abort-with-revert exit (PR #166). No create/edit timer control until
+   the `commit <intf> verify`/`revert <intf>` confirm-or-reset arm is captured (unreachable on the
+   container, un-composed by design — open item 5's surviving half).
+5. **Session-name cap → 64 → 256, configurable.** The device accepts 8192 (container grammar,
+   DR-156; hardware half un-captured but the client bound is ours, not the device's).
+   `MAX_SESSION_NAME_LENGTH` moves to 256 and becomes a configurable option (client-side setting
+   with a default, not a hard constant) — the 64 existed for `show configuration sessions`
+   readability and the one-slot ergonomics, not device limits. Follow-through owned by
+   arista-api-client: the constant, its refusal message, the webui mirror in
+   `capability-panel.ts` (the 64-char question-set-name note), and the tests pinning the bound.
+
+**What this unlocks immediately:** S2 (the Save-to-startup action) — spec'd in
+`docs/SPEC-transaction-persistence.md`, evidence-complete, no open device question.
+**What stays gated:** S1→S4 (the rollback chain), timer authoring (decision 4's capture), and the
+DR-147 session-grammar hardware halves (separate risk review; decision 5 deliberately did NOT
+widen to the device's 8192, keeping the configurable cap inside the already-answered envelope).
+
+**Related:** DR-024 (explicit durability — decision 1's shape exists to protect it), DR-050 (commit
+stays the separate confirmed act), DR-137/DR-148 (timer answers), DR-149 (the physical authorization
+these decisions scope the UI for), DR-150/DR-158 (`copy`/replace hardware answers), DR-155/DR-156
+(name grammar; container-scoped), DR-159 (the slot-empties observation gating S4), DR-043; #89.
+
 ## Open items (need the device)
 
 Use cEOS first for software behavior and schema exploration, recording its model/version;
