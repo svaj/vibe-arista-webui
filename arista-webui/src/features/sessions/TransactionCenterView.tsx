@@ -68,6 +68,9 @@ export interface TransactionCenterViewProps {
   readonly onVerifyTextChange: (value: string) => void
   readonly onVerify: () => void
   readonly verifyLabel: string
+  readonly onSaveToStartup: () => void
+  /** Present once a confirmed Save has been verified by the follow-up read (#181). */
+  readonly startupSave?: { lines: number; characters: number }
   readonly verifyEntries?: readonly VerifyEntryView[]
   readonly verifyUnmatched?: number
   readonly verifyFormat?: string
@@ -108,6 +111,8 @@ export function TransactionCenterView({
   onVerifyTextChange,
   onVerify,
   verifyLabel,
+  onSaveToStartup,
+  startupSave,
   verifyEntries,
   verifyUnmatched,
   verifyFormat,
@@ -129,13 +134,12 @@ export function TransactionCenterView({
     {proxyPrompt !== undefined && <div className="notice notice-error" role="alert"><strong>Local proxy is not configured.</strong><p>{proxyPrompt}</p></div>}
 
     <p className="notice notice-warning" role="status">
-      The durable half of the transaction story (#89, B4) stays out: no startup-config writes
-      (DR-024), no <code>configure replace</code>, no rollback verbs, no commit-timer editing. The
-      cEOS-lab timer capture (<code>docs/evidence/commit-timer-persistence.ceos.json</code>) has
-      since landed — its exits are abort-with-revert or letting the timer fire, and the physical
-      persistence verbs still wait on an owner authorization decision — so this screen stays view,
-      staged review, and confirm-gated abort. Persistence/rollback decisions that need per-platform
-      evidence are tracked on #89.
+      Commit writes running-config only (DR-024). The one durability act this screen offers is the
+      separate, confirmed <strong>Save to startup</strong> below (DR-160 §1): it persists the whole
+      running-config, and nothing else here ever touches startup-config. Still out of scope by
+      decision, not by missing evidence: <code>configure replace</code> stays a scripted operator
+      act with no UI (DR-160 §2), rollback waits on the named-session capture (#182, DR-160 §3),
+      and commit timers stay surfacing-only — no create/edit control (DR-160 §4).
     </p>
 
     {state === 'loading' && <p className="notice" role="status">Reading <code>show configuration sessions</code>…</p>}
@@ -180,7 +184,8 @@ export function TransactionCenterView({
         which <code>recoverOrphans()</code> can later find — the acceptance line #79 carries). Lines starting with
         <code>commit</code>, <code>abort</code>, <code>configure session/replace</code>, <code>rollback</code>,
         <code>copy running-config startup-config</code> or <code>reload</code> are refused before any session opens:
-        commit and abort are this panel's confirmed buttons, never smuggled batch text.
+        commit and abort are this panel's confirmed buttons, and saving startup is the separate Save-to-startup
+        panel's confirmed button — none of them is ever smuggled batch text.
       </p>
       <div className="review-actions">
         <button className="primary-button" type="button" onClick={onPreviewDraft} disabled={!canAct || busy || draft?.uncertainReason !== undefined} aria-busy={busy}>{draft === undefined ? 'Open shared session and stage draft' : 'Add draft to transaction'}</button>
@@ -256,7 +261,24 @@ export function TransactionCenterView({
       </div>}
     </section>
 
-    <p className="field-note">Current endpoint: <code>{endpoint === '' ? 'not read' : endpoint}</code>. Out of scope until #89 (B4) lands its captures: startup-config policy toggle, configure replace, rollbacks, commit-timer UX, session-name-limit changes.</p>
+    <section className="panel" aria-labelledby="tx-save-title">
+      <div className="panel-heading">
+        <div><p className="eyebrow">DURABILITY — EXPLICIT ONLY</p><h3 id="tx-save-title">Save to startup</h3></div>
+      </div>
+      <p className="field-note">
+        <code>copy running-config startup-config</code> — the app's only startup-config write (DR-024
+        keeps it always explicit, DR-160 §1). It is a separate act from commit and saves the
+        <em> whole </em>current running-config, including changes this browser never staged. On this
+        EOS build the copy's eAPI reply text is empty, so the action re-reads
+        <code> show startup-config</code> and reports what the flash actually holds.
+      </p>
+      <div className="review-actions">
+        <button className="danger-button" type="button" onClick={onSaveToStartup} disabled={!canAct || busy} aria-busy={busy}>Save to startup</button>
+      </div>
+      {startupSave !== undefined && <p className="notice notice-success" role="status">startup-config verified by read-back after the last confirmed Save: {String(startupSave.lines)} line(s), {String(startupSave.characters)} character(s).</p>}
+    </section>
+
+    <p className="field-note">Current endpoint: <code>{endpoint === '' ? 'not read' : endpoint}</code>. Out of scope by decision (DR-160): configure replace has no UI (§2), rollbacks wait on the S1 capture (#182, §3), commit-timer authoring stays surfacing-only (§4). Session-name limit changes shipped separately (C1, §5).</p>
 
     {notice !== '' && <p className="notice notice-success operation-result" role="status">{notice}</p>}
     {failure !== '' && <div className="notice notice-error operation-result" role="alert"><strong>That did not run.</strong><p>{failure}</p></div>}

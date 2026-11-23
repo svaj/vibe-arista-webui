@@ -24,7 +24,7 @@ export const DRAFT_FORBIDDEN_LINES: Readonly<Record<string, string>> = Object.fr
   commit: 'it commits inside the batch: this screen commits only through its own confirmed button, after the device diff has been READ (DR-050 — a preview that can silently write is the failure mode the whole session pipeline exists to prevent)',
   abort: 'it ends the very session reviewing the change, so diff/commit buttons would act on a dead handle',
   'configure session': 'it switches to a different named session mid-batch — your staged lines, and this screen\'s abort guarantee, would belong to the wrong session',
-  'configure replace': 'wholesale config replacement is a B4 decision (#78/#79 explicit out-of-scope): it needs per-platform captures before any UI may reach for it',
+  'configure replace': 'wholesale config replacement is a decided product exclude (DR-160 §2): the hardware answer is in (ACCEPTED, DR-158) and the owner chose NO UI — it stays a scripted, consent-gated operator act, never batch text',
   rollback: 'rollbacks (clean-config or to-a-session) are B4 out-of-scope pending capture of commit-timer semantics — the center stages, shows, and lets YOU decide',
   'copy running-config startup-config': 'durability is always explicit in this stack (DR-024); this screen writes running-config only and says so',
   reload: 'rebooting is never part of a staged review',

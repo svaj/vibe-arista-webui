@@ -44,8 +44,8 @@ Since this was pulled from a feature list, this needs to be turned into relevant
 - [ ] Event Manager / Event Monitor
 - [ ] Tcpdump sessions
 - [ ] Smart System Upgrade (SSU) — leaf, and spine in maintenance mode
-- [ ] Configure replace *(no UI; the hardware probe lane fences the verb — see docs/CAPTURE-UNBLOCK.md; #89)*
-- [x] Config sessions (incl. merge on commit) *(S9 #79 transaction center; #141 adds one app-wide in-memory session shared across screens, ordered multi-change staging, combined device diff, and central commit/abort; save/rollback half parked at #89)*
+- [ ] Configure replace *(decided product exclude — no UI, DR-160 §2; hardware ACCEPTED it (DR-158) and it stays a scripted, consent-gated operator act; see docs/CAPTURE-UNBLOCK.md; #89)*
+- [x] Config sessions (incl. merge on commit) *(S9 #79 transaction center; #141 adds one app-wide in-memory session shared across screens, ordered multi-change staging, combined device diff, and central commit/abort; #181 adds the explicit confirmed Save-to-startup action (DR-160 §1); rollback half waits on the S1 named-session capture, #182)*
 - [ ] Config versions
 - [ ] Bug Alerts
 
