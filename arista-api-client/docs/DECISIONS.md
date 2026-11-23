@@ -3709,7 +3709,8 @@ abort freed the DR-025 guard first. The port is now genuinely free of any `HW-PE
 broken runs had left behind). **This artifact supersedes run 12 as the trustworthy S1 evidence.** The
 hyphen-free-name disambiguation (does a second 1002 prove `rollback <name>` is unsupported on
 4.28.13.1M, or does an accept localise it to hyphenated names?) is the one remaining device question
-that would settle DR-160 §3's rollback UI (S4) — still an owner run, not executed here.
+that would settle DR-160 §3's rollback UI (S4) — tracked as **#189**, still an owner run, not
+executed here.
 
 **Related:** DR-160 §3 (the rollback product decision this scopes), DR-158 (the confounded slot
 observation this separates), DR-159 (the aging hypothesis refuted), DR-150 (`copy`/`clean-config`
