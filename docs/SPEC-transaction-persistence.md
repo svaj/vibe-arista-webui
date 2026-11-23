@@ -1,16 +1,19 @@
-# Spec (DRAFT): Transaction Persistence & Rollback (B4, #89)
+# Spec: Transaction Persistence & Rollback (B4, #89)
 
-> **Status: decisions RECORDED (DR-160, 2026-11-23) — nothing here is implemented yet.** The
-> owner answered all five decisions below; **DECISIONS DR-160** is now the authority and this
-> document is its spec detail (slices, shapes, copy rules). The fences stay exactly where they
-> are until their slice ships — an answered decision authorizes a gated slice, not a blanket
-> removal.
+> **Status: decisions RECORDED (DR-160, 2026-11-23) and the decided slices are shipping.** The
+> owner answered all five decisions below; **DECISIONS DR-160** is the authority and this document
+> is its spec detail (slices, shapes, copy rules). **C1** (name cap 64→256 configurable) shipped in
+> PR #184 and **S2** (the explicit Save-to-startup action, with its S5 contract flip) shipped in
+> PR #185. The fences an answered slice did not reach — S4 rollback (waits on the S1 capture) and
+> commit-timer authoring (surfacing-only) — stay exactly where they are; an answered decision
+> authorizes its own gated slice, not a blanket removal.
 
 Issue: **#89** (the persistence/rollback half of the transaction center; S9/#79 is the
-view/abort/preview half that shipped). This spec supersedes the interim "running-config only,
-Startup-config will never change from this screen" contract **only after** the owner approves
-a slice — until then DR-024's contract is the enforced steady state and this file changes
-nothing.
+view/abort/preview half that shipped). This spec superseded the interim "running-config only,
+Startup-config will never change from this screen" contract once the owner recorded the decisions
+(DR-160); **S2 (PR #185) is what landed that flip** — Startup-config now changes only through the
+separate confirmed Save-to-startup action, and DR-024's "running-config only" rule still governs
+every commit. The un-shipped halves (S4 rollback) stay fenced pending their slice.
 
 ## Objective
 
@@ -148,14 +151,15 @@ the decision was made against; the bold **Answer** lines are DR-160.
 | Slice | Depends on | Ships |
 |---|---|---|
 | S1 slot-mechanism capture | owner run (authorized; script review first) | closes the `rollback <name>` timing unknown (see below) |
-| S2 save-to-startup action | ✅ decided (DR-160 §1, option b) | explicit `Save to startup` button + confirm copy + tests; DR-024 preserved (explicit, separate from commit) |
-| ~~S3 configure-replace operator panel~~ | ❌ decided against (DR-160 §2) | no UI; rationale text amended in `session-rules.ts` only |
-| S4 rollback affordance | ✅ wanted (DR-160 §3) but gated on S1 | only after the target-name survival is known |
-| S5 features.md / contract flip | S2 at minimum | the "Startup-config will never change" line becomes conditional |
-| C1 name cap 64→256 configurable | ✅ decided (DR-160 §5) | arista-api-client: constant → option, refusal copy, `capability-panel.ts` mirror, tests |
+| S2 save-to-startup action | ✅ decided (DR-160 §1, option b) — **SHIPPED PR #185** | explicit `Save to startup` button + confirm copy + tests; DR-024 preserved (explicit, separate from commit) |
+| ~~S3 configure-replace operator panel~~ | ❌ decided against (DR-160 §2) — rationale text amended in `session-rules.ts` in PR #185 | no UI |
+| S4 rollback affordance | ✅ wanted (DR-160 §3) but gated on S1 — **not started** | only after the target-name survival is known |
+| S5 features.md / contract flip | rides S2 — **SHIPPED PR #185** | the "Startup-config will never change" line is now conditional (only the confirmed Save changes it) |
+| C1 name cap 64→256 configurable | ✅ decided (DR-160 §5) — **SHIPPED PR #184** | arista-api-client: constant → option, refusal copy, `capability-panel.ts` mirror, tests |
 
-No slice is implementable from this draft alone; each needs a DECISIONS entry recording the
-owner's answer to the matching question above.
+Each slice was implementable only after its DECISIONS entry (DR-160) recorded the owner's answer
+to the matching question above. S2/S5 (#185) and C1 (#184) shipped on that basis; S4 stays gated on
+S1, and commit-timer authoring stays surfacing-only per DR-160 §4.
 
 ## Remaining capture (S1) — scripted, reviewable, operator-run
 
@@ -175,12 +179,13 @@ reviewable and consent-gated):
 This is a **spec for a future supervised capture day**, drafted for review. Per the owner's
 2026-11-23 rule it is scripted and reviewable; the agent does not execute it against the box.
 
-## Non-goals of this draft
+## Out of scope of this spec
 
-- Implementing any of the above.
-- Editing `session-rules.ts`, `TransactionCenter*.tsx`, or the client.
-- Closing or re-labeling #89 (label change waits on the owner's decision answers).
-- The DR-147 session-grammar hardware halves (separate risk review).
+This document is the **spec + decision record**, not the implementation. The slices it specifies
+shipped in their own PRs — C1 in #184, S2/S5 in #185 — and S4 ships only after the S1 capture.
+The spec file itself never edits `session-rules.ts`, `TransactionCenter*.tsx`, or the client (those
+edits live on the slice PRs), and the DR-147 session-grammar hardware halves stay a separate risk
+review. This PR is docs-only: DR-160 + this spec.
 
 ## Related
 
