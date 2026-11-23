@@ -336,7 +336,13 @@ describe.skipIf(!runnable)('physical persistence verbs (#89, owner-authorized 20
     scratchSessions.add(name)
     let session: ConfigSession | undefined
     try {
-      session = await (node as Node).rollbackToSession(lastCommit, { name, description: `#89 rollback <name> probe ${runTag}` })
+      // Open the session OURSELVES (not node.rollbackToSession, which opens one internally and loses
+      // the handle when the staged `rollback <name>` throws — e.g. the box rejects the name). A
+      // stranded handle-less PENDING session then blocks every later named session (DR-025), so the
+      // cleanup could never run. Owning the handle makes the finally-abort unconditional. Observed
+      // 2026-11-23 (hardware): a 1002 `Invalid input` on `rollback <name>` stranded exactly this.
+      session = await (node as Node).configSession({ name, description: `#89 rollback <name> probe ${runTag}` })
+      await session.rollbackToSession(lastCommit)
       const diff = await session.diff()
       observe('rollback-name-diff', { target: lastCommit, diffLines: diff.split(/\r?\n/u).length, diffHead: diff.split(/\r?\n/u).slice(0, 8).map(redactConfig) })
     } catch (error) {
@@ -382,7 +388,11 @@ describe.skipIf(!runnable)('physical persistence verbs (#89, owner-authorized 20
     scratchSessions.add(name)
     let session: ConfigSession | undefined
     try {
-      session = await (node as Node).rollbackToSession(rbMarker, { name, description: `#89 rollback <name> decoupled probe ${runTag}` })
+      // Own the session handle (see the confounded step above): node.rollbackToSession loses its
+      // internal session when `rollback <name>` throws, stranding a PENDING session that blocks the
+      // self-clean. The 2026-11-23 hardware run hit precisely this on the 1002 name refusal.
+      session = await (node as Node).configSession({ name, description: `#89 rollback <name> decoupled probe ${runTag}` })
+      await session.rollbackToSession(rbMarker)
       const diff = await session.diff()
       observe('rollback-name-decoupled-diff', { target: rbMarker, diffLines: diff.split(/\r?\n/u).length, diffHead: diff.split(/\r?\n/u).slice(0, 8).map(redactConfig) })
     } catch (error) {
@@ -397,7 +407,11 @@ describe.skipIf(!runnable)('physical persistence verbs (#89, owner-authorized 20
   it('final restore: the scratch port carries no lane marker', { timeout: 60_000 }, async () => {
     expect(node).toBeDefined()
     const now = await textRead(node as Node, hwScratchReadBackCommand(scratch))
-    observe('final-scratch-state', { markerPresent: now.includes(MARKER) })
-    expect(now, 'the lane must leave the scratch port without its marker').not.toContain(MARKER)
+    // Broadened from MARKER alone to the whole HW-PERSIST- lane prefix: the decoupled step leaves
+    // `HW-PERSIST-RBN-<tag>` on the scratch port, which does NOT contain MARKER (`HW-PERSIST-<tag>`),
+    // so a narrow MARKER-only check false-passes when only the RBN description leaks. Any lane
+    // description on the scratch port must fail here. (Caught on the 2026-11-23 hardware run.)
+    observe('final-scratch-state', { anyLaneMarkerPresent: now.includes('HW-PERSIST-'), thisRunMarkerPresent: now.includes(MARKER) })
+    expect(now, 'the lane must leave the scratch port free of any HW-PERSIST-* description').not.toContain('HW-PERSIST-')
   })
 })
