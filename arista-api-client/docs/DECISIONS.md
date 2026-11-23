@@ -3683,7 +3683,8 @@ built to separate the three DR-158 candidate mechanisms for the empty slot, and 
   the owner to weigh, NOT a unilateral scope decision. `rollback clean-config` (the session form) is
   unaffected — it ACCEPTED and answered its 152-line would-be blast, aborted clean, same as DR-150.
 
-**A lane bug this run exposed (fixed in PR #186).** `Node.rollbackToSession(name, …)` opens its own
+**A lane bug this run exposed (fixed in PR #187, not #186 — #186 shipped the buggy lane).**
+`Node.rollbackToSession(name, …)` opens its own
 `configSession` internally and **loses the handle when the staged `rollback` throws**, stranding a
 handle-less `PENDING` session on the box; the next named session then hits the DR-025 one-config-
 context guard, so the decoupled step's `clearMarker` self-clean never ran. The final-restore check
@@ -3692,12 +3693,28 @@ compounded it: it grepped for `MARKER` (`HW-PERSIST-<tag>`) but the leaked scrat
 was actually still on `Ethernet33`. Both rollback steps now open their own session handle so the
 `finally` abort is unconditional, and the final restore greps the whole `HW-PERSIST-` lane prefix.
 The run-12 `final-scratch-state` observation is therefore **unreliable** and must not be read as proof
-the port was clean; the operator re-run (PR #186 code) produces the trustworthy artifact.
+the port was clean.
+
+**Run 13 CONFIRMS the fix and re-answers S1 (2026-11-23, PR #187 code, run-tag `mwts92l1`, same
+box/scratch).** The full suite is now **6/6 green** — the `rollback <name>` 1002 refusal is recorded
+as an observation instead of failing the run. Decisively: `immediateHoldsTarget` and `agedHoldsTarget`
+are **both true** with `replaceInThisRun:false` (the slot holds a committed `completed` session across
+the 60 s wait with no mutating op in between — run 12's slot answer reproduced), and the `rollback
+hw-persist-rbmark-mwts92l1` refusal is again **1002 Invalid input at token 1** (the verb half reproduced
+too). The broadened `final-scratch-state` reports `anyLaneMarkerPresent:false` AND
+`thisRunMarkerPresent:false` — a **trustworthy** clean port this time (run 12's was a false-pass), and
+the step's own `clearMarker` ran without the `CLEANUP … failed` line, because the fix's `finally`
+abort freed the DR-025 guard first. The port is now genuinely free of any `HW-PERSIST-*` description
+(the fixed step's `clearMarker` replaced and removed the stuck `HW-PERSIST-RBN-mwtr973t` line the two
+broken runs had left behind). **This artifact supersedes run 12 as the trustworthy S1 evidence.** The
+hyphen-free-name disambiguation (does a second 1002 prove `rollback <name>` is unsupported on
+4.28.13.1M, or does an accept localise it to hyphenated names?) is the one remaining device question
+that would settle DR-160 §3's rollback UI (S4) — still an owner run, not executed here.
 
 **Related:** DR-160 §3 (the rollback product decision this scopes), DR-158 (the confounded slot
 observation this separates), DR-159 (the aging hypothesis refuted), DR-150 (`copy`/`clean-config`
 answers, unaffected), DR-025 (the one-config-context guard the stranded session tripped), DR-024,
-DR-034/DR-043 (hardware evidence discipline); #89, #182, #186, STATUS.md §3 row 70.
+DR-034/DR-043 (hardware evidence discipline); #89, #182, #186 (buggy lane), #187 (fix), STATUS.md §3 row 70.
 
 ## Open items (need the device)
 

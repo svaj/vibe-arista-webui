@@ -150,7 +150,7 @@ the decision was made against; the bold **Answer** lines are DR-160.
 
 | Slice | Depends on | Ships |
 |---|---|---|
-| S1 slot-mechanism capture | **RUN — 2026-11-23 run 12** (`docs/evidence/persistence-hardware.json`, DR-161) | slot survives ≥60 s with no `replace` (aging refuted; `replace` clears it); but `rollback <name>` REFUSED (1002 at the name token) → see S4 |
+| S1 slot-mechanism capture | **RUN — 2026-11-23 runs 12 + 13** (`docs/evidence/persistence-hardware.json`, DR-161; run 13 is the clean 6/6 re-run after the PR #187 lane fix) | slot survives ≥60 s with no `replace` (aging refuted; `replace` clears it); but `rollback <name>` REFUSED (1002 at the name token) → see S4 |
 | S2 save-to-startup action | ✅ decided (DR-160 §1, option b) — **SHIPPED PR #185** | explicit `Save to startup` button + confirm copy + tests; DR-024 preserved (explicit, separate from commit) |
 | ~~S3 configure-replace operator panel~~ | ❌ decided against (DR-160 §2) — rationale text amended in `session-rules.ts` in PR #185 | no UI |
 | S4 rollback affordance | ⚠️ wanted (DR-160 §3); S1 captured — **premise in question** (DR-161): the device refuses `rollback <name>` (1002) though the slot holds; needs a hyphen-free-name disambiguation run before S4 is viable | the named-session verb has no confirmed device support yet |
