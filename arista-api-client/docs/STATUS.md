@@ -508,7 +508,7 @@ which needs explicit authorization on hardware and unconditional cleanup.
       session-scoped revert that fires unattended. Only the second-`commit`-confirms-or-resets half stays
       unasked by design.)**
 - [ ] `configure session <name>` boundaries: the longest accepted name and the character set (our
-      `MAX_SESSION_NAME_LENGTH` and refusals are **this port's** bounds, not a captured device limit)
+      `DEFAULT_SESSION_NAME_LENGTH` (256, configurable; DR-160 §5) and refusals are **this port's** bounds, not a captured device limit)
       → open item 7
       **(new device limit 2026-11-08, and it is about REUSE not shape: the box keeps ONE completed session
       (`maxSavedSessions: 1`) and re-opening the exact name that committed into it was refused — run 5 put

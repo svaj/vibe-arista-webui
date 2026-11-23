@@ -68,11 +68,11 @@ export interface ProfileObjectOptions extends NodeSettings {
 export type NodeFactoryOptions = ConnectionOptions | ProfileConnectionOptions | ProfileObjectOptions
 
 /** The `Node`-setting keys, i.e. the half of a bag that must never reach a transport factory. */
-const NODE_SETTING_KEYS: readonly (keyof NodeSettings)[] = ['enablePassword', 'autorefresh', 'configDefaults']
+const NODE_SETTING_KEYS: readonly (keyof NodeSettings)[] = ['enablePassword', 'autorefresh', 'configDefaults', 'sessionNameMaxLength']
 
 /** Unknown-key discipline for the profile forms — `NodeSettings` is closed, but JS callers are not. */
-const PROFILE_NAME_FORM_KEYS: readonly string[] = ['profileName', 'store', 'overrides', 'enablePassword', 'autorefresh', 'configDefaults', 'implicitLocalhost']
-const PROFILE_OBJECT_FORM_KEYS: readonly string[] = ['profile', 'overrides', 'enablePassword', 'autorefresh', 'configDefaults']
+const PROFILE_NAME_FORM_KEYS: readonly string[] = ['profileName', 'store', 'overrides', 'enablePassword', 'autorefresh', 'configDefaults', 'sessionNameMaxLength', 'implicitLocalhost']
+const PROFILE_OBJECT_FORM_KEYS: readonly string[] = ['profile', 'overrides', 'enablePassword', 'autorefresh', 'configDefaults', 'sessionNameMaxLength']
 
 export function isProfileNameForm(options: NodeFactoryOptions): options is ProfileConnectionOptions {
   return 'profileName' in options
@@ -91,6 +91,7 @@ function splitSettings(options: Partial<NodeSettings>): NodeSettings {
     ...(options.enablePassword === undefined ? {} : { enablePassword: options.enablePassword }),
     ...(options.autorefresh === undefined ? {} : { autorefresh: options.autorefresh }),
     ...(options.configDefaults === undefined ? {} : { configDefaults: options.configDefaults }),
+    ...(options.sessionNameMaxLength === undefined ? {} : { sessionNameMaxLength: options.sessionNameMaxLength }),
   }
 }
 

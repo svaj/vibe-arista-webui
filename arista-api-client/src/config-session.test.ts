@@ -36,7 +36,8 @@ import { Node } from './command-layer'
 import {
   ConfigSession,
   COPY_RUNNING_TO_STARTUP,
-  MAX_SESSION_NAME_LENGTH,
+  DEFAULT_SESSION_NAME_LENGTH,
+  MAX_SESSION_NAME_LENGTH_LIMIT,
   createWebStorageJournal,
   generateSessionName,
   parseConfigurationSessions,
@@ -142,7 +143,7 @@ describe('configSession(): naming and laziness (DR-022, DR-047 — §5 row 61)',
   it('defaults the name to ui-<host>-p<pid>-<hex8> instead of pyeapi bare uuid4 (client.py:1006)', async () => {
     const session = await nodeFor(scripted()).configSession()
     expect(session.name).toMatch(/^ui-sw1-lan-p\d+-[0-9a-f]{8}$/u)
-    expect(session.name.length).toBeLessThanOrEqual(MAX_SESSION_NAME_LENGTH)
+    expect(session.name.length).toBeLessThanOrEqual(DEFAULT_SESSION_NAME_LENGTH)
     expect(generateSessionName('unix:/var/run/command-api.sock')).toMatch(/^ui-var-run-command-api-sock-p\d+-[0-9a-f]{8}$/u)
     expect(generateSessionName('mock://device')).toMatch(/^ui-device-p\d+-[0-9a-f]{8}$/u)
     expect(generateSessionName('http://127.0.0.1:5173/command-api')).toMatch(/^ui-127-0-0-1-p\d+-[0-9a-f]{8}$/u)
@@ -168,8 +169,25 @@ describe('configSession(): naming and laziness (DR-022, DR-047 — §5 row 61)',
       expect(await rejection(node.configSession({ name: bad })), bad).toBeInstanceOf(NotSupportedError)
     }
     expect((await rejection(node.configSession({ name: '' })) as Error).message).toMatch(/may not be empty/u)
-    expect((await rejection(node.configSession({ name: 'u'.repeat(MAX_SESSION_NAME_LENGTH + 1) })) as Error).message).toMatch(/longer than 64 characters/u)
+    expect((await rejection(node.configSession({ name: 'u'.repeat(DEFAULT_SESSION_NAME_LENGTH + 1) })) as Error).message).toMatch(/longer than 256 characters/u)
     expect(t.callCount()).toBe(0)
+  })
+
+  it('honors a NodeSettings.sessionNameMaxLength override and a per-call override', async () => {
+    // A node that raised its cap accepts a name past the 256 default (lazy — no wire yet).
+    const raised = nodeFor(scripted(), { sessionNameMaxLength: 300 })
+    expect((await raised.configSession({ name: 'u'.repeat(280) })).name.length).toBe(280)
+    // A node that lowered its cap refuses a name under the default but past this node's bound.
+    const lowered = nodeFor(scripted(), { sessionNameMaxLength: 20 })
+    expect((await rejection(lowered.configSession({ name: 'u'.repeat(25) })) as Error).message).toMatch(/longer than 20 characters/u)
+    // A per-call override beats the node's bound (the 20-cap node accepts 25 when told to allow 40).
+    expect((await lowered.configSession({ name: 'u'.repeat(25), sessionNameMaxLength: 40 })).name.length).toBe(25)
+  })
+
+  it('refuses an out-of-range sessionNameMaxLength override at node construction', () => {
+    for (const bad of [0, -1, 1.5, MAX_SESSION_NAME_LENGTH_LIMIT + 1]) {
+      expect(() => nodeFor(scripted(), { sessionNameMaxLength: bad })).toThrowError(/sessionNameMaxLength/u)
+    }
   })
 
   it('refuses a description containing a control character before anything is sent', async () => {

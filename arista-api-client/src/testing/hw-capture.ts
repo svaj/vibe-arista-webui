@@ -55,7 +55,7 @@
 
 import { assertNoPersistenceCommand } from './live-guard'
 import { targetSlug, type DeviceIdentity, type RecordingCapture, type RecordingFixture } from './recording'
-import { MAX_SESSION_NAME_LENGTH } from '../config-session'
+import { DEFAULT_SESSION_NAME_LENGTH } from '../config-session'
 import type { CommandSpec } from '../types/eapi'
 
 /** The scenario half of every batch-1 case name (docs/TESTING.md:113-114: `<command>--<scenario>`). */
@@ -660,15 +660,15 @@ export function hwProbePendingRevertSessions(sessions: readonly { name: string; 
  * harness keeps the refused opener as the evidence it is and retries the batch under this name.
  *
  * The name stays inside this client's own session-name rules: `assertSessionName` refuses whitespace,
- * quotes, backslash, backtick, `#`, `;`, control characters and more than `MAX_SESSION_NAME_LENGTH`
+ * quotes, backslash, backtick, `#`, `;`, control characters and more than `DEFAULT_SESSION_NAME_LENGTH`
  * characters — prefix (9) + batch name (≤40) + `-` + tag (≤8) fits with room to spare.
  */
 export function hwProbeRetrySessionName(batchName: string, runTag: string): string {
   const tag = runTag.toLowerCase().replace(/[^a-z0-9]/gu, '').slice(0, 8)
   if (tag === '') throw new Error('hwProbeRetrySessionName needs a non-empty alphanumeric run tag (got ' + JSON.stringify(runTag) + ')')
   const name = `${hwProbeSessionName(batchName)}-${tag}`
-  if (name.length > MAX_SESSION_NAME_LENGTH) {
-    throw new Error(`hwProbeRetrySessionName would build a ${String(name.length)}-character session name — this client caps config-session names at ${String(MAX_SESSION_NAME_LENGTH)} (assertSessionName), so shorten the batch name or the run tag`)
+  if (name.length > DEFAULT_SESSION_NAME_LENGTH) {
+    throw new Error(`hwProbeRetrySessionName would build a ${String(name.length)}-character session name — this client caps config-session names at ${String(DEFAULT_SESSION_NAME_LENGTH)} (assertSessionName), so shorten the batch name or the run tag`)
   }
   return name
 }

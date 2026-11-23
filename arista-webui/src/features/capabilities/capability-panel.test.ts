@@ -15,6 +15,7 @@ import type {
   CommandProbeResult,
   ProbeCommandsOutcome,
 } from '@devhax-heavy-industries/arista-eapi'
+import { DEFAULT_SESSION_NAME_LENGTH } from '@devhax-heavy-industries/arista-eapi'
 
 import {
   buildExport,
@@ -90,10 +91,10 @@ describe('parseCandidates', () => {
 describe('questionSetRefusal — every refusal is free: it opens zero sessions (#77 acceptance)', () => {
   const existing: readonly QuestionSet[] = [{ name: 'existing', commands: ['vlan 4090'] }]
 
-  it('a name is required, readable, ≤64 chars, and unique', () => {
+  it('a name is required, readable, within the client name cap, and unique', () => {
     expect(questionSetRefusal('   ', ['vlan 4090'], existing)).toMatch(/needs a name/u)
     expect(questionSetRefusal('9lives!', ['vlan 4090'], existing)).toMatch(/one readable token/u)
-    expect(questionSetRefusal('x'.repeat(65), ['vlan 4090'], existing)).toMatch(/64 characters/u)
+    expect(questionSetRefusal('x'.repeat(DEFAULT_SESSION_NAME_LENGTH + 1), ['vlan 4090'], existing)).toMatch(/longer than 256 characters/u)
     expect(questionSetRefusal('existing', ['vlan 4091'], existing)).toMatch(/already in the list/u)
   })
 

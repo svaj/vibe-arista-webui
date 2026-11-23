@@ -44,6 +44,7 @@ import {
   createConfigSession,
   listSessionsOn,
   recoverOrphansOn,
+  resolveSessionNameMaxLength,
   type ConfigSession,
   type ConfigurationSessions,
   type ConfigSessionOptions,
@@ -110,6 +111,13 @@ export interface NodeSettings {
    * `true`, `client.py:506`), i.e. `show running-config all`.
    */
   readonly configDefaults?: boolean | undefined
+  /**
+   * Override the client's session-name cap (else `DEFAULT_SESSION_NAME_LENGTH` = 256). An integer in
+   * 1..`MAX_SESSION_NAME_LENGTH_LIMIT` (4096), resolved and validated at construction into
+   * {@link Node.sessionNameMaxLength}. A readability bound for `show configuration sessions`, not a
+   * device limit — DR-160 §5.
+   */
+  readonly sessionNameMaxLength?: number | undefined
 }
 
 /** The request knobs this layer forwards to the transport unchanged (M1 codec + M2 transport options). */
@@ -578,6 +586,13 @@ export class Node {
    */
   readonly settings: Readonly<NodeSettings>
 
+  /**
+   * The session-name cap in force on this node: `settings.sessionNameMaxLength` resolved against the
+   * client's bounds at construction (default 256, ceiling 4096 — DR-160 §5). Satisfies
+   * `SessionCommandTarget.sessionNameMaxLength`; every name spliced into a batch validates against it.
+   */
+  readonly sessionNameMaxLength: number
+
   private enablePassword: string | undefined
   private runningConfig: string | undefined
   private startupConfig: string | undefined
@@ -614,6 +629,7 @@ export class Node {
     this.enablePassword = settings.enablePassword
     this.autorefresh = settings.autorefresh ?? true
     this.configDefaults = settings.configDefaults ?? true
+    this.sessionNameMaxLength = resolveSessionNameMaxLength(settings.sessionNameMaxLength)
     this.settings = Object.freeze({ ...settings })
   }
 

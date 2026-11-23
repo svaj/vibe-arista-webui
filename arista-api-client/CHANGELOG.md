@@ -9,6 +9,20 @@ surprise here — this file records what shipped, the migration map records what
 
 ## [Unreleased]
 
+### Changed — the config-session name cap moves 64 → 256 and becomes configurable (2026-11-23; #183, DECISIONS DR-160 §5, §5 row 61)
+- **`MAX_SESSION_NAME_LENGTH = 64` is replaced by `DEFAULT_SESSION_NAME_LENGTH = 256` plus a
+  `MAX_SESSION_NAME_LENGTH_LIMIT = 4096` ceiling**, and the bound is now a configurable
+  `NodeSettings.sessionNameMaxLength` (integer 1..4096, validated at construction) with a per-call
+  `ConfigSessionOptions.sessionNameMaxLength` override. `assertSessionName`, the `Node` field
+  `sessionNameMaxLength`, and the browser-safety story all resolve the cap through
+  `resolveSessionNameMaxLength` — no `process.env` in browser-reachable paths (the readability bound is
+  a client option, not an ambient read). The 64 was always this client's readability bound, never a
+  device limit; the cEOS grammar capture (`session-grammar.ceos.json`, DR-156) shows EOS accepting
+  names through 8192, so the default sits at 256 (inside the answered envelope) with a 4096 ceiling.
+  Breaking for any caller that imported `MAX_SESSION_NAME_LENGTH`; the refusal message now names the
+  resolved bound and the configurable ceiling. `#89` decision (DR-160 §5) — deliberately not widened to
+  8192. The webui mirror in `capability-panel.ts` (question-set-name cap) tracks the new constant.
+
 ### Evidence — run 11 executes round 3: five for five STAGE-ACCEPTED on the physical box; the scrub human-step ends in code (2026-11-22; DR-159, §5 row 245, STATUS run-11 blockquote)
 - **`capture-unblock-hw.sh --spec3 --scratch Ethernet33` ran on the 7050TX-64-R — all five round-3
   batches STAGE-ACCEPTED, zero refusals, all aborted net-zero** (`incomplete: []`, `sessions: {}`

@@ -45,6 +45,7 @@ import {
 } from './capabilities'
 import { Node } from './command-layer'
 import { CommandError, ConnectError, EapiErrorCode, NotSupportedError, SessionError } from './errors'
+import { DEFAULT_SESSION_NAME_LENGTH, MAX_SESSION_NAME_LENGTH_LIMIT } from './config-session'
 import { mockTransport, type MockTransport } from './testing/mock-transport'
 import type { CommandSpec } from './types/eapi'
 
@@ -544,17 +545,23 @@ describe('named throwaway session: probe owns the name; session-name rule lives 
     expect(t.sent()).toEqual([])
   })
 
-  it('refuses a session name past the client\'s 64-character bound, before any round trip', async () => {
+  it('refuses a session name past the client default name bound, before any round trip', async () => {
     const t = mockTransport({ address: ADDRESS })
-    const long = 'u'.repeat(65)
+    const long = 'u'.repeat(DEFAULT_SESSION_NAME_LENGTH + 1)
     const thrown = (await rejection(probeCommands(new Node(t), ['vlan 20'], { sessionName: long, now: clock }))) as Error
     expect(thrown).toBeInstanceOf(NotSupportedError)
-    expect(thrown.message).toMatch(/longer than 64 characters/u)
-    expect(thrown.message).toMatch(/EOS's own limit is unverified/u)
+    expect(thrown.message).toMatch(new RegExp(`longer than ${String(DEFAULT_SESSION_NAME_LENGTH)} characters`, 'u'))
+    expect(thrown.message).toMatch(/EOS's own limit is higher but unverified/u)
     // Only the offending name is echoed — no device payload, and nothing on the wire leaks.
     expect(thrown.message).not.toMatch(/password|enable|vlan/u)
     expect(t.callCount()).toBe(0)
     expect(t.sent()).toEqual([])
+  })
+
+  it('refuses an out-of-range sessionNameMaxLength override at node construction', () => {
+    for (const bad of [0, -1, 1.5, MAX_SESSION_NAME_LENGTH_LIMIT + 1]) {
+      expect(() => new Node(mockTransport({ address: ADDRESS }), { sessionNameMaxLength: bad })).toThrowError(/sessionNameMaxLength/u)
+    }
   })
 
   it('the caller\'s session name is spliced verbatim into every batch, so batch keys carry it', async () => {
