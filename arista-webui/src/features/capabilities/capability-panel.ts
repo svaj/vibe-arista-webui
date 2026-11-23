@@ -31,7 +31,7 @@
  * operator pays for a confirm click, with copy that explains why — one cause-and-effect sentence
  * per verb rather than a mid-probe throw.
  */
-import { isInconclusiveVerdict } from '@devhax-heavy-industries/arista-eapi'
+import { DEFAULT_SESSION_NAME_LENGTH, isInconclusiveVerdict } from '@devhax-heavy-industries/arista-eapi'
 import type { CapabilityVerdict, CommandProbeResult, ProbeCommandsOutcome } from '@devhax-heavy-industries/arista-eapi'
 import { scanText } from '../../testing/redaction-guard'
 import type { GuardFinding } from '../../testing/redaction-guard'
@@ -85,7 +85,7 @@ export function questionSetRefusal(
   const label = name.trim()
   if (label === '') return 'A question set needs a name: the name is what the verdict table and the export row are labelled with, and DR-033 means it labels YOUR question — not a feature this app pre-lists.'
   if (!/^[A-Za-z0-9][A-Za-z0-9 _.-]*$/u.test(label)) return `Question-set name ${JSON.stringify(label)} has to stay one readable token: letters, digits, spaces, dot, dash and underscore only, starting with a letter or digit. The name rides into the export an operator pastes into a DECISIONS note.`
-  if (label.length > 64) return 'Question-set name is longer than 64 characters — kept under the client\u2019s own config-session-name cap (MAX_SESSION_NAME_LENGTH, config-session.ts) so both read cleanly in an exported note.'
+  if (label.length > DEFAULT_SESSION_NAME_LENGTH) return `Question-set name is longer than ${String(DEFAULT_SESSION_NAME_LENGTH)} characters — kept under the client\u2019s own config-session-name cap (DEFAULT_SESSION_NAME_LENGTH, config-session.ts; configurable up to MAX_SESSION_NAME_LENGTH_LIMIT per DR-160 \u00a75) so both read cleanly in an exported note.`
   if (existing.some((set) => set.name === label)) return `A question set named ${JSON.stringify(label)} is already in the list. Names are the table key, so the probe would fold the two together.`
   if (commands.length === 0) return 'A question set needs at least one candidate command: the device answers per CANDIDATE, and an empty candidate list is a question that cannot be asked.'
   for (const candidate of commands) {

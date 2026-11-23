@@ -27,10 +27,10 @@
  *      record ACCEPT-or-refuse (a 1006 config-lock is a legitimate container answer, DR-134).
  *
  * #89 open item 7 (real session-name length/charset limits): the client's own bounds are asserted
- * OFFLINE here (test 5 — MAX_SESSION_NAME_LENGTH=64 + the charset refusals are THIS port's, fired
- * before the wire) and shown WORKABLE against the device (test 6). The DEVICE-bound discovery is left
- * a gated stub (tests 7+8): the command layer refuses a raw config opener via `exec` (by design), so
- * probing past the client's 64 needs a transport-level bypass under operator consent on a cleared
+ * OFFLINE here (test 5 — the configurable name cap, default 256 since DR-160 §5, + the charset
+ * refusals are THIS port's, fired before the wire) and shown WORKABLE against the device (test 6). The
+ * DEVICE-bound discovery is left a gated stub (tests 7+8): the command layer refuses a raw config
+ * opener via `exec` (by design), so probing past the client cap needs a transport-level bypass under operator consent on a cleared
  * host — recorded as a concrete plan, NOT faked here. (item 8 — which verbs answer 1002/1004 — was
  * already settled by the 2026-11-16 part B: copy-run-start ACCEPTED, configure-replace exists,
  * rollback clean-config exec 1002; this suite does not re-litigate it.)
@@ -48,7 +48,7 @@ import path from 'node:path'
 
 import { NotSupportedError } from './errors'
 import { type Node } from './command-layer'
-import { MAX_SESSION_NAME_LENGTH } from './config-session'
+import { DEFAULT_SESSION_NAME_LENGTH } from './config-session'
 import { buildFullWriteNode } from './testing/live-full-write'
 import { describeLiveTarget, matchesDeviceIdentity, resolveLiveEnv, unwrapLiveTarget } from './testing/live-guard'
 
@@ -319,22 +319,23 @@ describe.skipIf(!runnable || !labClass)('commit timer / persistence verbs (#154 
     await endTimer('lab-timer-blockcheck')
   })
 
-  it('CLIENT bounds: MAX_SESSION_NAME_LENGTH + charset refusals fire before the wire (#89 item 7, this port)', { timeout: 10_000 }, async () => {
+  it('CLIENT bounds: the configurable name cap + charset refusals fire before the wire (#89 item 7, this port)', { timeout: 10_000 }, async () => {
     expect(node).toBeDefined()
-    // These are THIS port's bounds (config-session.ts), not a captured device limit — assert them
-    // offline-ishly here so the distinction is pinned next to the device-bound probes.
-    const tooLong = 'x'.repeat(MAX_SESSION_NAME_LENGTH + 1)
+    // These are THIS port's bounds (config-session.ts, default 256 per DR-160 §5), not a captured
+    // device limit — assert them offline-ishly here so the distinction is pinned next to the
+    // device-bound probes.
+    const tooLong = 'x'.repeat(DEFAULT_SESSION_NAME_LENGTH + 1)
     await expect(node!.configSession({ name: tooLong })).rejects.toBeInstanceOf(NotSupportedError)
     await expect(node!.configSession({ name: 'bad name' })).rejects.toBeInstanceOf(NotSupportedError)
     await expect(node!.configSession({ name: 'bad;name' })).rejects.toBeInstanceOf(NotSupportedError)
     await expect(node!.configSession({ name: '' })).rejects.toBeInstanceOf(NotSupportedError)
-    observe('client-name-bounds', { max: MAX_SESSION_NAME_LENGTH, refusedBeforeWire: true })
+    observe('client-name-bounds', { max: DEFAULT_SESSION_NAME_LENGTH, refusedBeforeWire: true })
   })
 
-  it('a client-bound session name (≤64, safe charset) WORKS against the device and aborts clean (#89 item 7 workable)', { timeout: 60_000 }, async () => {
+  it('a client-bound session name (default cap, safe charset) WORKS against the device and aborts clean (#89 item 7 workable)', { timeout: 60_000 }, async () => {
     expect(node).toBeDefined()
-    const name = `lab-timer-name64-${'z'.repeat(MAX_SESSION_NAME_LENGTH - 17)}` // exactly 64 chars
-    expect(name.length, 'probe name is exactly the client max').toBe(MAX_SESSION_NAME_LENGTH)
+    const name = `lab-timer-name-${'z'.repeat(DEFAULT_SESSION_NAME_LENGTH - 15)}` // exactly the client cap
+    expect(name.length, 'probe name is exactly the client max').toBe(DEFAULT_SESSION_NAME_LENGTH)
     scratchSessions.add(name)
     const s = await (node as Node).configSession({ name })
     expect(s.isOpen, 'the client-max name opens a real session').toBe(true)
@@ -348,7 +349,7 @@ describe.skipIf(!runnable || !labClass)('commit timer / persistence verbs (#154 
 
   // DEVICE-bound discovery — concrete plan, NOT faked here. The command layer refuses a raw config
   // opener via exec() (by design, command-layer), and buildFullWriteNode's Node has no raw-config
-  // bypass; discovering the device's TRUE length/charset bounds (past the client's 64 / charset)
+  // bypass; discovering the device's TRUE length/charset bounds (past the client cap / charset)
   // requires issuing `configure session <name>` at the transport level (bypassing assertSessionName)
   // under operator consent + a cleared host, then aborting any session that opens. The CONTAINER half
   // of both questions landed 2026-11-21 outside this suite — scripts/capture-session-grammar-ceos.{mjs,sh}
@@ -360,7 +361,7 @@ describe.skipIf(!runnable || !labClass)('commit timer / persistence verbs (#154 
   it.skip('HARDWARE-bound session-name length discovery (#89 item 7 — container half ANSWERED by DR-156; box half operator-gated)', () => {
     // Bisection over raw `configure session <alphanumeric 1..n>`; record max accepted length then
     // abort each opener. Never run past the client bound without a reviewable transport bypass.
-    // Container answer: accepted at every length 64…8192 (the client's 64 is purely ours).
+    // Container answer: accepted at every length 64…8192 (the ladder started at the OLD 64 client cap; the cap is now 256 and configurable, DR-160 §5 — all client bounds, none a device limit).
   })
   it.skip('HARDWARE-bound session-name charset discovery (#89 item 7 — container half ANSWERED by DR-156; box half operator-gated)', () => {
     // For each single delimiter/quote byte the client also refuses, raw-open and record accept/refuse

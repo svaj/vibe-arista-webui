@@ -255,7 +255,8 @@ What the session path guarantees, and where each guarantee comes from:
 - **A name another process can find.** Omit `name` and the client builds
   `ui-<host>-p<pid>-<hex8>` (`ui-<host>-<hex8>` in a browser, which has no pid), hostname-only and
   secret-free even from a malformed address (`generateSessionName`, DR-047). `SESSION_NAME_PREFIX` is also
-  `recoverOrphans()`'s default name filter, and `MAX_SESSION_NAME_LENGTH` plus an unsafe-token refusal stop
+  `recoverOrphans()`'s default name filter, and `DEFAULT_SESSION_NAME_LENGTH` (256, configurable up to
+  `MAX_SESSION_NAME_LENGTH_LIMIT` via `NodeSettings.sessionNameMaxLength`; DR-160 §5) plus an unsafe-token refusal stop
   a name from splicing a second CLI verb into `cmds[0]`. What EOS itself limits is **not** captured here, so
   those bounds are ours and open item 7 exists. pyeapi fabricates a bare `uuid4()`, never sends it and never
   stores it (`client.py:1003-1006`; grepping that tree for `session_name` finds no consumer). §5 row 61.

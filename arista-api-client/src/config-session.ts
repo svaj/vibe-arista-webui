@@ -150,6 +150,12 @@ export interface SessionCommandTarget {
   refresh(): void
   /** pyeapi `autorefresh` (`client.py:505`): a *committed* write invalidates the cached configs. */
   readonly autorefresh: boolean
+  /**
+   * The resolved session-name cap in force on this target (see {@link DEFAULT_SESSION_NAME_LENGTH}).
+   * A `Node` derives it from `NodeSettings.sessionNameMaxLength`; a stand-in implementer may omit it
+   * to get the client default. Names spliced into a batch are validated against it.
+   */
+  readonly sessionNameMaxLength?: number | undefined
   /** The transport address (never contains credentials — `transports/contract.ts`), used to name a session. */
   readonly connection: { readonly address: string }
 }
@@ -178,6 +184,12 @@ export interface ConfigSessionOptions {
    * no I/O of its own (ARCHITECTURE.md §1, DR-002).
    */
   readonly journal?: SessionJournal | undefined
+  /**
+   * Per-call override of the session-name cap (else the owning `Node`'s
+   * `NodeSettings.sessionNameMaxLength`, else {@link DEFAULT_SESSION_NAME_LENGTH}). Must be an integer
+   * in 1..{@link MAX_SESSION_NAME_LENGTH_LIMIT}; the resolved value validates the supplied `name`.
+   */
+  readonly sessionNameMaxLength?: number | undefined
 }
 
 /** Extra options for {@link ConfigSession#commit} / {@link ConfigSession#commitWithRevertTimer}. */
@@ -218,8 +230,25 @@ export interface SessionJournal {
 /** The default-name prefix — also `recoverOrphans()`'s default filter for unlabeled sessions. */
 export const SESSION_NAME_PREFIX = 'ui-'
 
-/** Client-side cap on a session name. Ours, not the device's (the EOS limit is unverified — §3 sweep). */
-export const MAX_SESSION_NAME_LENGTH = 64
+/**
+ * The **default** client-side cap on a session name — a `NodeSettings.sessionNameMaxLength` bound a
+ * caller may lower or raise up to {@link MAX_SESSION_NAME_LENGTH_LIMIT}. Raised from the original 64
+ * (DR-160 §5): the 64 was always this client's readability bound, never the device's, and the cEOS
+ * grammar capture (`docs/evidence/session-grammar.ceos.json`, DR-156) shows EOS accepting names
+ * through 8192. The port caps at 256 by default — comfortably inside the device-accepted envelope,
+ * short of the 8192 rabbit hole — because the name rides into `show configuration sessions` and every
+ * batch's `cmds[0]`.
+ */
+export const DEFAULT_SESSION_NAME_LENGTH = 256
+
+/**
+ * The hard ceiling a configurable {@link DEFAULT_SESSION_NAME_LENGTH} override may raise to, and the
+ * only value above the default this client will ever accept. It is **not** a device limit (the device
+ * accepted 8192 on cEOS, unverified on the 7050TX — §3): it is the point past which a name stops being
+ * a human-readable label in `show configuration sessions` and starts being a payload smuggled into a
+ * CLI token. A caller passing `sessionNameMaxLength` above this is refused at construction.
+ */
+export const MAX_SESSION_NAME_LENGTH_LIMIT = 4096
 
 /**
  * Characters that may **not** appear in a session name. EOS takes `\S+`
@@ -254,8 +283,13 @@ const LOCKED_BY_SESSION = /locked by session (\S+)/u
  */
 const ZERO_TIMER_MESSAGE = 'Time value cannot be zero.'
 
-/** Validate a caller-supplied session name (or any name spliced into a CLI command). */
-function assertSessionName(name: string): string {
+/**
+ * Validate a caller-supplied session name (or any name spliced into a CLI command). `maxLength` is
+ * the resolved {@link DEFAULT_SESSION_NAME_LENGTH} bound from the owning `Node` (or the caller's
+ * `sessionNameMaxLength` override); it defaults to the client default so standalone callers keep a
+ * sane bound.
+ */
+function assertSessionName(name: string, maxLength: number = DEFAULT_SESSION_NAME_LENGTH): string {
   if (name === '') {
     throw new NotSupportedError('a config session name may not be empty — pass a name or omit `name` to get a generated one')
   }
@@ -264,12 +298,27 @@ function assertSessionName(name: string): string {
       `unsafe config session name ${JSON.stringify(name)}: whitespace, quotes, backslash, backtick, '#', ';' and control characters are refused because 'configure session <name>' is the first command of every batch (EOS matches the name with \\S+, SessionCli.py:31)`,
     )
   }
-  if (name.length > MAX_SESSION_NAME_LENGTH) {
+  if (name.length > maxLength) {
     throw new NotSupportedError(
-      `config session name ${JSON.stringify(name)} is longer than ${String(MAX_SESSION_NAME_LENGTH)} characters — a bound this client imposes so names stay readable in 'show configuration sessions'; EOS's own limit is unverified (STATUS.md §3)`,
+      `config session name ${JSON.stringify(name)} is longer than ${String(maxLength)} characters — a bound this client imposes so names stay readable in 'show configuration sessions'; it is configurable up to ${String(MAX_SESSION_NAME_LENGTH_LIMIT)} via NodeSettings.sessionNameMaxLength, and EOS's own limit is higher but unverified on this target (STATUS.md §3; 8192 on cEOS per DR-156)`,
     )
   }
   return name
+}
+
+/**
+ * Resolve and validate a `NodeSettings.sessionNameMaxLength` override against the client's own
+ * ceiling. A non-integer or out-of-range override is refused at construction rather than silently
+ * clamped, so a typo (`-1`, `1e99`, `100.5`) is a loud error, not a surprise bound at the first call.
+ */
+export function resolveSessionNameMaxLength(override: number | undefined): number {
+  if (override === undefined) return DEFAULT_SESSION_NAME_LENGTH
+  if (!Number.isSafeInteger(override) || override < 1 || override > MAX_SESSION_NAME_LENGTH_LIMIT) {
+    throw new NotSupportedError(
+      `sessionNameMaxLength ${String(override)} must be an integer between 1 and ${String(MAX_SESSION_NAME_LENGTH_LIMIT)} — the client's configurable name cap (default ${String(DEFAULT_SESSION_NAME_LENGTH)}); it is a readability bound for 'show configuration sessions', not a device claim`,
+    )
+  }
+  return override
 }
 
 /**
@@ -576,11 +625,14 @@ export class ConfigSession {
 
   private readonly host: SessionCommandTarget
   private readonly journal: SessionJournal | undefined
+  private readonly nameCap: number
   private sessionState: ConfigSessionState = 'open'
 
   constructor(host: SessionCommandTarget, options: ConfigSessionOptions = {}) {
     const name = options.name ?? generateSessionName(host.connection.address)
-    this.name = assertSessionName(name)
+    // The effective cap: a per-call override, else the owning target's resolved cap, else the default.
+    this.nameCap = resolveSessionNameMaxLength(options.sessionNameMaxLength ?? host.sessionNameMaxLength)
+    this.name = assertSessionName(name, this.nameCap)
     this.noCommit = options.noCommit === true
     this.description = options.description
     if (this.description !== undefined && this.description !== '') assertDescriptionText(this.description)
@@ -920,7 +972,7 @@ export class ConfigSession {
    */
   async rollbackToSession(sessionName: string): Promise<readonly CommandResult[]> {
     this.assertLive('roll back to a committed session')
-    return await this.send([`rollback ${assertSessionName(sessionName)}`], {})
+    return await this.send([`rollback ${assertSessionName(sessionName, this.nameCap)}`], {})
   }
 
   /**
@@ -1078,7 +1130,7 @@ export async function listSessionsOn(host: SessionCommandTarget, options: ListSe
  * were stale — that is how `recoverOrphans()` prunes journal entries instead of trusting them.
  */
 export async function abortSessionOn(host: SessionCommandTarget, name: string, options: SessionRequestOptions = {}): Promise<readonly CommandResult[]> {
-  return await runOnHost(host, [`configure session ${assertSessionName(name)} abort`], options)
+  return await runOnHost(host, [`configure session ${assertSessionName(name, host.sessionNameMaxLength)} abort`], options)
 }
 
 /** One candidate decision from {@link recoverOrphansOn}. */
