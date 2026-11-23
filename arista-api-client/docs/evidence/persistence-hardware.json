@@ -1,56 +1,57 @@
 {
-  "generatedAt": "2026-11-23T21:34:45.307Z",
+  "generatedAt": "2026-11-23T22:18:51.103Z",
   "targetClass": "hardware",
   "verbs": [
     "copy",
     "rollback",
-    "rollback-name"
+    "rollback-name",
+    "rollback-hyphenfree"
   ],
-  "snapshotFile": "flash:hw-persist-mwts92l1.cfg",
+  "snapshotFile": "flash:hw-persist-mwtttpnd.cfg",
   "observations": [
     {
       "step": "identity",
-      "at": "2026-11-23T21:33:36.624Z",
+      "at": "2026-11-23T22:17:39.253Z",
       "class": "hardware",
       "version": "4.28.13.1M",
       "modelName": "DCS-7050TX-64-R"
     },
     {
       "step": "scratch-link",
-      "at": "2026-11-23T21:33:36.773Z",
+      "at": "2026-11-23T22:17:39.404Z",
       "scratch": "Ethernet33",
       "linkStatus": "notconnect"
     },
     {
       "step": "copy-baseline-startup",
-      "at": "2026-11-23T21:33:36.913Z",
+      "at": "2026-11-23T22:17:39.545Z",
       "absent": false,
       "hasMarker": false,
       "lines": 211
     },
     {
       "step": "copy-reply",
-      "at": "2026-11-23T21:33:37.620Z",
+      "at": "2026-11-23T22:17:40.256Z",
       "text": ""
     },
     {
       "step": "copy-after-startup",
-      "at": "2026-11-23T21:33:37.760Z",
-      "lines": 211,
+      "at": "2026-11-23T22:17:40.394Z",
+      "lines": 210,
       "changedFromBaseline": true
     },
     {
       "step": "replace",
-      "at": "2026-11-23T21:33:37.761Z",
+      "at": "2026-11-23T22:17:40.395Z",
       "skipped": "not in EAPI_HW_PERSISTENCE_VERBS"
     },
     {
       "step": "rollback-clean-diff",
-      "at": "2026-11-23T21:33:39.840Z",
-      "diffLines": 160,
+      "at": "2026-11-23T22:17:42.485Z",
+      "diffLines": 152,
       "diffHead": [
         "--- system:/running-config",
-        "+++ session:/hw-persist-rbclean-mwts92l1-session-config",
+        "+++ session:/hw-persist-rbclean-mwtttpnd-session-config",
         "@@ -4,80 +4,37 @@",
         " !",
         " no aaa root",
@@ -61,35 +62,35 @@
     },
     {
       "step": "rollback-clean-poststate",
-      "at": "2026-11-23T21:33:40.150Z",
+      "at": "2026-11-23T22:17:42.797Z",
       "sessionStillPending": false
     },
     {
       "step": "rollback-name",
-      "at": "2026-11-23T21:33:40.429Z",
-      "skipped": "no completed session hw-persist-rep-mwts92l1 to target (replace step did not run or the slot rotated) — DR-136 one-slot store",
+      "at": "2026-11-23T22:17:43.075Z",
+      "skipped": "no completed session hw-persist-rep-mwtttpnd to target (replace step did not run or the slot rotated) — DR-136 one-slot store",
       "completedSlotHolds": [
-        "hw-persist-rbmark-mwtrrkk2"
+        "hw-persist-rbnd-clear-mwts92l1"
       ]
     },
     {
       "step": "rollback-name-decoupled",
-      "at": "2026-11-23T21:33:41.722Z",
+      "at": "2026-11-23T22:17:44.359Z",
       "batch": "immediate",
-      "target": "hw-persist-rbmark-mwts92l1",
+      "target": "hw-persist-rbmark-mwtttpnd",
       "completedSlotHoldsImmediate": [
-        "hw-persist-rbmark-mwts92l1"
+        "hw-persist-rbmark-mwtttpnd"
       ],
       "immediateHoldsTarget": true,
       "replaceInThisRun": false
     },
     {
       "step": "rollback-name-decoupled",
-      "at": "2026-11-23T21:34:41.868Z",
+      "at": "2026-11-23T22:18:44.564Z",
       "batch": "aged-60s",
-      "target": "hw-persist-rbmark-mwts92l1",
+      "target": "hw-persist-rbmark-mwtttpnd",
       "completedSlotHoldsAged": [
-        "hw-persist-rbmark-mwts92l1"
+        "hw-persist-rbmark-mwtttpnd"
       ],
       "agedHoldsTarget": true,
       "agedOutWithoutReplace": false,
@@ -97,14 +98,32 @@
     },
     {
       "step": "rollback-name-decoupled-refused",
-      "at": "2026-11-23T21:34:42.106Z",
+      "at": "2026-11-23T22:18:44.856Z",
       "errorName": "CommandError",
       "code": 1002,
-      "message": "Error [1002]: CLI command 3 of 3 'rollback hw-persist-rbmark-mwts92l1' failed: invalid command [errors: [\"Invalid input (at token 1: 'hw-persist-rbmark-mwts92l1')\"]]"
+      "message": "Error [1002]: CLI command 3 of 3 'rollback hw-persist-rbmark-mwtttpnd' failed: invalid command [errors: [\"Invalid input (at token 1: 'hw-persist-rbmark-mwtttpnd')\"]]"
+    },
+    {
+      "step": "rollback-hyphenfree-slot",
+      "at": "2026-11-23T22:18:47.755Z",
+      "target": "hwrbmarkmwtttpnd",
+      "targetContainsHyphen": false,
+      "completedSlotHoldsTarget": true,
+      "completedSlotHolds": [
+        "hwrbmarkmwtttpnd"
+      ]
+    },
+    {
+      "step": "rollback-hyphenfree-refused",
+      "at": "2026-11-23T22:18:48.017Z",
+      "target": "hwrbmarkmwtttpnd",
+      "errorName": "CommandError",
+      "code": 1002,
+      "message": "Error [1002]: CLI command 3 of 3 'rollback hwrbmarkmwtttpnd' failed: invalid command [errors: [\"Invalid input (at token 1: 'hwrbmarkmwtttpnd')\"]]"
     },
     {
       "step": "final-scratch-state",
-      "at": "2026-11-23T21:34:44.752Z",
+      "at": "2026-11-23T22:18:49.955Z",
       "anyLaneMarkerPresent": false,
       "thisRunMarkerPresent": false
     }

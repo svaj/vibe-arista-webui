@@ -36,20 +36,12 @@ Every verdict below is captured evidence, cited to its recording. Container (cEO
 | `copy running-config startup-config` (client `copyRunningToStartup`/`writeMemory`) | **ACCEPTED** — 210-line baseline, `changedFromBaseline:true` on re-read (eAPI reply text empty; the reads are the proof) | `docs/evidence/persistence-hardware.json` (DR-150, 2026-11-21); re-accepted run 10 (DR-158) | ACCEPTED with full persistence flip (`unblock-persistence.ceos.json`) |
 | `configure replace <file>` | **ACCEPTED** — snapshot → scratch-port (`Ethernet33`) marker commit → wholesale replace-back → self-restored | run 10 (`--verbs copy,rollback,replace`), DR-158 | verb exists, 1000 on absent source (grammar accepted) |
 | `rollback clean-config` (session-scoped) | **EXISTS** — staged in a named session, `session.diff()` answered a 152-line would-be blast, aborted clean | DR-150; re-confirmed run 10 | 1002 at EXEC (session form only) |
+| `rollback <name>` | **UNSUPPORTED on this build** — 1002 at the target token even when the exact `completed` name is proved present, for both hyphenated and hyphen-free names | runs 12-14, `docs/evidence/persistence-hardware.json` (DR-161) | unneeded for hardware product decision |
 | `commit timer` / `pendingCommitTimer` | device-confirmed: armed session lists `pendingCommitTimer` + `commitBy` (uptime clock); one per device; a second `configure session` opens while armed; unattended revert fires past deadline | `configure-session-commit-timer--hw-session-probe.json` (DR-137); `commit-timer-persistence.ceos.json` (DR-148) | same shape |
 | `configure session <name>` length/charset | **container only:** accepted through 8192 chars (client's 64 is ours); device refuses `" ' \ \` # ;` with `Session name <x> is invalid.`; whitespace truncates-and-re-parses | — (HARDWARE half un-captured, operator-fence by design) | `session-grammar.ceos.json` (DR-156) |
 
 **Still open on hardware (gated, NOT by authorization):**
 
-- **`rollback <name>`** — never staged on the box. Measured reason (DR-158): ~7 s after the
-  marker commit that `configure replace` the only intervening op, the completed-session slot
-  no longer listed the marker, so the rollback step skipped (no target). Run 11 (DR-159) then
-  read `sessions: {}` in BOTH forms with no reboot/commit/persistence-verb that day → recorded
-  observation: *the one-slot completed store can empty between supervised days with no visible
-  commit.* The `completedSlotHolds` field (added DR-158) is the instrument for a follow-up run
-  to distinguish "replace cleared the slot" from "replace restored the store's snapshot."
-  → This is a **slot-mechanism timing** unknown, not an authorization gap. See "Remaining
-  capture" below.
 - **`commit <intf> verify` / `revert <intf>`** (the confirm-or-reset arm of a held timer) —
   deliberately never composed; on cEOS re-entry is refused so the path is unreachable on the
   container. Never probed on the box.
@@ -77,9 +69,10 @@ verbs in the staged-draft textarea guard. Three carry rationales that the eviden
 first-class button calling the client verb, never a draft-textarea line, so the textarea guard's
 job is unchanged (DR-160 §1). The `configure replace` line **stays** with its **rationale amended**
 from the stale capture-blocker wording to the decided product exclude (DR-160 §2). The `rollback`
-line **stays until S4 ships** — decision 3 wants rollback UI but capture-gated, so the draft guard
-keeps refusing it in the meantime; its wording updates with the S4 slice, not before. Editing any
-of these lines is a gated implementation step belonging to its slice's PR. The textarea guard for
+line **stays permanently on this target** — run 14 disproved the premise for S4 (DR-161), so the
+future-facing named-session rollback client call remains fenced from free-text draft input rather
+than becoming UI. Editing any of these lines is a gated implementation step belonging to its slice's
+PR. The textarea guard for
 `commit`/`abort`/`configure session`/`reload` is **not**
 in scope — those are review-pipeline hijack guards, unrelated to persistence, and stay fenced.
 
@@ -129,9 +122,9 @@ the decision was made against; the bold **Answer** lines are DR-160.
    `rollbackToSession(name)` (to a named committed session). The latter is unusable until the
    one-slot `rollback <name>` mechanism is understood. Recommend: no UI rollback until the
    slot-mechanism capture below resolves what a rollback target name actually survives.
-   **Answer: wanted, capture-gated.** Owner wants rollback-to-named-session; S1 (the
-   `rollback <name>` slot-mechanism capture) must run first, S4 follows its verdict
-   (DR-160 §3).
+   **Original answer: wanted, capture-gated (DR-160 §3). Captured result: no UI.** Run 14
+   proved that the target's presence and its hyphens are not the problem: both spellings still
+   receive 1002 at token 1, so S4 has no supported verb to call (DR-161).
 
 4. **Commit-timer UX.** The Transaction Center already *surfaces* a `pendingCommitTimer` row
    (PR #166) with its abort-with-revert exit. Do we add any *create/edit* timer control?
@@ -150,41 +143,30 @@ the decision was made against; the bold **Answer** lines are DR-160.
 
 | Slice | Depends on | Ships |
 |---|---|---|
-| S1 slot-mechanism capture | **RUN — 2026-11-23 runs 12 + 13** (`docs/evidence/persistence-hardware.json`, DR-161; run 13 is the clean 6/6 re-run after the PR #187 lane fix) | slot survives ≥60 s with no `replace` (aging refuted; `replace` clears it); but `rollback <name>` REFUSED (1002 at the name token) → see S4 |
+| S1 slot-mechanism capture | **RUN — 2026-11-23 runs 12-14** (`docs/evidence/persistence-hardware.json`, DR-161; run 14 includes the hyphen-free disambiguator) | slot survives ≥60 s with no `replace`; both hyphenated and hyphen-free `rollback <name>` targets REFUSE (1002 at token 1) |
 | S2 save-to-startup action | ✅ decided (DR-160 §1, option b) — **SHIPPED PR #185** | explicit `Save to startup` button + confirm copy + tests; DR-024 preserved (explicit, separate from commit) |
 | ~~S3 configure-replace operator panel~~ | ❌ decided against (DR-160 §2) — rationale text amended in `session-rules.ts` in PR #185 | no UI |
-| S4 rollback affordance | ⚠️ wanted (DR-160 §3); S1 captured — **premise in question** (DR-161): the device refuses `rollback <name>` (1002) though the slot holds; needs a hyphen-free-name disambiguation run before S4 is viable | the named-session verb has no confirmed device support yet |
+| ~~S4 rollback affordance~~ | ❌ falsified on capture (DR-161; run 14, PR #190) | no UI: this EOS build refuses the named-session rollback form with a proved-present target |
 | S5 features.md / contract flip | rides S2 — **SHIPPED PR #185** | the "Startup-config will never change" line is now conditional (only the confirmed Save changes it) |
 | C1 name cap 64→256 configurable | ✅ decided (DR-160 §5) — **SHIPPED PR #184** | arista-api-client: constant → option, refusal copy, `capability-panel.ts` mirror, tests |
 
 Each slice was implementable only after its DECISIONS entry (DR-160) recorded the owner's answer
 to the matching question above. S2/S5 (#185) and C1 (#184) shipped on that basis; commit-timer
-authoring stays surfacing-only per DR-160 §4. **S1 was captured (run 12, DR-161): the slot survives,
-but `rollback <name>` is refused by the device, so S4's premise is now in question** pending the
-hyphen-free-name disambiguation DR-161 records.
+authoring stays surfacing-only per DR-160 §4. **S1 is complete (runs 12-14, DR-161): the slot
+survives, but `rollback <name>` is refused even for a hyphen-free, proved-present completed target,
+so S4 is excluded.**
 
-## Remaining capture (S1) — scripted, reviewable, operator-run
+## Completed capture (S1)
 
-`rollback <name>` needs a completed session reliably present in the one-slot store at the
-moment of the rollback. Proposed additions to `arista-api-client/src/persistence-hardware.live.test.ts`
-/ `scripts/capture-hw-persistence.sh` (the existing DR-149 lane, which is already dry-run
-reviewable and consent-gated):
-
-- After a marker commit, **immediately** read `show configuration sessions detail` (before any
-  intervening op) and again after the `completedSlotHolds` probe, to pin whether the slot
-  empties within seconds or only across the replace window.
-- Attempt `rollback <name>` for the just-committed marker **without** any intervening
-  `configure replace`, to separate "replace clears the slot" from "the slot simply aged out."
-- Abort-only where the diff is non-empty; self-restoring; the standard identity + scratch +
-  pre-write-scan gates.
-
-This is a **spec for a future supervised capture day**, drafted for review. Per the owner's
-2026-11-23 rule it is scripted and reviewable; the agent does not execute it against the box.
+Runs 12-14 executed the reviewed DR-149 lane. They proved the one-slot store retains a fresh
+completed marker for at least 60 s without `configure replace`, then separately attempted hyphenated
+and alphanumeric target names. Both rollback forms returned 1002 at token 1. The named-session
+rollback affordance has no supported hardware path; there is no remaining B4 rollback capture.
 
 ## Out of scope of this spec
 
 This document is the **spec + decision record**, not the implementation. The slices it specifies
-shipped in their own PRs — C1 in #184, S2/S5 in #185 — and S4 ships only after the S1 capture.
+shipped in their own PRs — C1 in #184, S2/S5 in #185 — and S4 is excluded by the S1 result (DR-161).
 The spec file itself never edits `session-rules.ts`, `TransactionCenter*.tsx`, or the client (those
 edits live on the slice PRs), and the DR-147 session-grammar hardware halves stay a separate risk
 review. This PR is docs-only: DR-160 + this spec.

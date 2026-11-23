@@ -431,7 +431,16 @@ source (pyeapi 1.0.4-rc0).
 > uptime-clock-relative timestamps shifted by exactly the 44 508 s uptime delta —
 > `lastTopologyChangeTime` moved 688 467 → 732 975, the SAME event re-expressed, so no new
 > topology change).
-
+> **2026-11-23, runs 12-14 (DR-161, S1 named rollback):** run 12 exposed the slot/verb split and a
+> cleanup bug; run 13 re-ran the fixed lane 6/6 and reproduced that the completed marker survives
+> the 60 s detail-to-detail interval but `rollback <hyphenated-name>` returns 1002 at token 1. Run 14
+> added the alphanumeric target `hwrbmarkmwtttpnd`: the detail listing proved
+> `completedSlotHoldsTarget:true` with `targetContainsHyphen:false`, yet
+> `rollback hwrbmarkmwtttpnd` also returned 1002 at token 1. All 7 run-14 tests passed, the rollback
+> session aborted, and the final scratch read reported no `HW-PERSIST-*` marker. The target's
+> presence and its hyphens are therefore ruled out; on this EOS build the named rollback form is
+> not usable. S4's UI rollback affordance is excluded, while `rollback clean-config` remains a
+> captured session-scoped operator verb.
 Run the software/schema subset against cEOS first and store captures under
 `test/fixtures/recordings/ceos-4.28.14M/`; repeat target-sensitive checks on the
 7050TX-64 under `recordings/7050tx-64-4.28.13.1M/`. Keep exact version/model metadata,
@@ -542,9 +551,11 @@ which needs explicit authorization on hardware and unconditional cleanup.
       to every embedded depth on this class. `no-commit` is device-real: opener ACCEPTS, session lists
       `pending`, in-session `commit` REFUSED (code 1000, device reason string uncaptured) — the
       client's local refusal stands on a device that also refuses. The 7050TX halves stay open.)**
-- [ ] which of `copy running-config startup-config`, `rollback clean-config [ { groups } ]`,
-      `rollback <name>` and `configure replace <url>` answer `1002`/`1004` per platform (cEOS first, then
-      target — the class of gap DR-042 warns about)
+- [x] which of `copy running-config startup-config`, `rollback clean-config [ { groups } ]`,
+      `rollback <name>` and `configure replace <url>` answer `1002`/`1004` per platform — hardware
+      answers are now captured (copy/replace ACCEPTED; `rollback clean-config` staged; named
+      `rollback <name>` REFUSED at token 1 for hyphenated and hyphen-free proved-present targets,
+      DR-150/DR-158/DR-161)
 - [ ] `commit timer` behaviour: does a held timer block a later session, and does a second `commit` before
       the deadline confirm or reset the revert? (the handler is native below the image's Python; never
       inspected here) → open item 5

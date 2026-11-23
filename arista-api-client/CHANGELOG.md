@@ -9,6 +9,15 @@ surprise here — this file records what shipped, the migration map records what
 
 ## [Unreleased]
 
+### Evidence — run 14 settles the named-rollback question (2026-11-23; #189, #190, DR-161)
+- **The physical 7050TX-64-R / 4.28.13.1M refuses `rollback <name>` on both hyphenated and
+  hyphen-free targets.** The run committed `hwrbmarkmwtttpnd`, proved that exact alphanumeric name
+  was present in the completed-session detail listing, then observed 1002 `Invalid input (at token
+  1)` from `rollback hwrbmarkmwtttpnd`. The earlier hyphenated target produced the same refusal
+  while surviving the 60 s slot check. All 7 tests passed, the refused session was aborted, and the
+  final scratch-state check proved no lane marker remained. The S4 named-session rollback UI is
+  therefore excluded on this target; `rollback clean-config` remains a captured operator verb.
+
 ### Changed — the config-session name cap moves 64 → 256 and becomes configurable (2026-11-23; #183, DECISIONS DR-160 §5, §5 row 61)
 - **`MAX_SESSION_NAME_LENGTH = 64` is replaced by `DEFAULT_SESSION_NAME_LENGTH = 256` plus a
   `MAX_SESSION_NAME_LENGTH_LIMIT = 4096` ceiling**, and the bound is now a configurable
