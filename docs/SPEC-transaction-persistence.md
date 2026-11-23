@@ -4,7 +4,7 @@
 > owner answered all five decisions below; **DECISIONS DR-160** is the authority and this document
 > is its spec detail (slices, shapes, copy rules). **C1** (name cap 64→256 configurable) shipped in
 > PR #184 and **S2** (the explicit Save-to-startup action, with its S5 contract flip) shipped in
-> PR #185. The fences an answered slice did not reach — S4 rollback (waits on the S1 capture) and
+> PR #185. S1 was since captured (run 12, DR-161). The fences an answered slice did not reach — S4 rollback (the capture refused the verb) and
 > commit-timer authoring (surfacing-only) — stay exactly where they are; an answered decision
 > authorizes its own gated slice, not a blanket removal.
 
@@ -150,16 +150,18 @@ the decision was made against; the bold **Answer** lines are DR-160.
 
 | Slice | Depends on | Ships |
 |---|---|---|
-| S1 slot-mechanism capture | owner run (authorized; script review first) | closes the `rollback <name>` timing unknown (see below) |
+| S1 slot-mechanism capture | **RUN — 2026-11-23 run 12** (`docs/evidence/persistence-hardware.json`, DR-161) | slot survives ≥60 s with no `replace` (aging refuted; `replace` clears it); but `rollback <name>` REFUSED (1002 at the name token) → see S4 |
 | S2 save-to-startup action | ✅ decided (DR-160 §1, option b) — **SHIPPED PR #185** | explicit `Save to startup` button + confirm copy + tests; DR-024 preserved (explicit, separate from commit) |
 | ~~S3 configure-replace operator panel~~ | ❌ decided against (DR-160 §2) — rationale text amended in `session-rules.ts` in PR #185 | no UI |
-| S4 rollback affordance | ✅ wanted (DR-160 §3) but gated on S1 — **not started** | only after the target-name survival is known |
+| S4 rollback affordance | ⚠️ wanted (DR-160 §3); S1 captured — **premise in question** (DR-161): the device refuses `rollback <name>` (1002) though the slot holds; needs a hyphen-free-name disambiguation run before S4 is viable | the named-session verb has no confirmed device support yet |
 | S5 features.md / contract flip | rides S2 — **SHIPPED PR #185** | the "Startup-config will never change" line is now conditional (only the confirmed Save changes it) |
 | C1 name cap 64→256 configurable | ✅ decided (DR-160 §5) — **SHIPPED PR #184** | arista-api-client: constant → option, refusal copy, `capability-panel.ts` mirror, tests |
 
 Each slice was implementable only after its DECISIONS entry (DR-160) recorded the owner's answer
-to the matching question above. S2/S5 (#185) and C1 (#184) shipped on that basis; S4 stays gated on
-S1, and commit-timer authoring stays surfacing-only per DR-160 §4.
+to the matching question above. S2/S5 (#185) and C1 (#184) shipped on that basis; commit-timer
+authoring stays surfacing-only per DR-160 §4. **S1 was captured (run 12, DR-161): the slot survives,
+but `rollback <name>` is refused by the device, so S4's premise is now in question** pending the
+hyphen-free-name disambiguation DR-161 records.
 
 ## Remaining capture (S1) — scripted, reviewable, operator-run
 

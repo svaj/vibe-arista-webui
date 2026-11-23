@@ -1,71 +1,56 @@
 {
-  "generatedAt": "2026-11-22T03:03:14.681Z",
+  "generatedAt": "2026-11-23T20:40:32.923Z",
   "targetClass": "hardware",
   "verbs": [
     "copy",
     "rollback",
-    "replace"
+    "rollback-name"
   ],
-  "snapshotFile": "flash:hw-persist-mwr95182.cfg",
+  "snapshotFile": "flash:hw-persist-mwtqbe6u.cfg",
   "observations": [
     {
       "step": "identity",
-      "at": "2026-11-22T03:03:03.217Z",
+      "at": "2026-11-23T20:39:25.871Z",
       "class": "hardware",
       "version": "4.28.13.1M",
       "modelName": "DCS-7050TX-64-R"
     },
     {
       "step": "scratch-link",
-      "at": "2026-11-22T03:03:03.479Z",
+      "at": "2026-11-23T20:39:26.008Z",
       "scratch": "Ethernet33",
       "linkStatus": "notconnect"
     },
     {
       "step": "copy-baseline-startup",
-      "at": "2026-11-22T03:03:03.620Z",
+      "at": "2026-11-23T20:39:26.142Z",
       "absent": false,
       "hasMarker": false,
       "lines": 210
     },
     {
       "step": "copy-reply",
-      "at": "2026-11-22T03:03:04.350Z",
+      "at": "2026-11-23T20:39:26.796Z",
       "text": ""
     },
     {
       "step": "copy-after-startup",
-      "at": "2026-11-22T03:03:04.490Z",
+      "at": "2026-11-23T20:39:26.925Z",
       "lines": 210,
       "changedFromBaseline": true
     },
     {
-      "step": "replace-snapshot",
-      "at": "2026-11-22T03:03:05.251Z",
-      "snapshotFile": "flash:hw-persist-mwr95182.cfg"
-    },
-    {
-      "step": "replace-marker-committed",
-      "at": "2026-11-22T03:03:06.948Z",
-      "markerPresent": true
-    },
-    {
-      "step": "replace-reply",
-      "at": "2026-11-22T03:03:09.880Z",
-      "text": ""
-    },
-    {
-      "step": "replace-after",
-      "at": "2026-11-22T03:03:10.498Z",
-      "markerPresent": false
+      "step": "replace",
+      "at": "2026-11-23T20:39:26.925Z",
+      "skipped": "not in EAPI_HW_PERSISTENCE_VERBS"
     },
     {
       "step": "rollback-clean-diff",
-      "at": "2026-11-22T03:03:13.385Z",
+      "at": "2026-11-23T20:39:29.581Z",
       "diffLines": 152,
       "diffHead": [
         "--- system:/running-config",
-        "+++ session:/hw-persist-rbclean-mwr95182-session-config",
+        "+++ session:/hw-persist-rbclean-mwtqbe6u-session-config",
         "@@ -4,80 +4,37 @@",
         " !",
         " no aaa root",
@@ -76,17 +61,48 @@
     },
     {
       "step": "rollback-clean-poststate",
-      "at": "2026-11-22T03:03:13.696Z",
+      "at": "2026-11-23T20:39:29.862Z",
       "sessionStillPending": false
     },
     {
       "step": "rollback-name",
-      "at": "2026-11-22T03:03:13.836Z",
-      "skipped": "no completed session hw-persist-rep-mwr95182 to target (replace step did not run or the slot rotated) — DR-136 one-slot store"
+      "at": "2026-11-23T20:39:30.115Z",
+      "skipped": "no completed session hw-persist-rep-mwtqbe6u to target (replace step did not run or the slot rotated) — DR-136 one-slot store",
+      "completedSlotHolds": []
+    },
+    {
+      "step": "rollback-name-decoupled",
+      "at": "2026-11-23T20:39:31.287Z",
+      "batch": "immediate",
+      "target": "hw-persist-rbmark-mwtqbe6u",
+      "completedSlotHoldsImmediate": [
+        "hw-persist-rbmark-mwtqbe6u"
+      ],
+      "immediateHoldsTarget": true,
+      "replaceInThisRun": false
+    },
+    {
+      "step": "rollback-name-decoupled",
+      "at": "2026-11-23T20:40:31.423Z",
+      "batch": "aged-60s",
+      "target": "hw-persist-rbmark-mwtqbe6u",
+      "completedSlotHoldsAged": [
+        "hw-persist-rbmark-mwtqbe6u"
+      ],
+      "agedHoldsTarget": true,
+      "agedOutWithoutReplace": false,
+      "neverLandedInSlot": false
+    },
+    {
+      "step": "rollback-name-decoupled-refused",
+      "at": "2026-11-23T20:40:31.641Z",
+      "errorName": "CommandError",
+      "code": 1002,
+      "message": "Error [1002]: CLI command 3 of 3 'rollback hw-persist-rbmark-mwtqbe6u' failed: invalid command [errors: [\"Invalid input (at token 1: 'hw-persist-rbmark-mwtqbe6u')\"]]"
     },
     {
       "step": "final-scratch-state",
-      "at": "2026-11-22T03:03:14.404Z",
+      "at": "2026-11-23T20:40:32.157Z",
       "markerPresent": false
     }
   ]

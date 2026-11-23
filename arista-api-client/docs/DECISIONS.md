@@ -3651,6 +3651,54 @@ stays the separate confirmed act), DR-137/DR-148 (timer answers), DR-149 (the ph
 these decisions scope the UI for), DR-150/DR-158 (`copy`/replace hardware answers), DR-155/DR-156
 (name grammar; container-scoped), DR-159 (the slot-empties observation gating S4), DR-043; #89.
 
+### DR-161 — the S1 `rollback <name>` capture run answers both halves of the slot-mechanism question: a committed session HOLDS in the one-slot store for ≥60 s with no `configure replace` (DR-159's "ages out in seconds" is refuted; DR-158's cleared slot is best explained by `configure replace` itself), but the device REFUSES `rollback <name>` outright (1002 Invalid input at the name token) even with the target provably present and `completed` — so the rollback-to-a-named-session UI DR-160 §3 wanted has no device verb to build on, pending a hyphen-free-name disambiguation
+
+Run 12 (2026-11-23, physical 7050TX-64-R / 4.28.13.1M, scratch `Ethernet33`, `docs/evidence/
+persistence-hardware.json`, run-tag `mwtqbe6u`). The `rollback-name` decoupled probe (PR #186) was
+built to separate the three DR-158 candidate mechanisms for the empty slot, and it answered the
+**slot** half cleanly before the **verb** half refused:
+
+- **The slot half — DECISIVE.** The step commits its OWN scratch-port marker session
+  (`hw-persist-rbmark-<tag>`), then reads `show configuration sessions detail` immediately and again
+  after a 60 s wait with **no `configure replace` or any other mutating op in between**. Both reads
+  list the committed marker (`completedSlotHoldsImmediate` and `completedSlotHoldsAged` both
+  `["hw-persist-rbmark-<tag>"]`, `immediateHoldsTarget`/`agedHoldsTarget` both true,
+  `replaceInThisRun:false`). Therefore the one-slot completed store does **NOT** age out within
+  60 s — DR-159's run-11 `sessions:{}` was **not** seconds-fast aging — and the slot survival itself
+  is not the blocker. DR-158's cleared slot is now best explained by **`configure replace`** being the
+  intervening op in that run (this run deliberately excluded `replace`; positive confirmation that
+  `replace` clears the slot would need a run that names both, recorded here as the remaining sub-question).
+- **The verb half — REFUSED.** With the target provably `completed` and in the slot, staging
+  `rollback hw-persist-rbmark-<tag>` in a fresh session returns **`CommandError` 1002, "Invalid input
+  (at token 1: 'hw-persist-rbmark-<tag>')"** — the device rejects the `<name>` token itself, not the
+  name's presence. The client's `ConfigSession.rollbackToSession` grammar (built from the
+  `SessionCli.py:43-47` comment, with STATUS.md §3 row 70 already flagging the `<name>` command class
+  as un-confirmed) does **not** hold over eAPI on this image. This is one sample: 1002-at-token-1 on a
+  hyphen-bearing session name cannot by itself separate "`rollback <name>` is unsupported here" from
+  "the CLI rejects hyphenated names at this position." The cheap disambiguator is a future run that
+  commits a **hyphen-free** completed session (e.g. an alphanumeric marker name) and attempts
+  `rollback <that-name>`: a second 1002-at-token-1 confirms the verb is unsupported on this image;
+  an accept localises the refusal to hyphenated names. **Until that is captured, DR-160 §3's
+  rollback-to-a-named-session affordance (S4) has no confirmed device verb to build on** — recorded as a product implication for
+  the owner to weigh, NOT a unilateral scope decision. `rollback clean-config` (the session form) is
+  unaffected — it ACCEPTED and answered its 152-line would-be blast, aborted clean, same as DR-150.
+
+**A lane bug this run exposed (fixed in PR #186).** `Node.rollbackToSession(name, …)` opens its own
+`configSession` internally and **loses the handle when the staged `rollback` throws**, stranding a
+handle-less `PENDING` session on the box; the next named session then hits the DR-025 one-config-
+context guard, so the decoupled step's `clearMarker` self-clean never ran. The final-restore check
+compounded it: it grepped for `MARKER` (`HW-PERSIST-<tag>`) but the leaked scratch-port description is
+`HW-PERSIST-RBN-<tag>`, which does not contain `MARKER`, so it **false-passed** while the description
+was actually still on `Ethernet33`. Both rollback steps now open their own session handle so the
+`finally` abort is unconditional, and the final restore greps the whole `HW-PERSIST-` lane prefix.
+The run-12 `final-scratch-state` observation is therefore **unreliable** and must not be read as proof
+the port was clean; the operator re-run (PR #186 code) produces the trustworthy artifact.
+
+**Related:** DR-160 §3 (the rollback product decision this scopes), DR-158 (the confounded slot
+observation this separates), DR-159 (the aging hypothesis refuted), DR-150 (`copy`/`clean-config`
+answers, unaffected), DR-025 (the one-config-context guard the stranded session tripped), DR-024,
+DR-034/DR-043 (hardware evidence discipline); #89, #182, #186, STATUS.md §3 row 70.
+
 ## Open items (need the device)
 
 Use cEOS first for software behavior and schema exploration, recording its model/version;
