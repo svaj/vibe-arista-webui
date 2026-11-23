@@ -26,6 +26,7 @@ interface Overrides {
   readonly sessions?: readonly Summary[] | Error
   readonly diffRead?: boolean
   readonly diff?: string
+  readonly startupConfig?: string
 }
 
 function makeFakes(overrides: Overrides = {}) {
@@ -64,11 +65,17 @@ function makeFakes(overrides: Overrides = {}) {
     unmatched: [],
     raw: [{}, {}],
   }))
+  const copyRunningToStartup = vi.fn(async () => [])
+  // The follow-up `show startup-config` read is the proof-of-save (DR-150: the copy reply text is
+  // empty on this image). Default returns a non-empty config so the success path resolves; the
+  // empty-read failure test overrides it.
+  const getConfig = vi.fn(async () => overrides.startupConfig ?? 'hostname sw1\ninterface Vlan1\n   ip address 10.0.0.1/24\n')
   const node = {
     listSessions, abortSession, recoverOrphans, configSession, verifyConfig,
+    copyRunningToStartup, getConfig,
     connection: { address: ADDRESS },
   } as unknown as TransactionCenterClient
-  return { node, session, listSessions, abortSession, recoverOrphans, configSession, verifyConfig }
+  return { node, session, listSessions, abortSession, recoverOrphans, configSession, verifyConfig, copyRunningToStartup, getConfig }
 }
 
 function renderScreen(fakes: ReturnType<typeof makeFakes>) {
@@ -132,7 +139,7 @@ describe('TransactionCenter — shared draft review, argv pins, free refusals, a
     expect(screen.getByText('manual draft (2 line(s))')).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Commit transaction to running-config' }))
-    const body = await screen.findByText(/Startup-config was not changed and never will be/u)
+    const body = await screen.findByText(/Startup-config was not changed, and this screen changes it only through the separate confirmed Save to startup action/u)
     expect(body).toBeInTheDocument()
     await waitFor(() => expect(screen.getAllByRole('button', { name: 'Commit transaction to running-config' })).toHaveLength(2))
     fireEvent.click(screen.getAllByRole('button', { name: 'Commit transaction to running-config' }).at(-1)!)
@@ -174,6 +181,64 @@ describe('TransactionCenter — shared draft review, argv pins, free refusals, a
     fireEvent.click(screen.getAllByRole('button', { name: 'Abort transaction' }).at(-1)!)
     await waitFor(() => expect(fakes.session.abort).toHaveBeenCalled())
     expect(fakes.session.commit).not.toHaveBeenCalled()
+  })
+})
+
+describe('TransactionCenter — explicit Save to startup (DR-160 §1, option B): the app\u2019s only startup-config write', () => {
+  it('cancel performs NO write: declining the confirm calls neither copyRunningToStartup nor getConfig', async () => {
+    const fakes = makeFakes()
+    renderScreen(fakes)
+    await readyState(fakes)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save to startup' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Cancel' }))
+    expect(fakes.copyRunningToStartup).not.toHaveBeenCalled()
+    expect(fakes.getConfig).not.toHaveBeenCalled()
+  })
+
+  it('the confirm copy quotes the whole-running-config blast and the empty-reply fact (#181 acceptance)', async () => {
+    const fakes = makeFakes()
+    renderScreen(fakes)
+    await readyState(fakes)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save to startup' }))
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByText(/WHOLE current running-config to flash/u)).toBeInTheDocument()
+    expect(within(dialog).getByText(/not only the staged transaction/u)).toBeInTheDocument()
+    expect(within(dialog).getByText(/eAPI reply text comes back empty/u)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+  })
+
+  it('the success path is pinned to the FOLLOW-UP read, not the verb reply: copy then show startup-config', async () => {
+    const fakes = makeFakes({ startupConfig: 'hostname sw1\nntp server 1.2.3.4\n' })
+    renderScreen(fakes)
+    await readyState(fakes)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save to startup' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Copy running-config to startup-config' }))
+    await waitFor(() => expect(fakes.copyRunningToStartup).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(fakes.getConfig).toHaveBeenCalledWith({ config: 'startup-config', as: 'string' }))
+    expect(await screen.findByText(/Startup-config saved/u)).toBeInTheDocument()
+    // The read-back evidence (line/char counts) renders so the operator sees what flash holds.
+    expect(screen.getByText(/2 line\(s\)/u)).toBeInTheDocument()
+  })
+
+  it('an empty follow-up read fails LOUDLY rather than claiming a save the reads cannot confirm', async () => {
+    const fakes = makeFakes({ startupConfig: '   \n' })
+    renderScreen(fakes)
+    await readyState(fakes)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save to startup' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Copy running-config to startup-config' }))
+    expect(await screen.findByText(/follow-up `show startup-config` read answered empty/u)).toBeInTheDocument()
+    expect(screen.queryByText(/Startup-config saved/u)).not.toBeInTheDocument()
+  })
+
+  it('no proxy: the Save to startup button is disabled and the verb is never reachable', () => {
+    const fakes = makeFakes()
+    render(<TransactionProvider node={undefined}><TransactionCenter node={undefined} proxyConfigured={false} /></TransactionProvider>)
+    expect(screen.getByRole('button', { name: 'Save to startup' })).toBeDisabled()
+    expect(fakes.copyRunningToStartup).not.toHaveBeenCalled()
   })
 })
 

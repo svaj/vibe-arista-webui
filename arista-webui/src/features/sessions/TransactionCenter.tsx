@@ -26,12 +26,16 @@
  * preview from the CLEAN config" everywhere it appears, never as pre-flight for a specific diff.
  * `unmatched` and `raw` counts are reported, never trimmed away.
  *
- * ## Out of scope (B4, #89 — owner authorization pending)
+ * ## Durability (B4, #89 → DR-160 §1): ONE explicit Save, everything else still fenced
  *
- * `copy run start` policy, `configure replace`, `rollback*`, commit-timer UX, name-limit editing.
- * This screen names those absences rather than half-implementing them. The 2026-11-20 cEOS timer
- * capture (DR-148) answered the container mechanics — the session rows below surface the armed
- * timer with its abort-with-revert exit — but the physical persistence verbs stay fenced.
+ * `copyRunningToStartup()` rides this screen as the app's only startup-config write — a first-class
+ * confirmed button, separate from commit, whose success is judged by the follow-up
+ * `show startup-config` read because the copy's eAPI reply text is empty on this image (DR-150).
+ * Commit still writes running-config only (DR-024 — the Save button is the only thing that ever
+ * changes startup, and only when an operator confirms it). `configure replace` stays a scripted
+ * operator act with no UI (DR-160 §2), `rollback*` waits on the S1 capture (#182, DR-160 §3), and
+ * commit-timer authoring stays surfacing-only (DR-160 §4). This screen names those boundaries
+ * rather than half-implementing them.
  *
  * No `useOperation` collapse on the recovery path either? It does use it — the center shows TEXT
  * results (the recovery outcome buckets), which is exactly what `run()`'s string channel serves.
@@ -48,7 +52,7 @@ import { useTransaction, useTransactionSnapshot } from './TransactionContext'
 import type { DraftView, JournalRowView, SessionRowView, VerifyEntryView } from './TransactionCenterView'
 import { describeRecovery, describeSessionRow, draftBatchRefusal, parseDraftLines, VERIFY_LABEL } from './session-rules'
 
-export type TransactionCenterClient = Pick<Node, 'listSessions' | 'abortSession' | 'recoverOrphans' | 'verifyConfig' | 'connection'>
+export type TransactionCenterClient = Pick<Node, 'listSessions' | 'abortSession' | 'recoverOrphans' | 'verifyConfig' | 'connection' | 'copyRunningToStartup' | 'getConfig'>
 
 export interface TransactionCenterProps {
   readonly node: TransactionCenterClient | undefined
@@ -57,6 +61,10 @@ export interface TransactionCenterProps {
 
 const PROXY_PROMPT = 'Local proxy is not configured. Set EAPI_HOST, EAPI_USER, and EAPI_PASS in arista-webui/.env.local, then restart Vite.'
 const COMMIT_RECOVERY_NOTE = 'If this session is lost mid-commit, the change may still have applied — refresh the session table before any further action.'
+/** The whole-running-config blast, quoted verbatim in the Save confirm (#181 acceptance). */
+const SAVE_BLAST = 'This writes the WHOLE current running-config to flash with `copy running-config startup-config` — every change on this switch, not only the staged transaction — and it overwrites whatever startup-config is there now. It is a separate act from commit and is not part of any transaction.'
+/** Why success comes from a second read, not the verb's reply (#181, DR-150/DR-160 §1). */
+const SAVE_REPLY_FACT = 'On this EOS build the copy\u2019s eAPI reply text comes back empty, so success is judged by the follow-up `show startup-config` read (format=text), never by the verb reply.'
 
 export function TransactionCenter(props: TransactionCenterProps) {
   return <ConfirmProvider><TransactionWorkspace {...props} /></ConfirmProvider>
@@ -75,6 +83,7 @@ function TransactionWorkspace({ node, proxyConfigured = true }: TransactionCente
   const [verifyText, setVerifyText] = useState('')
   const [recoveryLines, setRecoveryLines] = useState<readonly string[]>([])
   const [verify, setVerify] = useState<{ outcome: VerifyConfigOutcome; label: string } | undefined>(undefined)
+  const [startupSave, setStartupSave] = useState<{ lines: number; characters: number } | undefined>(undefined)
 
   // The journal is browser-local: reading it contacts nothing, and with no proxy it still answers
   // "what did THIS browser leave behind?" — which is exactly the orphan question.
@@ -149,7 +158,7 @@ function TransactionWorkspace({ node, proxyConfigured = true }: TransactionCente
     const summary = transactionState.entries.map((entry) => `${entry.source}: ${entry.action}`).join(' · ')
     if (!await confirm({
       title: `Commit transaction ${sessionName}`,
-      body: `Commit config session ${sessionName} (${String(transactionState.entries.length)} staged action(s): ${summary})? This writes RUNNING-CONFIG only — Startup-config was not changed and never will be from this screen (DR-024). ${COMMIT_RECOVERY_NOTE}`,
+      body: `Commit config session ${sessionName} (${String(transactionState.entries.length)} staged action(s): ${summary})? This writes RUNNING-CONFIG only \u2014 Startup-config was not changed, and this screen changes it only through the separate confirmed Save to startup action (DR-024 / DR-160 \u00a71). ${COMMIT_RECOVERY_NOTE}`,
       confirmLabel: 'Commit transaction to running-config',
       destructive: true,
       subject: sessionName,
@@ -214,6 +223,37 @@ function TransactionWorkspace({ node, proxyConfigured = true }: TransactionCente
     if (done.ok) read.reload()
   }
 
+  /**
+   * #181 (DR-160 §1, option B): the app's ONLY startup-config write. Direct client verb, never a
+   * draft-textarea line (the `DRAFT_FORBIDDEN_LINES` guard stays). Confirm default-cancels; cancel
+   * performs no write. The copy reply is empty on this image, so the follow-up text read IS the
+   * proof \u2014 an empty read fails loudly rather than claiming a save the reads cannot confirm.
+   */
+  async function saveToStartup() {
+    if (busy || !canAct || node === undefined) return
+    if (!await confirm({
+      title: 'Save running-config to startup-config',
+      body: `${SAVE_BLAST} ${SAVE_REPLY_FACT}`,
+      confirmLabel: 'Copy running-config to startup-config',
+      destructive: true,
+    })) return
+    const done = await operation.run(async () => {
+      await node.copyRunningToStartup()
+      const startup = await node.getConfig({ config: 'startup-config', as: 'string' })
+      const text = startup.trim()
+      if (text === '') {
+        throw new Error('The copy command was sent, but the follow-up `show startup-config` read answered empty \u2014 on this image the copy reply text is empty, so the read is the only evidence, and an empty read cannot confirm the flash write. Verify startup-config on the device before trusting it.')
+      }
+      const evidence = { lines: text.split('\n').length, characters: text.length }
+      setStartupSave(evidence)
+      return evidence
+    }, {
+      progress: 'Copying running-config to startup-config and re-reading startup-config\u2026',
+      success: 'Startup-config saved: the copy ran and the follow-up `show startup-config` read confirms it (DR-160 \u00a71 \u2014 the copy reply itself is empty on this image, so the read is the evidence).',
+    })
+    return done
+  }
+
   async function runVerify() {
     if (busy || !canAct || node === undefined) return
     const configlet = verifyText
@@ -270,6 +310,8 @@ function TransactionWorkspace({ node, proxyConfigured = true }: TransactionCente
     onVerifyTextChange={setVerifyText}
     onVerify={() => void runVerify()}
     verifyLabel={VERIFY_LABEL}
+    onSaveToStartup={() => void saveToStartup()}
+    {...(startupSave === undefined ? {} : { startupSave })}
     {...(verifyEntries === undefined || verifyUnmatched === undefined || verifyFormat === undefined ? {} : { verifyEntries, verifyUnmatched, verifyFormat })}
     busy={busy}
     canAct={canAct}
