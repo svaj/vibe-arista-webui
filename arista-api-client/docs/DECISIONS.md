@@ -3651,7 +3651,7 @@ stays the separate confirmed act), DR-137/DR-148 (timer answers), DR-149 (the ph
 these decisions scope the UI for), DR-150/DR-158 (`copy`/replace hardware answers), DR-155/DR-156
 (name grammar; container-scoped), DR-159 (the slot-empties observation gating S4), DR-043; #89.
 
-### DR-161 — the S1 `rollback <name>` capture run answers both halves of the slot-mechanism question: a committed session HOLDS in the one-slot store for ≥60 s with no `configure replace` (DR-159's "ages out in seconds" is refuted; DR-158's cleared slot is best explained by `configure replace` itself), but the device REFUSES `rollback <name>` outright (1002 Invalid input at the name token) even with the target provably present and `completed` — so the rollback-to-a-named-session UI DR-160 §3 wanted has no device verb to build on, pending a hyphen-free-name disambiguation
+### DR-161 — S1 proves `rollback <name>` has no usable named-session form on the 7050TX-64-R / 4.28.13.1M: the completed slot holds for ≥60 s, but EOS refuses the rollback target even when its name is hyphen-free; S4 therefore has no device verb to build on
 
 Run 12 (2026-11-23, physical 7050TX-64-R / 4.28.13.1M, scratch `Ethernet33`, `docs/evidence/
 persistence-hardware.json`, run-tag `mwtqbe6u`). The `rollback-name` decoupled probe (PR #186) was
@@ -3673,15 +3673,12 @@ built to separate the three DR-158 candidate mechanisms for the empty slot, and 
   (at token 1: 'hw-persist-rbmark-<tag>')"** — the device rejects the `<name>` token itself, not the
   name's presence. The client's `ConfigSession.rollbackToSession` grammar (built from the
   `SessionCli.py:43-47` comment, with STATUS.md §3 row 70 already flagging the `<name>` command class
-  as un-confirmed) does **not** hold over eAPI on this image. This is one sample: 1002-at-token-1 on a
-  hyphen-bearing session name cannot by itself separate "`rollback <name>` is unsupported here" from
-  "the CLI rejects hyphenated names at this position." The cheap disambiguator is a future run that
-  commits a **hyphen-free** completed session (e.g. an alphanumeric marker name) and attempts
-  `rollback <that-name>`: a second 1002-at-token-1 confirms the verb is unsupported on this image;
-  an accept localises the refusal to hyphenated names. **Until that is captured, DR-160 §3's
-  rollback-to-a-named-session affordance (S4) has no confirmed device verb to build on** — recorded as a product implication for
-  the owner to weigh, NOT a unilateral scope decision. `rollback clean-config` (the session form) is
-  unaffected — it ACCEPTED and answered its 152-line would-be blast, aborted clean, same as DR-150.
+  as un-confirmed) does **not** hold over eAPI on this image. The follow-up in run 14 removes the
+  remaining ambiguity: a hyphen-free target also receives 1002 at token 1 while the detail listing
+  proves it is `completed` and present in the one-slot store. **DR-160 §3's rollback-to-a-named-
+  session affordance (S4) therefore has no usable device verb on this target and must not ship.**
+  `rollback clean-config` (the session form) is unaffected — it ACCEPTED and answered its 152-line
+  would-be blast, aborted clean, same as DR-150.
 
 **A lane bug this run exposed (fixed in PR #187, not #186 — #186 shipped the buggy lane).**
 `Node.rollbackToSession(name, …)` opens its own
@@ -3706,15 +3703,25 @@ too). The broadened `final-scratch-state` reports `anyLaneMarkerPresent:false` A
 the step's own `clearMarker` ran without the `CLEANUP … failed` line, because the fix's `finally`
 abort freed the DR-025 guard first. The port is now genuinely free of any `HW-PERSIST-*` description
 (the fixed step's `clearMarker` replaced and removed the stuck `HW-PERSIST-RBN-mwtr973t` line the two
-broken runs had left behind). **This artifact supersedes run 12 as the trustworthy S1 evidence.** The
-hyphen-free-name disambiguation (does a second 1002 prove `rollback <name>` is unsupported on
-4.28.13.1M, or does an accept localise it to hyphenated names?) is the one remaining device question
-that would settle DR-160 §3's rollback UI (S4) — still an owner run, not executed here.
+broken runs had left behind).
+
+**Run 14 DECIDES the remaining grammar question (2026-11-23, PR #190 code, run-tag `mwtttpnd`, same
+box/scratch).** The `rollback-hyphenfree` verb committed the alphanumeric session
+`hwrbmarkmwtttpnd`; `show configuration sessions detail` proved that exact name was
+`completedSlotHoldsTarget:true` with `targetContainsHyphen:false`. Staging
+`rollback hwrbmarkmwtttpnd` in a fresh owned session still returned **1002, `Invalid input (at token
+1)`**. That second refusal cannot be attributed to a hyphen or to target absence. On this physical
+EOS build, the CLI path rejected by runs 12-14 is the named rollback form itself. All 7 tests passed,
+the refused rollback session was aborted, and `anyLaneMarkerPresent:false` proves the scratch port
+was restored. The S4 UI premise is therefore falsified: retain console/operator use for persistence
+rollback, but do not add a rollback-to-completed-session affordance. **Run 14 supersedes runs 12 and
+13 as the complete S1 evidence artifact.**
 
 **Related:** DR-160 §3 (the rollback product decision this scopes), DR-158 (the confounded slot
 observation this separates), DR-159 (the aging hypothesis refuted), DR-150 (`copy`/`clean-config`
 answers, unaffected), DR-025 (the one-config-context guard the stranded session tripped), DR-024,
-DR-034/DR-043 (hardware evidence discipline); #89, #182, #186 (buggy lane), #187 (fix), STATUS.md §3 row 70.
+DR-034/DR-043 (hardware evidence discipline); #89, #182, #186 (buggy lane), #187 (fix), #189/#190
+(hyphen-free disambiguator), STATUS.md §3 row 70.
 
 ## Open items (need the device)
 

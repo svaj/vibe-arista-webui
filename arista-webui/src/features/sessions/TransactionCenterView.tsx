@@ -138,8 +138,9 @@ export function TransactionCenterView({
       separate, confirmed <strong>Save to startup</strong> below (DR-160 §1): it persists the whole
       running-config, and nothing else here ever touches startup-config. Still out of scope by
       decision, not by missing evidence: <code>configure replace</code> stays a scripted operator
-      act with no UI (DR-160 §2), rollback waits on the named-session capture (#182, DR-160 §3),
-      and commit timers stay surfacing-only — no create/edit control (DR-160 §4).
+      act with no UI (DR-160 §2), named-session rollback has no UI because this EOS build refuses
+      the device verb even for a proved-present target (DR-161), and commit timers stay
+      surfacing-only — no create/edit control (DR-160 §4).
     </p>
 
     {state === 'loading' && <p className="notice" role="status">Reading <code>show configuration sessions</code>…</p>}
