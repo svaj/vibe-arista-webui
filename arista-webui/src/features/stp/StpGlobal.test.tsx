@@ -277,6 +277,61 @@ describe('StpGlobal — region staging (parent + only changed lines)', () => {
     expect(entry?.confirmations).toHaveLength(0)
   })
 
+  it('stages read-model name/revision removals with the measured diff fact and no second confirm', async () => {
+    renderScreen(makeFakes())
+    await readyRegion()
+
+    const nameToggle = screen.getByRole('button', { name: 'Remove no name' })
+    const revisionToggle = screen.getByRole('button', { name: 'Remove no revision' })
+    fireEvent.click(nameToggle)
+    fireEvent.click(revisionToggle)
+    expect(screen.getByRole('button', { name: 'Undo remove no name' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: 'Undo remove no revision' })).toHaveAttribute('aria-pressed', 'true')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Stage region edit' }))
+    await waitFor(() => expect(snapshot().entries).toHaveLength(1))
+    const entry = snapshot().entries[0]
+    expect(entry?.commands).toEqual(['spanning-tree mst configuration', 'no name', 'no revision'])
+    expect(entry?.risks.join('\n')).toMatch(/netted an EMPTY session diff/u)
+    expect(entry?.risks.join('\n')).toMatch(/same blast class as a pure remap/u)
+    expect(entry?.confirmations).toHaveLength(0)
+  })
+
+  it('offers identity-field removal only for fields the read block actually carries', async () => {
+    renderScreen(makeFakes({ chunks: new Map([['spanning-tree mst configuration', [
+      'spanning-tree mst configuration',
+      '   instance 1 vlan 100,110',
+    ].join('\n')]]) }))
+    await readyRegion()
+
+    expect(screen.queryByRole('button', { name: 'Remove no name' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Remove no revision' })).not.toBeInTheDocument()
+  })
+
+  it('an identity field both set and marked for removal is refused at zero appends', async () => {
+    renderScreen(makeFakes())
+    await readyRegion()
+
+    fireEvent.change(screen.getByLabelText(/Region name/u), { target: { value: 'OTHER' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Remove no name' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Stage region edit' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('name is both being set and marked for removal')
+    expect(snapshot().entries).toHaveLength(0)
+  })
+
+  it('a revision both set and marked for removal is refused at zero appends', async () => {
+    renderScreen(makeFakes())
+    await readyRegion()
+
+    fireEvent.change(screen.getByLabelText(/Revision 1-65535/u), { target: { value: '2' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Remove no revision' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Stage region edit' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('revision is both being set and marked for removal')
+    expect(snapshot().entries).toHaveLength(0)
+  })
+
   it('marking a removal is undoable before staging (aria-pressed toggles)', async () => {
     renderScreen(makeFakes())
     await readyRegion()

@@ -163,6 +163,9 @@ spanning-tree mst configuration
  name <operator-name>
  revision <operator-revision>
  instance <id> vlan <ranges>        (one line per mapping row)
+ no name                            (only when the read block carried a name)
+ no revision                        (only when the read block carried a revision)
+ no instance <id>                   (only for an id carried by the read block)
 ```
 
 - Region edits stage the parent + only the lines the operator changed/added/removed (EOS applies
@@ -172,8 +175,10 @@ spanning-tree mst configuration
   4.28.14M and netted the mapping out of the block (`docs/evidence/unblock-grammar-ceos.json`,
   rea-q1/q2, aborted); the screen stages the BARE form (it cannot misquote the device's own
   double-space VLAN-list spelling), per-row from the read block only. `no name`/`no revision`
-  staged too (rea-q3/q4) but stay unoffered — no owner ask. Hardware acceptance of the removal
-  spellings is still an open device question (DR-043); the risk line says so.
+  staged in the same cEOS lane (rea-q3/q4) and are offered only when the parsed read block carries
+  that field. All three removal families STAGE-ACCEPTED on the 7050TX-64-R on 2026-11-22; each
+  add+remove pair netted an empty session diff, then aborted (DR-159). An identity field cannot be
+  set and removed in the same draft; the container refuses that collision at zero appends.
 - In-form validation (client grammar, explicitly *not* device fact): name = 1–32 printable
   non-space tokens; revision = integer 1–65535; instance id = integer 0–64 (IEEE 802.1s
   instance id); VLAN ranges = `<1-4094>` / comma lists / `A-B` spans. Bounds marked
@@ -198,6 +203,9 @@ Center confirm body carry (wording pinned by tests):
   re-convergence on all MST instances (IEEE 802.1s behavior; not measured on this unit)."
 - region instance map: "Re-maps VLANs to MST instances; ports in affected instances may
   re-converge (not measured on this unit)."
+- region name/revision removal: the risk entry quotes the `no name` / `no revision` spellings and
+  the DR-159 empty-diff hardware fact; it is the same blast class as a pure remap and carries no
+  second confirm. Typed add/remove collisions are refused in-form at zero appends.
 - The informational far-end note (non-gating): "This UI cannot see what is attached on the far
   end of any port." (DR-149: note, not gate.)
 
@@ -295,7 +303,6 @@ Vitest 5 + Testing Library + hand-built fake `Node` seams (existing pattern; que
 | `rapid-pvst` acceptance | Disclosure in-form; device refusal surfaces as `CommandError`; nothing applied. |
 | Region name/revision bounds, instance-id max | Client-grammar validation only; device is authority; refusal changes nothing. |
 | Region-change reconvergence on this SKU | Copy says "not measured on this unit"; no timing claimed. |
-| `no instance …` removal spelling | Captured on cEOS (DR-155, container-scoped copy); hardware acceptance answered by the first real removal's diff or refusal. |
 
 Each first real device answer gets a DECISIONS entry (the capture-on-first-use discipline the
 persistence lane used).

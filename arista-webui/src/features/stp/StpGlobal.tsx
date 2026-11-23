@@ -108,6 +108,8 @@ function StpGlobalWorkspace({ node, proxyConfigured = true }: StpGlobalProps) {
 
   const [regionName, setRegionName] = useState('')
   const [regionRevision, setRegionRevision] = useState('')
+  const [removeRegionName, setRemoveRegionName] = useState(false)
+  const [removeRegionRevision, setRemoveRegionRevision] = useState(false)
   const [instanceRows, setInstanceRows] = useState<readonly { id: string; vlans: string }[]>([])
   const [instanceIdDraft, setInstanceIdDraft] = useState('')
   const [instanceVlansDraft, setInstanceVlansDraft] = useState('')
@@ -215,6 +217,16 @@ function StpGlobalWorkspace({ node, proxyConfigured = true }: StpGlobalProps) {
     setRemoveInstanceIds((ids) => (ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]))
   }
 
+  function toggleRemoveRegionName(): void {
+    clearErrors()
+    setRemoveRegionName((remove) => !remove)
+  }
+
+  function toggleRemoveRegionRevision(): void {
+    clearErrors()
+    setRemoveRegionRevision((remove) => !remove)
+  }
+
   function beginRegionChange(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault()
     clearErrors()
@@ -223,10 +235,20 @@ function StpGlobalWorkspace({ node, proxyConfigured = true }: StpGlobalProps) {
       ...(regionName === '' ? {} : { name: regionName }),
       ...(regionRevision === '' ? {} : { revision: regionRevision }),
       instances: instanceRows,
+      ...(removeRegionName ? { removeName: true } : {}),
+      ...(removeRegionRevision ? { removeRevision: true } : {}),
       ...(removeInstanceIds.length === 0 ? {} : { removeInstances: removeInstanceIds.map((id) => ({ id })) }),
     }
     if (stpRegionDraftIsEmpty(draft)) {
-      setRegionError('Nothing to stage — change the name or revision, add an instance mapping row, or mark a read mapping for removal. This screen never stages an empty `spanning-tree mst configuration` block.')
+      setRegionError('Nothing to stage — change or remove the name or revision, add an instance mapping row, or mark a read mapping for removal. This screen never stages an empty `spanning-tree mst configuration` block.')
+      return
+    }
+    if (removeRegionName && regionName !== '') {
+      setRegionError('The MST region name is both being set and marked for removal — one draft stages one intent for that field.')
+      return
+    }
+    if (removeRegionRevision && regionRevision !== '') {
+      setRegionError('The MST region revision is both being set and marked for removal — one draft stages one intent for that field.')
       return
     }
     // An id can be added and removed in one draft only by accident — the two lines would fight
@@ -256,6 +278,8 @@ function StpGlobalWorkspace({ node, proxyConfigured = true }: StpGlobalProps) {
     })
     setRegionName('')
     setRegionRevision('')
+    setRemoveRegionName(false)
+    setRemoveRegionRevision(false)
     setInstanceRows([])
     setRemoveInstanceIds([])
   }
@@ -281,6 +305,8 @@ function StpGlobalWorkspace({ node, proxyConfigured = true }: StpGlobalProps) {
     instanceRows,
     instanceIdDraft,
     instanceVlansDraft,
+    removeRegionName,
+    removeRegionRevision,
     removeInstanceIds,
     ...(regionError === undefined ? {} : { regionError }),
     onRegionNameChange: (value) => { setRegionName(value); setRegionError(undefined) },
@@ -289,6 +315,8 @@ function StpGlobalWorkspace({ node, proxyConfigured = true }: StpGlobalProps) {
     onInstanceVlansDraftChange: (value) => { setInstanceVlansDraft(value); setRegionError(undefined) },
     onAddInstanceRow: addInstanceRow,
     onRemoveInstanceRow: removeInstanceRow,
+    onToggleRemoveRegionName: toggleRemoveRegionName,
+    onToggleRemoveRegionRevision: toggleRemoveRegionRevision,
     onToggleRemoveInstance: toggleRemoveInstance,
     onRegionPreview: beginRegionChange,
     busy: busy || transactionBusy,
