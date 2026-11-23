@@ -16,9 +16,10 @@
  *   configured", the form offers to create the first), and configured (name/revision/instance
  *   rows verbatim, plus an honest count of lines this screen does not model).
  * - No commit/abort control exists anywhere on this screen (#141: the Transaction Center owns
- *   them); the forms only stage. A read mapping is removable via a per-row toggle that stages the
- *   capture-backed bare `no instance <id>` (rea-q2, unblock-grammar-ceos.json); the added-rows
- *   table is removable because those lines were never on the device.
+ *   them); the forms only stage. Read-backed region name/revision fields and mappings are removable
+ *   only when the parsed block carries them, via the capture-backed `no name`, `no revision`, and
+ *   bare `no instance <id>` spellings; the added-rows table is removable because those lines were
+ *   never on the device.
  */
 import type { FormEvent } from 'react'
 import type { ReactElement } from 'react'
@@ -76,6 +77,10 @@ export interface StpGlobalViewProps {
   readonly onInstanceVlansDraftChange: (value: string) => void
   readonly onAddInstanceRow: () => void
   readonly onRemoveInstanceRow: (index: number) => void
+  readonly removeRegionName: boolean
+  readonly removeRegionRevision: boolean
+  readonly onToggleRemoveRegionName: () => void
+  readonly onToggleRemoveRegionRevision: () => void
   /** Instance ids marked for removal (from the READ block; the bare `no instance <id>` verb). */
   readonly removeInstanceIds: readonly string[]
   readonly onToggleRemoveInstance: (id: string) => void
@@ -125,6 +130,10 @@ export function StpGlobalView(props: StpGlobalViewProps): ReactElement {
     onInstanceVlansDraftChange,
     onAddInstanceRow,
     onRemoveInstanceRow,
+    removeRegionName,
+    removeRegionRevision,
+    onToggleRemoveRegionName,
+    onToggleRemoveRegionRevision,
     removeInstanceIds,
     onToggleRemoveInstance,
     onRegionPreview,
@@ -245,6 +254,14 @@ export function StpGlobalView(props: StpGlobalViewProps): ReactElement {
           <strong>{region.revision === undefined ? '(no `revision` line)' : <code>{region.revision}</code>}</strong>. Tokens are the device&#39;s own, verbatim.
           {region.unmodelledLines > 0 && <> This block also carries <strong>{String(region.unmodelledLines)}</strong> line(s) this screen does not model — they are left untouched by anything staged here.</>}
         </p>
+        {(region.name !== undefined || region.revision !== undefined) && <div className="review-actions">
+          {region.name !== undefined && <button className="quiet-button" type="button" onClick={onToggleRemoveRegionName} disabled={regionFormDisabled} aria-pressed={removeRegionName}>
+            {removeRegionName ? 'Undo remove no name' : 'Remove no name'}
+          </button>}
+          {region.revision !== undefined && <button className="quiet-button" type="button" onClick={onToggleRemoveRegionRevision} disabled={regionFormDisabled} aria-pressed={removeRegionRevision}>
+            {removeRegionRevision ? 'Undo remove no revision' : 'Remove no revision'}
+          </button>}
+        </div>}
         {region.instances.length === 0
           ? <p className="field-note">The block configures no `instance … vlan …` mappings.</p>
           : <DataTable columns={configuredInstanceColumns} rows={region.instances} rowKey={(row) => row.id} label="Configured MST instance-to-VLAN mappings" />}
@@ -285,6 +302,12 @@ export function StpGlobalView(props: StpGlobalViewProps): ReactElement {
             </li>
           ))}
         </ul>}
+        {(removeRegionName || removeRegionRevision) && (
+          <p className="notice" role="status">
+            Marked for removal: {removeRegionName && <code>no name</code>}{removeRegionName && removeRegionRevision && ', '}{removeRegionRevision && <code>no revision</code>}{' '}
+            — each spelling staged on this 7050TX-64-R on 2026-11-22 and netted an empty session diff (DR-159).
+          </p>
+        )}
         {removeInstanceIds.length > 0 && (
           <p className="notice" role="status">
             Marked for removal: {removeInstanceIds.map((id) => <code key={id}>{`no instance ${id}`}</code>)}{' '}

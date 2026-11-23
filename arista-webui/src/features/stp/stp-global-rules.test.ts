@@ -11,6 +11,7 @@ import {
   STP_GLOBAL_MODES,
   STP_MODE_BLAST_FACTS,
   STP_MODE_NONE_FACTS,
+  STP_REGION_IDENTITY_REMOVAL_FACT,
   STP_REGION_IDENTITY_RISK,
   STP_REGION_INSTANCE_RISK,
   STP_REGION_REMOVAL_FACT,
@@ -24,6 +25,8 @@ import {
   stpRegionDraftIsEmpty,
   stpRegionIdentityConfirmation,
   stpRegionNoInstanceLine,
+  stpRegionNoNameLine,
+  stpRegionNoRevisionLine,
   stpRegionRisks,
   validateStpInstanceId,
   validateStpRegionName,
@@ -77,6 +80,17 @@ describe('the MST region block (hardware batch unblock-stp-mst-region-grammar)',
   it('a draft with no removals composes no `no …` line at all', () => {
     const lines = stpRegionChildLines({ name: 'X', revision: '2', instances: [{ id: '3', vlans: '30' }] })
     for (const line of lines) expect(line).not.toMatch(/^no\s/u)
+  })
+
+  it('pins the hardware-captured name and revision removal spellings verbatim', () => {
+    expect(stpRegionNoNameLine()).toBe('no name')
+    expect(stpRegionNoRevisionLine()).toBe('no revision')
+    expect(stpRegionChildLines({ instances: [], removeName: true, removeRevision: true })).toEqual(['no name', 'no revision'])
+  })
+
+  it('name and revision removal-only drafts are not empty', () => {
+    expect(stpRegionDraftIsEmpty({ instances: [], removeName: true })).toBe(false)
+    expect(stpRegionDraftIsEmpty({ instances: [], removeRevision: true })).toBe(false)
   })
 
   it('removals compose the capture-backed BARE `no instance <id>` (rea-q2, unblock-grammar-ceos.json), after the adds', () => {
@@ -208,6 +222,14 @@ describe('risk + confirm copy (DR-149: the confirm carries the CAPTURED facts)',
     expect(STP_REGION_REMOVAL_FACT).toMatch(/netted the line out of the block/u)
     expect(STP_REGION_REMOVAL_FACT).toMatch(/staged on this 7050TX-64-R on 2026-11-22/u)
     expect(STP_REGION_REMOVAL_FACT).toMatch(/fallback is not measured on any target/u)
+  })
+
+  it('name/revision removal carries the measured empty-diff fact without identity-edit risk', () => {
+    const risks = stpRegionRisks({ instances: [], removeName: true, removeRevision: true }, ['spanning-tree mst configuration', 'no name', 'no revision'])
+    expect(risks).toContain(STP_REGION_IDENTITY_REMOVAL_FACT)
+    expect(risks).not.toContain(STP_REGION_IDENTITY_RISK)
+    expect(STP_REGION_IDENTITY_REMOVAL_FACT).toMatch(/netted an EMPTY session diff \(DR-159\)/u)
+    expect(STP_REGION_IDENTITY_REMOVAL_FACT).toMatch(/same blast class as a pure remap/u)
   })
 
   it('region risks: identity edit gets the reconvergence sentence, a pure remap only the instance one', () => {

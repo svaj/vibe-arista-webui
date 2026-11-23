@@ -82,6 +82,16 @@ export function stpRegionNoInstanceLine(id: string): string {
   return `no instance ${id}`
 }
 
+/** The capture-backed removal line for a configured MST region name. */
+export function stpRegionNoNameLine(): string {
+  return 'no name'
+}
+
+/** The capture-backed removal line for a configured MST region revision. */
+export function stpRegionNoRevisionLine(): string {
+  return 'no revision'
+}
+
 /**
  * The region-edit batch WITHOUT the parent line: only the lines the operator changed, added, or
  * removed (EOS applies the block incrementally; the device diff is the proof). Removals ride the
@@ -94,23 +104,29 @@ export interface MstRegionDraft {
   readonly revision?: string
   /** Mapping rows the operator ADDED this session. */
   readonly instances: readonly { readonly id: string; readonly vlans: string }[]
+  /** Remove the configured name line; valid only when the read block carried a name. */
+  readonly removeName?: boolean
+  /** Remove the configured revision line; valid only when the read block carried a revision. */
+  readonly removeRevision?: boolean
   /** Instance ids whose mapping line the operator is REMOVING (each must be in the read). */
   readonly removeInstances?: readonly { readonly id: string }[]
 }
 
-/** The child lines a draft stages, in capture order: name, revision, added rows, then removals. */
+/** The child lines a draft stages, in capture order: edits, added rows, then removals. */
 export function stpRegionChildLines(draft: MstRegionDraft): readonly string[] {
   const lines: string[] = []
   if (draft.name !== undefined) lines.push(`name ${draft.name}`)
   if (draft.revision !== undefined) lines.push(`revision ${draft.revision}`)
   for (const row of draft.instances) lines.push(stpRegionInstanceLine(row.id, row.vlans))
+  if (draft.removeName === true) lines.push(stpRegionNoNameLine())
+  if (draft.removeRevision === true) lines.push(stpRegionNoRevisionLine())
   for (const row of draft.removeInstances ?? []) lines.push(stpRegionNoInstanceLine(row.id))
   return lines
 }
 
 /** True when a draft would stage nothing (the container refuses this in-form, at zero sessions). An empty string is "untouched", same as absent. */
 export function stpRegionDraftIsEmpty(draft: MstRegionDraft): boolean {
-  return (draft.name === undefined || draft.name === '') && (draft.revision === undefined || draft.revision === '') && draft.instances.length === 0 && (draft.removeInstances?.length ?? 0) === 0
+  return (draft.name === undefined || draft.name === '') && (draft.revision === undefined || draft.revision === '') && draft.instances.length === 0 && draft.removeName !== true && draft.removeRevision !== true && (draft.removeInstances?.length ?? 0) === 0
 }
 
 // --- region read model (parsed from the chunked running-config section) -------------------------
@@ -252,6 +268,10 @@ export const STP_REGION_INSTANCE_RISK =
 export const STP_REGION_REMOVAL_FACT =
   'Removes the `instance … vlan …` mapping line for that instance (the bare `no instance <id>` spelling staged on this 7050TX-64-R on 2026-11-22 and netted the line out of the block — DR-159; first proven on cEOS-lab 4.28.14M). The VLANs it named fall back to the default instance; that fallback is not measured on any target.'
 
+/** Hardware fact for the name/revision removal arm; the same risk class as a pure remap. */
+export const STP_REGION_IDENTITY_REMOVAL_FACT =
+  'Removes the configured MST region `name` or `revision` line with the capture-pinned `no name` / `no revision` spelling. On the 7050TX-64-R on 2026-11-22, each add+remove pair staged and netted an EMPTY session diff (DR-159). This identity-field removal is treated as the same blast class as a pure remap, so it carries risk facts without a second confirm.'
+
 /** The DR-149 informational note — a NOTE, not a gate: no hygiene check is required or offered. */
 export const STP_FAR_END_NOTE =
   'This UI cannot see what is attached on the far end of any port. DR-149 decided this stays an informational note — no port-hygiene gate blocks a global STP change.'
@@ -270,11 +290,13 @@ export function stpModeRisks(mode: StpGlobalModeChoice, lines: readonly string[]
 /** The risk list for a staged region edit. */
 export function stpRegionRisks(draft: MstRegionDraft, lines: readonly string[]): readonly string[] {
   const identity = draft.name !== undefined || draft.revision !== undefined
+  const identityRemoval = draft.removeName === true || draft.removeRevision === true
   const removals = draft.removeInstances?.length ?? 0
   return [
     stpGlobalReadBack(lines),
     ...(identity ? [STP_REGION_IDENTITY_RISK] : []),
     ...(draft.instances.length > 0 ? [STP_REGION_INSTANCE_RISK] : []),
+    ...(identityRemoval ? [STP_REGION_IDENTITY_REMOVAL_FACT] : []),
     ...(removals > 0 ? [STP_REGION_REMOVAL_FACT] : []),
     STP_FAR_END_NOTE,
   ]
