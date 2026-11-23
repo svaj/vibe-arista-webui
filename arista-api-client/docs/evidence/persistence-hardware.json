@@ -1,56 +1,56 @@
 {
-  "generatedAt": "2026-11-23T20:40:32.923Z",
+  "generatedAt": "2026-11-23T21:34:45.307Z",
   "targetClass": "hardware",
   "verbs": [
     "copy",
     "rollback",
     "rollback-name"
   ],
-  "snapshotFile": "flash:hw-persist-mwtqbe6u.cfg",
+  "snapshotFile": "flash:hw-persist-mwts92l1.cfg",
   "observations": [
     {
       "step": "identity",
-      "at": "2026-11-23T20:39:25.871Z",
+      "at": "2026-11-23T21:33:36.624Z",
       "class": "hardware",
       "version": "4.28.13.1M",
       "modelName": "DCS-7050TX-64-R"
     },
     {
       "step": "scratch-link",
-      "at": "2026-11-23T20:39:26.008Z",
+      "at": "2026-11-23T21:33:36.773Z",
       "scratch": "Ethernet33",
       "linkStatus": "notconnect"
     },
     {
       "step": "copy-baseline-startup",
-      "at": "2026-11-23T20:39:26.142Z",
+      "at": "2026-11-23T21:33:36.913Z",
       "absent": false,
       "hasMarker": false,
-      "lines": 210
+      "lines": 211
     },
     {
       "step": "copy-reply",
-      "at": "2026-11-23T20:39:26.796Z",
+      "at": "2026-11-23T21:33:37.620Z",
       "text": ""
     },
     {
       "step": "copy-after-startup",
-      "at": "2026-11-23T20:39:26.925Z",
-      "lines": 210,
+      "at": "2026-11-23T21:33:37.760Z",
+      "lines": 211,
       "changedFromBaseline": true
     },
     {
       "step": "replace",
-      "at": "2026-11-23T20:39:26.925Z",
+      "at": "2026-11-23T21:33:37.761Z",
       "skipped": "not in EAPI_HW_PERSISTENCE_VERBS"
     },
     {
       "step": "rollback-clean-diff",
-      "at": "2026-11-23T20:39:29.581Z",
-      "diffLines": 152,
+      "at": "2026-11-23T21:33:39.840Z",
+      "diffLines": 160,
       "diffHead": [
         "--- system:/running-config",
-        "+++ session:/hw-persist-rbclean-mwtqbe6u-session-config",
+        "+++ session:/hw-persist-rbclean-mwts92l1-session-config",
         "@@ -4,80 +4,37 @@",
         " !",
         " no aaa root",
@@ -61,33 +61,35 @@
     },
     {
       "step": "rollback-clean-poststate",
-      "at": "2026-11-23T20:39:29.862Z",
+      "at": "2026-11-23T21:33:40.150Z",
       "sessionStillPending": false
     },
     {
       "step": "rollback-name",
-      "at": "2026-11-23T20:39:30.115Z",
-      "skipped": "no completed session hw-persist-rep-mwtqbe6u to target (replace step did not run or the slot rotated) — DR-136 one-slot store",
-      "completedSlotHolds": []
+      "at": "2026-11-23T21:33:40.429Z",
+      "skipped": "no completed session hw-persist-rep-mwts92l1 to target (replace step did not run or the slot rotated) — DR-136 one-slot store",
+      "completedSlotHolds": [
+        "hw-persist-rbmark-mwtrrkk2"
+      ]
     },
     {
       "step": "rollback-name-decoupled",
-      "at": "2026-11-23T20:39:31.287Z",
+      "at": "2026-11-23T21:33:41.722Z",
       "batch": "immediate",
-      "target": "hw-persist-rbmark-mwtqbe6u",
+      "target": "hw-persist-rbmark-mwts92l1",
       "completedSlotHoldsImmediate": [
-        "hw-persist-rbmark-mwtqbe6u"
+        "hw-persist-rbmark-mwts92l1"
       ],
       "immediateHoldsTarget": true,
       "replaceInThisRun": false
     },
     {
       "step": "rollback-name-decoupled",
-      "at": "2026-11-23T20:40:31.423Z",
+      "at": "2026-11-23T21:34:41.868Z",
       "batch": "aged-60s",
-      "target": "hw-persist-rbmark-mwtqbe6u",
+      "target": "hw-persist-rbmark-mwts92l1",
       "completedSlotHoldsAged": [
-        "hw-persist-rbmark-mwtqbe6u"
+        "hw-persist-rbmark-mwts92l1"
       ],
       "agedHoldsTarget": true,
       "agedOutWithoutReplace": false,
@@ -95,15 +97,16 @@
     },
     {
       "step": "rollback-name-decoupled-refused",
-      "at": "2026-11-23T20:40:31.641Z",
+      "at": "2026-11-23T21:34:42.106Z",
       "errorName": "CommandError",
       "code": 1002,
-      "message": "Error [1002]: CLI command 3 of 3 'rollback hw-persist-rbmark-mwtqbe6u' failed: invalid command [errors: [\"Invalid input (at token 1: 'hw-persist-rbmark-mwtqbe6u')\"]]"
+      "message": "Error [1002]: CLI command 3 of 3 'rollback hw-persist-rbmark-mwts92l1' failed: invalid command [errors: [\"Invalid input (at token 1: 'hw-persist-rbmark-mwts92l1')\"]]"
     },
     {
       "step": "final-scratch-state",
-      "at": "2026-11-23T20:40:32.157Z",
-      "markerPresent": false
+      "at": "2026-11-23T21:34:44.752Z",
+      "anyLaneMarkerPresent": false,
+      "thisRunMarkerPresent": false
     }
   ]
 }
