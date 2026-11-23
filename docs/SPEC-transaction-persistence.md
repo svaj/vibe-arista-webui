@@ -1,10 +1,10 @@
 # Spec (DRAFT): Transaction Persistence & Rollback (B4, #89)
 
-> **Status: DRAFT for owner review — nothing here is implemented.** This document does not
-> change code, does not remove any fence, and does not add a UI control. It exists because the
-> device evidence that gated B4 has landed, so the remaining blockers on #89 are **product
-> decisions the owner must record**, not captures. The fence that keeps these verbs out of the
-> UI stays exactly where it is until a DECISIONS entry authorizes each slice below.
+> **Status: decisions RECORDED (DR-160, 2026-11-23) — nothing here is implemented yet.** The
+> owner answered all five decisions below; **DECISIONS DR-160** is now the authority and this
+> document is its spec detail (slices, shapes, copy rules). The fences stay exactly where they
+> are until their slice ships — an answered decision authorizes a gated slice, not a blanket
+> removal.
 
 Issue: **#89** (the persistence/rollback half of the transaction center; S9/#79 is the
 view/abort/preview half that shipped). This spec supersedes the interim "running-config only,
@@ -70,9 +70,14 @@ verbs in the staged-draft textarea guard. Three carry rationales that the eviden
   it's the standing contract any new slice must preserve (an explicit save action, never an
   implicit side effect of commit).
 
-**These lines must not be edited as part of drafting this spec.** Each verb's removal from
-`DRAFT_FORBIDDEN_LINES` is a gated implementation step that requires its own DECISIONS entry
-(see Slices). The textarea guard for `commit`/`abort`/`configure session`/`reload` is **not**
+**Post-DR-160 state of these lines.** The `copy` line **stays** — decision 1(b) ships Save as a
+first-class button calling the client verb, never a draft-textarea line, so the textarea guard's
+job is unchanged (DR-160 §1). The `configure replace` line **stays** with its **rationale amended**
+from the stale capture-blocker wording to the decided product exclude (DR-160 §2). The `rollback`
+line **stays until S4 ships** — decision 3 wants rollback UI but capture-gated, so the draft guard
+keeps refusing it in the meantime; its wording updates with the S4 slice, not before. Editing any
+of these lines is a gated implementation step belonging to its slice's PR. The textarea guard for
+`commit`/`abort`/`configure session`/`reload` is **not**
 in scope — those are review-pipeline hijack guards, unrelated to persistence, and stay fenced.
 
 ## Boundaries (unchanged, reaffirmed)
@@ -88,9 +93,10 @@ in scope — those are review-pipeline hijack guards, unrelated to persistence, 
   surface wider than passwords — see the DR-150 ssh-key-comment incident); self-restoring
   sequence; every run dry-run-reviewable before `--go`.
 
-## Owner decisions this spec surfaces (NOT decisions it makes)
+## Owner decisions (ANSWERED 2026-11-23 — DR-160 is the record)
 
-The owner records a DECISIONS entry answering each; each answer gates one implementation slice.
+Each answer gates one implementation slice. The options framing is kept below because it is what
+the decision was made against; the bold **Answer** lines are DR-160.
 
 1. **Does the UI expose `copy running-config startup-config` at all?** Options:
    (a) never — running-config-only forever, startup is a console/CLI operator act (keeps DR-024
@@ -103,6 +109,8 @@ The owner records a DECISIONS entry answering each; each answer gates one implem
    → Recommend framing: (b) if the deployment wants a one-click save; (a) if startup is a
    deliberate change-control gate. Container/hardware both ACCEPT `copy`, so the blocker is
    purely product intent.
+   **Answer: (b).** Explicit separate "Save to startup" action, own F4 confirm quoting the
+   whole-running-config blast (DR-160 §1). Gates slice S2.
 
 2. **Does the UI expose `configure replace`?** It is the highest-blast verb (wholesale
    running-config replace). Hardware ACCEPTED it (run 10), self-restoring. Options: never
@@ -110,30 +118,41 @@ The owner records a DECISIONS entry answering each; each answer gates one implem
    a typed-echo confirm mirroring the capture lane's own `CONFIGURE REPLACE` echo gate.
    → The client refuses it while a session is open, so any UI affordance must be outside the
    staged-transaction flow entirely.
+   **Answer: no UI.** Deliberate product exclude; stays the scripted operator act. The
+   `session-rules.ts` rationale text is amended from stale-capture wording to decided-exclude
+   (DR-160 §2). No slice.
 
 3. **Rollback exposure.** `rollback clean-config` (whole running-config to clean) vs
    `rollbackToSession(name)` (to a named committed session). The latter is unusable until the
    one-slot `rollback <name>` mechanism is understood. Recommend: no UI rollback until the
    slot-mechanism capture below resolves what a rollback target name actually survives.
+   **Answer: wanted, capture-gated.** Owner wants rollback-to-named-session; S1 (the
+   `rollback <name>` slot-mechanism capture) must run first, S4 follows its verdict
+   (DR-160 §3).
 
 4. **Commit-timer UX.** The Transaction Center already *surfaces* a `pendingCommitTimer` row
    (PR #166) with its abort-with-revert exit. Do we add any *create/edit* timer control?
    Blocked on the un-captured `commit verify`/`revert` confirm arm. → Recommend: leave
    surfacing-only; no timer authoring control until that arm is captured.
+   **Answer: surfacing-only, as recommended** (DR-160 §4). No slice.
 
 5. **Session-name-limit editing** (`MAX_SESSION_NAME_LENGTH=64`): device accepts 8192; the
    64 is ours. Do we widen? This is a parser/client decision (the M10 #12 follow-up class),
    not B4 UI. → Likely belongs to the session-grammar hardware-half risk review, not #89.
+   **Answer: widen to 256, configurable.** Cap at 256 (not the device's 8192) behind a
+   client-configurable setting with a default; webui mirror in `capability-panel.ts` follows
+   (DR-160 §5). Client slice, filed separately from #89.
 
 ## Slices (each gated on its decision + DECISIONS entry; build order)
 
 | Slice | Depends on | Ships |
 |---|---|---|
-| S1 slot-mechanism capture | owner run | closes the `rollback <name>` timing unknown (see below) |
-| S2 save-to-startup action | decision 1=b | explicit `Save to startup` button + confirm copy + tests; DR-024 preserved (explicit, separate from commit) |
-| S3 configure-replace operator panel | decision 2 | typed-echo-gated, session-conflict-aware; likely a separate screen, not the draft textarea |
-| S4 rollback affordance | decision 3 + S1 | only after the target-name survival is known |
+| S1 slot-mechanism capture | owner run (authorized; script review first) | closes the `rollback <name>` timing unknown (see below) |
+| S2 save-to-startup action | ✅ decided (DR-160 §1, option b) | explicit `Save to startup` button + confirm copy + tests; DR-024 preserved (explicit, separate from commit) |
+| ~~S3 configure-replace operator panel~~ | ❌ decided against (DR-160 §2) | no UI; rationale text amended in `session-rules.ts` only |
+| S4 rollback affordance | ✅ wanted (DR-160 §3) but gated on S1 | only after the target-name survival is known |
 | S5 features.md / contract flip | S2 at minimum | the "Startup-config will never change" line becomes conditional |
+| C1 name cap 64→256 configurable | ✅ decided (DR-160 §5) | arista-api-client: constant → option, refusal copy, `capability-panel.ts` mirror, tests |
 
 No slice is implementable from this draft alone; each needs a DECISIONS entry recording the
 owner's answer to the matching question above.
