@@ -27,9 +27,11 @@ usage() {
   cat <<'EOF'
 Usage:
   scripts/capture-hw-persistence.sh                          # dry run: print the plan
-  scripts/capture-hw-persistence.sh --rehearse [--verbs copy,rollback,replace]
+  scripts/capture-hw-persistence.sh --rehearse \
+      [--verbs copy,rollback,rollback-name,rollback-hyphenfree,replace]
   scripts/capture-hw-persistence.sh --go --host H --user U --scratch EthernetNN \
-      [--verbs copy,rollback] [--ca /path/public.pem --fp SHA256]
+      [--verbs copy,rollback,rollback-name,rollback-hyphenfree] \
+      [--ca /path/public.pem --fp SHA256]
 
 The lane (arista-api-client/src/persistence-hardware.live.test.ts) is the SECOND and only other
 lane ever admitted past the hardware write fence (after hw-session-probe). Consent chain:
@@ -44,6 +46,9 @@ from the replace step — it commits its OWN scratch-port marker session and rol
 the one-slot completed-session store's survival is observed with NO `configure replace` in the way.
 It stages + diffs + ABORTs the rollback (never commits); a second batch waits ~60s to separate
 "slot ages out in seconds" from "replace clears the slot" (the DR-158 confound). Aborts only.
+`rollback-hyphenfree` must also be named EXPLICITLY: it repeats the rollback <name> attempt with a
+hyphen-free completed-session name to distinguish an unsupported verb from a name-token grammar
+restriction. It stages + diffs + ABORTs the rollback and restores its own marker. Aborts only.
 EOF
 }
 
@@ -65,10 +70,10 @@ while [ "$#" -gt 0 ]; do
 done
 
 case "$VERBS" in
-  *[!a-z,-]*) echo "--verbs accepts only copy, rollback, rollback-name, replace (comma list)" >&2; exit 2 ;;
+  *[!a-z,-]*) echo "--verbs accepts only copy, rollback, rollback-name, rollback-hyphenfree, replace (comma list)" >&2; exit 2 ;;
 esac
 for v in ${VERBS//,/ }; do
-  case "$v" in copy|rollback|rollback-name|replace) ;; *) echo "--verbs: unknown verb '$v'" >&2; exit 2 ;; esac
+  case "$v" in copy|rollback|rollback-name|rollback-hyphenfree|replace) ;; *) echo "--verbs: unknown verb '$v'" >&2; exit 2 ;; esac
 done
 
 cd "$(dirname "$0")/.."
@@ -98,6 +103,10 @@ print_plan() {
              second batch (~60s controlled wait, no intervening op) repeats the detail read to tell
              seconds-fast slot aging apart from replace-window clearing. Its committed marker is
              cleared by the final restore. Aborts only.
+ 3c. rollback-hyphenfree (ONLY if named in --verbs; S1 #189) — commits a scratch-port marker in a
+             hyphen-free named session, verifies the completed slot holds that exact name, then stages
+             'rollback <that-name>' in a fresh owned session. Records the diff or refusal, ABORTs,
+             and clears its marker; this is the DR-161 verb-vs-name-grammar disambiguator. Aborts only.
  4. final restore — the scratch port must carry no lane marker; afterAll clears any live marker
              and aborts any session the run left pending.
  5. artifact — arista-api-client/docs/evidence/persistence-hardware.json (hardware) or
@@ -151,6 +160,10 @@ fi
 if [[ ",$VERBS," == *",rollback-name,"* ]]; then
   read -r -p "rollback-name is named: type ROLLBACK NAME to authorize the self-contained rollback <name> slot probe (aborts only) " rbNameConsent
   [ "$rbNameConsent" = "ROLLBACK NAME" ] || { echo "rollback-name consent mismatch; refusing" >&2; exit 3; }
+fi
+if [[ ",$VERBS," == *",rollback-hyphenfree,"* ]]; then
+  read -r -p "rollback-hyphenfree is named: type ROLLBACK HYPHENFREE to authorize the rollback <hyphen-free-name> grammar probe (aborts only) " rbHyphenfreeConsent
+  [ "$rbHyphenfreeConsent" = "ROLLBACK HYPHENFREE" ] || { echo "rollback-hyphenfree consent mismatch; refusing" >&2; exit 3; }
 fi
 
 export EAPI_LIVE=1 EAPI_TARGET_CLASS=hardware

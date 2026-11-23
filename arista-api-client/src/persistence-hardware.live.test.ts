@@ -50,6 +50,11 @@
  *   rollback UI affordance). Each `rollback <target>` is staged, diffed, and ABORTED; the marker the
  *   verb commits is cleared before it returns. Aborts only — the rollback diff is destructive by
  *   definition, so the net-zero guarantee is the whole design.
+ * - **rollback-hyphenfree** (S1, #189 — the DR-161 grammar disambiguator): commits the same kind of
+ *   scratch marker under an ALPHANUMERIC session name, verifies that exact name is present in the
+ *   completed-slot detail listing, then stages `rollback <target>` in a fresh owned session. A 1002 at
+ *   token 1 now points to the verb on this image; an accepted diff localises the refusal to hyphenated
+ *   target names. The rollback is always aborted and the marker is always cleared.
  *
  * ## Rehearsal
  * `--rehearse` (the runner boots a throwaway cEOS and sets the lab class + `EAPI_LAB_FULL_WRITE=1`)
@@ -402,6 +407,42 @@ describe.skipIf(!runnable)('physical persistence verbs (#89, owner-authorized 20
     }
     // Self-clean: clear the marker this verb committed, so the final restore sees an unmarked scratch.
     await clearMarker(`hw-persist-rbnd-clear-${runTag}`)
+  })
+
+  it('rollback <hyphen-free name>: distinguish verb support from target-name grammar, then ABORT and self-clean', { timeout: 120_000 }, async () => {
+    if (!wants('rollback-hyphenfree')) { observe('rollback-hyphenfree', { skipped: 'not in EAPI_HW_PERSISTENCE_VERBS' }); return }
+    expect(node).toBeDefined()
+    const rbMarker = `hwrbmark${runTag}`
+    const rbMarkerDesc = `HW-PERSIST-RBH-${runTag}`
+    await commitMarker(rbMarker, rbMarkerDesc)
+    try {
+      // The target is deliberately alphanumeric. Prove the completed slot holds the exact name before
+      // interpreting the rollback answer; a missing target would not distinguish the two hypotheses.
+      const slot = await completedSlotNames()
+      observe('rollback-hyphenfree-slot', {
+        target: rbMarker,
+        targetContainsHyphen: rbMarker.includes('-'),
+        completedSlotHoldsTarget: slot.includes(rbMarker),
+        completedSlotHolds: slot,
+      })
+      const name = `hwrbprobe${runTag}`
+      scratchSessions.add(name)
+      let session: ConfigSession | undefined
+      try {
+        // Keep the handle local for the same reason as rollback-name: a rejected command must not
+        // strand a PENDING session whose handle exists only inside node.rollbackToSession.
+        session = await (node as Node).configSession({ name, description: `#89 rollback <hyphen-free name> probe ${runTag}` })
+        await session.rollbackToSession(rbMarker)
+        const diff = await session.diff()
+        observe('rollback-hyphenfree-diff', { target: rbMarker, diffLines: diff.split(/\r?\n/u).length, diffHead: diff.split(/\r?\n/u).slice(0, 8).map(redactConfig) })
+      } catch (error) {
+        observe('rollback-hyphenfree-refused', { target: rbMarker, errorName: (error as Error).name, code: error instanceof CommandError ? error.code : undefined, message: (error as Error).message.slice(0, 240) })
+      } finally {
+        if (session !== undefined && session.isOpen) await session.abort().catch(() => undefined)
+      }
+    } finally {
+      await clearMarker(`hwrbclear${runTag}`)
+    }
   })
 
   it('final restore: the scratch port carries no lane marker', { timeout: 60_000 }, async () => {
