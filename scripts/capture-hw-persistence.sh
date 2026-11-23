@@ -39,6 +39,11 @@ lane ever admitted past the hardware write fence (after hw-session-probe). Conse
 
 Defaults to --verbs copy,rollback. `replace` must be named EXPLICITLY: it is the wholesale
 running-config rewrite step (snapshot to flash, one-line marker commit, configure replace back).
+`rollback-name` must be named EXPLICITLY too (S1, #182): it decouples the `rollback <name>` probe
+from the replace step — it commits its OWN scratch-port marker session and rolls back to THAT, so
+the one-slot completed-session store's survival is observed with NO `configure replace` in the way.
+It stages + diffs + ABORTs the rollback (never commits); a second batch waits ~60s to separate
+"slot ages out in seconds" from "replace clears the slot" (the DR-158 confound). Aborts only.
 EOF
 }
 
@@ -60,10 +65,10 @@ while [ "$#" -gt 0 ]; do
 done
 
 case "$VERBS" in
-  *[!a-z,]*) echo "--verbs accepts only copy, rollback, replace (comma list)" >&2; exit 2 ;;
+  *[!a-z,-]*) echo "--verbs accepts only copy, rollback, rollback-name, replace (comma list)" >&2; exit 2 ;;
 esac
 for v in ${VERBS//,/ }; do
-  case "$v" in copy|rollback|replace) ;; *) echo "--verbs: unknown verb '$v'" >&2; exit 2 ;; esac
+  case "$v" in copy|rollback|rollback-name|replace) ;; *) echo "--verbs: unknown verb '$v'" >&2; exit 2 ;; esac
 done
 
 cd "$(dirname "$0")/.."
@@ -87,6 +92,12 @@ print_plan() {
  3. rollback — 'rollback clean-config' and 'rollback <name>' staged inside NAMED SESSIONS, the
              session diff recorded (the would-be blast), then ABORTed. NEVER committed. A refusal
              is recorded as the answer (DR-134).
+ 3b. rollback-name (ONLY if named in --verbs; S1 #182) — commits its OWN scratch-port marker
+             session, reads 'show configuration sessions detail' IMMEDIATELY (completedSlotHolds),
+             stages 'rollback <that-marker>' in a fresh session, records its diff, ABORTs; then a
+             second batch (~60s controlled wait, no intervening op) repeats the detail read to tell
+             seconds-fast slot aging apart from replace-window clearing. Its committed marker is
+             cleared by the final restore. Aborts only.
  4. final restore — the scratch port must carry no lane marker; afterAll clears any live marker
              and aborts any session the run left pending.
  5. artifact — arista-api-client/docs/evidence/persistence-hardware.json (hardware) or
@@ -136,6 +147,10 @@ read -r -p "Type the exact scratch port this lane may mutate ($SCRATCH): " portC
 if [[ ",$VERBS," == *",replace,"* ]]; then
   read -r -p "replace is named: type CONFIGURE REPLACE to authorize the wholesale running-config rewrite: " replaceConsent
   [ "$replaceConsent" = "CONFIGURE REPLACE" ] || { echo "replace consent mismatch; refusing" >&2; exit 3; }
+fi
+if [[ ",$VERBS," == *",rollback-name,"* ]]; then
+  read -r -p "rollback-name is named: type ROLLBACK NAME to authorize the self-contained rollback <name> slot probe (aborts only) " rbNameConsent
+  [ "$rbNameConsent" = "ROLLBACK NAME" ] || { echo "rollback-name consent mismatch; refusing" >&2; exit 3; }
 fi
 
 export EAPI_LIVE=1 EAPI_TARGET_CLASS=hardware
