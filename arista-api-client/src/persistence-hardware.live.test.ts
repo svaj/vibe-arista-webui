@@ -38,6 +38,19 @@
  *   exist on 4.28.13.1M and what is its diff" with zero applied change, which is the most a production
  *   box should ever see from a `clean-config` question.
  *
+ * - **rollback-name** (S1, #182 — the `rollback <name>` decoupled slot probe): the confounded step
+ *   above rolls back to the REPLACE step's committed session, so DR-158 could not separate "`configure
+ *   replace` clears the one-slot completed store" from "the slot simply aged out." This verb commits its
+ *   OWN scratch-port marker session and rolls back to THAT (no replace in its way), reading
+ *   `show configuration sessions detail` immediately (does the fresh `completed` entry appear?) then
+ *   again after a controlled ~60 s wait with NO intervening mutating op (does it survive elapsed time?).
+ *   Comparing `completedSlotHoldsImmediate` to `completedSlotHoldsAged` separates seconds-fast aging
+ *   (both empty) from commit+elapsed aging (present → empty); a clean run named WITHOUT `replace`
+ *   isolates that from replace-window clearing (the DR-158/DR-159 open question that gates DR-160 §3's
+ *   rollback UI affordance). Each `rollback <target>` is staged, diffed, and ABORTED; the marker the
+ *   verb commits is cleared before it returns. Aborts only — the rollback diff is destructive by
+ *   definition, so the net-zero guarantee is the whole design.
+ *
  * ## Rehearsal
  * `--rehearse` (the runner boots a throwaway cEOS and sets the lab class + `EAPI_LAB_FULL_WRITE=1`)
  * runs the SAME code path against a disposable container so the operator watches the plan work before
@@ -135,6 +148,16 @@ async function findSession(name: string, detail = false): Promise<{ state: strin
   const found = (await node.listSessions(detail ? { detail: true } : {})).sessions.find((s) => s.name === name)
   if (found === undefined) return undefined
   return found.commitBy === undefined ? { state: found.state } : { state: found.state, commitBy: found.commitBy }
+}
+
+/** The `completed` sessions the DETAIL form lists right now (the one-slot saved store, DR-136).
+ *  A read failure is recorded as data, never thrown — the slot's (un)readability is itself a datum. */
+async function completedSlotNames(): Promise<readonly string[]> {
+  if (node === undefined) throw new Error('node not built')
+  return await node
+    .listSessions({ detail: true })
+    .then((r) => r.sessions.filter((s) => /completed/iu.test(s.state)).map((s) => s.name))
+    .catch((e: unknown) => [`<detail read refused: ${(e as Error).message.slice(0, 80)}>`])
 }
 
 /** Stage a scratch-port marker in a named session and commit it (running-config only, never persist). */
@@ -321,6 +344,54 @@ describe.skipIf(!runnable)('physical persistence verbs (#89, owner-authorized 20
     } finally {
       if (session !== undefined && session.isOpen) await session.abort().catch(() => undefined)
     }
+  })
+
+  it('rollback <name> (decoupled): own marker, immediate vs ~60s slot survival, stage+diff+ABORT, self-clean', { timeout: 240_000 }, async () => {
+    if (!wants('rollback-name')) { observe('rollback-name-decoupled', { skipped: 'not in EAPI_HW_PERSISTENCE_VERBS' }); return }
+    expect(node).toBeDefined()
+    // A marker session THIS verb owns and commits — no `configure replace` between its commit and the
+    // reads, which is exactly the separation DR-158 could not make (the confounded step above rolls
+    // back to the replace step's session, so a cleared slot there is ambiguous).
+    const rbMarker = `hw-persist-rbmark-${runTag}`
+    const rbMarkerDesc = `HW-PERSIST-RBN-${runTag}`
+    await commitMarker(rbMarker, rbMarkerDesc)
+    // Batch 1 — read the detail form IMMEDIATELY after the commit: did the fresh `completed` entry land
+    // in the one-slot store at all?
+    const immediate = await completedSlotNames()
+    observe('rollback-name-decoupled', {
+      batch: 'immediate', target: rbMarker,
+      completedSlotHoldsImmediate: immediate,
+      immediateHoldsTarget: immediate.includes(rbMarker),
+      replaceInThisRun: wants('replace'),
+    })
+    // Batch 2 — the controlled wait, with NO intervening mutating op (the whole point: the only thing
+    // that could have evicted the slot between the two reads is elapsed time, not `configure replace`).
+    await new Promise((resolve) => setTimeout(resolve, 60_000))
+    const aged = await completedSlotNames()
+    observe('rollback-name-decoupled', {
+      batch: 'aged-60s', target: rbMarker,
+      completedSlotHoldsAged: aged,
+      agedHoldsTarget: aged.includes(rbMarker),
+      // The separation this run exists to produce. Only interpretive; the operator reviews the artifact.
+      agedOutWithoutReplace: immediate.includes(rbMarker) && !aged.includes(rbMarker) && !wants('replace'),
+      neverLandedInSlot: !immediate.includes(rbMarker),
+    })
+    // Attempt the rollback against the target regardless of the reads, recording the device's answer
+    // (accepted + diff, or the refusal code). Staged, diffed, ABORTed — never committed.
+    const name = `hw-persist-rbnd-${runTag}`
+    scratchSessions.add(name)
+    let session: ConfigSession | undefined
+    try {
+      session = await (node as Node).rollbackToSession(rbMarker, { name, description: `#89 rollback <name> decoupled probe ${runTag}` })
+      const diff = await session.diff()
+      observe('rollback-name-decoupled-diff', { target: rbMarker, diffLines: diff.split(/\r?\n/u).length, diffHead: diff.split(/\r?\n/u).slice(0, 8).map(redactConfig) })
+    } catch (error) {
+      observe('rollback-name-decoupled-refused', { errorName: (error as Error).name, code: error instanceof CommandError ? error.code : undefined, message: (error as Error).message.slice(0, 240) })
+    } finally {
+      if (session !== undefined && session.isOpen) await session.abort().catch(() => undefined)
+    }
+    // Self-clean: clear the marker this verb committed, so the final restore sees an unmarked scratch.
+    await clearMarker(`hw-persist-rbnd-clear-${runTag}`)
   })
 
   it('final restore: the scratch port carries no lane marker', { timeout: 60_000 }, async () => {
